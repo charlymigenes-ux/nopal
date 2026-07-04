@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NOPAL</title>
+    <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico?v=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=13">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
+                        <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(34,197,94,0.1)" stroke="#22C55E" stroke-width="2"/>
+                        <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="#22C55E" stroke-width="2" stroke-linecap="round" fill="none"/>
+                        <circle cx="13" cy="10" r="1" fill="#22C55E"/>
+                        <circle cx="19" cy="10" r="1" fill="#22C55E"/>
+                    </svg>
+                </div>
+                <strong>NOPAL</strong>
+            </div>
+
+            <nav class="nav-list">
+                <button class="nav-item active" data-section="dashboard">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    <span data-i18n="dashboard">Dashboard</span>
+                </button>
+                <button class="nav-item" data-section="models">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    <span data-i18n="models">Models</span>
+                </button>
+                <button class="nav-item" data-section="gcode">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span data-i18n="gcode">G-code</span>
+                </button>
+                <button class="nav-item" data-section="queue">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    <span data-i18n="printQueue">Print Queue</span>
+                </button>
+                <button class="nav-item" data-section="settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span data-i18n="settings">Settings</span>
+                </button>
+            </nav>
+
+            <button class="sidebar-expand" aria-label="Expandir">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            </button>
+        </aside>
+
+        <div class="content">
+            <section id="dashboard-section" class="view-section active">
+            <header class="topbar">
+                <div class="topbar-actions">
+                    <div class="language-selector">
+                        <button class="btn-icon btn-icon-light" id="lang-toggle" title="Toggle language">
+                            <span id="lang-display">ES</span>
+                        </button>
+                    </div>
+                    <div class="theme-toggle-wrapper">
+                        <button class="btn-icon btn-icon-light theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema">
+                            <span id="theme-icon">🌙</span>
+                            <span id="theme-label">Oscuro</span>
+                        </button>
+                    </div>
+                    <div class="upload-wrapper">
+                        <button id="upload-btn" class="btn-icon btn-icon-dark" aria-label="Upload file">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </button>
+                        <input id="upload-input" type="file" accept=".stl,.3mf" hidden>
+                    </div>
+                    <button class="btn-icon btn-icon-light" aria-label="Download">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+                        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
+            </header>
+
+            <main>
+                <section class="dashboard-header">
+                    <h1 data-i18n="dashboard">Dashboard</h1>
+                    <span class="color-badge">#16A34A</span>
+                </section>
+
+                <section class="stats-grid">
+                    <article class="stat-card stat-green">
+                        <div class="stat-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><polyline points="4 8 6 4 8 8"/><polyline points="10 12 12 8 14 12"/><polyline points="16 6 18 2 20 6"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <span data-i18n="totalModels">Total Models</span>
+                            <strong id="total-models">0</strong>
+                        </div>
+                    </article>
+                    <article class="stat-card stat-green">
+                        <div class="stat-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 2v7.31"/><path d="M14 9.3V2"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <span data-i18n="gcodeReady">G-code Ready</span>
+                            <strong id="gcode-ready">0</strong>
+                        </div>
+                    </article>
+                    <article class="stat-card stat-orange">
+                        <div class="stat-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <span data-i18n="storage">Almacenamiento</span>
+                            <strong id="storage-used">0 MB / — MB</strong>
+                        </div>
+                    </article>
+                    <article class="stat-card stat-purple">
+                        <div class="stat-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="10" y1="4" x2="10" y2="20"/><path d="M14 14h2v2h-2z"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <span data-i18n="activePrinters">Active Printers</span>
+                            <strong id="active-printers">0</strong>
+                        </div>
+                    </article>
+                </section>
+
+                <section class="printers-section">
+                    <h2 data-i18n="printerList">Printer List</h2>
+                    <div id="printers-grid" class="printers-grid"></div>
+                </section>
+
+                <section class="dashboard-bottom">
+                    <div class="recent-section">
+                        <div class="section-title">
+                            <h2 data-i18n="recentFiles">Recent Files</h2>
+                            <div class="section-search">
+                                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input id="search-recent" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
+                            </div>
+                            <div class="view-controls">
+                                <button class="btn-view-toggle btn-view-toggle-active" id="view-grid" title="Grid view" data-view="grid">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                                </button>
+                                <button class="btn-view-toggle" id="view-list" title="List view" data-view="list">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="models"></div>
+                    </div>
+
+                    <div class="queue-section">
+                        <div class="section-title">
+                            <h2 data-i18n="activePrintQueue">Active Print Queue</h2>
+                        </div>
+                        <div id="print-queue" class="queue-list"></div>
+                    </div>
+                </section>
+            </main>
+        </section>
+
+            <section id="models-section" class="view-section" style="display: none;">
+                <header class="topbar">
+                    <div class="topbar-search">
+                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input id="search-models" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
+                    </div>
+                </header>
+                <main class="main-content models-page-content">
+                    <section class="models-page-header">
+                        <div>
+                            <h1 data-i18n="fileMode">File Mode</h1>
+                            <p data-i18n="filesTableDescription">Manage your 3D files with a clean table layout and preview card.</p>
+                        </div>
+                        <div class="view-controls models-view-controls">
+                            <button class="btn-view-toggle btn-view-toggle-active" id="view-grid-full" title="Grid view" data-view="grid">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                            </button>
+                            <button class="btn-view-toggle" id="view-list-full" title="List view" data-view="list">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            </button>
+                        </div>
+                    </section>
+
+                    <div class="models-page-layout">
+                        <div class="models-table-panel">
+                            <div class="models-list-header">
+                                <div>
+                                    <h2>Modelos</h2>
+                                    <p>Explora todos tus archivos 3D en un formato limpio y ordenado.</p>
+                                </div>
+                                <div class="models-list-actions">
+                                    <span class="badge" data-i18n="material">Material</span>
+                                    <span class="badge badge-alt" data-i18n="printing3D">Impresión 3D</span>
+                                </div>
+                            </div>
+                            <div id="models-full" class="models-table-wrapper"></div>
+                        </div>
+
+                        <aside class="models-preview-card">
+                            <div class="preview-card-inner">
+                                <div class="preview-card-header">
+                                    <div>
+                                        <span class="preview-label" data-i18n="fileManagement">File Management</span>
+                                        <h2 data-i18n="modelPreview">Model Preview</h2>
+                                    </div>
+                                </div>
+                                <div class="preview-card-search">
+                                    <input type="text" data-i18n-placeholder="search" placeholder="Search" disabled>
+                                </div>
+                                <div class="model-preview-box" id="model-preview-box">
+                                    <div class="preview-image" id="preview-image">
+                                        <div class="preview-image-placeholder">3D</div>
+                                    </div>
+                                    <div class="preview-details">
+                                        <h3 id="preview-filename">Selecciona un modelo</h3>
+                                        <p class="preview-meta" id="preview-type">Tipo: —</p>
+                                        <p class="preview-meta" id="preview-size">Tamaño: —</p>
+                                        <p class="preview-meta" id="preview-date">Modificado: —</p>
+                                        <div class="preview-chips">
+                                            <span class="preview-chip" id="preview-chip-main">#A3D9B6</span>
+                                            <span class="preview-chip preview-chip-secondary" id="preview-chip-secondary">#FF8A4D</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
+                    </div>
+                </main>
+            </section>
+
+            <section id="gcode-section" class="view-section" style="display: none;">
+                <header class="topbar">
+                    <div class="topbar-search">
+                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input id="search-gcode" data-i18n-placeholder="searchFiles" placeholder="Search G-code files...">
+                    </div>
+                </header>
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="gcode">G-code</h1>
+                        <p>Revisa archivos de G-code, selecciona un archivo y explora la vista previa en tiempo real.</p>
+                    </section>
+                    <div class="gcode-page-layout">
+                        <div class="gcode-files-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Library</h2>
+                                    <p>G-code files available for preview and inspection.</p>
+                                </div>
+                                <span class="badge badge-alt">G-code</span>
+                            </div>
+                            <div class="gcode-summary-cards">
+                                <div class="summary-card">
+                                    <span>Files</span>
+                                    <strong id="gcode-file-count">0</strong>
+                                </div>
+                                <div class="summary-card">
+                                    <span>Selected</span>
+                                    <strong id="gcode-selected-count">—</strong>
+                                </div>
+                            </div>
+                            <div id="gcode-files-list" class="gcode-file-list"></div>
+                        </div>
+                        <aside class="gcode-preview-card">
+                            <div class="preview-card-inner">
+                                <div class="preview-card-header">
+                                    <div>
+                                        <span class="preview-label">Realtime</span>
+                                        <h2>G-code Preview</h2>
+                                    </div>
+                                </div>
+                                <div class="preview-details-panel">
+                                    <div class="preview-title-row">
+                                        <div>
+                                            <h3 id="gcode-preview-title">Selecciona un archivo G-code</h3>
+                                            <p id="gcode-preview-description">La vista previa se actualiza cuando seleccionas un archivo de la lista.</p>
+                                        </div>
+                                    </div>
+                                    <div class="preview-meta-grid">
+                                        <div>
+                                            <span>Lines</span>
+                                            <strong id="gcode-preview-lines">—</strong>
+                                        </div>
+                                        <div>
+                                            <span>Size</span>
+                                            <strong id="gcode-preview-size">—</strong>
+                                        </div>
+                                        <div>
+                                            <span>Modified</span>
+                                            <strong id="gcode-preview-date">—</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="gcode-preview-scene" id="gcode-preview">
+                                    <div class="preview-image-placeholder">Selecciona un archivo para ver la trayectoria</div>
+                                </div>
+                            </div>
+                        </aside>
+                    </div>
+                </main>
+            </section>
+
+            <section id="queue-section" class="view-section" style="display: none;">
+                <header class="topbar">
+                    <div class="topbar-search">
+                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input id="search-queue" data-i18n-placeholder="searchFiles" placeholder="Search files...">
+                    </div>
+                </header>
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="printQueue">Print Queue</h1>
+                    </section>
+                    <div style="padding: 20px; text-align: center; color: #999;">Print Queue section coming soon...</div>
+                </main>
+            </section>
+
+            <section id="settings-section" class="view-section" style="display: none;">
+                <header class="topbar">
+                    <div class="topbar-search">
+                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input id="search-settings" data-i18n-placeholder="searchFiles" placeholder="Search files...">
+                    </div>
+                </header>
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="settings">Settings</h1>
+                        <p data-i18n="settingsDescription">Manage app preferences, theme, language, and preview quality.</p>
+                    </section>
+                    <div class="settings-grid">
+                        <div class="settings-card theme-config-card">
+                            <h2 data-i18n="theme">Theme</h2>
+                            <p data-i18n="themeDescription">Choose the default display mode for the dashboard.</p>
+                            <select id="settings-theme" class="settings-select">
+                                <option value="light" data-i18n="lightMode">Light</option>
+                                <option value="dark" data-i18n="darkMode">Dark</option>
+                                <option value="green" data-i18n="greenMode">Green</option>
+                            </select>
+                            <div class="theme-presets" id="settings-theme-presets">
+                                <button type="button" class="theme-option-card" data-theme="light">
+                                    <div class="theme-option-title">
+                                        <span data-i18n="lightMode">Light</span>
+                                    </div>
+                                    <div class="theme-option-swatches">
+                                        <span class="theme-option-swatch" style="background:#ffffff"></span>
+                                        <span class="theme-option-swatch" style="background:#f5f5f5"></span>
+                                        <span class="theme-option-swatch" style="background:#d1d5db"></span>
+                                        <span class="theme-option-swatch" style="background:#6b7280"></span>
+                                        <span class="theme-option-swatch" style="background:#1a1a1a"></span>
+                                    </div>
+                                </button>
+                                <button type="button" class="theme-option-card" data-theme="dark">
+                                    <div class="theme-option-title">
+                                        <span data-i18n="darkMode">Dark</span>
+                                    </div>
+                                    <div class="theme-option-swatches">
+                                        <span class="theme-option-swatch" style="background:#0f172a"></span>
+                                        <span class="theme-option-swatch" style="background:#0b1220"></span>
+                                        <span class="theme-option-swatch" style="background:#1e293b"></span>
+                                        <span class="theme-option-swatch" style="background:#64748b"></span>
+                                        <span class="theme-option-swatch" style="background:#f1f5f9"></span>
+                                    </div>
+                                </button>
+                                <button type="button" class="theme-option-card" data-theme="green">
+                                    <div class="theme-option-title">
+                                        <span data-i18n="greenMode">Green</span>
+                                    </div>
+                                    <div class="theme-option-swatches">
+                                        <span class="theme-option-swatch" style="background:#0f172a"></span>
+                                        <span class="theme-option-swatch" style="background:#1e293b"></span>
+                                        <span class="theme-option-swatch" style="background:#16a34a"></span>
+                                        <span class="theme-option-swatch" style="background:#22c55e"></span>
+                                        <span class="theme-option-swatch" style="background:#f1f5f9"></span>
+                                    </div>
+                                </button>
+                            </div>
+                            <div class="theme-palette-editor">
+                                <div class="theme-palette-row">
+                                    <label>
+                                        <span data-i18n="accentColor">Accent</span>
+                                        <input type="color" id="settings-color-accent" class="settings-color-input">
+                                    </label>
+                                    <label>
+                                        <span data-i18n="surfaceColor">Surface</span>
+                                        <input type="color" id="settings-color-surface" class="settings-color-input">
+                                    </label>
+                                </div>
+                                <div class="theme-palette-row">
+                                    <label>
+                                        <span data-i18n="textColor">Text</span>
+                                        <input type="color" id="settings-color-text" class="settings-color-input">
+                                    </label>
+                                    <label>
+                                        <span data-i18n="mutedColor">Secondary</span>
+                                        <input type="color" id="settings-color-muted" class="settings-color-input">
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="favicon-editor">
+                                <label for="settings-favicon-url" data-i18n="faviconUrl">Favicon URL</label>
+                                <input id="settings-favicon-url" class="settings-select" type="text" placeholder="https://...">
+                                <p class="favicon-note" data-i18n="faviconDescription">Add a favicon URL to use in the app.</p>
+                                <div class="favicon-preview">
+                                    <span data-i18n="faviconPreview">Preview:</span>
+                                    <img id="favicon-preview-img" alt="favicon preview" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <h2 data-i18n="language">Language</h2>
+                            <p data-i18n="languageDescription">Change the interface language used across the dashboard.</p>
+                            <select id="settings-language" class="settings-select">
+                                <option value="es">Español</option>
+                                <option value="en">English</option>
+                            </select>
+                        </div>
+                        <div class="settings-card">
+                            <h2 data-i18n="previewQuality">Preview Quality</h2>
+                            <p data-i18n="previewQualityDescription">Adjust renderer detail for thumbnails and previews.</p>
+                            <select id="settings-preview-quality" class="settings-select">
+                                <option value="standard" data-i18n="standard">Standard</option>
+                                <option value="performance" data-i18n="performance">Performance</option>
+                            </select>
+                        </div>
+                        <div class="settings-card">
+                            <h2 data-i18n="autoRefresh">Auto Refresh</h2>
+                            <p data-i18n="autoRefreshDescription">Enable automatic printer status updates every few seconds.</p>
+                            <label class="settings-switch">
+                                <input type="checkbox" id="settings-autorefresh">
+                                <span class="switch-slider"></span>
+                                <span class="switch-label" data-i18n="enabled">Enabled</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <button id="settings-save-btn" class="btn btn-primary" data-i18n="saveSettings">Save Settings</button>
+                        <span id="settings-status" class="settings-status"></span>
+                    </div>
+                </main>
+            </section>
+        </div>
+    </div>
+
+    <!-- Model Detail Modal -->
+    <div id="model-modal" class="modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-body">
+                <div class="modal-viewer" id="modal-viewer"></div>
+                <div class="modal-info">
+                    <h2 id="modal-filename">Modelo 3D</h2>
+                    <div class="info-group">
+                        <label data-i18n="tags">Tags:</label>
+                        <p id="modal-tags">#modelo3D</p>
+                    </div>
+                    <div class="info-group">
+                        <label data-i18n="material">Material:</label>
+                        <p id="modal-material">—</p>
+                    </div>
+                    <div class="info-group">
+                        <label data-i18n="estimatedTime">Tiempo estimado:</label>
+                        <p id="modal-time">—</p>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-primary" data-i18n="generateGcode">Generar G-code</button>
+                        <button class="btn btn-accent" id="modal-send-printer" data-i18n="sendToPrinter">Enviar a impresora</button>
+                        <button class="btn btn-primary" id="modal-download" data-i18n="downloadFile">Download</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/three.min.js?v=2"></script>
+    <script src="/static/js/STLLoader.js?v=2"></script>
+    <script src="/static/js/3MFLoader.js?v=2"></script>
+    <script src="/static/js/translations.js"></script>
+    <script src="/static/js/app.js?v=12"></script>
+</body>
+</html>

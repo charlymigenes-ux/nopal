@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ver modelo - {{ filename }}</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=4">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            📦 <span>3DVault</span>
+        </div>
+        <div class="header-actions">
+            <a class="button secondary" href="/">Volver</a>
+            <a class="button" href="{{ url }}" download>Descargar STL</a>
+        </div>
+    </header>
+
+    <main>
+        <h1>Vista previa</h1>
+        <div class="view-layout">
+            <div class="viewer-panel" id="viewer-panel"></div>
+            <div class="model-details">
+                <h2>{{ filename }}</h2>
+                <p>Tamaño: {{ size }} bytes</p>
+                <p>Tipo: STL</p>
+                <p>La vista previa se renderiza con Three.js.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/js/three.min.js?v=2"></script>
+    <script src="/static/js/STLLoader.js?v=2"></script>
+    <script src="/static/js/3MFLoader.js?v=2"></script>
+    <script>
+        const viewerPanel = document.getElementById('viewer-panel');
+        const fileUrl = '{{ url }}';
+
+        const showFallback = (message) => {
+            viewerPanel.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;text-align:center;padding:1rem;">' + message + '</div>';
+        };
+
+        if (typeof window.THREE === 'undefined' || typeof window.THREE.Scene !== 'function') {
+            showFallback('La vista previa 3D no está disponible en este navegador.');
+        } else {
+            const THREE = window.THREE;
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio || 1);
+            renderer.setClearColor(0x111827);
+            viewerPanel.appendChild(renderer.domElement);
+
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(1, 1, 1);
+            scene.add(light);
+
+            const ambient = new THREE.AmbientLight(0x404040, 1.4);
+            scene.add(ambient);
+
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshStandardMaterial({ color: 0x8b5cf6, metalness: 0.4, roughness: 0.4 });
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            camera.position.set(2, 2, 3);
+            camera.lookAt(0, 0, 0);
+
+            const animate = () => {
+                requestAnimationFrame(animate);
+                cube.rotation.y += 0.01;
+                cube.rotation.x += 0.005;
+                renderer.render(scene, camera);
+            };
+            animate();
+
+            const resizeRenderer = () => {
+                const width = viewerPanel.clientWidth || 640;
+                const height = viewerPanel.clientHeight || 480;
+                renderer.setSize(width, height);
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+            };
+
+            resizeRenderer();
+            window.addEventListener('resize', resizeRenderer);
+        }
+    </script>
+</body>
+</html>

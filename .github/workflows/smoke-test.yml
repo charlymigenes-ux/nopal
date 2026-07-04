@@ -1,0 +1,46 @@
+name: Smoke test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start NOPAL
+        run: |
+          mkdir -p uploads previews
+          nohup uvicorn backend.main:app --host 127.0.0.1 --port 8420 > server.log 2>&1 &
+          echo $! > server.pid
+
+      - name: Wait for server and check health
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8420/api/status > /dev/null; then
+              echo "Server is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not respond in time"
+          cat server.log
+          exit 1
+
+      - name: Check homepage renders
+        run: curl -sf http://127.0.0.1:8420/ | grep -q "NOPAL"
+
+      - name: Stop server
+        if: always()
+        run: kill $(cat server.pid) 2>/dev/null || true

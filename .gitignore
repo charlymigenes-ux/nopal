@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Datos de usuario (no se versionan, se generan en cada instalación)
+uploads/
+previews/
+backups/
+database/
+
+# Entorno / configuración local
+.env
+.claude/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

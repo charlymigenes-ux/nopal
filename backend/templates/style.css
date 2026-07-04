@@ -1,0 +1,234 @@
+/* =============================================
+   NOPAL - UI CSS
+   Sistema de Gestión de Modelos 3D y G-code
+   ============================================= */
+
+:root {
+    --primary-green: #16A34A;
+    --green-light: #4ADE80;
+    --green-dark: #15803D;
+    --orange: #FF8A4D;
+    --orange-dark: #EA6A2F;
+    
+    --bg: #0F172A;
+    --sidebar-bg: hsl(223, 60%, 26%);
+    --card-bg: #1E2937;
+    --surface: #334155;
+    
+    --text: #F1F5F9;
+    --text-muted: #94A3B8;
+    --border: rgba(148, 163, 184, 0.15);
+    
+    --radius-sm: 12px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', system_ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+}
+
+/* ============= SIDEBAR ============= */
+.sidebar {
+    width: 260px;
+    background: var(--sidebar-bg);
+    padding: 24px 16px;
+    height: 100vh;
+    position: fixed;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-bottom: 40px;
+}
+
+.logo-icon {
+    width: 42px;
+    height: 42px;
+    background: var(--primary-green);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.logo-text {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 20px;
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    margin-bottom: 4px;
+}
+
+.nav-item:hover {
+    background: rgba(22, 163, 74, 0.1);
+    color: var(--text);
+}
+
+.nav-item.active {
+    background: var(--primary-green);
+    color: white;
+    font-weight: 600;
+}
+
+/* ============= MAIN CONTENT ============= */
+.main {
+    margin-left: 260px;
+    min-height: 100vh;
+    background: var(--bg);
+}
+
+/* Topbar */
+.topbar {
+    height: 76px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.search-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 20px;
+    width: 420px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.search-bar input {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+    width: 100%;
+    font-size: 1rem;
+}
+
+/* Cards */
+.card {
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    border: 1px solid var(--border);
+    transition: transform 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+}
+
+/* Stats */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    padding: 32px;
+}
+
+/* Buttons */
+.btn {
+    padding: 12px 24px;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.btn-primary {
+    background: var(--primary-green);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--green-light);
+    color: #0F172A;
+}
+
+.btn-orange {
+    background: var(--orange);
+    color: white;
+}
+
+.btn-orange:hover {
+    background: var(--orange-dark);
+}
+
+/* Table */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th {
+    text-align: left;
+    padding: 16px 20px;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.table td {
+    padding: 18px 20px;
+    border-top: 1px solid var(--border);
+}
+
+/* Glassmorphism Effect */
+.glass {
+    background: rgba(30, 41, 55, 0.75);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 80px;
+    }
+    .main {
+        margin-left: 80px;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        display: none;
+    }
+    .main {
+        margin-left: 0;
+    }
+}
