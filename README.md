@@ -1,5 +1,6 @@
 # NOPAL
-<img width="1897" height="1025" alt="image" src="https://github.com/user-attachments/assets/4dd83f67-f39f-4831-b1b8-b0ac5a5129c8" />
+<img width="1895" height="1028" alt="image" src="https://github.com/user-attachments/assets/600beacf-157c-4bd1-a5c0-9307415da5d6" />
+
 
 Panel de control para bibliotecas de modelos 3D e impresoras Klipper. Organiza tus archivos STL/3MF/G-code, visualízalos en 3D desde el navegador y monitorea en tiempo real el estado de tus impresoras (temperaturas, progreso, historial de trabajos) vía Moonraker.
 
