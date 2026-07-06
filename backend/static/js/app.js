@@ -1016,6 +1016,134 @@ function updateViewMode(mode) {
     renderRecentPrinterFiles(recentPrinterFiles);
 }
 
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 42;
+let selectedSystemStatsPort = null;
+
+function systemStatsDeviceSelectHtml() {
+    if (!allPrinters || allPrinters.length === 0) return '';
+    const options = allPrinters.map(p => `
+        <option value="${p.port}" ${p.port === selectedSystemStatsPort ? 'selected' : ''}>${p.name}</option>
+    `).join('');
+    return `
+        <select id="system-stats-device" class="settings-select system-stats-device-select">
+            ${options}
+        </select>
+    `;
+}
+
+function bindSystemStatsDeviceSelect() {
+    const select = document.getElementById('system-stats-device');
+    if (!select) return;
+    select.addEventListener('change', () => {
+        selectedSystemStatsPort = Number(select.value);
+        loadSystemStats();
+    });
+}
+
+function renderSystemStats(data) {
+    const card = document.getElementById('system-stats-card');
+    if (!card) return;
+
+    if (!data || !data.mcu || !data.host) {
+        card.innerHTML = `
+            <div class="system-stats-header">
+                <div>
+                    <h2>${t('systemPulse')}</h2>
+                    <p>${t('systemPulseDescription')}</p>
+                </div>
+                ${systemStatsDeviceSelectHtml()}
+            </div>
+            <div class="empty-state-small">${t('noSystemStats')}</div>
+        `;
+        bindSystemStatsDeviceSelect();
+        return;
+    }
+
+    const { mcu, host } = data;
+    const cpuPercent = Math.max(0, Math.min(100, host.cpu_percent || 0));
+    const memPercent = Math.max(0, Math.min(100, host.mem_percent || 0));
+    const cpuOffset = GAUGE_CIRCUMFERENCE - (cpuPercent / 100) * GAUGE_CIRCUMFERENCE;
+    const memOffset = GAUGE_CIRCUMFERENCE - (memPercent / 100) * GAUGE_CIRCUMFERENCE;
+
+    card.innerHTML = `
+        <div class="system-stats-header">
+            <div>
+                <h2>${t('systemPulse')}</h2>
+                <p>${t('systemPulseDescription')}</p>
+            </div>
+            ${systemStatsDeviceSelectHtml()}
+        </div>
+        <div class="system-stats-body">
+            <div class="system-stats-block">
+                <div class="system-stats-block-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="2" x2="9" y2="4"/><line x1="15" y1="2" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="22"/><line x1="15" y1="20" x2="15" y2="22"/><line x1="20" y1="9" x2="22" y2="9"/><line x1="20" y1="15" x2="22" y2="15"/><line x1="2" y1="9" x2="4" y2="9"/><line x1="2" y1="15" x2="4" y2="15"/></svg>
+                    <span>MCU <small>${mcu.name || '—'}</small></span>
+                </div>
+                <div class="system-stats-rows">
+                    <div class="system-stats-row"><span>${t('hostVersion')}</span><strong>${mcu.version || '—'}</strong></div>
+                    <div class="system-stats-row"><span>${t('mcuLoad')}</span><strong>${mcu.load != null ? mcu.load.toFixed(2) : '—'}</strong></div>
+                    <div class="system-stats-row"><span>${t('mcuAwake')}</span><strong>${mcu.awake != null ? mcu.awake.toFixed(2) : '—'}</strong></div>
+                    <div class="system-stats-row"><span>${t('mcuFrequency')}</span><strong>${mcu.freq_mhz != null ? mcu.freq_mhz + ' MHz' : '—'}</strong></div>
+                    <div class="system-stats-row"><span>${t('temperature')}</span><strong>${mcu.temp != null ? mcu.temp.toFixed(1) + ' °C' : '—'}</strong></div>
+                </div>
+            </div>
+
+            <div class="system-stats-block">
+                <div class="system-stats-block-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><circle cx="8" cy="16" r="1"/></svg>
+                    <span>Host <small>${host.cpu_desc || '—'}</small></span>
+                </div>
+                <div class="system-stats-rows">
+                    <div class="system-stats-row"><span>${t('hostVersion')}</span><strong>${host.version || '—'}</strong></div>
+                    <div class="system-stats-row"><span>${t('hostOs')}</span><strong>${host.os || '—'}</strong></div>
+                    <div class="system-stats-row"><span>${t('memory')}</span><strong>${host.mem_used_gb} / ${host.mem_total_gb} GB</strong></div>
+                    <div class="system-stats-row"><span>${t('hostBandwidth')}</span><strong>${host.bandwidth_kbps} kB/s</strong></div>
+                    <div class="system-stats-row"><span>${t('temperature')}</span><strong>${host.temp != null ? host.temp.toFixed(1) + ' °C' : '—'}</strong></div>
+                </div>
+            </div>
+
+            <div class="system-stats-gauges">
+                <div class="system-gauge">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="gauge-track" cx="50" cy="50" r="42"/>
+                        <circle class="gauge-fill gauge-fill-cpu" cx="50" cy="50" r="42" stroke-dasharray="${GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${cpuOffset}"/>
+                    </svg>
+                    <div class="gauge-value"><strong>${cpuPercent}</strong><span>%</span></div>
+                    <span class="gauge-label">CPU</span>
+                </div>
+                <div class="system-gauge">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="gauge-track" cx="50" cy="50" r="42"/>
+                        <circle class="gauge-fill gauge-fill-mem" cx="50" cy="50" r="42" stroke-dasharray="${GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${memOffset}"/>
+                    </svg>
+                    <div class="gauge-value"><strong>${memPercent}</strong><span>%</span></div>
+                    <span class="gauge-label">${t('memory')}</span>
+                </div>
+            </div>
+        </div>
+    `;
+    bindSystemStatsDeviceSelect();
+}
+
+async function loadSystemStats() {
+    const card = document.getElementById('system-stats-card');
+    if (selectedSystemStatsPort == null && allPrinters.length > 0) {
+        selectedSystemStatsPort = allPrinters[0].port;
+    }
+    try {
+        const url = selectedSystemStatsPort != null
+            ? `/api/system/stats?port=${selectedSystemStatsPort}`
+            : '/api/system/stats';
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('No se pudo cargar las estadísticas del sistema');
+        const data = await response.json();
+        renderSystemStats(data);
+    } catch (error) {
+        console.error(error);
+        if (card) card.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
+    }
+}
+
 async function loadPrinters() {
     try {
         const response = await fetch('/api/printers/status');
@@ -1265,6 +1393,9 @@ function switchSection(sectionName) {
             if (model) selectGcodePreview(model);
         }
     }
+    if (sectionName === 'settings') {
+        loadSystemStats();
+    }
 }
 
 // Add click listeners to nav items
@@ -1352,16 +1483,12 @@ function selectPreviewModel(model, rerender = true) {
     const previewType = document.getElementById('preview-type');
     const previewSize = document.getElementById('preview-size');
     const previewDate = document.getElementById('preview-date');
-    const previewChipMain = document.getElementById('preview-chip-main');
-    const previewChipSecondary = document.getElementById('preview-chip-secondary');
     const previewImage = document.getElementById('preview-image');
 
     if (previewTitle) previewTitle.textContent = model.name;
     if (previewType) previewType.textContent = `Tipo: ${model.extension?.replace('.', '').toUpperCase() || '—'}`;
     if (previewSize) previewSize.textContent = `Tamaño: ${formatSize(model.size)}`;
     if (previewDate) previewDate.textContent = `Modificado: ${formatDate(model.modified)}`;
-    if (previewChipMain) previewChipMain.textContent = model.tags?.[0] ? `#${model.tags[0].replace('#', '')}` : '#A3D9B6';
-    if (previewChipSecondary) previewChipSecondary.textContent = model.tags?.[1] ? `#${model.tags[1].replace('#', '')}` : '#FF8A4D';
     if (previewImage) {
         previewImage.innerHTML = '';
         previewImage.style.backgroundImage = 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(31,41,55,1) 100%)';

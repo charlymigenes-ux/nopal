@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=13">
+    <link rel="stylesheet" href="/static/css/style.css?v=16">
 </head>
 <body>
     <div class="app-shell">
@@ -162,38 +162,33 @@
         </section>
 
             <section id="models-section" class="view-section" style="display: none;">
-                <header class="topbar">
-                    <div class="topbar-search">
-                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input id="search-models" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
-                    </div>
-                </header>
                 <main class="main-content models-page-content">
-                    <section class="models-page-header">
-                        <div>
-                            <h1 data-i18n="fileMode">File Mode</h1>
-                            <p data-i18n="filesTableDescription">Manage your 3D files with a clean table layout and preview card.</p>
-                        </div>
-                        <div class="view-controls models-view-controls">
-                            <button class="btn-view-toggle btn-view-toggle-active" id="view-grid-full" title="Grid view" data-view="grid">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                            </button>
-                            <button class="btn-view-toggle" id="view-list-full" title="List view" data-view="list">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                            </button>
-                        </div>
-                    </section>
-
                     <div class="models-page-layout">
                         <div class="models-table-panel">
                             <div class="models-list-header">
-                                <div>
-                                    <h2>Modelos</h2>
-                                    <p>Explora todos tus archivos 3D en un formato limpio y ordenado.</p>
+                                <div class="models-list-header-top">
+                                    <div>
+                                        <h2>Modelos</h2>
+                                        <p>Explora todos tus archivos 3D en un formato limpio y ordenado.</p>
+                                    </div>
+                                    <div class="models-list-actions">
+                                        <span class="badge" data-i18n="material">Material</span>
+                                        <span class="badge badge-alt" data-i18n="printing3D">Impresión 3D</span>
+                                    </div>
                                 </div>
-                                <div class="models-list-actions">
-                                    <span class="badge" data-i18n="material">Material</span>
-                                    <span class="badge badge-alt" data-i18n="printing3D">Impresión 3D</span>
+                                <div class="models-list-controls">
+                                    <div class="section-search">
+                                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                        <input id="search-models" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
+                                    </div>
+                                    <div class="view-controls models-view-controls">
+                                        <button class="btn-view-toggle btn-view-toggle-active" id="view-grid-full" title="Grid view" data-view="grid">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                                        </button>
+                                        <button class="btn-view-toggle" id="view-list-full" title="List view" data-view="list">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div id="models-full" class="models-table-wrapper"></div>
@@ -207,9 +202,6 @@
                                         <h2 data-i18n="modelPreview">Model Preview</h2>
                                     </div>
                                 </div>
-                                <div class="preview-card-search">
-                                    <input type="text" data-i18n-placeholder="search" placeholder="Search" disabled>
-                                </div>
                                 <div class="model-preview-box" id="model-preview-box">
                                     <div class="preview-image" id="preview-image">
                                         <div class="preview-image-placeholder">3D</div>
@@ -219,10 +211,6 @@
                                         <p class="preview-meta" id="preview-type">Tipo: —</p>
                                         <p class="preview-meta" id="preview-size">Tamaño: —</p>
                                         <p class="preview-meta" id="preview-date">Modificado: —</p>
-                                        <div class="preview-chips">
-                                            <span class="preview-chip" id="preview-chip-main">#A3D9B6</span>
-                                            <span class="preview-chip preview-chip-secondary" id="preview-chip-secondary">#FF8A4D</span>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -319,18 +307,13 @@
             </section>
 
             <section id="settings-section" class="view-section" style="display: none;">
-                <header class="topbar">
-                    <div class="topbar-search">
-                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input id="search-settings" data-i18n-placeholder="searchFiles" placeholder="Search files...">
-                    </div>
-                </header>
                 <main class="main-content">
                     <section class="page-header">
                         <h1 data-i18n="settings">Settings</h1>
                         <p data-i18n="settingsDescription">Manage app preferences, theme, language, and preview quality.</p>
                     </section>
                     <div class="settings-grid">
+                        <div class="settings-card system-stats-card" id="system-stats-card"></div>
                         <div class="settings-card theme-config-card">
                             <h2 data-i18n="theme">Theme</h2>
                             <p data-i18n="themeDescription">Choose the default display mode for the dashboard.</p>
@@ -481,6 +464,6 @@
     <script src="/static/js/STLLoader.js?v=2"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
     <script src="/static/js/translations.js"></script>
-    <script src="/static/js/app.js?v=12"></script>
+    <script src="/static/js/app.js?v=15"></script>
 </body>
 </html>

@@ -1,6 +1,9 @@
 import os
 import shutil
-from fastapi import APIRouter
+from typing import Optional
+from fastapi import APIRouter, HTTPException
+
+from backend.services.klipper_service import get_system_stats
 
 router = APIRouter()
 
@@ -38,3 +41,12 @@ async def get_storage():
         "free": stat.free,
         "total": stat.total,
     }
+
+
+@router.get("/api/system/stats")
+async def get_system_stats_endpoint(port: Optional[int] = None):
+    """Estadísticas de hardware (MCU + host) de la impresora indicada."""
+    try:
+        return get_system_stats(port=port)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

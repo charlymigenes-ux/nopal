@@ -122,6 +122,18 @@ class MoonrakerClient:
             f"/server/history/list?limit={limit}&order=desc"
         ).get("jobs", [])
 
+    def get_system_info(self):
+        """Información estática de hardware/SO (CPU, distro, red)."""
+        return self._get("/machine/system_info").get("system_info", {})
+
+    def get_proc_stats(self):
+        """Uso de CPU/memoria/red y temperatura en tiempo real."""
+        return self._get("/machine/proc_stats")
+
+    def get_mcu_status(self):
+        """Estado del MCU (versión, carga, frecuencia)."""
+        return self._get("/printer/objects/query?mcu").get("status", {}).get("mcu", {})
+
 
 def find_moonraker_instances() -> List[Dict[str, Any]]:
     """
@@ -183,6 +195,79 @@ def get_all_printers_status() -> List[Dict[str, Any]]:
         )
 
     return printers
+
+
+def get_system_stats(port: int = None) -> Dict[str, Any]:
+    """
+    Estadísticas de hardware (MCU + host) de una impresora.
+
+    Si no se indica `port`, usa la primera impresora detectada. Los datos de
+    host (CPU, memoria, red) son los mismos sin importar cuál se elija, ya que
+    las instancias de Moonraker corren en la misma máquina física; lo que
+    cambia es el MCU consultado.
+    """
+
+    printers = find_moonraker_instances()
+    if not printers:
+        return {}
+
+    if port is not None:
+        printer = next((p for p in printers if p["port"] == port), None)
+        if printer is None:
+            return {}
+    else:
+        printer = printers[0]
+
+    client = MoonrakerClient(printer["port"])
+
+    system_info = client.get_system_info()
+    proc_stats = client.get_proc_stats()
+    printer_info = client.get_printer_info()
+    mcu_status = client.get_mcu_status()
+
+    cpu_info = system_info.get("cpu_info", {})
+    distribution = system_info.get("distribution", {})
+    system_memory = proc_stats.get("system_memory", {})
+    system_cpu_usage = proc_stats.get("system_cpu_usage", {})
+    network = proc_stats.get("network", {})
+    cpu_temp = proc_stats.get("cpu_temp")
+
+    total_bandwidth = sum(
+        iface.get("bandwidth", 0)
+        for name, iface in network.items()
+        if name != "lo"
+    )
+
+    mem_total = system_memory.get("total", 0)
+    mem_used = system_memory.get("used", 0)
+    mem_percent = round((mem_used / mem_total) * 100) if mem_total else 0
+
+    mcu_constants = mcu_status.get("mcu_constants", {})
+    mcu_stats = mcu_status.get("last_stats", {})
+    freq_hz = mcu_stats.get("freq") or mcu_constants.get("CLOCK_FREQ", 0)
+
+    return {
+        "printer_name": printer["name"],
+        "mcu": {
+            "name": mcu_constants.get("MCU", "mcu"),
+            "version": mcu_status.get("mcu_version"),
+            "load": mcu_stats.get("mcu_task_avg"),
+            "awake": mcu_stats.get("mcu_awake"),
+            "freq_mhz": round(freq_hz / 1_000_000, 1) if freq_hz else None,
+            "temp": cpu_temp,
+        },
+        "host": {
+            "version": printer_info.get("software_version"),
+            "os": distribution.get("name"),
+            "cpu_desc": cpu_info.get("cpu_desc"),
+            "cpu_percent": round(system_cpu_usage.get("cpu", 0)),
+            "mem_percent": mem_percent,
+            "mem_used_gb": round(mem_used / (1024 * 1024), 2),
+            "mem_total_gb": round(mem_total / (1024 * 1024), 2),
+            "temp": cpu_temp,
+            "bandwidth_kbps": round(total_bandwidth / 1024, 1),
+        },
+    }
 
 
 def get_recent_printer_files(host: str, limit: int = 3) -> List[Dict[str, Any]]:
