@@ -1,17 +1,27 @@
 import os
 import re
-from fastapi import APIRouter
+import shutil
+from pathlib import Path
+
+from fastapi import APIRouter, Form, HTTPException
+
+from backend.utils import UPLOAD_FOLDER, get_section_root, safe_section_path
 
 router = APIRouter()
 
-UPLOAD_FOLDER = "uploads"
+MODEL_EXTENSIONS = {".stl", ".3mf", ".obj", ".step", ".stp"}
+GCODE_EXTENSIONS = {".gcode", ".gc", ".gco"}
+
+
+def _section_for_type(type_param: str) -> str:
+    return "gcode" if type_param == "gcode" else "model"
 
 
 def _estimate_print_time(filepath: str, extension: str) -> dict:
     size_bytes = os.path.getsize(filepath)
     size_mb = max(size_bytes / (1024 * 1024), 0.1)
 
-    if extension == ".gcode":
+    if extension in GCODE_EXTENSIONS:
         try:
             with open(filepath, "r", encoding="utf-8", errors="ignore") as handle:
                 for line in handle.readlines()[:200]:
@@ -27,7 +37,7 @@ def _estimate_print_time(filepath: str, extension: str) -> dict:
         except Exception:
             pass
 
-    multiplier = {".stl": 12, ".obj": 10, ".step": 8, ".stp": 8, ".3mf": 9, ".gcode": 6}.get(extension, 8)
+    multiplier = {".stl": 12, ".obj": 10, ".step": 8, ".stp": 8, ".3mf": 9}.get(extension, 6)
     minutes = int(max(20, round(size_mb * multiplier)))
     hours, rem = divmod(minutes, 60)
     return {
@@ -36,31 +46,222 @@ def _estimate_print_time(filepath: str, extension: str) -> dict:
     }
 
 
+def _build_file_entry(filepath: str, url_rel_dir: str, filename: str) -> dict:
+    extension = os.path.splitext(filename)[1].lower()
+    rel_path = f"{url_rel_dir}/{filename}" if url_rel_dir else filename
+    estimated = _estimate_print_time(filepath, extension)
+
+    return {
+        "id": rel_path,
+        "name": filename,
+        "extension": extension,
+        "size": os.path.getsize(filepath),
+        "modified": int(os.path.getmtime(filepath)),
+        "file_url": f"/uploads/{rel_path}",
+        "view_url": f"/view/{rel_path}",
+        "estimated_time": estimated["estimated_time"],
+        "estimated_time_minutes": estimated["estimated_time_minutes"],
+        "material": "PLA",
+        "tags": ["#modelo3D", "#impresion3D"],
+    }
+
+
 @router.get("/api/models")
 async def get_models():
+    """Listado plano y recursivo de todos los archivos (usado por estadísticas)."""
+    base = Path(UPLOAD_FOLDER)
     files = []
 
-    for idx, filename in enumerate(sorted(os.listdir(UPLOAD_FOLDER))):
-        extension = os.path.splitext(filename)[1].lower()
-        if extension not in {".stl", ".3mf", ".obj", ".step", ".stp", ".gcode"}:
+    for path in sorted(base.rglob("*")):
+        if not path.is_file():
             continue
-
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        estimated = _estimate_print_time(filepath, extension)
-        files.append(
-            {
-                "id": idx,
-                "name": filename,
-                "extension": extension,
-                "size": os.path.getsize(filepath),
-                "modified": int(os.path.getmtime(filepath)),
-                "file_url": f"/uploads/{filename}",
-                "view_url": f"/view/{filename}",
-                "estimated_time": estimated["estimated_time"],
-                "estimated_time_minutes": estimated["estimated_time_minutes"],
-                "material": "PLA",
-                "tags": ["#modelo3D", "#impresion3D"],
-            }
-        )
+        extension = path.suffix.lower()
+        if extension not in MODEL_EXTENSIONS | GCODE_EXTENSIONS:
+            continue
+        rel_dir = str(path.parent.relative_to(base))
+        rel_dir = "" if rel_dir == "." else rel_dir
+        files.append(_build_file_entry(str(path), rel_dir, path.name))
 
     return files
+
+
+@router.get("/api/browse")
+async def browse_folder(path: str = "", type: str = "model"):
+    """Contenido (carpetas + archivos) de una carpeta dentro de la sección indicada."""
+    section = _section_for_type(type)
+    section_prefix = "gcode" if section == "gcode" else "models"
+    extensions = GCODE_EXTENSIONS if section == "gcode" else MODEL_EXTENSIONS
+    target_dir = safe_section_path(section, path)
+
+    os.makedirs(get_section_root(section), exist_ok=True)
+
+    if not os.path.isdir(target_dir):
+        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+
+    folders = []
+    files = []
+    url_rel_dir = f"{section_prefix}/{path}" if path else section_prefix
+
+    for entry in sorted(os.listdir(target_dir), key=str.lower):
+        if entry.startswith("."):
+            continue
+
+        entry_path = os.path.join(target_dir, entry)
+
+        if os.path.isdir(entry_path):
+            rel_entry = f"{path}/{entry}" if path else entry
+            folders.append({"name": entry, "path": rel_entry})
+        else:
+            extension = os.path.splitext(entry)[1].lower()
+            if extension in extensions:
+                files.append(_build_file_entry(entry_path, url_rel_dir, entry))
+
+    return {
+        "path": path,
+        "folders": folders,
+        "files": files,
+    }
+
+
+@router.post("/api/folders")
+async def create_folder(path: str = Form(""), name: str = Form(...), type: str = Form("model")):
+    """Crea una subcarpeta dentro de la sección indicada."""
+    section = _section_for_type(type)
+    clean_name = name.strip()
+    if not clean_name or "/" in clean_name or "\\" in clean_name or clean_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="Nombre de carpeta inválido")
+
+    parent_dir = safe_section_path(section, path)
+    new_dir = os.path.join(parent_dir, clean_name)
+
+    if os.path.exists(new_dir):
+        raise HTTPException(status_code=409, detail="La carpeta ya existe")
+
+    os.makedirs(new_dir)
+
+    return {
+        "success": True,
+        "path": f"{path}/{clean_name}" if path else clean_name,
+    }
+
+
+@router.patch("/api/folders")
+async def rename_folder(path: str = Form(...), new_name: str = Form(...), type: str = Form("model")):
+    """Renombra una subcarpeta existente."""
+    section = _section_for_type(type)
+    clean_name = new_name.strip()
+    if not clean_name or "/" in clean_name or "\\" in clean_name or clean_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="Nombre de carpeta inválido")
+
+    current_dir = safe_section_path(section, path)
+    if not os.path.isdir(current_dir):
+        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+
+    parent_path = "/".join(path.split("/")[:-1])
+    new_dir = os.path.join(safe_section_path(section, parent_path), clean_name)
+
+    if os.path.exists(new_dir):
+        raise HTTPException(status_code=409, detail="Ya existe una carpeta con ese nombre")
+
+    os.rename(current_dir, new_dir)
+
+    return {
+        "success": True,
+        "path": f"{parent_path}/{clean_name}" if parent_path else clean_name,
+    }
+
+
+@router.delete("/api/folders")
+async def delete_folder(path: str, type: str = "model"):
+    """Elimina una subcarpeta (y su contenido) de la sección indicada."""
+    if not path:
+        raise HTTPException(status_code=400, detail="No se puede eliminar la carpeta raíz")
+
+    section = _section_for_type(type)
+    target_dir = safe_section_path(section, path)
+
+    if not os.path.isdir(target_dir):
+        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+
+    shutil.rmtree(target_dir)
+
+    return {"success": True}
+
+
+@router.patch("/api/files")
+async def rename_file(path: str = Form(...), new_name: str = Form(...), type: str = Form("model")):
+    """Renombra un archivo existente (conserva la extensión)."""
+    section = _section_for_type(type)
+    extensions = GCODE_EXTENSIONS if section == "gcode" else MODEL_EXTENSIONS
+
+    current_path = safe_section_path(section, path)
+    if not os.path.isfile(current_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    clean_name = new_name.strip()
+    if not clean_name or "/" in clean_name or "\\" in clean_name:
+        raise HTTPException(status_code=400, detail="Nombre de archivo inválido")
+
+    original_extension = os.path.splitext(path)[1].lower()
+    if os.path.splitext(clean_name)[1].lower() != original_extension:
+        clean_name = f"{clean_name}{original_extension}"
+
+    if os.path.splitext(clean_name)[1].lower() not in extensions:
+        raise HTTPException(status_code=400, detail="Extensión de archivo inválida")
+
+    parent_path = "/".join(path.split("/")[:-1])
+    new_path = os.path.join(safe_section_path(section, parent_path), clean_name)
+
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=409, detail="Ya existe un archivo con ese nombre")
+
+    os.rename(current_path, new_path)
+
+    return {
+        "success": True,
+        "path": f"{parent_path}/{clean_name}" if parent_path else clean_name,
+    }
+
+
+@router.delete("/api/files")
+async def delete_file(path: str, type: str = "model"):
+    """Elimina un archivo de la sección indicada."""
+    section = _section_for_type(type)
+    target_path = safe_section_path(section, path)
+
+    if not os.path.isfile(target_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    os.remove(target_path)
+
+    return {"success": True}
+
+
+@router.post("/api/files/move")
+async def move_file(path: str = Form(...), destination: str = Form(""), type: str = Form("model")):
+    """Mueve un archivo a otra carpeta dentro de la misma sección."""
+    section = _section_for_type(type)
+
+    current_path = safe_section_path(section, path)
+    if not os.path.isfile(current_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    dest_dir = safe_section_path(section, destination)
+    if not os.path.isdir(dest_dir):
+        raise HTTPException(status_code=404, detail="Carpeta de destino no encontrada")
+
+    filename = os.path.basename(path)
+    new_path = os.path.join(dest_dir, filename)
+
+    if os.path.abspath(new_path) == os.path.abspath(current_path):
+        raise HTTPException(status_code=400, detail="El archivo ya está en esa carpeta")
+
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=409, detail="Ya existe un archivo con ese nombre en la carpeta destino")
+
+    shutil.move(current_path, new_path)
+
+    return {
+        "success": True,
+        "path": f"{destination}/{filename}" if destination else filename,
+    }

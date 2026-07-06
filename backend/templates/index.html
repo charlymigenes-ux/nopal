@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=16">
+    <link rel="stylesheet" href="/static/css/style.css?v=37">
 </head>
 <body>
     <div class="app-shell">
@@ -30,6 +30,10 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span data-i18n="dashboard">Dashboard</span>
                 </button>
+                <button class="nav-item" data-section="console">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span data-i18n="console">Console</span>
+                </button>
                 <button class="nav-item" data-section="models">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                     <span data-i18n="models">Models</span>
@@ -37,6 +41,10 @@
                 <button class="nav-item" data-section="gcode">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <span data-i18n="gcode">G-code</span>
+                </button>
+                <button class="nav-item" data-section="macros">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    <span data-i18n="macros">Macros</span>
                 </button>
                 <button class="nav-item" data-section="queue">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -48,77 +56,53 @@
                 </button>
             </nav>
 
-            <button class="sidebar-expand" aria-label="Expandir">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-            </button>
+            <div class="sidebar-actions-card">
+                <div class="language-selector">
+                    <button class="btn-icon btn-icon-light" id="lang-toggle" title="Toggle language">
+                        <span id="lang-display">ES</span>
+                    </button>
+                </div>
+                <button class="btn-icon btn-icon-light theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema" title="Cambiar tema">
+                    <span id="theme-icon">🌙</span>
+                </button>
+                <button class="btn-icon btn-icon-light" aria-label="Download" title="Descargar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+                </button>
+            </div>
         </aside>
 
         <div class="content">
             <section id="dashboard-section" class="view-section active">
             <header class="topbar">
-                <div class="topbar-actions">
-                    <div class="language-selector">
-                        <button class="btn-icon btn-icon-light" id="lang-toggle" title="Toggle language">
-                            <span id="lang-display">ES</span>
-                        </button>
-                    </div>
-                    <div class="theme-toggle-wrapper">
-                        <button class="btn-icon btn-icon-light theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema">
-                            <span id="theme-icon">🌙</span>
-                            <span id="theme-label">Oscuro</span>
-                        </button>
-                    </div>
-                    <div class="upload-wrapper">
-                        <button id="upload-btn" class="btn-icon btn-icon-dark" aria-label="Upload file">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        </button>
-                        <input id="upload-input" type="file" accept=".stl,.3mf" hidden>
-                    </div>
-                    <button class="btn-icon btn-icon-light" aria-label="Download">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
-                        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                </div>
+                <div class="topbar-server-stats" id="topbar-server-stats"></div>
             </header>
 
             <main>
                 <section class="dashboard-header">
                     <h1 data-i18n="dashboard">Dashboard</h1>
-                    <span class="color-badge">#16A34A</span>
                 </section>
 
                 <section class="stats-grid">
                     <article class="stat-card stat-green">
-                        <div class="stat-icon">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><polyline points="4 8 6 4 8 8"/><polyline points="10 12 12 8 14 12"/><polyline points="16 6 18 2 20 6"/></svg>
-                        </div>
                         <div class="stat-info">
                             <span data-i18n="totalModels">Total Models</span>
                             <strong id="total-models">0</strong>
                         </div>
                     </article>
                     <article class="stat-card stat-green">
-                        <div class="stat-icon">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 2v7.31"/><path d="M14 9.3V2"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
-                        </div>
                         <div class="stat-info">
                             <span data-i18n="gcodeReady">G-code Ready</span>
                             <strong id="gcode-ready">0</strong>
                         </div>
                     </article>
                     <article class="stat-card stat-orange">
-                        <div class="stat-icon">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
-                        </div>
                         <div class="stat-info">
                             <span data-i18n="storage">Almacenamiento</span>
-                            <strong id="storage-used">0 MB / — MB</strong>
+                            <strong id="storage-used">0 MB</strong>
+                            <span class="stat-substat" id="storage-total">/ — MB</span>
                         </div>
                     </article>
                     <article class="stat-card stat-purple">
-                        <div class="stat-icon">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="10" y1="4" x2="10" y2="20"/><path d="M14 14h2v2h-2z"/></svg>
-                        </div>
                         <div class="stat-info">
                             <span data-i18n="activePrinters">Active Printers</span>
                             <strong id="active-printers">0</strong>
@@ -189,7 +173,26 @@
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                                         </button>
                                     </div>
+                                    <div class="upload-wrapper">
+                                        <button id="upload-btn-models" class="btn-icon btn-icon-dark" aria-label="Subir modelo 3D" title="Subir modelo 3D">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        </button>
+                                        <input id="upload-input-models" type="file" accept=".stl,.3mf" hidden>
+                                    </div>
+                                    <button id="create-folder-btn-models" class="btn-icon btn-icon-dark" aria-label="Crear carpeta" title="Crear carpeta">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                                    </button>
+                                    <button id="reload-btn-models" class="btn-icon btn-icon-dark" aria-label="Recargar" title="Recargar">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                    <button id="settings-btn-models" class="btn-icon btn-icon-dark" aria-label="Configuración" title="Configuración">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                    </button>
                                 </div>
+                            </div>
+                            <div class="models-breadcrumb-row">
+                                <span id="models-breadcrumb">Ruta actual: /</span>
+                                <span id="models-disk-free">—</span>
                             </div>
                             <div id="models-full" class="models-table-wrapper"></div>
                         </div>
@@ -211,6 +214,24 @@
                                         <p class="preview-meta" id="preview-type">Tipo: —</p>
                                         <p class="preview-meta" id="preview-size">Tamaño: —</p>
                                         <p class="preview-meta" id="preview-date">Modificado: —</p>
+                                        <div class="preview-file-actions">
+                                            <button type="button" class="btn-file-action" id="preview-download-btn" title="Descargar">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                                <span data-i18n="downloadFile">Descargar</span>
+                                            </button>
+                                            <button type="button" class="btn-file-action" id="preview-rename-btn" title="Renombrar">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                <span data-i18n="rename">Renombrar</span>
+                                            </button>
+                                            <button type="button" class="btn-file-action" id="preview-move-btn" title="Mover a carpeta">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/></svg>
+                                                <span data-i18n="moveFile">Mover</span>
+                                            </button>
+                                            <button type="button" class="btn-file-action btn-file-action-danger" id="preview-delete-btn" title="Eliminar">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                                <span data-i18n="delete">Eliminar</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -220,37 +241,46 @@
             </section>
 
             <section id="gcode-section" class="view-section" style="display: none;">
-                <header class="topbar">
-                    <div class="topbar-search">
-                        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input id="search-gcode" data-i18n-placeholder="searchFiles" placeholder="Search G-code files...">
-                    </div>
-                </header>
-                <main class="main-content">
-                    <section class="page-header">
-                        <h1 data-i18n="gcode">G-code</h1>
-                        <p>Revisa archivos de G-code, selecciona un archivo y explora la vista previa en tiempo real.</p>
-                    </section>
-                    <div class="gcode-page-layout">
-                        <div class="gcode-files-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Library</h2>
-                                    <p>G-code files available for preview and inspection.</p>
+                <main class="main-content models-page-content">
+                    <div class="models-page-layout">
+                        <div class="models-table-panel">
+                            <div class="models-list-header">
+                                <div class="models-list-header-top">
+                                    <div>
+                                        <h2 data-i18n="gcode">G-code</h2>
+                                        <p>Revisa tus archivos de G-code en un formato limpio y ordenado.</p>
+                                    </div>
+                                    <div class="models-list-actions">
+                                        <span class="badge badge-alt" data-i18n="gcode">G-code</span>
+                                    </div>
                                 </div>
-                                <span class="badge badge-alt">G-code</span>
+                                <div class="models-list-controls">
+                                    <div class="section-search">
+                                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                        <input id="search-gcode" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
+                                    </div>
+                                    <div class="upload-wrapper">
+                                        <button id="upload-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Subir G-code" title="Subir G-code">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        </button>
+                                        <input id="upload-input-gcode" type="file" accept=".gcode,.gc,.gco" hidden>
+                                    </div>
+                                    <button id="create-folder-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Crear carpeta" title="Crear carpeta">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                                    </button>
+                                    <button id="reload-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Recargar" title="Recargar">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                    <button id="settings-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Configuración" title="Configuración">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="gcode-summary-cards">
-                                <div class="summary-card">
-                                    <span>Files</span>
-                                    <strong id="gcode-file-count">0</strong>
-                                </div>
-                                <div class="summary-card">
-                                    <span>Selected</span>
-                                    <strong id="gcode-selected-count">—</strong>
-                                </div>
+                            <div class="models-breadcrumb-row">
+                                <span id="gcode-breadcrumb">Ruta actual: /</span>
+                                <span id="gcode-disk-free">—</span>
                             </div>
-                            <div id="gcode-files-list" class="gcode-file-list"></div>
+                            <div id="gcode-table" class="models-table-wrapper"></div>
                         </div>
                         <aside class="gcode-preview-card">
                             <div class="preview-card-inner">
@@ -281,6 +311,24 @@
                                             <strong id="gcode-preview-date">—</strong>
                                         </div>
                                     </div>
+                                    <div class="preview-file-actions">
+                                        <button type="button" class="btn-file-action" id="gcode-download-btn" title="Descargar">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            <span data-i18n="downloadFile">Descargar</span>
+                                        </button>
+                                        <button type="button" class="btn-file-action" id="gcode-rename-btn" title="Renombrar">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                            <span data-i18n="rename">Renombrar</span>
+                                        </button>
+                                        <button type="button" class="btn-file-action" id="gcode-move-btn" title="Mover a carpeta">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/></svg>
+                                            <span data-i18n="moveFile">Mover</span>
+                                        </button>
+                                        <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-delete-btn" title="Eliminar">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                            <span data-i18n="delete">Eliminar</span>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="gcode-preview-scene" id="gcode-preview">
                                     <div class="preview-image-placeholder">Selecciona un archivo para ver la trayectoria</div>
@@ -288,6 +336,43 @@
                             </div>
                         </aside>
                     </div>
+                </main>
+            </section>
+
+            <section id="console-section" class="view-section" style="display: none;">
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="console">Consola</h1>
+                        <p data-i18n="consoleDescription">Envía comandos G-code directamente a la impresora y observa la respuesta en tiempo real.</p>
+                    </section>
+                    <div class="console-card">
+                        <div class="console-toolbar">
+                            <select id="console-printer-select" class="settings-select"></select>
+                            <button type="button" class="btn-icon-dark" id="console-clear-btn" title="Limpiar">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            </button>
+                        </div>
+                        <div class="console-log" id="console-log"></div>
+                        <form class="console-input-row" id="console-input-form">
+                            <input type="text" id="console-input" autocomplete="off" data-i18n-placeholder="consoleInputPlaceholder" placeholder="Enviar comando...">
+                            <button type="submit" class="btn-icon-dark" title="Enviar">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            </button>
+                        </form>
+                    </div>
+                </main>
+            </section>
+
+            <section id="macros-section" class="view-section" style="display: none;">
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="macros">Macros</h1>
+                        <p data-i18n="macrosDescription">Ejecuta macros configurados en Klipper con un clic.</p>
+                    </section>
+                    <div class="macros-toolbar">
+                        <select id="macros-printer-select" class="settings-select"></select>
+                    </div>
+                    <div class="macros-grid" id="macros-grid"></div>
                 </main>
             </section>
 
@@ -313,7 +398,6 @@
                         <p data-i18n="settingsDescription">Manage app preferences, theme, language, and preview quality.</p>
                     </section>
                     <div class="settings-grid">
-                        <div class="settings-card system-stats-card" id="system-stats-card"></div>
                         <div class="settings-card theme-config-card">
                             <h2 data-i18n="theme">Theme</h2>
                             <p data-i18n="themeDescription">Choose the default display mode for the dashboard.</p>
@@ -321,6 +405,7 @@
                                 <option value="light" data-i18n="lightMode">Light</option>
                                 <option value="dark" data-i18n="darkMode">Dark</option>
                                 <option value="green" data-i18n="greenMode">Green</option>
+                                <option value="custom" id="settings-theme-custom-option" data-i18n="customMode" hidden>Custom</option>
                             </select>
                             <div class="theme-presets" id="settings-theme-presets">
                                 <button type="button" class="theme-option-card" data-theme="light">
@@ -359,36 +444,27 @@
                                         <span class="theme-option-swatch" style="background:#f1f5f9"></span>
                                     </div>
                                 </button>
-                            </div>
-                            <div class="theme-palette-editor">
-                                <div class="theme-palette-row">
-                                    <label>
-                                        <span data-i18n="accentColor">Accent</span>
-                                        <input type="color" id="settings-color-accent" class="settings-color-input">
-                                    </label>
-                                    <label>
-                                        <span data-i18n="surfaceColor">Surface</span>
-                                        <input type="color" id="settings-color-surface" class="settings-color-input">
-                                    </label>
-                                </div>
-                                <div class="theme-palette-row">
-                                    <label>
-                                        <span data-i18n="textColor">Text</span>
-                                        <input type="color" id="settings-color-text" class="settings-color-input">
-                                    </label>
-                                    <label>
-                                        <span data-i18n="mutedColor">Secondary</span>
-                                        <input type="color" id="settings-color-muted" class="settings-color-input">
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="favicon-editor">
-                                <label for="settings-favicon-url" data-i18n="faviconUrl">Favicon URL</label>
-                                <input id="settings-favicon-url" class="settings-select" type="text" placeholder="https://...">
-                                <p class="favicon-note" data-i18n="faviconDescription">Add a favicon URL to use in the app.</p>
-                                <div class="favicon-preview">
-                                    <span data-i18n="faviconPreview">Preview:</span>
-                                    <img id="favicon-preview-img" alt="favicon preview" />
+                                <div class="theme-option-card theme-option-card-custom" id="custom-theme-card" data-theme="custom">
+                                    <button type="button" class="theme-option-custom-add" id="custom-theme-add-btn">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                        <span data-i18n="addCustomTheme">Agregar tema</span>
+                                    </button>
+                                    <div class="theme-option-custom-body" id="custom-theme-body" hidden>
+                                        <button type="button" class="theme-option-custom-select" id="custom-theme-select-btn">
+                                            <div class="theme-option-title">
+                                                <span data-i18n="customMode">Personalizado</span>
+                                            </div>
+                                            <div class="theme-option-swatches" id="custom-theme-swatches"></div>
+                                        </button>
+                                        <div class="theme-option-custom-actions">
+                                            <button type="button" class="theme-option-icon-btn" id="custom-theme-edit-btn" title="Editar">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                            </button>
+                                            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" id="custom-theme-delete-btn" title="Eliminar">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -460,10 +536,81 @@
         </div>
     </div>
 
+    <!-- Printer Detail Modal -->
+    <div id="printer-modal" class="modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content printer-modal-content" id="printer-modal-content">
+            <button class="modal-close" id="printer-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-body printer-modal-body">
+                <div class="printer-modal-visual">
+                    <img id="printer-modal-image" src="" alt="">
+                    <h2 id="printer-modal-name">—</h2>
+                    <div class="printer-status-line" id="printer-modal-status-line">
+                        <span class="printer-status-dot" id="printer-modal-status-dot"></span>
+                        <span id="printer-modal-status-text">—</span>
+                    </div>
+                </div>
+                <div id="printer-modal-stats"></div>
+                <div id="printer-modal-temperatures"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Theme Modal -->
+    <div id="custom-theme-modal" class="modal">
+        <div class="modal-backdrop" id="custom-theme-modal-backdrop"></div>
+        <div class="modal-content custom-theme-modal-content">
+            <button class="modal-close" id="custom-theme-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 data-i18n="customThemeTitle">Tema personalizado</h2>
+            <div class="custom-theme-fields">
+                <label class="custom-theme-field">
+                    <span data-i18n="colorAccent">Acento</span>
+                    <input type="color" id="custom-theme-accent" value="#8b5cf6">
+                </label>
+                <label class="custom-theme-field">
+                    <span data-i18n="colorSurface">Superficie</span>
+                    <input type="color" id="custom-theme-surface" value="#1f2937">
+                </label>
+                <label class="custom-theme-field">
+                    <span data-i18n="colorText">Texto</span>
+                    <input type="color" id="custom-theme-text" value="#f8fafc">
+                </label>
+                <label class="custom-theme-field">
+                    <span data-i18n="colorMuted">Secundario</span>
+                    <input type="color" id="custom-theme-muted" value="#94a3b8">
+                </label>
+            </div>
+            <button type="button" class="btn-file-action custom-theme-save-btn" id="custom-theme-save-btn">
+                <span data-i18n="saveCustomTheme">Guardar tema</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Move File Modal -->
+    <div id="move-file-modal" class="modal">
+        <div class="modal-backdrop" id="move-file-modal-backdrop"></div>
+        <div class="modal-content move-file-modal-content">
+            <button class="modal-close" id="move-file-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 data-i18n="moveFileTitle">Mover archivo</h2>
+            <p class="move-file-current-name" id="move-file-current-name"></p>
+            <div class="move-file-breadcrumb" id="move-file-breadcrumb"></div>
+            <div class="move-file-folder-list" id="move-file-folder-list"></div>
+            <button type="button" class="btn-file-action move-file-confirm-btn" id="move-file-confirm-btn">
+                <span data-i18n="moveHere">Mover aquí</span>
+            </button>
+        </div>
+    </div>
+
     <script src="/static/js/three.min.js?v=2"></script>
-    <script src="/static/js/STLLoader.js?v=2"></script>
+    <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
     <script src="/static/js/translations.js"></script>
-    <script src="/static/js/app.js?v=15"></script>
+    <script src="/static/js/app.js?v=32"></script>
 </body>
 </html>

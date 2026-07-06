@@ -134,6 +134,31 @@ class MoonrakerClient:
         """Estado del MCU (versión, carga, frecuencia)."""
         return self._get("/printer/objects/query?mcu").get("status", {}).get("mcu", {})
 
+    def get_object_list(self):
+        """Lista de todos los objetos disponibles en Klipper (heaters, sensores, etc.)."""
+        return self._get("/printer/objects/list").get("objects", [])
+
+    def get_temperature_store(self):
+        """Historial reciente de temperaturas (actual/objetivo) por objeto."""
+        return self._get("/server/temperature_store")
+
+    def get_gcode_store(self, count: int = 50):
+        """Últimos mensajes de la consola G-code."""
+        return self._get(f"/server/gcode_store?count={count}").get("gcode_store", [])
+
+    def run_gcode_script(self, script: str) -> bool:
+        try:
+            response = requests.post(
+                f"{self.base_url}/printer/gcode/script",
+                json={"script": script},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
 
 def find_moonraker_instances() -> List[Dict[str, Any]]:
     """
@@ -197,6 +222,34 @@ def get_all_printers_status() -> List[Dict[str, Any]]:
     return printers
 
 
+def _get_primary_network_interface(network_stats: Dict[str, Any], network_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Detecta la interfaz de red activa (mayor tráfico) y su IP."""
+
+    candidates = [
+        (name, iface) for name, iface in network_stats.items() if name != "lo"
+    ]
+    if not candidates:
+        return {}
+
+    primary_name, primary_stats = max(
+        candidates,
+        key=lambda item: item[1].get("rx_bytes", 0) + item[1].get("tx_bytes", 0),
+    )
+
+    ip_address = None
+    for addr in network_info.get(primary_name, {}).get("ip_addresses", []):
+        if addr.get("family") == "ipv4" and not addr.get("is_link_local"):
+            ip_address = addr.get("address")
+            break
+
+    return {
+        "name": primary_name,
+        "ip": ip_address,
+        "rx_gb": round(primary_stats.get("rx_bytes", 0) / (1024 ** 3), 2),
+        "tx_gb": round(primary_stats.get("tx_bytes", 0) / (1024 ** 3), 2),
+    }
+
+
 def get_system_stats(port: int = None) -> Dict[str, Any]:
     """
     Estadísticas de hardware (MCU + host) de una impresora.
@@ -246,6 +299,9 @@ def get_system_stats(port: int = None) -> Dict[str, Any]:
     mcu_stats = mcu_status.get("last_stats", {})
     freq_hz = mcu_stats.get("freq") or mcu_constants.get("CLOCK_FREQ", 0)
 
+    network_info = system_info.get("network", {})
+    primary_network = _get_primary_network_interface(network, network_info)
+
     return {
         "printer_name": printer["name"],
         "mcu": {
@@ -260,14 +316,136 @@ def get_system_stats(port: int = None) -> Dict[str, Any]:
             "version": printer_info.get("software_version"),
             "os": distribution.get("name"),
             "cpu_desc": cpu_info.get("cpu_desc"),
+            "cpu_bits": cpu_info.get("bits"),
             "cpu_percent": round(system_cpu_usage.get("cpu", 0)),
             "mem_percent": mem_percent,
             "mem_used_gb": round(mem_used / (1024 * 1024), 2),
             "mem_total_gb": round(mem_total / (1024 * 1024), 2),
             "temp": cpu_temp,
             "bandwidth_kbps": round(total_bandwidth / 1024, 1),
+            "network_interface": primary_network.get("name"),
+            "network_ip": primary_network.get("ip"),
+            "rx_gb": primary_network.get("rx_gb"),
+            "tx_gb": primary_network.get("tx_gb"),
         },
     }
+
+
+TEMPERATURE_OBJECT_PREFIXES = (
+    "extruder",
+    "heater_bed",
+    "heater_generic ",
+    "temperature_sensor ",
+    "temperature_fan ",
+)
+
+
+def _temperature_object_label(key: str) -> str:
+    if key == "extruder":
+        return "Extruder"
+    if key == "heater_bed":
+        return "Heater Bed"
+    for prefix in ("heater_generic ", "temperature_sensor ", "temperature_fan "):
+        if key.startswith(prefix):
+            return key[len(prefix):]
+    return key
+
+
+def _heater_gcode_name(key: str) -> str:
+    """Nombre que Klipper espera en HEATER=... (sin el prefijo del tipo de objeto)."""
+    if key.startswith("heater_generic "):
+        return key.split(" ", 1)[1]
+    return key
+
+
+def get_temperature_snapshot(port: int) -> Dict[str, Any]:
+    """
+    Snapshot de temperaturas (actual/objetivo/historial) para el widget de
+    Temperaturas, análogo al de Mainsail.
+    """
+
+    client = MoonrakerClient(port)
+
+    objects = client.get_object_list()
+    matched_keys = [
+        obj for obj in objects
+        if any(
+            obj == prefix or obj.startswith(prefix)
+            for prefix in TEMPERATURE_OBJECT_PREFIXES
+        )
+    ]
+
+    store = client.get_temperature_store() or {}
+
+    sensors = []
+    series = {}
+
+    for key in matched_keys:
+        entry = store.get(key)
+        if not entry:
+            continue
+
+        temperatures = entry.get("temperatures") or []
+        targets = entry.get("targets")
+        is_heater = targets is not None
+
+        current = temperatures[-1] if temperatures else None
+        target = targets[-1] if is_heater and targets else None
+
+        sensors.append({
+            "key": key,
+            "label": _temperature_object_label(key),
+            "kind": "heater" if is_heater else "sensor",
+            "current": round(current, 1) if current is not None else None,
+            "target": round(target, 1) if target is not None else None,
+        })
+        series[key] = [round(value, 1) for value in temperatures]
+
+    return {
+        "sensors": sensors,
+        "history": {
+            "interval_seconds": 1,
+            "series": series,
+        },
+    }
+
+
+def set_heater_target(port: int, heater: str, target: float) -> bool:
+    """Envía SET_HEATER_TEMPERATURE al heater indicado."""
+    client = MoonrakerClient(port)
+    gcode_name = _heater_gcode_name(heater)
+    script = f"SET_HEATER_TEMPERATURE HEATER={gcode_name} TARGET={target}"
+    return client.run_gcode_script(script)
+
+
+def get_console_messages(port: int, count: int = 50) -> List[Dict[str, Any]]:
+    """Últimos mensajes de la consola G-code (comandos y respuestas)."""
+    client = MoonrakerClient(port)
+    return client.get_gcode_store(count=count)
+
+
+def send_console_command(port: int, command: str) -> bool:
+    """Envía un comando arbitrario de G-code/consola."""
+    client = MoonrakerClient(port)
+    return client.run_gcode_script(command)
+
+
+def get_macros(port: int) -> List[str]:
+    """Lista de macros configurados (objetos `gcode_macro <nombre>`)."""
+    client = MoonrakerClient(port)
+    objects = client.get_object_list()
+    macros = [
+        obj.split(" ", 1)[1]
+        for obj in objects
+        if obj.startswith("gcode_macro ") and not obj.split(" ", 1)[1].startswith("_")
+    ]
+    return sorted(macros)
+
+
+def run_macro(port: int, macro: str) -> bool:
+    """Ejecuta un macro por nombre."""
+    client = MoonrakerClient(port)
+    return client.run_gcode_script(macro)
 
 
 def get_recent_printer_files(host: str, limit: int = 3) -> List[Dict[str, Any]]:

@@ -51,6 +51,7 @@
             offset += 12;
             positions.push(view.getFloat32(offset, true), view.getFloat32(offset + 4, true), view.getFloat32(offset + 8, true));
             offset += 12;
+            offset += 2;
           }
           geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
           geometry.computeVertexNormals();

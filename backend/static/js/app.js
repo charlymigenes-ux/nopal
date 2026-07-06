@@ -4,18 +4,13 @@ const printQueue = document.getElementById('print-queue');
 const totalModelsEl = document.getElementById('total-models');
 const gcodeReadyEl = document.getElementById('gcode-ready');
 const storageUsedEl = document.getElementById('storage-used');
+const storageTotalEl = document.getElementById('storage-total');
 const activePrintersEl = document.getElementById('active-printers');
 const searchRecentInput = document.getElementById('search-recent');
 const searchGcodeInput = document.getElementById('search-gcode');
 const searchModelsInput = document.getElementById('search-models');
-const uploadInput = document.getElementById('upload-input');
-const uploadBtn = document.getElementById('upload-btn');
 const themeToggle = document.getElementById('theme-toggle');
 const themeIcon = document.getElementById('theme-icon');
-const themeLabel = document.getElementById('theme-label');
-const gcodeFilesList = document.getElementById('gcode-files-list');
-const gcodeFileCount = document.getElementById('gcode-file-count');
-const gcodeSelectedCount = document.getElementById('gcode-selected-count');
 const gcodePreviewTitle = document.getElementById('gcode-preview-title');
 const gcodePreviewDescription = document.getElementById('gcode-preview-description');
 const gcodePreviewLines = document.getElementById('gcode-preview-lines');
@@ -38,6 +33,13 @@ let currentViewMode = localStorage.getItem('viewMode') || 'grid';
 const gcodePreviewCache = new Map();
 
 const PALETTE = ['#A3D9B6', '#6EC4A0', '#FFD4B8', '#FF8A4D', '#B8D4BE', '#C4E0C8'];
+
+const NOPAL_LOGO_SVG = `<svg viewBox="0 0 32 32" width="20" height="20" fill="none">
+    <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(34,197,94,0.1)" stroke="#22C55E" stroke-width="2"/>
+    <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="#22C55E" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <circle cx="13" cy="10" r="1" fill="#22C55E"/>
+    <circle cx="19" cy="10" r="1" fill="#22C55E"/>
+</svg>`;
 
 const DEMO_QUEUE = [
     { id: 456, name: 'bracket_v1', progress: 72, time: '7hr', status: 'green' },
@@ -91,8 +93,7 @@ function parseGcodePath(content, maxSegments = 2500) {
     let absolute = true;
     let lastPoint = new THREE.Vector3(0, 0, 0);
     let hasLastPoint = false;
-    const points = [];
-    let segments = 0;
+    const segments = [];
 
     const parseValue = token => {
         return parseFloat(token.slice(1));
@@ -122,7 +123,7 @@ function parseGcodePath(content, maxSegments = 2500) {
             }
             continue;
         }
-        if (code !== 'G0' && code !== 'G1') continue;
+        if (code !== 'G0' && code !== 'G1' && code !== 'G00' && code !== 'G01') continue;
 
         let nx = x;
         let ny = y;
@@ -147,10 +148,8 @@ function parseGcodePath(content, maxSegments = 2500) {
             if (!hasLastPoint) {
                 lastPoint = currentPoint.clone();
                 hasLastPoint = true;
-            }
-            if (segments < maxSegments) {
-                points.push(lastPoint.clone(), currentPoint.clone());
-                segments += 1;
+            } else {
+                segments.push(lastPoint.clone(), currentPoint.clone());
             }
             lastPoint.copy(currentPoint);
             x = nx;
@@ -158,11 +157,21 @@ function parseGcodePath(content, maxSegments = 2500) {
             z = nz;
         }
         e = ne;
-
-        if (segments >= maxSegments) break;
     }
 
-    return points;
+    // Muestrea segmentos distribuidos en todo el archivo (no solo el inicio),
+    // para que la vista previa represente la pieza completa.
+    const segmentCount = segments.length / 2;
+    if (segmentCount <= maxSegments) {
+        return segments;
+    }
+
+    const stride = Math.ceil(segmentCount / maxSegments);
+    const sampled = [];
+    for (let i = 0; i < segmentCount; i += stride) {
+        sampled.push(segments[i * 2], segments[i * 2 + 1]);
+    }
+    return sampled;
 }
 
 function createGcodeLine(fileUrl, points) {
@@ -253,7 +262,7 @@ async function renderGcodeThumbnail(thumb, fileUrl) {
     scene.add(light);
     scene.add(new THREE.AmbientLight(0x888888, 1));
 
-    const line = await getGcodePreviewScene(fileUrl, 1500);
+    const line = await getGcodePreviewScene(fileUrl, 2500);
     if (!line) {
         thumb.innerHTML = `<div class="thumb-placeholder">G-code</div>`;
         return;
@@ -301,7 +310,7 @@ async function renderGcodePreview(container, fileUrl) {
     scene.add(light);
     scene.add(new THREE.AmbientLight(0x999999, 1.2));
 
-    const line = await getGcodePreviewScene(fileUrl, 5000);
+    const line = await getGcodePreviewScene(fileUrl, 9000);
     if (!line) {
         container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;padding:1rem;text-align:center;">No se pudo generar la vista previa 3D.</div>';
         return;
@@ -439,40 +448,53 @@ function getPrinterWebUrl(printer) {
     return 'http://127.0.0.1:7125';
 }
 
+const CUSTOM_THEME_STORAGE_KEY = 'customThemeColors';
+
+function getCustomTheme() {
+    try {
+        return JSON.parse(localStorage.getItem(CUSTOM_THEME_STORAGE_KEY) || 'null');
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveCustomTheme(colors) {
+    localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(colors));
+}
+
+function deleteCustomTheme() {
+    localStorage.removeItem(CUSTOM_THEME_STORAGE_KEY);
+}
+
 function getThemeColors(theme) {
+    if (theme === 'custom') {
+        const custom = getCustomTheme();
+        if (custom) {
+            return {
+                accent: custom.accent,
+                surface: custom.surface,
+                bg: custom.surface,
+                sidebar: custom.surface,
+                text: custom.text,
+                muted: custom.muted,
+            };
+        }
+    }
     const defaults = THEME_PALETTES[theme] || THEME_PALETTES.light;
     return {
-        accent: localStorage.getItem('themeColorAccent') || defaults.accent,
-        surface: localStorage.getItem('themeColorSurface') || defaults.surface,
+        accent: defaults.accent,
+        surface: defaults.surface,
         bg: defaults.bg || defaults.surface,
         sidebar: defaults.sidebar || defaults.surface,
-        text: localStorage.getItem('themeColorText') || defaults.text,
-        muted: localStorage.getItem('themeColorMuted') || defaults.muted,
+        text: defaults.text,
+        muted: defaults.muted,
     };
 }
 
-function syncThemePaletteInputs(theme) {
-    const defaults = THEME_PALETTES[theme] || THEME_PALETTES.light;
-    if (settingsColorAccent && !localStorage.getItem('themeColorAccent')) settingsColorAccent.value = defaults.accent;
-    if (settingsColorSurface && !localStorage.getItem('themeColorSurface')) settingsColorSurface.value = defaults.surface;
-    if (settingsColorText && !localStorage.getItem('themeColorText')) settingsColorText.value = defaults.text;
-    if (settingsColorMuted && !localStorage.getItem('themeColorMuted')) settingsColorMuted.value = defaults.muted;
-}
-
-function updateFavicon(url) {
-    if (!url) return;
-    let link = document.querySelector('link[rel="icon"]');
-    if (!link) {
-        link = document.createElement('link');
-        link.rel = 'icon';
-        document.head.appendChild(link);
-    }
-    link.href = url;
-}
-
 function applyTheme(theme) {
-    const resolvedTheme = ['dark', 'green'].includes(theme) ? theme : 'light';
-    document.body.classList.remove('dark', 'green');
+    let resolvedTheme = theme === 'custom' && getCustomTheme() ? 'custom' : theme;
+    if (!['dark', 'green', 'custom'].includes(resolvedTheme)) resolvedTheme = 'light';
+    document.body.classList.remove('dark', 'green', 'custom', 'light');
     document.body.classList.add(resolvedTheme);
     document.body.setAttribute('data-theme', resolvedTheme);
 
@@ -490,20 +512,17 @@ function applyTheme(theme) {
         themeToggle.setAttribute('aria-pressed', String(resolvedTheme === 'dark'));
     }
     if (themeIcon) {
-        const icons = {
-            light: '☀️',
-            dark: '🌙',
-            green: '🌿',
-        };
-        themeIcon.textContent = icons[resolvedTheme] || '☀️';
-    }
-    if (themeLabel) {
-        const labelKeys = {
-            light: 'lightMode',
-            dark: 'darkMode',
-            green: 'greenMode',
-        };
-        themeLabel.textContent = t(labelKeys[resolvedTheme] || 'lightMode');
+        if (resolvedTheme === 'green') {
+            themeIcon.innerHTML = NOPAL_LOGO_SVG;
+        } else if (resolvedTheme === 'custom') {
+            themeIcon.textContent = '🎨';
+        } else {
+            const icons = {
+                light: '☀️',
+                dark: '🌙',
+            };
+            themeIcon.textContent = icons[resolvedTheme] || '☀️';
+        }
     }
 }
 
@@ -512,13 +531,104 @@ function initializeTheme() {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const themeValue = savedTheme || (prefersDark ? 'dark' : 'light');
     applyTheme(themeValue);
-    const savedFavicon = localStorage.getItem('themeFaviconUrl');
-    if (savedFavicon) updateFavicon(savedFavicon);
 }
 
-function filterModels(query) {
-    if (!query) return allModels;
-    return allModels.filter(model => model.name.toLowerCase().includes(query.toLowerCase()));
+function updateBreadcrumb(section, path) {
+    const breadcrumbEl = document.getElementById(`${section}-breadcrumb`);
+    if (!breadcrumbEl) return;
+
+    const goTo = section === 'gcode' ? loadGcodeFolder : loadModelsFolder;
+    const segments = path ? path.split('/') : [];
+    let accPath = '';
+
+    const crumbs = [`<button type="button" class="breadcrumb-segment" data-path="">${t('root')}</button>`];
+    segments.forEach(segment => {
+        accPath = accPath ? `${accPath}/${segment}` : segment;
+        crumbs.push(`<span class="breadcrumb-sep">/</span><button type="button" class="breadcrumb-segment" data-path="${accPath}">${segment}</button>`);
+    });
+
+    breadcrumbEl.innerHTML = `<span class="breadcrumb-label">${t('currentPath')}:</span> ${crumbs.join('')}`;
+    breadcrumbEl.querySelectorAll('.breadcrumb-segment').forEach(btn => {
+        btn.addEventListener('click', () => goTo(btn.dataset.path));
+    });
+}
+
+function folderRowHtml(folder, colspan) {
+    return `
+        <tr class="folder-row" data-folder-path="${folder.path}">
+            <td class="model-name" colspan="${colspan}">
+                <svg class="folder-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <strong>${folder.name}</strong>
+            </td>
+            <td class="folder-actions-cell">
+                <button type="button" class="folder-action-btn" data-action="rename" title="${t('renameFolder')}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+                <button type="button" class="folder-action-btn" data-action="delete" title="${t('deleteFolder')}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+            </td>
+        </tr>
+    `;
+}
+
+function wireFolderRows(container, section, reloadFn) {
+    container.querySelectorAll('tr.folder-row').forEach(row => {
+        row.addEventListener('click', event => {
+            if (event.target.closest('.folder-action-btn')) return;
+            reloadFn(row.dataset.folderPath);
+        });
+
+        row.querySelectorAll('.folder-action-btn').forEach(btn => {
+            btn.addEventListener('click', event => {
+                event.stopPropagation();
+                const path = row.dataset.folderPath;
+                if (btn.dataset.action === 'rename') renameFolder(section, path);
+                if (btn.dataset.action === 'delete') deleteFolder(section, path);
+            });
+        });
+    });
+}
+
+async function renameFolder(section, path) {
+    const currentName = path.split('/').pop();
+    const newName = prompt(t('renameFolderPrompt'), currentName);
+    if (!newName || !newName.trim() || newName.trim() === currentName) return;
+
+    const formData = new FormData();
+    formData.append('path', path);
+    formData.append('new_name', newName.trim());
+    formData.append('type', section);
+
+    try {
+        const response = await fetch('/api/folders', { method: 'PATCH', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo renombrar la carpeta.');
+        }
+        if (section === 'gcode') loadGcodeFolder(currentGcodePath);
+        else loadModelsFolder(currentModelsPath);
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    }
+}
+
+async function deleteFolder(section, path) {
+    if (!confirm(t('deleteFolderConfirm'))) return;
+
+    try {
+        const response = await fetch(`/api/folders?path=${encodeURIComponent(path)}&type=${section}`, { method: 'DELETE' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo eliminar la carpeta.');
+        }
+        if (section === 'gcode') loadGcodeFolder(currentGcodePath);
+        else loadModelsFolder(currentModelsPath);
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    }
 }
 
 function updateStats(models) {
@@ -529,20 +639,25 @@ function updateStats(models) {
     if (totalModelsEl) totalModelsEl.textContent = total.toLocaleString();
     if (gcodeReadyEl) gcodeReadyEl.textContent = gcodeReady.toLocaleString();
     if (activePrintersEl) activePrintersEl.textContent = DEMO_QUEUE.length.toLocaleString();
-    
+
     // Fetch storage information
     fetch('/api/storage')
         .then(res => res.json())
         .then(data => {
             const used = formatSize(data.used);
             const available = formatSize(data.free);
-            if (storageUsedEl) {
-                storageUsedEl.textContent = `${used} / ${available}`;
-            }
+            if (storageUsedEl) storageUsedEl.textContent = used;
+            if (storageTotalEl) storageTotalEl.textContent = `/ ${available}`;
+            const diskFreeText = `${t('diskFree')}: ${available}`;
+            const modelsDiskFreeEl = document.getElementById('models-disk-free');
+            const gcodeDiskFreeEl = document.getElementById('gcode-disk-free');
+            if (modelsDiskFreeEl) modelsDiskFreeEl.textContent = diskFreeText;
+            if (gcodeDiskFreeEl) gcodeDiskFreeEl.textContent = diskFreeText;
         })
         .catch(err => {
             console.error('Error fetching storage info:', err);
             if (storageUsedEl) storageUsedEl.textContent = formatSize(usedBytes);
+            if (storageTotalEl) storageTotalEl.textContent = '';
         });
 }
 
@@ -640,46 +755,83 @@ async function loadRecentPrinterFiles() {
     }
 }
 
-function renderGcodeFileList(models) {
-    if (!gcodeFilesList) return;
+let currentGcodePath = '';
+let currentGcodeData = { folders: [], files: [] };
 
-    const gcodeModels = models.filter(model => model.extension === '.gcode');
-    gcodeFileCount.textContent = gcodeModels.length.toLocaleString();
-    gcodeSelectedCount.textContent = selectedGcodeId ? '1' : '0';
+async function loadGcodeFolder(path = currentGcodePath) {
+    currentGcodePath = path;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&type=gcode`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        currentGcodeData = await response.json();
+    } catch (error) {
+        console.error(error);
+        currentGcodeData = { folders: [], files: [] };
+    }
+    updateBreadcrumb('gcode', currentGcodePath);
+    renderGcodeTable();
+}
 
-    if (gcodeModels.length === 0) {
-        gcodeFilesList.innerHTML = `<div class="empty-state">No hay archivos G-code disponibles.</div>`;
+function renderGcodeTable(filterQuery = '') {
+    const gcodeTable = document.getElementById('gcode-table');
+    if (!gcodeTable) return;
+
+    const query = filterQuery.toLowerCase();
+    const folders = currentGcodeData.folders.filter(f => !query || f.name.toLowerCase().includes(query));
+    const files = currentGcodeData.files.filter(f => !query || f.name.toLowerCase().includes(query));
+
+    if (folders.length === 0 && files.length === 0) {
+        gcodeTable.innerHTML = `<div class="empty-state">${t('noFilesFound')}</div>`;
         return;
     }
 
-    gcodeFilesList.innerHTML = gcodeModels.map(model => {
-        const size = formatSize(model.size);
-        const date = formatDate(model.modified);
-        const isActive = selectedGcodeId === model.id;
+    const sortedFiles = [...files].sort((a, b) => (b.modified || 0) - (a.modified || 0));
+    if (!selectedGcodeId || !sortedFiles.some(entry => entry.id === selectedGcodeId)) {
+        selectedGcodeId = sortedFiles[0]?.id || null;
+    }
+
+    const folderRows = folders.map(folder => folderRowHtml(folder, 3)).join('');
+
+    const fileRows = sortedFiles.map(model => {
+        const isSelected = model.id === selectedGcodeId;
         return `
-            <div class="gcode-file-item ${isActive ? 'active' : ''}" data-model-id="${model.id}">
-                <div class="file-info">
+            <tr class="${isSelected ? 'selected' : ''}" data-model-id="${model.id}">
+                <td class="model-name">
+                    <svg class="orange-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
                     <strong>${model.name}</strong>
-                    <span>${size} · ${date}</span>
-                </div>
-                <div class="file-actions">
-                    <button type="button" class="file-action" data-action="preview" title="Preview">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </button>
-                </div>
-            </div>
+                </td>
+                <td><span class="tag-pill">MDF</span></td>
+                <td>${formatSize(model.size)}</td>
+                <td>${formatDate(model.modified)}</td>
+            </tr>
         `;
     }).join('');
 
-    gcodeFilesList.querySelectorAll('.gcode-file-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const modelId = Number(item.dataset.modelId);
-            const model = allModels.find(entry => entry.id === modelId);
-            if (model) {
-                selectGcodePreview(model);
-            }
+    gcodeTable.innerHTML = `
+        <table class="models-table">
+            <thead>
+                <tr>
+                    <th>${t('columnName')}</th>
+                    <th>${t('material')}</th>
+                    <th>${t('columnSize')}</th>
+                    <th>${t('columnDate')}</th>
+                </tr>
+            </thead>
+            <tbody>${folderRows}${fileRows}</tbody>
+        </table>
+    `;
+
+    wireFolderRows(gcodeTable, 'gcode', loadGcodeFolder);
+
+    gcodeTable.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
+        row.addEventListener('click', () => {
+            const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
+            if (model) selectGcodePreview(model);
         });
     });
+
+    const selectedModel = sortedFiles.find(entry => entry.id === selectedGcodeId);
+    if (selectedModel) selectGcodePreview(selectedModel, false);
 }
 
 function getGcodeLineCount(fileUrl) {
@@ -689,7 +841,7 @@ function getGcodeLineCount(fileUrl) {
         .catch(() => 0);
 }
 
-async function selectGcodePreview(model) {
+async function selectGcodePreview(model, rerender = true) {
     if (!model) return;
     selectedGcodeId = model.id;
     const fileUrl = model.file_url;
@@ -697,7 +849,6 @@ async function selectGcodePreview(model) {
     if (gcodePreviewDescription) gcodePreviewDescription.textContent = model.description || 'Vista previa en tiempo real para G-code.';
     if (gcodePreviewSize) gcodePreviewSize.textContent = formatSize(model.size);
     if (gcodePreviewDate) gcodePreviewDate.textContent = formatDate(model.modified);
-    if (gcodeSelectedCount) gcodeSelectedCount.textContent = '1';
 
     if (gcodePreviewLines) {
         const lineCount = await getGcodeLineCount(fileUrl);
@@ -707,45 +858,14 @@ async function selectGcodePreview(model) {
     if (gcodePreviewScene) {
         renderGcodePreview(gcodePreviewScene, fileUrl);
     }
-    renderGcodeFileList(allModels);
+
+    if (rerender) {
+        renderGcodeTable();
+    }
 }
 
 function updateGcodeSearch(query) {
-    const filtered = filterModels(query).filter(model => model.extension === '.gcode');
-    if (!gcodeFilesList) return;
-    if (filtered.length === 0) {
-        gcodeFilesList.innerHTML = `<div class="empty-state">No se encontraron archivos G-code.</div>`;
-        gcodeFileCount.textContent = '0';
-        return;
-    }
-    gcodeFilesList.innerHTML = filtered.map(model => {
-        const size = formatSize(model.size);
-        const date = formatDate(model.modified);
-        const isActive = selectedGcodeId === model.id;
-        return `
-            <div class="gcode-file-item ${isActive ? 'active' : ''}" data-model-id="${model.id}">
-                <div class="file-info">
-                    <strong>${model.name}</strong>
-                    <span>${size} · ${date}</span>
-                </div>
-                <div class="file-actions">
-                    <button type="button" class="file-action" data-action="preview" title="Preview">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
-    gcodeFileCount.textContent = filtered.length.toLocaleString();
-    gcodeFilesList.querySelectorAll('.gcode-file-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const modelId = Number(item.dataset.modelId);
-            const model = allModels.find(entry => entry.id === modelId);
-            if (model) {
-                selectGcodePreview(model);
-            }
-        });
-    });
+    renderGcodeTable(query);
 }
 
 function renderThumbPreview(thumb, fileUrl = '', isGcode = false) {
@@ -980,14 +1100,8 @@ async function loadModels() {
         if (!response.ok) throw new Error('No se pudo cargar la biblioteca');
         allModels = await response.json();
         updateStats(allModels);
-        renderGcodeFileList(allModels);
-        if (document.getElementById('models-section')?.classList.contains('active')) {
-            renderModelsFullPage(allModels);
-        }
     } catch (error) {
         console.error(error);
-        const modelsFullGrid = document.getElementById('models-full');
-        if (modelsFullGrid) modelsFullGrid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
     }
 }
 
@@ -1016,64 +1130,19 @@ function updateViewMode(mode) {
     renderRecentPrinterFiles(recentPrinterFiles);
 }
 
-const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 42;
-let selectedSystemStatsPort = null;
-
-function systemStatsDeviceSelectHtml() {
-    if (!allPrinters || allPrinters.length === 0) return '';
-    const options = allPrinters.map(p => `
-        <option value="${p.port}" ${p.port === selectedSystemStatsPort ? 'selected' : ''}>${p.name}</option>
-    `).join('');
-    return `
-        <select id="system-stats-device" class="settings-select system-stats-device-select">
-            ${options}
-        </select>
-    `;
-}
-
-function bindSystemStatsDeviceSelect() {
-    const select = document.getElementById('system-stats-device');
-    if (!select) return;
-    select.addEventListener('change', () => {
-        selectedSystemStatsPort = Number(select.value);
-        loadSystemStats();
-    });
-}
-
 function renderSystemStats(data) {
-    const card = document.getElementById('system-stats-card');
-    if (!card) return;
+    const container = document.getElementById('printer-modal-stats');
+    if (!container) return;
 
-    if (!data || !data.mcu || !data.host) {
-        card.innerHTML = `
-            <div class="system-stats-header">
-                <div>
-                    <h2>${t('systemPulse')}</h2>
-                    <p>${t('systemPulseDescription')}</p>
-                </div>
-                ${systemStatsDeviceSelectHtml()}
-            </div>
-            <div class="empty-state-small">${t('noSystemStats')}</div>
-        `;
-        bindSystemStatsDeviceSelect();
+    if (!data || !data.mcu) {
+        container.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
         return;
     }
 
-    const { mcu, host } = data;
-    const cpuPercent = Math.max(0, Math.min(100, host.cpu_percent || 0));
-    const memPercent = Math.max(0, Math.min(100, host.mem_percent || 0));
-    const cpuOffset = GAUGE_CIRCUMFERENCE - (cpuPercent / 100) * GAUGE_CIRCUMFERENCE;
-    const memOffset = GAUGE_CIRCUMFERENCE - (memPercent / 100) * GAUGE_CIRCUMFERENCE;
+    const { mcu } = data;
 
-    card.innerHTML = `
-        <div class="system-stats-header">
-            <div>
-                <h2>${t('systemPulse')}</h2>
-                <p>${t('systemPulseDescription')}</p>
-            </div>
-            ${systemStatsDeviceSelectHtml()}
-        </div>
-        <div class="system-stats-body">
+    container.innerHTML = `
+        <div class="system-stats-body system-stats-body-mcu-only">
             <div class="system-stats-block">
                 <div class="system-stats-block-title">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="2" x2="9" y2="4"/><line x1="15" y1="2" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="22"/><line x1="15" y1="20" x2="15" y2="22"/><line x1="20" y1="9" x2="22" y2="9"/><line x1="20" y1="15" x2="22" y2="15"/><line x1="2" y1="9" x2="4" y2="9"/><line x1="2" y1="15" x2="4" y2="15"/></svg>
@@ -1087,60 +1156,341 @@ function renderSystemStats(data) {
                     <div class="system-stats-row"><span>${t('temperature')}</span><strong>${mcu.temp != null ? mcu.temp.toFixed(1) + ' °C' : '—'}</strong></div>
                 </div>
             </div>
+        </div>
+    `;
+}
 
-            <div class="system-stats-block">
-                <div class="system-stats-block-title">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><circle cx="8" cy="16" r="1"/></svg>
-                    <span>Host <small>${host.cpu_desc || '—'}</small></span>
+const TEMP_SERIES_COLORS = ['#ec4899', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#eab308'];
+
+function temperatureRowIcon(kind) {
+    if (kind === 'heater') {
+        return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9a6 6 0 1 0 12 0 6 6 0 0 0-12 0Z"/><path d="M12 3v3"/><path d="M12 15v6"/></svg>';
+    }
+    return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>';
+}
+
+function drawTemperatureChart(canvas, series, sensors) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const width = rect.width;
+    const height = rect.height;
+    ctx.clearRect(0, 0, width, height);
+
+    const keys = Object.keys(series).filter(key => series[key] && series[key].length > 1);
+    if (!keys.length) return;
+
+    const padding = { top: 10, right: 10, bottom: 20, left: 32 };
+    const plotWidth = Math.max(width - padding.left - padding.right, 1);
+    const plotHeight = Math.max(height - padding.top - padding.bottom, 1);
+
+    const allValues = keys.reduce((acc, key) => acc.concat(series[key]), []);
+    const minValue = Math.min(0, Math.floor(Math.min(...allValues) / 10) * 10);
+    const maxValue = Math.max(40, Math.ceil(Math.max(...allValues) / 10) * 10);
+
+    ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+    ctx.fillStyle = 'rgba(148,163,184,0.85)';
+    ctx.font = '10px Inter, system-ui, sans-serif';
+    ctx.lineWidth = 1;
+    const steps = 2;
+    for (let i = 0; i <= steps; i++) {
+        const value = minValue + ((maxValue - minValue) * i) / steps;
+        const y = padding.top + plotHeight - (plotHeight * i) / steps;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(width - padding.right, y);
+        ctx.stroke();
+        ctx.fillText(String(Math.round(value)), 4, y + 3);
+    }
+
+    keys.forEach((key, index) => {
+        const values = series[key];
+        ctx.strokeStyle = TEMP_SERIES_COLORS[index % TEMP_SERIES_COLORS.length];
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        values.forEach((value, i) => {
+            const x = padding.left + (plotWidth * i) / (values.length - 1 || 1);
+            const y = padding.top + plotHeight - ((value - minValue) / (maxValue - minValue || 1)) * plotHeight;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    });
+
+    const sampleCount = Math.max(...keys.map(key => series[key].length));
+    const now = Date.now();
+    const labelCount = 5;
+    ctx.fillStyle = 'rgba(148,163,184,0.85)';
+    for (let i = 0; i <= labelCount; i++) {
+        const idx = Math.round((sampleCount - 1) * (i / labelCount));
+        const secondsAgo = sampleCount - 1 - idx;
+        const time = new Date(now - secondsAgo * 1000);
+        const label = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const x = padding.left + (plotWidth * idx) / (sampleCount - 1 || 1);
+        ctx.fillText(label, Math.min(Math.max(x - 14, padding.left), width - 32), height - 5);
+    }
+}
+
+async function setTemperatureTarget(port, heater, target) {
+    try {
+        const formData = new FormData();
+        formData.append('port', port);
+        formData.append('heater', heater);
+        formData.append('target', target);
+        const response = await fetch('/api/system/temperature-target', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error('No se pudo actualizar la temperatura objetivo');
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+let temperatureCardCollapsed = false;
+
+function renderTemperaturesCard(data, port) {
+    const container = document.getElementById('printer-modal-temperatures');
+    if (!container) return;
+
+    const sensors = data?.sensors || [];
+    if (!sensors.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const rows = sensors.map((sensor, index) => {
+        const color = TEMP_SERIES_COLORS[index % TEMP_SERIES_COLORS.length];
+        const stateLabel = sensor.kind === 'heater' ? (sensor.target > 0 ? t('printing') : 'off') : '';
+        const targetCell = sensor.kind === 'heater'
+            ? `<div class="temp-target-input-wrap">
+                    <input type="number" class="temp-target-input" data-heater="${sensor.key}" value="${sensor.target ?? 0}" step="1" min="0">
+                    <span class="temp-target-unit">°C</span>
+                </div>`
+            : '';
+        return `
+            <div class="temp-table-row">
+                <div class="temp-row-name">
+                    <span class="temp-row-icon" style="color:${color}">${temperatureRowIcon(sensor.kind)}</span>
+                    <span>${sensor.label}</span>
                 </div>
-                <div class="system-stats-rows">
-                    <div class="system-stats-row"><span>${t('hostVersion')}</span><strong>${host.version || '—'}</strong></div>
-                    <div class="system-stats-row"><span>${t('hostOs')}</span><strong>${host.os || '—'}</strong></div>
-                    <div class="system-stats-row"><span>${t('memory')}</span><strong>${host.mem_used_gb} / ${host.mem_total_gb} GB</strong></div>
-                    <div class="system-stats-row"><span>${t('hostBandwidth')}</span><strong>${host.bandwidth_kbps} kB/s</strong></div>
-                    <div class="system-stats-row"><span>${t('temperature')}</span><strong>${host.temp != null ? host.temp.toFixed(1) + ' °C' : '—'}</strong></div>
+                <div class="temp-row-state">${stateLabel}</div>
+                <div class="temp-row-current">${sensor.current != null ? sensor.current.toFixed(1) + '°C' : '—'}</div>
+                <div class="temp-row-target">${targetCell}</div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="temp-card">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
+                    <span>${t('temperatures')}</span>
+                </div>
+                <div class="temp-card-header-actions">
+                    <span class="temp-preset-pill">${t('tempPreset')}</span>
+                    <button type="button" class="temp-icon-btn" title="Configuración">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </button>
+                    <button type="button" class="temp-icon-btn" id="temp-collapse-btn" title="Colapsar">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
                 </div>
             </div>
-
-            <div class="system-stats-gauges">
-                <div class="system-gauge">
-                    <svg viewBox="0 0 100 100">
-                        <circle class="gauge-track" cx="50" cy="50" r="42"/>
-                        <circle class="gauge-fill gauge-fill-cpu" cx="50" cy="50" r="42" stroke-dasharray="${GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${cpuOffset}"/>
-                    </svg>
-                    <div class="gauge-value"><strong>${cpuPercent}</strong><span>%</span></div>
-                    <span class="gauge-label">CPU</span>
+            <div class="temp-card-body" id="temp-card-body" ${temperatureCardCollapsed ? 'hidden' : ''}>
+                <div class="temp-table">
+                    <div class="temp-table-head">
+                        <div>${t('columnName')}</div>
+                        <div>${t('status')}</div>
+                        <div>${t('tempActual')}</div>
+                        <div>${t('tempTarget')}</div>
+                    </div>
+                    ${rows}
                 </div>
-                <div class="system-gauge">
-                    <svg viewBox="0 0 100 100">
-                        <circle class="gauge-track" cx="50" cy="50" r="42"/>
-                        <circle class="gauge-fill gauge-fill-mem" cx="50" cy="50" r="42" stroke-dasharray="${GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${memOffset}"/>
-                    </svg>
-                    <div class="gauge-value"><strong>${memPercent}</strong><span>%</span></div>
-                    <span class="gauge-label">${t('memory')}</span>
+                <div class="temp-chart-wrap">
+                    <canvas id="temp-chart-canvas"></canvas>
                 </div>
             </div>
         </div>
     `;
-    bindSystemStatsDeviceSelect();
+
+    const canvas = document.getElementById('temp-chart-canvas');
+    const seriesData = data.history?.series || {};
+    if (canvas && !temperatureCardCollapsed) {
+        requestAnimationFrame(() => drawTemperatureChart(canvas, seriesData, sensors));
+    }
+
+    container.querySelectorAll('.temp-target-input').forEach(input => {
+        input.addEventListener('change', () => {
+            const target = parseFloat(input.value) || 0;
+            setTemperatureTarget(port, input.dataset.heater, target);
+        });
+    });
+
+    const collapseBtn = document.getElementById('temp-collapse-btn');
+    const body = document.getElementById('temp-card-body');
+    if (collapseBtn && body) {
+        collapseBtn.classList.toggle('collapsed', temperatureCardCollapsed);
+        collapseBtn.addEventListener('click', () => {
+            temperatureCardCollapsed = !temperatureCardCollapsed;
+            body.hidden = temperatureCardCollapsed;
+            collapseBtn.classList.toggle('collapsed', temperatureCardCollapsed);
+            if (!temperatureCardCollapsed && canvas) {
+                requestAnimationFrame(() => drawTemperatureChart(canvas, seriesData, sensors));
+            }
+        });
+    }
 }
 
-async function loadSystemStats() {
-    const card = document.getElementById('system-stats-card');
-    if (selectedSystemStatsPort == null && allPrinters.length > 0) {
-        selectedSystemStatsPort = allPrinters[0].port;
+async function loadPrinterTemperatures(port) {
+    const container = document.getElementById('printer-modal-temperatures');
+    if (container && container.contains(document.activeElement) && document.activeElement.classList.contains('temp-target-input')) {
+        return;
     }
     try {
-        const url = selectedSystemStatsPort != null
-            ? `/api/system/stats?port=${selectedSystemStatsPort}`
-            : '/api/system/stats';
-        const response = await fetch(url);
+        const response = await fetch(`/api/system/temperatures?port=${port}`);
+        if (!response.ok) throw new Error('No se pudo cargar la temperatura');
+        const data = await response.json();
+        renderTemperaturesCard(data, port);
+    } catch (error) {
+        console.error(error);
+        if (container) container.innerHTML = '';
+    }
+}
+
+const TOPBAR_GAUGE_CIRCUMFERENCE = 2 * Math.PI * 24;
+
+function renderTopbarServerStats(data) {
+    const container = document.getElementById('topbar-server-stats');
+    if (!container) return;
+
+    const host = data?.host;
+    if (!host) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const cpuPercent = Math.max(0, Math.min(100, host.cpu_percent || 0));
+    const memPercent = Math.max(0, Math.min(100, host.mem_percent || 0));
+    const cpuOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (cpuPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
+    const memOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (memPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
+    const networkLine = host.network_interface
+        ? `${host.network_interface}${host.network_ip ? ` (${host.network_ip})` : ''} : ${t('hostBandwidth')}: ${host.bandwidth_kbps} kB/s , ${t('hostReceived')}: ${host.rx_gb} GB , ${t('hostTransmitted')}: ${host.tx_gb} GB`
+        : '—';
+
+    container.innerHTML = `
+        <div class="topbar-host-block">
+            <div class="topbar-host-title">Host <small>${host.cpu_desc || ''}${host.cpu_bits ? `, ${host.cpu_bits}` : ''}</small></div>
+            <div class="topbar-host-lines">
+                <span>${t('hostVersion')}: <strong>${host.version || '—'}</strong></span>
+                <span>${t('hostOs')}: <strong>${host.os || '—'}</strong></span>
+                <span>${t('hostLoad')}: <strong>${cpuPercent}%</strong>, ${t('memory')}: <strong>${host.mem_used_gb} GB / ${host.mem_total_gb} GB</strong> , ${t('temperature')}: <strong>${host.temp != null ? host.temp.toFixed(1) + '°C' : '—'}</strong></span>
+                <span>${networkLine}</span>
+            </div>
+        </div>
+        <div class="topbar-host-gauges">
+            <div class="topbar-gauge">
+                <svg viewBox="0 0 60 60">
+                    <circle class="gauge-track" cx="30" cy="30" r="24"/>
+                    <circle class="gauge-fill gauge-fill-cpu" cx="30" cy="30" r="24" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${cpuOffset}"/>
+                </svg>
+                <span class="gauge-value">${cpuPercent}</span>
+                <span class="gauge-label">Cpu</span>
+            </div>
+            <div class="topbar-gauge">
+                <svg viewBox="0 0 60 60">
+                    <circle class="gauge-track" cx="30" cy="30" r="24"/>
+                    <circle class="gauge-fill gauge-fill-mem" cx="30" cy="30" r="24" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${memOffset}"/>
+                </svg>
+                <span class="gauge-value">${memPercent}</span>
+                <span class="gauge-label">${t('memory')}.</span>
+            </div>
+        </div>
+    `;
+}
+
+async function loadTopbarServerStats() {
+    const container = document.getElementById('topbar-server-stats');
+    if (!container) return;
+
+    try {
+        const response = await fetch('/api/system/stats');
+        if (!response.ok) throw new Error('No se pudo cargar el estado del servidor');
+        const data = await response.json();
+        renderTopbarServerStats(data);
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = '';
+    }
+}
+
+const printerModal = document.getElementById('printer-modal');
+
+let printerModalTemperatureInterval = null;
+
+function closePrinterModal() {
+    if (!printerModal) return;
+    printerModal.classList.remove('active');
+    if (printerModalTemperatureInterval) {
+        clearInterval(printerModalTemperatureInterval);
+        printerModalTemperatureInterval = null;
+    }
+}
+
+async function openPrinterModal(printer) {
+    if (!printerModal) return;
+
+    const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
+    const normalizedStatus = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue) ? 'online' : 'offline';
+    const isOnline = normalizedStatus === 'online';
+    const stateKey = stateValue === 'ready' ? 'idle' : stateValue;
+    const stateDisplay = t(stateKey) !== stateKey ? t(stateKey) : (stateValue || t('idle'));
+    const visualState = getPrinterVisualState(stateValue, isOnline);
+    const printerName = printer.name || printer.printer_info?.name || printer.printer_info?.hostname || `Printer ${printer.port || ''}`;
+
+    const modalContent = document.getElementById('printer-modal-content');
+    const modalImage = document.getElementById('printer-modal-image');
+    const modalName = document.getElementById('printer-modal-name');
+    const modalStatusLine = document.getElementById('printer-modal-status-line');
+    const modalStatusDot = document.getElementById('printer-modal-status-dot');
+    const modalStatusText = document.getElementById('printer-modal-status-text');
+    const statsContainer = document.getElementById('printer-modal-stats');
+    const temperaturesContainer = document.getElementById('printer-modal-temperatures');
+
+    if (modalContent) modalContent.className = `modal-content printer-modal-content ${visualState}`;
+    if (modalImage) modalImage.src = PRINTER_STATE_IMAGES[visualState];
+    if (modalName) modalName.textContent = printerName;
+    if (modalStatusLine) modalStatusLine.className = `printer-status-line ${visualState}`;
+    if (modalStatusDot) modalStatusDot.className = `printer-status-dot ${visualState}`;
+    if (modalStatusText) modalStatusText.textContent = stateDisplay;
+    if (statsContainer) statsContainer.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
+    if (temperaturesContainer) temperaturesContainer.innerHTML = '';
+
+    printerModal.classList.add('active');
+
+    if (printerModalTemperatureInterval) {
+        clearInterval(printerModalTemperatureInterval);
+        printerModalTemperatureInterval = null;
+    }
+
+    try {
+        const response = await fetch(`/api/system/stats?port=${printer.port}`);
         if (!response.ok) throw new Error('No se pudo cargar las estadísticas del sistema');
         const data = await response.json();
         renderSystemStats(data);
     } catch (error) {
         console.error(error);
-        if (card) card.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
+        if (statsContainer) statsContainer.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
+    }
+
+    if (printer.port) {
+        loadPrinterTemperatures(printer.port);
+        printerModalTemperatureInterval = setInterval(() => loadPrinterTemperatures(printer.port), 4000);
     }
 }
 
@@ -1160,11 +1510,11 @@ async function loadPrinters() {
     }
 }
 
-const PRINTER_CONE_COLORS = {
-    printing: '#22C55E',
-    paused: '#F59E0B',
-    error: '#F97316',
-    idle: '#64748B',
+const PRINTER_STATE_IMAGES = {
+    printing: '/static/img/printer_ready.png',
+    paused: '/static/img/printer_atencion.png',
+    error: '/static/img/printer_Alert.png',
+    idle: '/static/img/printer_ready.png',
 };
 
 function getPrinterVisualState(stateValue, isOnline) {
@@ -1174,52 +1524,34 @@ function getPrinterVisualState(stateValue, isOnline) {
     return 'idle';
 }
 
-function printerIllustrationSvg(visualState) {
-    const cone = PRINTER_CONE_COLORS[visualState];
-    return `
-        <svg width="120" height="100" viewBox="0 0 120 100" fill="none">
-            <rect x="14" y="10" width="92" height="62" rx="4" stroke="#475569" stroke-width="3"/>
-            <line x1="14" y1="28" x2="106" y2="28" stroke="#475569" stroke-width="3"/>
-            <rect x="52" y="23" width="16" height="10" rx="2" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
-            <path d="M58 33 L62 33 L60 39 Z" fill="#64748b"/>
-            <path d="M60 39 L71 66 L49 66 Z" fill="${cone}"/>
-            <rect x="28" y="66" width="64" height="6" rx="2" fill="#1e293b" stroke="#475569" stroke-width="2"/>
-            <rect x="18" y="74" width="84" height="16" rx="4" fill="#1e293b" stroke="#334155" stroke-width="2"/>
-            <circle cx="28" cy="82" r="2" fill="#22c55e"/>
-        </svg>
-    `;
+function printerIllustrationImg(visualState) {
+    return `<img src="${PRINTER_STATE_IMAGES[visualState]}" alt="" loading="lazy">`;
 }
 
-function printerBadgesHtml(visualState) {
-    if (visualState === 'paused') {
-        return `
-            <div class="printer-badge printer-badge-paused" title="${t('paused')}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>
-            </div>
-        `;
-    }
+const PRINTER_STATUS_SORT_ORDER = { printing: 0, paused: 1, error: 2, idle: 3 };
 
-    if (visualState === 'error') {
-        return `
-            <div class="printer-badge printer-badge-error" title="${t('errorLoading')}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="currentColor"/><rect x="11" y="6" width="2" height="7" rx="1" fill="#1e293b"/><circle cx="12" cy="16" r="1.2" fill="#1e293b"/></svg>
-            </div>
-            <div class="printer-badge printer-badge-warning" title="${t('errorLoading')}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3 L22 20 H2 Z" fill="currentColor"/><rect x="11" y="10" width="2" height="5" rx="1" fill="#1e293b"/><circle cx="12" cy="17" r="1.1" fill="#1e293b"/></svg>
-            </div>
-        `;
-    }
-
-    return '';
+function getPrinterSortPriority(printer) {
+    const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
+    const normalizedStatus = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue) ? 'online' : 'offline';
+    const isOnline = normalizedStatus === 'online';
+    if (!isOnline) return 4;
+    const visualState = getPrinterVisualState(stateValue, isOnline);
+    return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
 }
 
-function renderPrinters(printers) {
+function sortPrintersByStatus(printers) {
+    return [...printers].sort((a, b) => getPrinterSortPriority(a) - getPrinterSortPriority(b));
+}
+
+function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
-    if (!printers || printers.length === 0) {
+    if (!printersInput || printersInput.length === 0) {
         printersGrid.innerHTML = `<div class="empty-state">${t('noPrintersFound')}</div>`;
         return;
     }
+
+    const printers = sortPrintersByStatus(printersInput);
 
     printersGrid.innerHTML = printers.map(printer => {
         const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
@@ -1250,13 +1582,12 @@ function renderPrinters(printers) {
         const overallPercent = Math.round((bedPercent + extruderPercent) / 2);
 
         return `
-            <div class="printer-card ${normalizedStatus}">
+            <div class="printer-card ${normalizedStatus}" data-port="${printer.port}">
                 <div class="printer-card-top">
                     <h3 class="printer-name">${printerName}</h3>
                     <div class="printer-status-icon ${normalizedStatus}" title="${statusText}">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" stroke-dasharray="2 4"/>
-                            <circle cx="12" cy="4" r="2" fill="currentColor"/>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
                         </svg>
                     </div>
                 </div>
@@ -1266,8 +1597,7 @@ function renderPrinters(printers) {
                 </div>
 
                 <div class="printer-illustration printer-illustration-${visualState}">
-                    ${printerIllustrationSvg(visualState)}
-                    ${printerBadgesHtml(visualState)}
+                    ${printerIllustrationImg(visualState)}
                 </div>
 
                 <div class="printer-temps">
@@ -1291,6 +1621,14 @@ function renderPrinters(printers) {
             </div>
         `;
     }).join('');
+
+    printersGrid.querySelectorAll('.printer-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const port = Number(card.dataset.port);
+            const printer = allPrinters.find(p => p.port === port);
+            if (printer) openPrinterModal(printer);
+        });
+    });
 }
 
 function updateActivePrintersCount() {
@@ -1312,6 +1650,15 @@ if (modalBackdrop) {
     modalBackdrop.addEventListener('click', closeModelModal);
 }
 
+const printerModalClose = document.getElementById('printer-modal-close');
+const printerModalBackdrop = printerModal ? printerModal.querySelector('.modal-backdrop') : null;
+if (printerModalClose) {
+    printerModalClose.addEventListener('click', closePrinterModal);
+}
+if (printerModalBackdrop) {
+    printerModalBackdrop.addEventListener('click', closePrinterModal);
+}
+
 if (searchRecentInput) {
     searchRecentInput.addEventListener('input', event => {
         renderRecentPrinterFiles(filterRecentPrinterFiles(event.target.value));
@@ -1326,34 +1673,501 @@ if (searchGcodeInput) {
 
 if (searchModelsInput) {
     searchModelsInput.addEventListener('input', event => {
-        renderModelsFullPage(filterModels(event.target.value));
+        renderModelsFullPage(event.target.value);
     });
 }
 
-if (uploadBtn && uploadInput) {
-    uploadBtn.addEventListener('click', () => uploadInput.click());
+function renderUploadingRow(tableContainerId, filename) {
+    const container = document.getElementById(tableContainerId);
+    const tbody = container ? container.querySelector('tbody') : null;
+    if (!tbody) return null;
 
-    uploadInput.addEventListener('change', async event => {
-        const file = event.target.files[0];
+    const row = document.createElement('tr');
+    row.className = 'uploading-row';
+    row.innerHTML = `
+        <td class="model-name" colspan="10">
+            <svg class="green-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
+            <div class="uploading-info">
+                <strong>${filename}</strong>
+                <div class="upload-progress-track"><div class="upload-progress-fill" style="width:0%"></div></div>
+            </div>
+        </td>
+    `;
+    tbody.insertBefore(row, tbody.firstChild);
+    return row;
+}
+
+function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDone) {
+    const btn = document.getElementById(btnId);
+    const input = document.getElementById(inputId);
+    if (!btn || !input) return;
+
+    btn.addEventListener('click', () => input.click());
+
+    input.addEventListener('change', () => {
+        const file = input.files[0];
         if (!file) return;
+
+        const row = renderUploadingRow(tableContainerId, file.name);
+        const progressFill = row ? row.querySelector('.upload-progress-fill') : null;
 
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('path', getPath());
+        formData.append('type', type);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+
+        xhr.upload.addEventListener('progress', event => {
+            if (event.lengthComputable && progressFill) {
+                progressFill.style.width = `${Math.round((event.loaded / event.total) * 100)}%`;
+            }
+        });
+
+        xhr.addEventListener('load', () => {
+            input.value = '';
+            if (xhr.status >= 200 && xhr.status < 300) {
+                loadModels();
+                onDone();
+            } else {
+                if (row) row.remove();
+                alert('No se pudo subir el archivo.');
+            }
+        });
+
+        xhr.addEventListener('error', () => {
+            if (row) row.remove();
+            alert('No se pudo subir el archivo.');
+        });
+
+        xhr.send(formData);
+    });
+}
+
+function wireCreateFolderButton(btnId, type, getPath, onDone) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+        const name = prompt(t('newFolderPrompt'));
+        if (!name || !name.trim()) return;
+
+        const formData = new FormData();
+        formData.append('path', getPath());
+        formData.append('name', name.trim());
+        formData.append('type', type);
 
         try {
-            const response = await fetch('/api/upload', {
+            const response = await fetch('/api/folders', {
                 method: 'POST',
                 body: formData,
             });
-
-            if (!response.ok) throw new Error('Error al subir el archivo.');
-            await response.json();
-            uploadInput.value = '';
-            loadModels();
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || 'No se pudo crear la carpeta.');
+            }
+            onDone();
         } catch (error) {
             console.error(error);
-            alert('No se pudo subir el archivo.');
+            alert(error.message || 'No se pudo crear la carpeta.');
         }
+    });
+}
+
+function wireReloadButton(btnId, onDone) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        loadModels();
+        onDone();
+    });
+}
+
+function wireSettingsButton(btnId) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', () => switchSection('settings'));
+}
+
+function stripSectionPrefix(id, section) {
+    const prefix = section === 'gcode' ? 'gcode/' : 'models/';
+    return id && id.startsWith(prefix) ? id.slice(prefix.length) : id;
+}
+
+function downloadFile(model) {
+    if (!model) return;
+    const link = document.createElement('a');
+    link.href = model.file_url;
+    link.download = model.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+async function renameFile(section, model, reloadFn) {
+    if (!model) return;
+    const extension = model.extension || '';
+    const currentBase = extension && model.name.toLowerCase().endsWith(extension.toLowerCase())
+        ? model.name.slice(0, model.name.length - extension.length)
+        : model.name;
+    const newName = prompt(t('renameFilePrompt'), currentBase);
+    if (!newName || !newName.trim()) return;
+
+    const formData = new FormData();
+    formData.append('path', stripSectionPrefix(model.id, section));
+    formData.append('new_name', newName.trim());
+    formData.append('type', section);
+
+    try {
+        const response = await fetch('/api/files', { method: 'PATCH', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo renombrar el archivo.');
+        }
+        reloadFn();
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'No se pudo renombrar el archivo.');
+    }
+}
+
+async function deleteFile(section, model, reloadFn, clearSelection) {
+    if (!model) return;
+    if (!confirm(t('deleteFileConfirm'))) return;
+
+    const relPath = stripSectionPrefix(model.id, section);
+
+    try {
+        const response = await fetch(`/api/files?path=${encodeURIComponent(relPath)}&type=${section}`, { method: 'DELETE' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo eliminar el archivo.');
+        }
+        clearSelection();
+        reloadFn();
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'No se pudo eliminar el archivo.');
+    }
+}
+
+let moveFileSection = 'model';
+let moveFileTargetModel = null;
+let moveFileBrowsePath = '';
+let moveFileBrowseData = { folders: [], files: [] };
+let moveFileReloadFn = null;
+let moveFileClearSelection = null;
+
+function closeMoveFileModal() {
+    const modal = document.getElementById('move-file-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function renderMoveFileBrowser() {
+    const breadcrumbEl = document.getElementById('move-file-breadcrumb');
+    const listEl = document.getElementById('move-file-folder-list');
+    if (!breadcrumbEl || !listEl) return;
+
+    const segments = moveFileBrowsePath ? moveFileBrowsePath.split('/') : [];
+    let accPath = '';
+    const crumbs = [`<button type="button" class="breadcrumb-segment" data-path="">${t('root')}</button>`];
+    segments.forEach(segment => {
+        accPath = accPath ? `${accPath}/${segment}` : segment;
+        crumbs.push(`<span class="breadcrumb-sep">/</span><button type="button" class="breadcrumb-segment" data-path="${accPath}">${segment}</button>`);
+    });
+    breadcrumbEl.innerHTML = crumbs.join('');
+    breadcrumbEl.querySelectorAll('.breadcrumb-segment').forEach(btn => {
+        btn.addEventListener('click', () => loadMoveFileFolder(btn.dataset.path));
+    });
+
+    const folders = moveFileBrowseData.folders || [];
+    if (!folders.length) {
+        listEl.innerHTML = `<div class="empty-state-small">${t('noFilesFound')}</div>`;
+        return;
+    }
+
+    listEl.innerHTML = folders.map(folder => `
+        <button type="button" class="move-file-folder-row" data-path="${folder.path}">
+            <svg class="folder-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>${folder.name}</span>
+        </button>
+    `).join('');
+    listEl.querySelectorAll('.move-file-folder-row').forEach(btn => {
+        btn.addEventListener('click', () => loadMoveFileFolder(btn.dataset.path));
+    });
+}
+
+async function loadMoveFileFolder(path) {
+    moveFileBrowsePath = path;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&type=${moveFileSection}`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        moveFileBrowseData = await response.json();
+    } catch (error) {
+        console.error(error);
+        moveFileBrowseData = { folders: [], files: [] };
+    }
+    renderMoveFileBrowser();
+}
+
+function openMoveFileModal(section, model, reloadFn, clearSelection) {
+    if (!model) return;
+    moveFileSection = section;
+    moveFileTargetModel = model;
+    moveFileReloadFn = reloadFn;
+    moveFileClearSelection = clearSelection;
+
+    const nameEl = document.getElementById('move-file-current-name');
+    if (nameEl) nameEl.textContent = model.name;
+
+    const startPath = stripSectionPrefix(model.id, section).split('/').slice(0, -1).join('/');
+    loadMoveFileFolder(startPath);
+
+    const modal = document.getElementById('move-file-modal');
+    if (modal) modal.classList.add('active');
+}
+
+async function confirmMoveFile() {
+    if (!moveFileTargetModel) return;
+    const relPath = stripSectionPrefix(moveFileTargetModel.id, moveFileSection);
+
+    const formData = new FormData();
+    formData.append('path', relPath);
+    formData.append('destination', moveFileBrowsePath);
+    formData.append('type', moveFileSection);
+
+    try {
+        const response = await fetch('/api/files/move', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo mover el archivo.');
+        }
+        closeMoveFileModal();
+        if (moveFileClearSelection) moveFileClearSelection();
+        if (moveFileReloadFn) moveFileReloadFn();
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'No se pudo mover el archivo.');
+    }
+}
+
+document.getElementById('move-file-modal-backdrop')?.addEventListener('click', closeMoveFileModal);
+document.getElementById('move-file-modal-close')?.addEventListener('click', closeMoveFileModal);
+document.getElementById('move-file-confirm-btn')?.addEventListener('click', confirmMoveFile);
+
+function wireFileActionButtons(downloadBtnId, renameBtnId, moveBtnId, deleteBtnId, section, getModel, reloadFn, clearSelection) {
+    const downloadBtn = document.getElementById(downloadBtnId);
+    const renameBtn = document.getElementById(renameBtnId);
+    const moveBtn = document.getElementById(moveBtnId);
+    const deleteBtn = document.getElementById(deleteBtnId);
+
+    if (downloadBtn) downloadBtn.addEventListener('click', () => downloadFile(getModel()));
+    if (renameBtn) renameBtn.addEventListener('click', () => renameFile(section, getModel(), reloadFn));
+    if (moveBtn) moveBtn.addEventListener('click', () => openMoveFileModal(section, getModel(), reloadFn, clearSelection));
+    if (deleteBtn) deleteBtn.addEventListener('click', () => deleteFile(section, getModel(), reloadFn, clearSelection));
+}
+
+wireUploadButton('upload-btn-models', 'upload-input-models', 'model', () => currentModelsPath, 'models-full', () => loadModelsFolder(currentModelsPath));
+wireUploadButton('upload-btn-gcode', 'upload-input-gcode', 'gcode', () => currentGcodePath, 'gcode-table', () => loadGcodeFolder(currentGcodePath));
+wireCreateFolderButton('create-folder-btn-models', 'model', () => currentModelsPath, () => loadModelsFolder(currentModelsPath));
+wireCreateFolderButton('create-folder-btn-gcode', 'gcode', () => currentGcodePath, () => loadGcodeFolder(currentGcodePath));
+wireReloadButton('reload-btn-models', () => loadModelsFolder(currentModelsPath));
+wireReloadButton('reload-btn-gcode', () => loadGcodeFolder(currentGcodePath));
+wireSettingsButton('settings-btn-models');
+wireSettingsButton('settings-btn-gcode');
+wireFileActionButtons(
+    'preview-download-btn', 'preview-rename-btn', 'preview-move-btn', 'preview-delete-btn', 'model',
+    () => currentModelsData.files.find(entry => entry.id === selectedModelId),
+    () => loadModelsFolder(currentModelsPath),
+    () => { selectedModelId = null; }
+);
+wireFileActionButtons(
+    'gcode-download-btn', 'gcode-rename-btn', 'gcode-move-btn', 'gcode-delete-btn', 'gcode',
+    () => currentGcodeData.files.find(entry => entry.id === selectedGcodeId),
+    () => loadGcodeFolder(currentGcodePath),
+    () => { selectedGcodeId = null; }
+);
+
+// ── Console & Macros ──
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function populatePrinterSelect(selectEl, preferredPort) {
+    if (!selectEl) return null;
+    const previousValue = preferredPort || parseInt(selectEl.value, 10) || null;
+    const options = allPrinters.map(printer => {
+        const name = getPrinterDisplayName(printer);
+        return `<option value="${printer.port}">${name} (${printer.port})</option>`;
+    }).join('');
+    selectEl.innerHTML = options || `<option value="">${t('noPrintersFound')}</option>`;
+
+    const validPorts = allPrinters.map(p => p.port);
+    const nextPort = (previousValue && validPorts.includes(previousValue)) ? previousValue : (validPorts[0] || null);
+    if (nextPort) selectEl.value = nextPort;
+    return nextPort;
+}
+
+let consolePollInterval = null;
+let consoleSelectedPort = null;
+
+function renderConsoleLog(messages) {
+    const logEl = document.getElementById('console-log');
+    if (!logEl) return;
+    if (!messages || !messages.length) {
+        logEl.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
+        return;
+    }
+    const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
+    logEl.innerHTML = messages.map(msg => {
+        const time = msg.time ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+        const typeClass = msg.type === 'command' ? 'console-line-command' : 'console-line-response';
+        return `<div class="console-line ${typeClass}"><span class="console-line-time">${time}</span><span class="console-line-message">${escapeHtml(msg.message || '')}</span></div>`;
+    }).join('');
+    if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function refreshConsoleLog() {
+    if (!consoleSelectedPort) return;
+    try {
+        const response = await fetch(`/api/console/messages?port=${consoleSelectedPort}&count=100`);
+        if (!response.ok) throw new Error('No se pudo cargar la consola');
+        const data = await response.json();
+        renderConsoleLog(data.messages || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function stopConsolePolling() {
+    if (consolePollInterval) {
+        clearInterval(consolePollInterval);
+        consolePollInterval = null;
+    }
+}
+
+function startConsolePolling() {
+    stopConsolePolling();
+    refreshConsoleLog();
+    consolePollInterval = setInterval(refreshConsoleLog, 2500);
+}
+
+function loadConsoleSection() {
+    const selectEl = document.getElementById('console-printer-select');
+    consoleSelectedPort = populatePrinterSelect(selectEl, consoleSelectedPort);
+    startConsolePolling();
+}
+
+const consolePrinterSelect = document.getElementById('console-printer-select');
+if (consolePrinterSelect) {
+    consolePrinterSelect.addEventListener('change', () => {
+        consoleSelectedPort = parseInt(consolePrinterSelect.value, 10) || null;
+        startConsolePolling();
+    });
+}
+
+const consoleClearBtn = document.getElementById('console-clear-btn');
+if (consoleClearBtn) {
+    consoleClearBtn.addEventListener('click', () => {
+        const logEl = document.getElementById('console-log');
+        if (logEl) logEl.innerHTML = '';
+    });
+}
+
+const consoleInputForm = document.getElementById('console-input-form');
+if (consoleInputForm) {
+    consoleInputForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.getElementById('console-input');
+        const command = input?.value.trim();
+        if (!command || !consoleSelectedPort) return;
+        input.value = '';
+        try {
+            const formData = new FormData();
+            formData.append('port', consoleSelectedPort);
+            formData.append('command', command);
+            const response = await fetch('/api/console/command', { method: 'POST', body: formData });
+            if (!response.ok) throw new Error('No se pudo enviar el comando');
+            refreshConsoleLog();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
+let macrosSelectedPort = null;
+
+function macroLabel(name) {
+    return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function renderMacrosGrid(macros) {
+    const gridEl = document.getElementById('macros-grid');
+    if (!gridEl) return;
+    if (!macros || !macros.length) {
+        gridEl.innerHTML = `<div class="empty-state">${t('noMacros')}</div>`;
+        return;
+    }
+    gridEl.innerHTML = macros.map(macro => `
+        <button type="button" class="macro-btn" data-macro="${macro}">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span>${macroLabel(macro)}</span>
+        </button>
+    `).join('');
+
+    gridEl.querySelectorAll('.macro-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!macrosSelectedPort) return;
+            btn.disabled = true;
+            try {
+                const formData = new FormData();
+                formData.append('port', macrosSelectedPort);
+                formData.append('macro', btn.dataset.macro);
+                const response = await fetch('/api/macros/run', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error('No se pudo ejecutar el macro');
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'No se pudo ejecutar el macro.');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    });
+}
+
+async function loadMacrosForSelectedPrinter() {
+    const gridEl = document.getElementById('macros-grid');
+    if (!macrosSelectedPort) {
+        if (gridEl) gridEl.innerHTML = `<div class="empty-state">${t('noPrintersFound')}</div>`;
+        return;
+    }
+    try {
+        const response = await fetch(`/api/macros?port=${macrosSelectedPort}`);
+        if (!response.ok) throw new Error('No se pudo cargar los macros');
+        const data = await response.json();
+        renderMacrosGrid(data.macros || []);
+    } catch (error) {
+        console.error(error);
+        if (gridEl) gridEl.innerHTML = `<div class="empty-state">${t('noMacros')}</div>`;
+    }
+}
+
+function loadMacrosSection() {
+    const selectEl = document.getElementById('macros-printer-select');
+    macrosSelectedPort = populatePrinterSelect(selectEl, macrosSelectedPort);
+    loadMacrosForSelectedPrinter();
+}
+
+const macrosPrinterSelect = document.getElementById('macros-printer-select');
+if (macrosPrinterSelect) {
+    macrosPrinterSelect.addEventListener('change', () => {
+        macrosSelectedPort = parseInt(macrosPrinterSelect.value, 10) || null;
+        loadMacrosForSelectedPrinter();
     });
 }
 
@@ -1384,17 +2198,18 @@ function switchSection(sectionName) {
 
     // Handle models section
     if (sectionName === 'models') {
-        renderModelsFullPage(allModels);
+        loadModelsFolder(currentModelsPath);
     }
     if (sectionName === 'gcode') {
-        renderGcodeFileList(allModels);
-        if (selectedGcodeId) {
-            const model = allModels.find(entry => entry.id === selectedGcodeId);
-            if (model) selectGcodePreview(model);
-        }
+        loadGcodeFolder(currentGcodePath);
     }
-    if (sectionName === 'settings') {
-        loadSystemStats();
+    if (sectionName === 'console') {
+        loadConsoleSection();
+    } else {
+        stopConsolePolling();
+    }
+    if (sectionName === 'macros') {
+        loadMacrosSection();
     }
 }
 
@@ -1407,41 +2222,56 @@ navItems.forEach(item => {
     });
 });
 
-function renderModelsFullPage(models) {
+let currentModelsPath = '';
+let currentModelsData = { folders: [], files: [] };
+
+async function loadModelsFolder(path = currentModelsPath) {
+    currentModelsPath = path;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&type=model`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        currentModelsData = await response.json();
+    } catch (error) {
+        console.error(error);
+        currentModelsData = { folders: [], files: [] };
+    }
+    updateBreadcrumb('models', currentModelsPath);
+    renderModelsFullPage();
+}
+
+function renderModelsFullPage(filterQuery = '') {
     const modelsFullGrid = document.getElementById('models-full');
     if (!modelsFullGrid) return;
-    
-    if (models.length === 0) {
+
+    const query = filterQuery.toLowerCase();
+    const folders = currentModelsData.folders.filter(f => !query || f.name.toLowerCase().includes(query));
+    const files = currentModelsData.files.filter(f => !query || f.name.toLowerCase().includes(query));
+
+    if (folders.length === 0 && files.length === 0) {
         modelsFullGrid.innerHTML = `<div class="empty-state">${t('noFilesFound')}</div>`;
         return;
     }
 
-    const sorted = [...models].sort((a, b) => (b.modified || 0) - (a.modified || 0));
-    const selected = sorted.find(item => item.id === selectedModelId) || sorted[0];
-    selectedModelId = selected?.id || selectedModelId;
+    const sortedFiles = [...files].sort((a, b) => (b.modified || 0) - (a.modified || 0));
+    const selected = sortedFiles.find(item => item.id === selectedModelId) || sortedFiles[0];
+    selectedModelId = selected?.id || null;
 
-    const rows = sorted.map(model => {
+    const folderRows = folders.map(folder => folderRowHtml(folder, 4)).join('');
+
+    const fileRows = sortedFiles.map(model => {
         const isSelected = model.id === selectedModelId;
-        const sizeText = formatSize(model.size);
-        const dateText = formatDate(model.modified);
-        const materialLabel = (model.tags || ['Material'])[0].replace('#', '') || 'Material';
-        const isGcode = model.extension === '.gcode';
-        const typeLabel = isGcode ? 'G-code' : t('model3D');
-        const rowClass = isSelected ? 'selected' : '';
+        const extensionLabel = model.extension ? model.extension.replace('.', '').toUpperCase() : '—';
 
         return `
-            <tr class="${rowClass}" data-model-id="${model.id}">
+            <tr class="${isSelected ? 'selected' : ''}" data-model-id="${model.id}">
                 <td class="model-name">
-                    <svg class="${isGcode ? 'orange-bg' : 'green-bg'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
-                    <div>
-                        <strong>${model.name}</strong>
-                        <div class="preview-meta">${model.description || typeLabel}</div>
-                    </div>
+                    <svg class="green-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
+                    <strong>${model.name}</strong>
                 </td>
-                <td>${typeLabel}</td>
-                <td><span class="tag-pill">${materialLabel}</span></td>
-                <td>${sizeText}</td>
-                <td>${dateText}</td>
+                <td>${t('model3D')}</td>
+                <td><span class="tag-pill">${extensionLabel}</span></td>
+                <td>${formatSize(model.size)}</td>
+                <td>${formatDate(model.modified)}</td>
             </tr>
         `;
     }).join('');
@@ -1457,17 +2287,16 @@ function renderModelsFullPage(models) {
                     <th>${t('columnDate')}</th>
                 </tr>
             </thead>
-            <tbody>${rows}</tbody>
+            <tbody>${folderRows}${fileRows}</tbody>
         </table>
     `;
 
-    modelsFullGrid.querySelectorAll('tbody tr').forEach(row => {
+    wireFolderRows(modelsFullGrid, 'model', loadModelsFolder);
+
+    modelsFullGrid.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
         row.addEventListener('click', () => {
-            const modelId = Number(row.dataset.modelId);
-            const model = allModels.find(entry => entry.id === modelId);
-            if (model) {
-                selectPreviewModel(model);
-            }
+            const model = currentModelsData.files.find(entry => entry.id === row.dataset.modelId);
+            if (model) selectPreviewModel(model);
         });
     });
 
@@ -1497,7 +2326,7 @@ function selectPreviewModel(model, rerender = true) {
     renderSelectedPreview(model);
 
     if (rerender) {
-        renderModelsFullPage(allModels);
+        renderModelsFullPage();
     }
 }
 
@@ -1527,12 +2356,6 @@ const settingsPreviewQuality = document.getElementById('settings-preview-quality
 const settingsAutoRefresh = document.getElementById('settings-autorefresh');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
 const settingsStatus = document.getElementById('settings-status');
-const settingsColorAccent = document.getElementById('settings-color-accent');
-const settingsColorSurface = document.getElementById('settings-color-surface');
-const settingsColorText = document.getElementById('settings-color-text');
-const settingsColorMuted = document.getElementById('settings-color-muted');
-const settingsFaviconUrl = document.getElementById('settings-favicon-url');
-const faviconPreviewImg = document.getElementById('favicon-preview-img');
 
 const THEME_PALETTES = {
     light: {
@@ -1553,9 +2376,9 @@ const THEME_PALETTES = {
     },
     green: {
         accent: '#22c55e',
-        surface: '#1e293b',
+        surface: '#334155',
         bg: '#0f172a',
-        sidebar: '#0b1220',
+        sidebar: '#0f172a',
         text: '#f1f5f9',
         muted: '#94a3b8',
     },
@@ -1566,34 +2389,13 @@ function loadSettingsPanel() {
     const savedLanguage = localStorage.getItem('language') || 'es';
     const savedQuality = localStorage.getItem('previewQuality') || 'standard';
     const savedAutoRefresh = localStorage.getItem('autoRefreshPrinters');
-    const savedAccent = localStorage.getItem('themeColorAccent');
-    const savedSurface = localStorage.getItem('themeColorSurface');
-    const savedText = localStorage.getItem('themeColorText');
-    const savedMuted = localStorage.getItem('themeColorMuted');
-    const savedFavicon = localStorage.getItem('themeFaviconUrl');
 
+    updateCustomThemeCardUI();
     if (settingsTheme) settingsTheme.value = savedTheme;
     if (settingsLanguage) settingsLanguage.value = savedLanguage;
     if (settingsPreviewQuality) settingsPreviewQuality.value = savedQuality;
     if (settingsAutoRefresh) settingsAutoRefresh.checked = savedAutoRefresh !== 'false';
 
-    syncThemePaletteInputs(savedTheme);
-
-    const palette = {
-        accent: savedAccent || THEME_PALETTES[savedTheme].accent,
-        surface: savedSurface || THEME_PALETTES[savedTheme].surface,
-        text: savedText || THEME_PALETTES[savedTheme].text,
-        muted: savedMuted || THEME_PALETTES[savedTheme].muted,
-    };
-
-    if (settingsColorAccent) settingsColorAccent.value = palette.accent;
-    if (settingsColorSurface) settingsColorSurface.value = palette.surface;
-    if (settingsColorText) settingsColorText.value = palette.text;
-    if (settingsColorMuted) settingsColorMuted.value = palette.muted;
-    if (settingsFaviconUrl) settingsFaviconUrl.value = savedFavicon || '';
-    if (faviconPreviewImg) {
-        faviconPreviewImg.src = savedFavicon || '';
-    }
     setActiveThemeCard(savedTheme);
 }
 
@@ -1628,24 +2430,6 @@ function saveSettings() {
     if (settingsAutoRefresh) {
         localStorage.setItem('autoRefreshPrinters', settingsAutoRefresh.checked ? 'true' : 'false');
     }
-    if (settingsColorAccent) {
-        localStorage.setItem('themeColorAccent', settingsColorAccent.value);
-    }
-    if (settingsColorSurface) {
-        localStorage.setItem('themeColorSurface', settingsColorSurface.value);
-    }
-    if (settingsColorText) {
-        localStorage.setItem('themeColorText', settingsColorText.value);
-    }
-    if (settingsColorMuted) {
-        localStorage.setItem('themeColorMuted', settingsColorMuted.value);
-    }
-    if (settingsFaviconUrl) {
-        const faviconUrl = settingsFaviconUrl.value.trim();
-        localStorage.setItem('themeFaviconUrl', faviconUrl);
-        if (faviconPreviewImg) faviconPreviewImg.src = faviconUrl;
-        updateFavicon(faviconUrl);
-    }
     setupPrinterRefresh();
     if (settingsStatus) {
         settingsStatus.textContent = t('settingsSaved');
@@ -1670,7 +2454,6 @@ if (settingsTheme) {
     settingsTheme.addEventListener('change', () => {
         const selectedTheme = settingsTheme.value;
         setActiveThemeCard(selectedTheme);
-        syncThemePaletteInputs(selectedTheme);
         saveSettings();
     });
 }
@@ -1682,23 +2465,6 @@ if (settingsPreviewQuality) {
 }
 if (settingsAutoRefresh) {
     settingsAutoRefresh.addEventListener('change', saveSettings);
-}
-if (settingsColorAccent) {
-    settingsColorAccent.addEventListener('change', saveSettings);
-}
-if (settingsColorSurface) {
-    settingsColorSurface.addEventListener('change', saveSettings);
-}
-if (settingsColorText) {
-    settingsColorText.addEventListener('change', saveSettings);
-}
-if (settingsColorMuted) {
-    settingsColorMuted.addEventListener('change', saveSettings);
-}
-if (settingsFaviconUrl) {
-    settingsFaviconUrl.addEventListener('input', () => {
-        if (faviconPreviewImg) faviconPreviewImg.src = settingsFaviconUrl.value.trim();
-    });
 }
 if (settingsSaveBtn) {
     settingsSaveBtn.addEventListener('click', saveSettings);
@@ -1712,24 +2478,119 @@ function setActiveThemeCard(theme) {
 }
 if (themeOptionCards.length) {
     themeOptionCards.forEach(card => {
+        if (card.id === 'custom-theme-card') return;
         card.addEventListener('click', () => {
             const selectedTheme = card.dataset.theme;
             if (settingsTheme) settingsTheme.value = selectedTheme;
             setActiveThemeCard(selectedTheme);
-            syncThemePaletteInputs(selectedTheme);
             saveSettings();
         });
     });
 }
+
+function getThemeCycleOrder() {
+    const order = ['light', 'dark', 'green'];
+    if (getCustomTheme()) order.push('custom');
+    return order;
+}
+
 if (themeToggle) {
     themeToggle.addEventListener('click', () => {
+        const cycleOrder = getThemeCycleOrder();
         const currentTheme = settingsTheme ? settingsTheme.value : document.body.getAttribute('data-theme');
-        const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        const currentIndex = cycleOrder.indexOf(currentTheme);
+        const nextTheme = cycleOrder[(currentIndex + 1) % cycleOrder.length];
         localStorage.setItem('theme', nextTheme);
         if (settingsTheme) {
             settingsTheme.value = nextTheme;
         }
+        setActiveThemeCard(nextTheme);
         applyTheme(nextTheme);
+    });
+}
+
+// ── Custom theme (4th slot) ──
+const customThemeCard = document.getElementById('custom-theme-card');
+const customThemeAddBtn = document.getElementById('custom-theme-add-btn');
+const customThemeBody = document.getElementById('custom-theme-body');
+const customThemeSelectBtn = document.getElementById('custom-theme-select-btn');
+const customThemeSwatches = document.getElementById('custom-theme-swatches');
+const customThemeEditBtn = document.getElementById('custom-theme-edit-btn');
+const customThemeDeleteBtn = document.getElementById('custom-theme-delete-btn');
+const settingsThemeCustomOption = document.getElementById('settings-theme-custom-option');
+
+const customThemeModal = document.getElementById('custom-theme-modal');
+const customThemeModalBackdrop = document.getElementById('custom-theme-modal-backdrop');
+const customThemeModalClose = document.getElementById('custom-theme-modal-close');
+const customThemeAccentInput = document.getElementById('custom-theme-accent');
+const customThemeSurfaceInput = document.getElementById('custom-theme-surface');
+const customThemeTextInput = document.getElementById('custom-theme-text');
+const customThemeMutedInput = document.getElementById('custom-theme-muted');
+const customThemeSaveBtn = document.getElementById('custom-theme-save-btn');
+
+function updateCustomThemeCardUI() {
+    const custom = getCustomTheme();
+    if (settingsThemeCustomOption) settingsThemeCustomOption.hidden = !custom;
+    if (customThemeAddBtn) customThemeAddBtn.hidden = !!custom;
+    if (customThemeBody) customThemeBody.hidden = !custom;
+    if (custom && customThemeSwatches) {
+        customThemeSwatches.innerHTML = [custom.surface, custom.accent, custom.muted, custom.text]
+            .map(color => `<span class="theme-option-swatch" style="background:${color}"></span>`)
+            .join('');
+    }
+}
+
+function openCustomThemeModal() {
+    const custom = getCustomTheme();
+    if (customThemeAccentInput) customThemeAccentInput.value = custom?.accent || '#8b5cf6';
+    if (customThemeSurfaceInput) customThemeSurfaceInput.value = custom?.surface || '#1f2937';
+    if (customThemeTextInput) customThemeTextInput.value = custom?.text || '#f8fafc';
+    if (customThemeMutedInput) customThemeMutedInput.value = custom?.muted || '#94a3b8';
+    if (customThemeModal) customThemeModal.classList.add('active');
+}
+
+function closeCustomThemeModal() {
+    if (customThemeModal) customThemeModal.classList.remove('active');
+}
+
+if (customThemeAddBtn) customThemeAddBtn.addEventListener('click', openCustomThemeModal);
+if (customThemeEditBtn) customThemeEditBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openCustomThemeModal();
+});
+if (customThemeDeleteBtn) customThemeDeleteBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!confirm(t('deleteCustomThemeConfirm'))) return;
+    deleteCustomTheme();
+    updateCustomThemeCardUI();
+    const fallbackTheme = document.body.getAttribute('data-theme') === 'custom' ? 'light' : (settingsTheme ? settingsTheme.value : 'light');
+    localStorage.setItem('theme', fallbackTheme);
+    if (settingsTheme) settingsTheme.value = fallbackTheme;
+    setActiveThemeCard(fallbackTheme);
+    applyTheme(fallbackTheme);
+});
+if (customThemeSelectBtn) customThemeSelectBtn.addEventListener('click', () => {
+    if (!getCustomTheme()) return;
+    if (settingsTheme) settingsTheme.value = 'custom';
+    setActiveThemeCard('custom');
+    saveSettings();
+});
+if (customThemeModalBackdrop) customThemeModalBackdrop.addEventListener('click', closeCustomThemeModal);
+if (customThemeModalClose) customThemeModalClose.addEventListener('click', closeCustomThemeModal);
+if (customThemeSaveBtn) {
+    customThemeSaveBtn.addEventListener('click', () => {
+        const colors = {
+            accent: customThemeAccentInput?.value || '#8b5cf6',
+            surface: customThemeSurfaceInput?.value || '#1f2937',
+            text: customThemeTextInput?.value || '#f8fafc',
+            muted: customThemeMutedInput?.value || '#94a3b8',
+        };
+        saveCustomTheme(colors);
+        updateCustomThemeCardUI();
+        closeCustomThemeModal();
+        if (settingsTheme) settingsTheme.value = 'custom';
+        setActiveThemeCard('custom');
+        saveSettings();
     });
 }
 
@@ -1762,6 +2623,8 @@ renderPrintQueue();
 loadModels();
 loadPrinters();
 loadRecentPrinterFiles();
+loadTopbarServerStats();
 
 // Refresh printers every 5 seconds
 setInterval(loadPrinters, 5000);
+setInterval(loadTopbarServerStats, 10000);
