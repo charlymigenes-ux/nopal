@@ -1,11 +1,28 @@
 import os
 import shutil
+import subprocess
 from typing import Optional
 from fastapi import APIRouter, Form, HTTPException
 
 from backend.services.klipper_service import get_system_stats, get_temperature_snapshot, set_heater_target
+from backend.utils import get_app_version
 
 router = APIRouter()
+
+
+def _run_git(args, timeout: int = 6) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip()
+    except Exception:
+        return None
 
 
 @router.get("/api/status")
@@ -69,3 +86,34 @@ async def set_temperature_target_endpoint(port: int = Form(...), heater: str = F
     if not success:
         raise HTTPException(status_code=502, detail="No se pudo actualizar la temperatura objetivo")
     return {"success": True}
+
+
+@router.get("/api/system/version")
+async def get_version_endpoint():
+    """Versión actual (commit de git) y si hay una actualización disponible en el remoto."""
+    local_sha = _run_git(["rev-parse", "--short", "HEAD"])
+    commit_date = _run_git(["log", "-1", "--format=%cI"])
+    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"]) or "main"
+
+    status_value = "unknown"
+    ahead = 0
+    behind = 0
+
+    fetched = _run_git(["fetch", "--quiet", "origin", branch]) is not None
+    if fetched:
+        counts = _run_git(["rev-list", "--left-right", "--count", f"HEAD...origin/{branch}"])
+        if counts:
+            parts = counts.split()
+            if len(parts) == 2:
+                ahead, behind = int(parts[0]), int(parts[1])
+        status_value = "update_available" if behind > 0 else "up_to_date"
+
+    return {
+        "app_version": get_app_version(),
+        "commit": local_sha or "unknown",
+        "date": commit_date,
+        "branch": branch,
+        "status": status_value,
+        "ahead": ahead,
+        "behind": behind,
+    }

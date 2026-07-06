@@ -110,24 +110,15 @@ body.green .sidebar {
 .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
     padding: 0 8px;
 }
 
-.brand-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
-}
-
-.brand strong {
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--text);
+.brand-logo {
+    width: 100%;
+    max-width: 150px;
+    height: auto;
+    object-fit: contain;
 }
 
 .nav-list {
@@ -769,7 +760,8 @@ body.green .topbar-search input::placeholder {
 .settings-card p {
     margin: 0 0 16px;
     color: var(--text-muted);
-    line-height: 1.6;
+    line-height: 1.5;
+    font-size: 0.82rem;
 }
 
 /* ── System stats (impresora modal) ── */
@@ -1168,19 +1160,460 @@ body.green .topbar-search input::placeholder {
     transform: none;
 }
 
+.laser-card {
+    margin: 0 32px 20px;
+    padding: 20px;
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.laser-row {
+    display: flex;
+    gap: 20px;
+    align-items: stretch;
+    margin: 0 32px 20px;
+}
+
+.laser-card-half {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+
+.laser-card-translucent {
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(6px);
+}
+
+.laser-card-accent {
+    background: var(--purple);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.laser-card-accent .laser-card-title {
+    color: #fff;
+}
+
+.laser-card-accent .laser-queue-item {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.laser-card-accent .laser-queue-item-name {
+    color: #fff;
+}
+
+.laser-card-accent .empty-state-small {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.laser-card-accent .laser-job-error {
+    color: #fecaca;
+}
+
+@media (max-width: 860px) {
+    .laser-row {
+        flex-direction: column;
+    }
+}
+
+.laser-status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.laser-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    flex-shrink: 0;
+}
+
+.laser-status-dot.online {
+    background: #22c55e;
+}
+
+.laser-state-pill {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--text-muted);
+}
+
+.laser-state-pill.state-run {
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+}
+
+.laser-state-pill.state-hold,
+.laser-state-pill.state-paused {
+    background: rgba(245, 158, 11, 0.16);
+    color: #f59e0b;
+}
+
+.laser-state-pill.state-alarm {
+    background: rgba(239, 68, 68, 0.16);
+    color: #ef4444;
+}
+
+.laser-illustration {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 16px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.laser-illustration img {
+    width: 100%;
+    max-width: 360px;
+    height: auto;
+    object-fit: contain;
+}
+
+.laser-illustration.offline img {
+    opacity: 0.4;
+    filter: grayscale(0.9);
+}
+
+.laser-host-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.laser-host-row .settings-select {
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 8px 10px;
+}
+
+.laser-status-body {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.laser-illustration-compact {
+    margin-top: 0;
+    flex-shrink: 0;
+    width: 35%;
+    max-width: 115px;
+}
+
+.laser-illustration-compact img {
+    max-width: 100%;
+}
+
+.laser-info-compact {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 12px;
+    align-content: start;
+}
+
+.laser-info-compact-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.72rem;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.laser-info-compact-row span {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.laser-info-compact-row strong {
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    text-align: right;
+    word-break: break-word;
+    min-width: 0;
+}
+
+.laser-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.laser-metrics div {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+}
+
+.laser-metrics span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.laser-metrics strong {
+    display: block;
+    margin-top: 6px;
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.laser-job-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.laser-job-toolbar .settings-select {
+    flex: 1;
+    min-width: 200px;
+}
+
+.laser-job-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.laser-job-progress-bar {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.laser-job-progress-fill {
+    height: 100%;
+    background: #22c55e;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.laser-job-progress span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.laser-job-error {
+    margin: 12px 0 0;
+    color: #ef4444;
+    font-size: 0.85rem;
+}
+
+.laser-card-title {
+    margin: 0 0 16px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.laser-jog-layout {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    flex-wrap: wrap;
+}
+
+.laser-jog-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    grid-template-areas:
+        ".       yplus  ."
+        "xminus  home   xplus"
+        ".       yminus .";
+    gap: 6px;
+}
+
+.laser-jog-slot-yplus { grid-area: yplus; }
+.laser-jog-slot-xminus { grid-area: xminus; }
+.laser-jog-slot-home { grid-area: home; }
+.laser-jog-slot-xplus { grid-area: xplus; }
+.laser-jog-slot-yminus { grid-area: yminus; }
+
+.laser-jog-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.laser-jog-btn:hover {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #22c55e;
+}
+
+.laser-jog-slot-home {
+    background: rgba(34, 197, 94, 0.12);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.laser-jog-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: var(--text-muted) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.laser-jog-side {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.laser-jog-z {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.laser-jog-z span {
+    font-weight: 700;
+    color: var(--text-muted);
+    width: 16px;
+    text-align: center;
+}
+
+.laser-jog-z .laser-jog-btn {
+    width: 40px;
+    height: 40px;
+}
+
+.laser-jog-steps-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.laser-jog-steps {
+    display: flex;
+    gap: 6px;
+}
+
+.laser-step-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.laser-step-btn.active {
+    background: rgba(34, 197, 94, 0.16);
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #22c55e;
+    font-weight: 700;
+}
+
+.laser-jog-actions {
+    margin-top: 20px;
+}
+
+.laser-card-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.laser-card-header-row .laser-card-title {
+    margin-bottom: 0;
+}
+
+.laser-card-header-row .btn-icon-dark {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.laser-card-subtitle {
+    margin: -10px 0 16px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.laser-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.laser-settings-item {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.laser-settings-item span {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.laser-settings-item input {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    padding: 6px 8px;
+    font-size: 0.85rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.laser-settings-item.saved input {
+    border-color: rgba(34, 197, 94, 0.6);
+}
+
 .theme-presets {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-    margin-bottom: 18px;
+    gap: 8px;
 }
 
 .theme-option-card {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-    border-radius: 22px;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 14px;
     border: 1px solid rgba(16, 24, 40, 0.08);
     background: rgba(255, 255, 255, 0.06);
     color: var(--text);
@@ -1197,21 +1630,25 @@ body.green .topbar-search input::placeholder {
 
 .theme-option-title {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    font-size: 0.98rem;
+    gap: 6px;
+    font-size: 0.82rem;
     font-weight: 700;
+}
+
+.theme-option-logo {
+    flex-shrink: 0;
 }
 
 .theme-option-swatches {
     display: flex;
-    gap: 8px;
+    gap: 5px;
 }
 
 .theme-option-swatch {
-    width: 28px;
-    height: 28px;
-    border-radius: 14px;
+    width: 16px;
+    height: 16px;
+    border-radius: 6px;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
@@ -1224,16 +1661,16 @@ body.green .topbar-search input::placeholder {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 5px;
     width: 100%;
     height: 100%;
-    min-height: 76px;
-    padding: 16px;
+    min-height: 52px;
+    padding: 10px;
     border: 1px dashed rgba(34, 197, 94, 0.4);
-    border-radius: 22px;
+    border-radius: 14px;
     background: transparent;
     color: #22c55e;
-    font-size: 0.9rem;
+    font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease;
@@ -1247,15 +1684,15 @@ body.green .topbar-search input::placeholder {
 .theme-option-custom-body {
     display: flex;
     align-items: stretch;
-    gap: 8px;
-    padding: 16px;
+    gap: 6px;
+    padding: 10px 12px;
 }
 
 .theme-option-custom-select {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
     border: none;
     background: transparent;
     color: var(--text);
@@ -1266,17 +1703,17 @@ body.green .topbar-search input::placeholder {
 .theme-option-custom-actions {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
 }
 
 .theme-option-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 20px;
+    height: 20px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     background: rgba(34, 197, 94, 0.12);
     color: #22c55e;
     cursor: pointer;
@@ -1412,6 +1849,64 @@ body.green .topbar-search input::placeholder {
     justify-content: center;
 }
 
+.app-confirm-modal-content {
+    width: 90%;
+    max-width: 400px;
+    height: auto;
+    max-height: none;
+    padding: 28px;
+    gap: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-confirm-modal-content h2 {
+    margin: 0 0 4px;
+    font-size: 1.1rem;
+    color: var(--text);
+}
+
+.app-confirm-modal-content p {
+    margin: 0 0 20px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.app-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.laser-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.laser-queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+}
+
+.laser-queue-item-name {
+    color: var(--text);
+    font-size: 0.88rem;
+    word-break: break-word;
+}
+
+.laser-queue-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 .gcode-preview-card {
     background: var(--card-bg);
     border-radius: var(--radius-lg);
@@ -1506,6 +2001,16 @@ body.green .topbar-search input::placeholder {
     border-color: rgba(239, 68, 68, 0.5);
     color: #dc2626;
 }
+.btn-file-action-accent {
+    border-color: rgba(139, 92, 246, 0.3);
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+}
+.btn-file-action-accent:hover {
+    background: rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.5);
+    color: #7c3aed;
+}
 
 .gcode-preview-scene {
     margin-top: 24px;
@@ -1543,13 +2048,213 @@ body.green .topbar-search input::placeholder {
 
 .theme-config-card {
     display: grid;
-    gap: 16px;
+    gap: 10px;
+    align-content: start;
 }
 
 .settings-switch {
     display: inline-flex;
     align-items: center;
     gap: 10px;
+}
+
+.settings-field {
+    margin-bottom: 18px;
+}
+
+.settings-field:last-child {
+    margin-bottom: 0;
+}
+
+.settings-field-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.settings-field-label {
+    display: block;
+    font-weight: 600;
+    color: var(--text);
+    font-size: 0.92rem;
+    margin-bottom: 4px;
+}
+
+.settings-field-switch .settings-field-label {
+    margin-bottom: 0;
+}
+
+.settings-field-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.updates-status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.updates-version {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.updates-status-pill {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--text-muted);
+}
+
+.updates-status-pill.current {
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+}
+
+.updates-status-pill.available {
+    background: rgba(245, 158, 11, 0.16);
+    color: #f59e0b;
+}
+
+.updates-status-pill.unknown,
+.updates-status-pill.checking {
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--text-muted);
+}
+
+.updates-meta {
+    margin: 0 0 16px;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.usb-ports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.usb-port-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.usb-port-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.usb-port-item-info strong {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.usb-port-item-info span {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+.usb-port-vidpid {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.usb-port-item-new {
+    border-color: rgba(34, 197, 94, 0.5);
+    animation: usbPortPulse 1.6s ease-in-out 2;
+}
+
+@keyframes usbPortPulse {
+    0%, 100% { background: rgba(34, 197, 94, 0.12); }
+    50% { background: rgba(34, 197, 94, 0.3); }
+}
+
+#app-toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 340px;
+}
+
+.app-toast {
+    background: var(--card-bg);
+    color: var(--text);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    border-left: 4px solid #22c55e;
+    border-radius: 10px;
+    padding: 12px 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    font-size: 0.85rem;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.app-toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.app-toast-error {
+    border-color: rgba(239, 68, 68, 0.4);
+    border-left-color: #ef4444;
+}
+
+.usb-port-item {
+    flex-wrap: wrap;
+}
+
+.usb-port-add-btn {
+    padding: 6px 12px;
+    font-size: 0.78rem;
+}
+
+.usb-port-registered-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.14);
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+.usb-classify-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.usb-classify-options .btn-file-action {
+    justify-content: center;
+}
+
+.usb-classify-cancel-btn {
+    justify-content: center;
 }
 
 .settings-switch input[type="checkbox"] {
@@ -2438,6 +3143,11 @@ header {
 .printer-illustration-idle img {
     opacity: 0.55;
     filter: grayscale(0.9);
+}
+
+.laser-dashboard-metric {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.95rem;
 }
 
 .printer-temps {

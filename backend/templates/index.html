@@ -8,21 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=37">
+    <link rel="stylesheet" href="/static/css/style.css?v=49">
 </head>
 <body>
     <div class="app-shell">
         <aside class="sidebar">
             <div class="brand">
-                <div class="brand-icon">
-                    <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
-                        <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(34,197,94,0.1)" stroke="#22C55E" stroke-width="2"/>
-                        <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="#22C55E" stroke-width="2" stroke-linecap="round" fill="none"/>
-                        <circle cx="13" cy="10" r="1" fill="#22C55E"/>
-                        <circle cx="19" cy="10" r="1" fill="#22C55E"/>
-                    </svg>
-                </div>
-                <strong>NOPAL</strong>
+                <img class="brand-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
             </div>
 
             <nav class="nav-list">
@@ -45,6 +37,10 @@
                 <button class="nav-item" data-section="macros">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     <span data-i18n="macros">Macros</span>
+                </button>
+                <button class="nav-item" data-section="laser">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                    <span data-i18n="laser">Láser</span>
                 </button>
                 <button class="nav-item" data-section="queue">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -312,6 +308,10 @@
                                         </div>
                                     </div>
                                     <div class="preview-file-actions">
+                                        <button type="button" class="btn-file-action btn-file-action-accent" id="gcode-send-laser-btn" title="Enviar a láser">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                                            <span data-i18n="sendToLaser">Enviar a láser</span>
+                                        </button>
                                         <button type="button" class="btn-file-action" id="gcode-download-btn" title="Descargar">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                             <span data-i18n="downloadFile">Descargar</span>
@@ -376,6 +376,147 @@
                 </main>
             </section>
 
+            <section id="laser-section" class="view-section" style="display: none;">
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="laser">Láser</h1>
+                        <p data-i18n="laserDescription">Controla tu cortadora/grabadora láser GRBL y envía archivos G-code directamente.</p>
+                    </section>
+
+                    <div class="laser-row">
+                    <div class="laser-card laser-card-translucent laser-card-half">
+                        <div class="laser-status-row">
+                            <span class="laser-status-dot" id="laser-status-dot"></span>
+                            <span id="laser-status-text" data-i18n="laserOffline">Sin conexión con el láser</span>
+                            <span class="laser-state-pill" id="laser-state-pill"></span>
+                        </div>
+
+                        <div class="laser-host-row">
+                            <select id="laser-host-select" class="settings-select"></select>
+                            <button type="button" class="theme-option-icon-btn" id="laser-scan-btn" title="Escanear red">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            </button>
+                        </div>
+
+                        <div class="laser-status-body">
+                            <div class="laser-illustration laser-illustration-compact" id="laser-illustration-wrap">
+                                <img id="laser-illustration" src="/static/img/Laser_ready.png" alt="">
+                            </div>
+                            <div class="laser-info-compact" id="laser-info-grid"></div>
+                        </div>
+                    </div>
+
+                    <div class="laser-card laser-card-translucent laser-card-half">
+                        <h2 class="laser-card-title" data-i18n="laserJogTitle">Movimiento del cabezal</h2>
+                        <div class="laser-jog-layout">
+                            <div class="laser-jog-pad">
+                                <button type="button" class="laser-jog-btn laser-jog-slot-yplus" data-axis="Y" data-dir="1" title="Y+">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                </button>
+                                <button type="button" class="laser-jog-btn laser-jog-slot-xminus" data-axis="X" data-dir="-1" title="X-">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg>
+                                </button>
+                                <button type="button" class="laser-jog-btn laser-jog-slot-home" id="laser-home-btn" title="Home ($H)">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                </button>
+                                <button type="button" class="laser-jog-btn laser-jog-slot-xplus" data-axis="X" data-dir="1" title="X+">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                </button>
+                                <button type="button" class="laser-jog-btn laser-jog-slot-yminus" data-axis="Y" data-dir="-1" title="Y-">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                                </button>
+                            </div>
+                            <div class="laser-jog-side">
+                                <div class="laser-jog-z">
+                                    <button type="button" class="laser-jog-btn" data-axis="Z" data-dir="1" title="Z+">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                    </button>
+                                    <span>Z</span>
+                                    <button type="button" class="laser-jog-btn" data-axis="Z" data-dir="-1" title="Z-">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                                    </button>
+                                </div>
+                                <span class="laser-jog-steps-label" data-i18n="laserStepSize">Paso (mm)</span>
+                                <div class="laser-jog-steps" id="laser-jog-steps">
+                                    <button type="button" class="laser-step-btn" data-step="0.1">0.1</button>
+                                    <button type="button" class="laser-step-btn" data-step="1">1</button>
+                                    <button type="button" class="laser-step-btn active" data-step="10">10</button>
+                                    <button type="button" class="laser-step-btn" data-step="50">50</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="laser-jog-actions">
+                            <button type="button" class="btn-file-action" id="laser-unlock-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                                <span data-i18n="laserUnlock">Desbloquear ($X)</span>
+                            </button>
+                        </div>
+                        <div class="laser-metrics">
+                            <div>
+                                <span data-i18n="laserPosition">Posición</span>
+                                <strong id="laser-position">X0.00 Y0.00 Z0.00</strong>
+                            </div>
+                            <div>
+                                <span data-i18n="laserFeedSpeed">Avance / Potencia</span>
+                                <strong id="laser-feed-speed">— / —</strong>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+
+                    <div class="laser-card laser-card-accent">
+                        <h2 class="laser-card-title" data-i18n="laserQueue">Cola del láser</h2>
+                        <div class="laser-queue-list" id="laser-queue-list"></div>
+                        <div class="laser-job-toolbar" id="laser-job-controls">
+                            <button type="button" class="btn-file-action" id="laser-pause-btn" hidden>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                <span data-i18n="laserPause">Pausar</span>
+                            </button>
+                            <button type="button" class="btn-file-action" id="laser-resume-btn" hidden>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <span data-i18n="laserResume">Reanudar</span>
+                            </button>
+                            <button type="button" class="btn-file-action btn-file-action-danger" id="laser-cancel-btn" hidden>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                <span data-i18n="laserCancel">Cancelar</span>
+                            </button>
+                        </div>
+                        <div class="laser-job-progress" id="laser-job-progress" hidden>
+                            <div class="laser-job-progress-bar">
+                                <div class="laser-job-progress-fill" id="laser-job-progress-fill"></div>
+                            </div>
+                            <span id="laser-job-progress-text">0 / 0</span>
+                        </div>
+                        <p class="laser-job-error" id="laser-job-error"></p>
+                    </div>
+
+                    <div class="laser-card">
+                        <h2 class="laser-card-title" data-i18n="laserConsole">Consola</h2>
+                        <p class="laser-card-subtitle" data-i18n="laserConsoleDescription">Envía comandos GRBL sueltos y observa la respuesta en vivo.</p>
+                        <div class="console-log" id="laser-console-log"></div>
+                        <form class="console-input-row" id="laser-console-form">
+                            <input type="text" id="laser-console-input" autocomplete="off" data-i18n-placeholder="laserConsoleInputPlaceholder" placeholder="Enviar comando GRBL...">
+                            <button type="submit" class="btn-icon-dark" title="Enviar">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="laser-card">
+                        <div class="laser-card-header-row">
+                            <div>
+                                <h2 class="laser-card-title" data-i18n="laserSettings">Configuración GRBL</h2>
+                                <p class="laser-card-subtitle" data-i18n="laserSettingsDescription">Parámetros $$ de la placa. Cambia un valor y presiona Enter para guardarlo.</p>
+                            </div>
+                            <button type="button" class="btn-icon-dark" id="laser-settings-reload-btn" title="Recargar">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            </button>
+                        </div>
+                        <div class="laser-settings-grid" id="laser-settings-grid"></div>
+                    </div>
+                </main>
+            </section>
+
             <section id="queue-section" class="view-section" style="display: none;">
                 <header class="topbar">
                     <div class="topbar-search">
@@ -401,7 +542,7 @@
                         <div class="settings-card theme-config-card">
                             <h2 data-i18n="theme">Theme</h2>
                             <p data-i18n="themeDescription">Choose the default display mode for the dashboard.</p>
-                            <select id="settings-theme" class="settings-select">
+                            <select id="settings-theme" class="settings-select" hidden>
                                 <option value="light" data-i18n="lightMode">Light</option>
                                 <option value="dark" data-i18n="darkMode">Dark</option>
                                 <option value="green" data-i18n="greenMode">Green</option>
@@ -432,9 +573,15 @@
                                         <span class="theme-option-swatch" style="background:#f1f5f9"></span>
                                     </div>
                                 </button>
-                                <button type="button" class="theme-option-card" data-theme="green">
+                                <button type="button" class="theme-option-card theme-option-card-nopal" data-theme="green">
                                     <div class="theme-option-title">
-                                        <span data-i18n="greenMode">Green</span>
+                                        <svg class="theme-option-logo" viewBox="0 0 32 32" width="18" height="18" fill="none">
+                                            <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(34,197,94,0.15)" stroke="#22C55E" stroke-width="2.4"/>
+                                            <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="#22C55E" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+                                            <circle cx="13" cy="10" r="1" fill="#22C55E"/>
+                                            <circle cx="19" cy="10" r="1" fill="#22C55E"/>
+                                        </svg>
+                                        <span data-i18n="greenMode">NOPAL Style</span>
                                     </div>
                                     <div class="theme-option-swatches">
                                         <span class="theme-option-swatch" style="background:#0f172a"></span>
@@ -469,29 +616,66 @@
                             </div>
                         </div>
                         <div class="settings-card">
-                            <h2 data-i18n="language">Language</h2>
-                            <p data-i18n="languageDescription">Change the interface language used across the dashboard.</p>
-                            <select id="settings-language" class="settings-select">
-                                <option value="es">Español</option>
-                                <option value="en">English</option>
-                            </select>
+                            <h2 data-i18n="generalSettings">Configuración General</h2>
+                            <p data-i18n="generalSettingsDescription">Idioma, calidad de vista previa y avisos de seguridad.</p>
+                            <div class="settings-field">
+                                <label class="settings-field-label" for="settings-language" data-i18n="language">Language</label>
+                                <select id="settings-language" class="settings-select">
+                                    <option value="es">Español</option>
+                                    <option value="en">English</option>
+                                </select>
+                            </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="previewQuality">Preview Quality</span>
+                                    <p class="settings-field-hint" data-i18n="previewQualityDescription">Adjust renderer detail for thumbnails and previews.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-preview-quality">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="laserHomeConfirmToggle">Confirmar antes de hacer Home</span>
+                                    <p class="settings-field-hint" data-i18n="laserHomeConfirmToggleDescription">Muestra un aviso de seguridad antes de mover el cabezal a los interruptores límite.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-laser-home-confirm">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="autoRefresh">Auto Refresh</span>
+                                    <p class="settings-field-hint" data-i18n="autoRefreshDescription">Enable automatic printer status updates every few seconds.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-autorefresh">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
                         </div>
                         <div class="settings-card">
-                            <h2 data-i18n="previewQuality">Preview Quality</h2>
-                            <p data-i18n="previewQualityDescription">Adjust renderer detail for thumbnails and previews.</p>
-                            <select id="settings-preview-quality" class="settings-select">
-                                <option value="standard" data-i18n="standard">Standard</option>
-                                <option value="performance" data-i18n="performance">Performance</option>
-                            </select>
+                            <h2 data-i18n="updates">Actualizaciones</h2>
+                            <p data-i18n="updatesDescription">Verifica si hay una versión más reciente disponible en el repositorio.</p>
+                            <div class="updates-status-row">
+                                <span class="updates-version" id="updates-version">—</span>
+                                <span class="updates-status-pill" id="updates-status-pill">—</span>
+                            </div>
+                            <p class="updates-meta" id="updates-meta"></p>
+                            <button type="button" class="btn-file-action" id="updates-check-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                <span data-i18n="updatesCheck">Buscar actualización</span>
+                            </button>
                         </div>
                         <div class="settings-card">
-                            <h2 data-i18n="autoRefresh">Auto Refresh</h2>
-                            <p data-i18n="autoRefreshDescription">Enable automatic printer status updates every few seconds.</p>
-                            <label class="settings-switch">
-                                <input type="checkbox" id="settings-autorefresh">
-                                <span class="switch-slider"></span>
-                                <span class="switch-label" data-i18n="enabled">Enabled</span>
-                            </label>
+                            <h2 data-i18n="laserUsbPorts">Puertos USB detectados</h2>
+                            <p data-i18n="laserUsbPortsDescription">Controladoras láser (CH340, CP210x, ESP32) conectadas directo por USB al servidor.</p>
+                            <div class="usb-ports-list" id="usb-ports-list"></div>
                         </div>
                     </div>
                     <div class="settings-actions">
@@ -607,10 +791,49 @@
         </div>
     </div>
 
+    <!-- Generic App Confirm Modal -->
+    <div id="app-confirm-modal" class="modal">
+        <div class="modal-backdrop" id="app-confirm-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <h2 id="app-confirm-title"></h2>
+            <p id="app-confirm-message"></p>
+            <div class="app-confirm-actions">
+                <button type="button" class="btn-file-action" id="app-confirm-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+                <button type="button" class="btn-file-action btn-file-action-danger" id="app-confirm-ok-btn">
+                    <span data-i18n="confirmAction">Confirmar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- USB Device Classify Modal -->
+    <div id="usb-classify-modal" class="modal">
+        <div class="modal-backdrop" id="usb-classify-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <h2 data-i18n="usbClassifyTitle">¿Qué tipo de dispositivo es?</h2>
+            <p id="usb-classify-device-label"></p>
+            <div class="usb-classify-options">
+                <button type="button" class="btn-file-action btn-file-action-accent" id="usb-classify-laser-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                    <span data-i18n="usbClassifyLaser">Láser (GRBL)</span>
+                </button>
+                <button type="button" class="btn-file-action" id="usb-classify-printer-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    <span data-i18n="usbClassifyPrinter">Impresora 3D</span>
+                </button>
+            </div>
+            <button type="button" class="btn-file-action usb-classify-cancel-btn" id="usb-classify-cancel-btn">
+                <span data-i18n="cancelAction">Cancelar</span>
+            </button>
+        </div>
+    </div>
+
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
     <script src="/static/js/translations.js"></script>
-    <script src="/static/js/app.js?v=32"></script>
+    <script src="/static/js/app.js?v=43"></script>
 </body>
 </html>

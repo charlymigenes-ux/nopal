@@ -7,6 +7,14 @@ MODELS_ROOT = "uploads/models"
 GCODE_ROOT = "uploads/gcode"
 
 
+def get_app_version() -> str:
+    """Versión semántica de la app (archivo VERSION en la raíz del proyecto)."""
+    try:
+        return Path("VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0.0.0"
+
+
 def get_section_root(section: str) -> str:
     return GCODE_ROOT if section == "gcode" else MODELS_ROOT
 

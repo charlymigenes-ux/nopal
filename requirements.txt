@@ -5,3 +5,5 @@ python-multipart==0.0.32
 aiofiles==25.1.0
 pillow==12.2.0
 requests==2.34.2
+websockets==16.0
+pyserial==3.5

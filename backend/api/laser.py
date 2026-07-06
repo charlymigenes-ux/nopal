@@ -1,0 +1,247 @@
+import os
+from typing import Optional
+
+from fastapi import APIRouter, Form, HTTPException
+
+from backend.services.laser_service import (
+    get_status,
+    get_board_info,
+    start_job,
+    get_job_status,
+    pause_job,
+    resume_job,
+    cancel_job,
+    send_raw_command,
+    ensure_listener,
+    get_console_buffer,
+    send_console_command,
+    get_grbl_settings,
+    set_grbl_setting,
+    add_to_queue,
+    get_queue,
+    remove_from_queue,
+    pop_from_queue,
+    get_active_host,
+    set_active_host,
+    scan_network,
+    list_usb_laser_ports,
+    ensure_listener_ready,
+    get_registered_lasers,
+    register_laser,
+    unregister_laser,
+)
+from backend.utils import safe_section_path
+
+router = APIRouter()
+
+
+@router.get("/api/laser/host")
+async def laser_host_endpoint():
+    """Host activo del láser (el que usan todas las operaciones por defecto)."""
+    return {"host": get_active_host()}
+
+
+@router.post("/api/laser/host")
+async def laser_set_host_endpoint(host: str = Form(...)):
+    """Cambia el host activo del láser (ej. tras elegirlo de la lista de escaneo)."""
+    clean_host = host.strip()
+    if not clean_host:
+        raise HTTPException(status_code=400, detail="Host inválido")
+    set_active_host(clean_host)
+    return {"success": True, "host": clean_host}
+
+
+@router.get("/api/laser/scan")
+async def laser_scan_endpoint():
+    """Escanea la red local en busca de otras placas láser (ESP3D) disponibles."""
+    devices = await scan_network()
+    return {"devices": devices}
+
+
+@router.get("/api/laser/usb-ports")
+async def laser_usb_ports_endpoint():
+    """Puertos serie USB conectados que coinciden con chips de controladoras láser."""
+    return {"ports": list_usb_laser_ports()}
+
+
+@router.post("/api/laser/usb-ports/test")
+async def laser_usb_test_endpoint(device: str = Form(...)):
+    """Prueba si el puerto USB indicado responde al protocolo GRBL (envía '?')."""
+    host = f"usb:{device}"
+    status = await get_status(host=host, timeout=3.0)
+    if status is None:
+        raise HTTPException(status_code=502, detail="No se detectó respuesta GRBL en este puerto")
+    return {"connected": True, "host": host, **status}
+
+
+@router.get("/api/laser/registry")
+async def laser_registry_list_endpoint():
+    """Placas láser registradas en NOPAL (red y USB)."""
+    return {"lasers": get_registered_lasers()}
+
+
+@router.post("/api/laser/registry")
+async def laser_registry_add_endpoint(host: str = Form(...), name: str = Form(...), transport: str = Form(...)):
+    """Registra una placa (red o USB) como láser disponible en NOPAL."""
+    entry = register_laser(host, name, transport)
+    return entry
+
+
+@router.post("/api/laser/registry/remove")
+async def laser_registry_remove_endpoint(host: str = Form(...)):
+    """Quita una placa registrada."""
+    if not unregister_laser(host):
+        raise HTTPException(status_code=404, detail="No encontrado en el registro")
+    return {"success": True}
+
+
+@router.get("/api/laser/status")
+async def laser_status_endpoint(host: Optional[str] = None):
+    """Estado en vivo del láser (posición, estado GRBL) vía websocket."""
+    status = await get_status(host=host or get_active_host())
+    if status is None:
+        return {"connected": False}
+    return {"connected": True, **status}
+
+
+@router.get("/api/laser/info")
+async def laser_info_endpoint(host: Optional[str] = None):
+    """Información estática de la placa controladora (chip, firmware, red)."""
+    info = get_board_info(host=host or get_active_host())
+    if not info:
+        raise HTTPException(status_code=502, detail="No se pudo contactar al láser")
+    return info
+
+
+@router.post("/api/laser/command")
+async def laser_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None)):
+    """Envía un comando GRBL suelto (jog, $H, $X, etc.)."""
+    target = host or get_active_host()
+    await ensure_listener_ready(target)
+    success = send_raw_command(target, command)
+    if not success:
+        raise HTTPException(status_code=502, detail="No se pudo enviar el comando")
+    return {"success": True}
+
+
+@router.post("/api/laser/job/start")
+async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = Form(None)):
+    """Inicia el envío de un archivo G-code (de la biblioteca) al láser."""
+    file_path = safe_section_path("gcode", path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+        gcode_text = handle.read()
+
+    try:
+        job = start_job(host or get_active_host(), gcode_text, filename=os.path.basename(path))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return job
+
+
+@router.get("/api/laser/job/status")
+async def laser_job_status_endpoint():
+    return get_job_status()
+
+
+@router.post("/api/laser/job/pause")
+async def laser_job_pause_endpoint():
+    if not pause_job():
+        raise HTTPException(status_code=409, detail="No hay un trabajo en curso para pausar")
+    return {"success": True}
+
+
+@router.post("/api/laser/job/resume")
+async def laser_job_resume_endpoint():
+    if not resume_job():
+        raise HTTPException(status_code=409, detail="No hay un trabajo pausado para reanudar")
+    return {"success": True}
+
+
+@router.post("/api/laser/job/cancel")
+async def laser_job_cancel_endpoint():
+    if not cancel_job():
+        raise HTTPException(status_code=409, detail="No hay un trabajo en curso para cancelar")
+    return {"success": True}
+
+
+@router.get("/api/laser/console")
+async def laser_console_endpoint(host: Optional[str] = None, count: int = 100):
+    """Últimos mensajes transmitidos por el láser (consola en vivo)."""
+    target = host or get_active_host()
+    ensure_listener(target)
+    return {"messages": get_console_buffer(host=target, count=count)}
+
+
+@router.post("/api/laser/console")
+async def laser_console_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None)):
+    """Envía un comando desde la consola del láser."""
+    success = await send_console_command(host or get_active_host(), command)
+    if not success:
+        raise HTTPException(status_code=502, detail="No se pudo enviar el comando")
+    return {"success": True}
+
+
+@router.get("/api/laser/settings")
+async def laser_settings_endpoint(host: Optional[str] = None):
+    """Parámetros $$ actuales de la placa GRBL."""
+    settings = await get_grbl_settings(host=host or get_active_host())
+    return {"settings": settings}
+
+
+@router.post("/api/laser/settings")
+async def laser_settings_update_endpoint(key: str = Form(...), value: str = Form(...), host: Optional[str] = Form(None)):
+    """Actualiza un parámetro $$ individual."""
+    result = await set_grbl_setting(host or get_active_host(), key, value)
+    if not result.get("success"):
+        raise HTTPException(status_code=502, detail=result.get("message", "No se pudo actualizar el parámetro"))
+    return {"success": True}
+
+
+@router.get("/api/laser/queue")
+async def laser_queue_list_endpoint():
+    """Trabajos en espera para enviarse al láser."""
+    return {"queue": get_queue()}
+
+
+@router.post("/api/laser/queue/add")
+async def laser_queue_add_endpoint(path: str = Form(...)):
+    """Agrega un archivo G-code de la biblioteca a la cola del láser."""
+    file_path = safe_section_path("gcode", path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    entry = add_to_queue(path, os.path.basename(path))
+    return entry
+
+
+@router.post("/api/laser/queue/remove")
+async def laser_queue_remove_endpoint(id: int = Form(...)):
+    """Quita un trabajo de la cola sin enviarlo."""
+    if not remove_from_queue(id):
+        raise HTTPException(status_code=404, detail="Elemento no encontrado en la cola")
+    return {"success": True}
+
+
+@router.post("/api/laser/queue/start")
+async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = Form(None)):
+    """Saca un trabajo de la cola y lo empieza a enviar al láser."""
+    current = get_job_status()
+    if current.get("state") in ("running", "paused"):
+        raise HTTPException(status_code=409, detail="Ya hay un trabajo en curso en el láser")
+
+    entry = pop_from_queue(id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Elemento no encontrado en la cola")
+
+    file_path = safe_section_path("gcode", entry["path"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+        gcode_text = handle.read()
+
+    job = start_job(host or get_active_host(), gcode_text, filename=entry["filename"])
+    return job

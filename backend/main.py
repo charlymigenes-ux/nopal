@@ -10,12 +10,14 @@ from backend.api.status import router as status_router
 from backend.api.upload import router as upload_router
 from backend.api.printers import router as printers_router
 from backend.api.console import router as console_router
+from backend.api.laser import router as laser_router
+from backend.utils import get_app_version
 
 
 app = FastAPI(
-    title="3DVault",
-    description="Biblioteca inteligente para modelos 3D",
-    version="0.1.0"
+    title="NOPAL",
+    description="Biblioteca inteligente para modelos 3D y G-code",
+    version=get_app_version()
 )
 
 app.mount("/static", StaticFiles(directory="backend/static"), name="static")
@@ -26,6 +28,7 @@ app.include_router(upload_router)
 app.include_router(models_router)
 app.include_router(printers_router)
 app.include_router(console_router)
+app.include_router(laser_router)
 
 templates = Jinja2Templates(directory="backend/templates")
 

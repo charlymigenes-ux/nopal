@@ -252,7 +252,6 @@ async function renderGcodeThumbnail(thumb, fileUrl) {
     thumb.innerHTML = '';
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     thumb.appendChild(renderer.domElement);
@@ -274,25 +273,32 @@ async function renderGcodeThumbnail(thumb, fileUrl) {
     box.getCenter(center);
     line.position.sub(center);
 
+    // Vista plana (en planta): el corte/grabado láser es esencialmente 2D (plano XY),
+    // así que una cámara ortográfica de arriba hacia abajo muestra el trazo real sin
+    // distorsión de perspectiva.
     const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z, 1);
-    camera.position.set(maxDim * 1.2, maxDim * 0.8, maxDim * 1.6);
+    const maxDim = Math.max(size.x, size.y, 1);
+    const viewSize = maxDim * 1.15;
+    const camera = new THREE.OrthographicCamera(-viewSize / 2, viewSize / 2, viewSize / 2, -viewSize / 2, 0.1, maxDim * 10 + 100);
+    camera.position.set(0, 0, maxDim * 5 + 50);
+    camera.up.set(0, 1, 0);
     camera.lookAt(0, 0, 0);
 
     const resize = () => {
         const width = thumb.clientWidth || 120;
         const height = thumb.clientHeight || 120;
         renderer.setSize(width, height);
-        camera.aspect = width / height;
+        const aspect = width / height || 1;
+        const halfHeight = viewSize / 2;
+        const halfWidth = halfHeight * aspect;
+        camera.left = -halfWidth;
+        camera.right = halfWidth;
+        camera.top = halfHeight;
+        camera.bottom = -halfHeight;
         camera.updateProjectionMatrix();
     };
-    const animate = () => {
-        requestAnimationFrame(animate);
-        line.rotation.y += 0.004;
-        renderer.render(scene, camera);
-    };
     resize();
-    animate();
+    renderer.render(scene, camera);
 }
 
 async function renderGcodePreview(container, fileUrl) {
@@ -300,7 +306,6 @@ async function renderGcodePreview(container, fileUrl) {
     container.innerHTML = '';
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     container.appendChild(renderer.domElement);
@@ -312,7 +317,7 @@ async function renderGcodePreview(container, fileUrl) {
 
     const line = await getGcodePreviewScene(fileUrl, 9000);
     if (!line) {
-        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;padding:1rem;text-align:center;">No se pudo generar la vista previa 3D.</div>';
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;padding:1rem;text-align:center;">No se pudo generar la vista previa.</div>';
         return;
     }
 
@@ -322,20 +327,69 @@ async function renderGcodePreview(container, fileUrl) {
     box.getCenter(center);
     line.position.sub(center);
 
+    // Vista plana (en planta): el corte/grabado láser ocurre en el plano XY, así
+    // que una cámara ortográfica de arriba hacia abajo muestra el trazo real a
+    // escala, sin la distorsión de perspectiva de una vista 3D inclinada.
     const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z, 1);
-    camera.position.set(maxDim * 1.7, maxDim * 1.1, maxDim * 1.5);
+    const maxDim = Math.max(size.x, size.y, 1);
+    const view = { size: maxDim * 1.15, offsetX: 0, offsetY: 0 };
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, maxDim * 10 + 100);
+    camera.position.set(0, 0, maxDim * 5 + 50);
+    camera.up.set(0, 1, 0);
     camera.lookAt(0, 0, 0);
+
+    const applyFrustum = (width, height) => {
+        const aspect = width / height || 1;
+        const halfHeight = view.size / 2;
+        const halfWidth = halfHeight * aspect;
+        camera.left = -halfWidth + view.offsetX;
+        camera.right = halfWidth + view.offsetX;
+        camera.top = halfHeight + view.offsetY;
+        camera.bottom = -halfHeight + view.offsetY;
+        camera.updateProjectionMatrix();
+    };
 
     const resize = () => {
         const width = container.clientWidth || 320;
         const height = container.clientHeight || 320;
         renderer.setSize(width, height);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
+        applyFrustum(width, height);
     };
 
-    setupPreviewControls(renderer, camera, scene, line);
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    const onPointerDown = event => {
+        isDragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        renderer.domElement.setPointerCapture(event.pointerId);
+    };
+    const onPointerMove = event => {
+        if (!isDragging) return;
+        const height = container.clientHeight || 320;
+        const scale = view.size / height;
+        view.offsetX -= (event.clientX - lastX) * scale;
+        view.offsetY += (event.clientY - lastY) * scale;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        applyFrustum(container.clientWidth || 320, height);
+    };
+    const onPointerUp = event => {
+        isDragging = false;
+        renderer.domElement.releasePointerCapture(event.pointerId);
+    };
+    const onWheel = event => {
+        event.preventDefault();
+        const factor = event.deltaY > 0 ? 1.1 : 0.9;
+        view.size = Math.max(maxDim * 0.08, Math.min(maxDim * 8, view.size * factor));
+        applyFrustum(container.clientWidth || 320, container.clientHeight || 320);
+    };
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
+    renderer.domElement.addEventListener('pointerup', onPointerUp);
+    renderer.domElement.addEventListener('pointerleave', onPointerUp);
+    renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 
     const animate = () => {
         requestAnimationFrame(animate);
@@ -1543,17 +1597,84 @@ function sortPrintersByStatus(printers) {
     return [...printers].sort((a, b) => getPrinterSortPriority(a) - getPrinterSortPriority(b));
 }
 
+let dashboardLaserStatus = null;
+
+const LASER_STATE_IMAGES = {
+    printing: '/static/img/Laser_ready.png',
+    paused: '/static/img/Laser_atention.png',
+    error: '/static/img/Laser_error.png',
+    idle: '/static/img/Laser_ready.png',
+    offline: '/static/img/Laser_ready.png',
+};
+
+function laserIllustrationImg(visualState) {
+    return `<img src="${LASER_STATE_IMAGES[visualState]}" alt="" loading="lazy">`;
+}
+
+function getLaserVisualState(status) {
+    if (!status || !status.connected) return 'offline';
+    const state = (status.state || '').toLowerCase();
+    if (state === 'run') return 'printing';
+    if (state === 'hold') return 'paused';
+    if (state === 'alarm' || state === 'door') return 'error';
+    return 'idle';
+}
+
+function laserDashboardCardHtml(status) {
+    const visualState = getLaserVisualState(status);
+    const isOnline = visualState !== 'offline';
+    const statusText = isOnline ? t('online') : t('offline');
+    const stateLabel = isOnline ? (status.state || t('idle')) : t('laserOffline');
+    const position = isOnline ? `X${status.x.toFixed(1)} Y${status.y.toFixed(1)} Z${status.z.toFixed(1)}` : '—';
+    const feedSpeed = isOnline ? `${status.feed} / ${status.speed}` : '—';
+
+    return `
+        <div class="printer-card laser-dashboard-card ${isOnline ? 'online' : 'offline'}" id="laser-dashboard-card">
+            <div class="printer-card-top">
+                <h3 class="printer-name">${t('laser')}</h3>
+                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                </div>
+            </div>
+
+            <div class="printer-status-line ${visualState}">
+                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
+            </div>
+
+            <div class="printer-illustration printer-illustration-${visualState}">
+                ${laserIllustrationImg(visualState)}
+            </div>
+
+            <div class="printer-temps">
+                <div class="temp-item">
+                    <div class="temp-label">${t('laserPosition')}</div>
+                    <div class="temp-value laser-dashboard-metric">${position}</div>
+                </div>
+                <div class="temp-item">
+                    <div class="temp-label">${t('laserFeedSpeed')}</div>
+                    <div class="temp-value laser-dashboard-metric">${feedSpeed}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function refreshDashboardLaserCard() {
+    try {
+        const response = await fetch('/api/laser/status');
+        dashboardLaserStatus = await response.json();
+    } catch (error) {
+        dashboardLaserStatus = { connected: false };
+    }
+    renderPrinters(allPrinters);
+}
+
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
-    if (!printersInput || printersInput.length === 0) {
-        printersGrid.innerHTML = `<div class="empty-state">${t('noPrintersFound')}</div>`;
-        return;
-    }
+    const printers = printersInput && printersInput.length ? sortPrintersByStatus(printersInput) : [];
 
-    const printers = sortPrintersByStatus(printersInput);
-
-    printersGrid.innerHTML = printers.map(printer => {
+    const printerCardsHtml = printers.length ? printers.map(printer => {
         const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
         const normalizedStatus = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue) ? 'online' : 'offline';
         const isOnline = normalizedStatus === 'online';
@@ -1620,15 +1741,22 @@ function renderPrinters(printersInput) {
                 </div>
             </div>
         `;
-    }).join('');
+    }).join('') : `<div class="empty-state">${t('noPrintersFound')}</div>`;
 
-    printersGrid.querySelectorAll('.printer-card').forEach(card => {
+    printersGrid.innerHTML = printerCardsHtml + laserDashboardCardHtml(dashboardLaserStatus);
+
+    printersGrid.querySelectorAll('.printer-card[data-port]').forEach(card => {
         card.addEventListener('click', () => {
             const port = Number(card.dataset.port);
             const printer = allPrinters.find(p => p.port === port);
             if (printer) openPrinterModal(printer);
         });
     });
+
+    const laserDashboardCard = document.getElementById('laser-dashboard-card');
+    if (laserDashboardCard) {
+        laserDashboardCard.addEventListener('click', () => switchSection('laser'));
+    }
 }
 
 function updateActivePrintersCount() {
@@ -1989,6 +2117,36 @@ wireFileActionButtons(
     () => { selectedGcodeId = null; }
 );
 
+const gcodeSendLaserBtn = document.getElementById('gcode-send-laser-btn');
+if (gcodeSendLaserBtn) {
+    gcodeSendLaserBtn.addEventListener('click', async () => {
+        const model = currentGcodeData.files.find(entry => entry.id === selectedGcodeId);
+        if (!model) return;
+
+        const relPath = stripSectionPrefix(model.id, 'gcode');
+        const labelEl = gcodeSendLaserBtn.querySelector('span');
+        const originalLabel = labelEl ? labelEl.textContent : '';
+
+        try {
+            const formData = new FormData();
+            formData.append('path', relPath);
+            const response = await fetch('/api/laser/queue/add', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || 'No se pudo agregar a la cola del láser.');
+            }
+            if (labelEl) {
+                labelEl.textContent = t('sendToLaserAdded');
+                setTimeout(() => { labelEl.textContent = originalLabel; }, 1800);
+            }
+            refreshLaserQueue();
+        } catch (error) {
+            console.error(error);
+            alert(error.message || 'No se pudo agregar a la cola del láser.');
+        }
+    });
+}
+
 // ── Console & Macros ──
 function escapeHtml(value) {
     return String(value)
@@ -2171,6 +2329,675 @@ if (macrosPrinterSelect) {
     });
 }
 
+// ── Generic in-app confirm modal (reemplaza confirm() nativo) ──
+function appConfirm(message, title = '') {
+    return new Promise(resolve => {
+        const modal = document.getElementById('app-confirm-modal');
+        const titleEl = document.getElementById('app-confirm-title');
+        const messageEl = document.getElementById('app-confirm-message');
+        const okBtn = document.getElementById('app-confirm-ok-btn');
+        const cancelBtn = document.getElementById('app-confirm-cancel-btn');
+        const backdrop = document.getElementById('app-confirm-backdrop');
+
+        if (!modal || !okBtn || !cancelBtn || !backdrop) {
+            resolve(window.confirm(message));
+            return;
+        }
+
+        if (titleEl) titleEl.textContent = title;
+        if (messageEl) messageEl.textContent = message;
+        modal.classList.add('active');
+
+        const cleanup = (result) => {
+            modal.classList.remove('active');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            backdrop.removeEventListener('click', onCancel);
+            resolve(result);
+        };
+        const onOk = () => cleanup(true);
+        const onCancel = () => cleanup(false);
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        backdrop.addEventListener('click', onCancel);
+    });
+}
+
+// ── Toasts (notificaciones flotantes) ──
+function showToast(message, tone = 'success') {
+    let container = document.getElementById('app-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'app-toast-container';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `app-toast app-toast-${tone}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('visible'));
+    setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 4500);
+}
+
+// ── Detección de controladoras láser por USB ──
+let knownUsbPorts = null;
+let registeredLaserHosts = new Set();
+
+async function refreshRegisteredLasers() {
+    try {
+        const response = await fetch('/api/laser/registry');
+        const data = await response.json();
+        registeredLaserHosts = new Set((data.lasers || []).map(entry => entry.host));
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderUsbPorts(ports, newDevices) {
+    const container = document.getElementById('usb-ports-list');
+    if (!container) return;
+    if (!ports.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('laserUsbPortsEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = ports.map(port => {
+        const registered = registeredLaserHosts.has(`usb:${port.device}`);
+        const actionHtml = registered
+            ? `<span class="usb-port-registered-badge">${escapeHtml(t('usbPortRegistered'))}</span>`
+            : `<button type="button" class="btn-file-action usb-port-add-btn" data-device="${escapeHtml(port.device)}" data-chip="${escapeHtml(port.chip)}">${escapeHtml(t('usbPortAdd'))}</button>`;
+        return `
+            <div class="usb-port-item ${newDevices.has(port.device) ? 'usb-port-item-new' : ''}">
+                <div class="usb-port-item-info">
+                    <strong>${escapeHtml(port.device)}</strong>
+                    <span>${escapeHtml(port.chip)}${port.description ? ' · ' + escapeHtml(port.description) : ''}</span>
+                </div>
+                <span class="usb-port-vidpid">${escapeHtml(port.vid_pid)}</span>
+                ${actionHtml}
+            </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.usb-port-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openUsbClassifyModal(btn.dataset.device, btn.dataset.chip);
+        });
+    });
+}
+
+async function refreshUsbPorts() {
+    try {
+        await refreshRegisteredLasers();
+        const response = await fetch('/api/laser/usb-ports');
+        const data = await response.json();
+        const ports = data.ports || [];
+        const currentDevices = new Set(ports.map(p => p.device));
+        const newDevices = new Set();
+
+        if (knownUsbPorts !== null) {
+            currentDevices.forEach(device => {
+                if (!knownUsbPorts.has(device)) {
+                    newDevices.add(device);
+                    const port = ports.find(p => p.device === device);
+                    showToast(`${t('laserUsbPortDetected')}: ${port.chip} (${device})`);
+                }
+            });
+        }
+
+        knownUsbPorts = currentDevices;
+        renderUsbPorts(ports, newDevices);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+let usbClassifyTarget = null;
+
+function openUsbClassifyModal(device, chip) {
+    usbClassifyTarget = { device, chip };
+    const label = document.getElementById('usb-classify-device-label');
+    if (label) label.textContent = `${chip} · ${device}`;
+    const modal = document.getElementById('usb-classify-modal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeUsbClassifyModal() {
+    const modal = document.getElementById('usb-classify-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function handleUsbClassifyLaser() {
+    const target = usbClassifyTarget;
+    closeUsbClassifyModal();
+    if (!target) return;
+
+    showToast(t('usbTestingGrbl'));
+    try {
+        const formData = new FormData();
+        formData.append('device', target.device);
+        const response = await fetch('/api/laser/usb-ports/test', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('usbTestFailed'));
+        }
+
+        const confirmed = await appConfirm(
+            `${t('usbRegisterConfirm')} (${target.chip}, ${target.device})`,
+            t('usbClassifyLaser')
+        );
+        if (!confirmed) return;
+
+        const defaultName = target.chip === 'CH340' || target.chip === 'CH340K' ? 'Sculpfun' : target.chip;
+        const name = prompt(t('usbRegisterNamePrompt'), defaultName);
+        if (!name || !name.trim()) return;
+
+        const registerData = new FormData();
+        registerData.append('host', `usb:${target.device}`);
+        registerData.append('name', name.trim());
+        registerData.append('transport', 'usb');
+        await fetch('/api/laser/registry', { method: 'POST', body: registerData });
+
+        showToast(`${name.trim()}: ${t('usbRegisterSuccess')}`);
+        refreshUsbPorts();
+        if (document.getElementById('laser-host-select')) loadLaserHostSelector();
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('usbTestFailed'), 'error');
+    }
+}
+
+function handleUsbClassifyPrinter() {
+    closeUsbClassifyModal();
+    showToast(t('usbPrinterNotSupported'), 'error');
+}
+
+const usbClassifyLaserBtn = document.getElementById('usb-classify-laser-btn');
+if (usbClassifyLaserBtn) usbClassifyLaserBtn.addEventListener('click', handleUsbClassifyLaser);
+
+const usbClassifyPrinterBtn = document.getElementById('usb-classify-printer-btn');
+if (usbClassifyPrinterBtn) usbClassifyPrinterBtn.addEventListener('click', handleUsbClassifyPrinter);
+
+const usbClassifyCancelBtn = document.getElementById('usb-classify-cancel-btn');
+if (usbClassifyCancelBtn) usbClassifyCancelBtn.addEventListener('click', closeUsbClassifyModal);
+
+const usbClassifyBackdrop = document.getElementById('usb-classify-backdrop');
+if (usbClassifyBackdrop) usbClassifyBackdrop.addEventListener('click', closeUsbClassifyModal);
+
+// ── Laser (GRBL) ──
+let laserPollInterval = null;
+
+function renderLaserStatus(data) {
+    const dot = document.getElementById('laser-status-dot');
+    const text = document.getElementById('laser-status-text');
+    const pill = document.getElementById('laser-state-pill');
+    const position = document.getElementById('laser-position');
+    const feedSpeed = document.getElementById('laser-feed-speed');
+    const illustrationWrap = document.getElementById('laser-illustration-wrap');
+    const illustration = document.getElementById('laser-illustration');
+    if (!dot || !text) return;
+
+    const visualState = getLaserVisualState(data);
+    if (illustration) illustration.src = LASER_STATE_IMAGES[visualState];
+    if (illustrationWrap) illustrationWrap.classList.toggle('offline', visualState === 'offline');
+
+    if (!data || !data.connected) {
+        dot.classList.remove('online');
+        text.textContent = t('laserOffline');
+        if (pill) pill.textContent = '';
+        if (position) position.textContent = '—';
+        if (feedSpeed) feedSpeed.textContent = '—';
+        return;
+    }
+
+    dot.classList.add('online');
+    text.textContent = t('laserOnline');
+    if (pill) {
+        pill.textContent = data.state || '';
+        pill.className = `laser-state-pill state-${(data.state || '').toLowerCase()}`;
+    }
+    if (position) position.textContent = `X${data.x.toFixed(2)} Y${data.y.toFixed(2)} Z${data.z.toFixed(2)}`;
+    if (feedSpeed) feedSpeed.textContent = `${data.feed} / ${data.speed}`;
+}
+
+async function refreshLaserStatus() {
+    try {
+        const response = await fetch('/api/laser/status');
+        const data = await response.json();
+        renderLaserStatus(data);
+    } catch (error) {
+        console.error(error);
+        renderLaserStatus(null);
+    }
+}
+
+function renderLaserJob(job) {
+    const pauseBtn = document.getElementById('laser-pause-btn');
+    const resumeBtn = document.getElementById('laser-resume-btn');
+    const cancelBtn = document.getElementById('laser-cancel-btn');
+    const progressWrap = document.getElementById('laser-job-progress');
+    const progressFill = document.getElementById('laser-job-progress-fill');
+    const progressText = document.getElementById('laser-job-progress-text');
+    const errorEl = document.getElementById('laser-job-error');
+    if (!pauseBtn) return;
+
+    const state = job?.state || 'idle';
+    const isActive = state === 'running' || state === 'paused';
+
+    pauseBtn.hidden = state !== 'running';
+    resumeBtn.hidden = state !== 'paused';
+    cancelBtn.hidden = !isActive;
+
+    if (progressWrap) progressWrap.hidden = !isActive && state !== 'completed' && state !== 'error' && state !== 'cancelled';
+    if (progressFill) {
+        const percent = job?.total ? Math.round((job.current / job.total) * 100) : 0;
+        progressFill.style.width = `${percent}%`;
+    }
+    if (progressText) progressText.textContent = `${job?.current || 0} / ${job?.total || 0}`;
+    if (errorEl) errorEl.textContent = job?.error || '';
+
+    document.querySelectorAll('.laser-jog-btn, .laser-step-btn, #laser-unlock-btn').forEach(el => {
+        el.disabled = isActive;
+    });
+}
+
+async function refreshLaserJob() {
+    try {
+        const response = await fetch('/api/laser/job/status');
+        const data = await response.json();
+        renderLaserJob(data);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function stopLaserPolling() {
+    if (laserPollInterval) {
+        clearInterval(laserPollInterval);
+        laserPollInterval = null;
+    }
+}
+
+function startLaserPolling() {
+    stopLaserPolling();
+    refreshLaserStatus();
+    refreshLaserJob();
+    refreshLaserConsole();
+    refreshLaserQueue();
+    laserPollInterval = setInterval(() => {
+        refreshLaserStatus();
+        refreshLaserJob();
+        refreshLaserConsole();
+        refreshLaserQueue();
+    }, 2500);
+}
+
+function renderLaserQueue(queue) {
+    const container = document.getElementById('laser-queue-list');
+    if (!container) return;
+    if (!queue || !queue.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('laserQueueEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = queue.map(item => `
+        <div class="laser-queue-item" data-id="${item.id}">
+            <span class="laser-queue-item-name">${escapeHtml(item.filename)}</span>
+            <div class="laser-queue-item-actions">
+                <button type="button" class="theme-option-icon-btn" data-action="play" title="${t('laserQueuePlay')}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                </button>
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" data-action="remove" title="${t('laserQueueRemove')}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.laser-queue-item').forEach(row => {
+        const id = parseInt(row.dataset.id, 10);
+        row.querySelectorAll('button[data-action]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (btn.dataset.action === 'play') {
+                    if (!(await appConfirm(t('laserStartConfirm'), t('laserStart')))) return;
+                    try {
+                        const formData = new FormData();
+                        formData.append('id', id);
+                        const response = await fetch('/api/laser/queue/start', { method: 'POST', body: formData });
+                        if (!response.ok) {
+                            const data = await response.json().catch(() => ({}));
+                            throw new Error(data.detail || 'No se pudo iniciar el trabajo.');
+                        }
+                        refreshLaserJob();
+                        refreshLaserQueue();
+                    } catch (error) {
+                        console.error(error);
+                        alert(error.message || 'No se pudo iniciar el trabajo.');
+                    }
+                } else if (btn.dataset.action === 'remove') {
+                    try {
+                        const formData = new FormData();
+                        formData.append('id', id);
+                        await fetch('/api/laser/queue/remove', { method: 'POST', body: formData });
+                        refreshLaserQueue();
+                    } catch (error) {
+                        console.error(error);
+                    }
+                }
+            });
+        });
+    });
+}
+
+async function refreshLaserQueue() {
+    try {
+        const response = await fetch('/api/laser/queue');
+        const data = await response.json();
+        renderLaserQueue(data.queue || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderLaserBoardInfo(info) {
+    const container = document.getElementById('laser-info-grid');
+    if (!container) return;
+    const entries = Object.entries(info || {});
+    if (!entries.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('laserOffline')}</div>`;
+        return;
+    }
+    container.innerHTML = entries.map(([key, value]) => `
+        <div class="laser-info-compact-row">
+            <span>${escapeHtml(key)}</span>
+            <strong>${escapeHtml(String(value))}</strong>
+        </div>
+    `).join('');
+}
+
+async function loadLaserBoardInfo() {
+    try {
+        const response = await fetch('/api/laser/info');
+        if (!response.ok) throw new Error('No se pudo cargar la información de la placa');
+        const info = await response.json();
+        renderLaserBoardInfo(info);
+    } catch (error) {
+        console.error(error);
+        renderLaserBoardInfo(null);
+    }
+}
+
+let laserHostOptions = [];
+
+function renderLaserHostOptions(activeHost) {
+    const selectEl = document.getElementById('laser-host-select');
+    if (!selectEl) return;
+    if (!laserHostOptions.some(device => device.host === activeHost)) {
+        laserHostOptions = [{ host: activeHost, hostname: '' }, ...laserHostOptions];
+    }
+    selectEl.innerHTML = laserHostOptions.map(device => {
+        const label = device.hostname ? `${device.hostname} (${device.host})` : device.host;
+        return `<option value="${escapeHtml(device.host)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    selectEl.value = activeHost;
+}
+
+async function loadLaserHostSelector() {
+    try {
+        const [hostResponse, registryResponse] = await Promise.all([
+            fetch('/api/laser/host'),
+            fetch('/api/laser/registry'),
+        ]);
+        const hostData = await hostResponse.json();
+        const registryData = await registryResponse.json();
+
+        (registryData.lasers || []).forEach(entry => {
+            if (!laserHostOptions.some(device => device.host === entry.host)) {
+                laserHostOptions.push({ host: entry.host, hostname: entry.name });
+            }
+        });
+
+        renderLaserHostOptions(hostData.host);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function scanLaserNetwork() {
+    const scanBtn = document.getElementById('laser-scan-btn');
+    if (scanBtn) scanBtn.disabled = true;
+    try {
+        const response = await fetch('/api/laser/scan');
+        const data = await response.json();
+        laserHostOptions = data.devices || [];
+        const hostResponse = await fetch('/api/laser/host');
+        const hostData = await hostResponse.json();
+        renderLaserHostOptions(hostData.host);
+    } catch (error) {
+        console.error(error);
+    } finally {
+        if (scanBtn) scanBtn.disabled = false;
+    }
+}
+
+const laserHostSelect = document.getElementById('laser-host-select');
+if (laserHostSelect) {
+    laserHostSelect.addEventListener('change', async () => {
+        try {
+            const formData = new FormData();
+            formData.append('host', laserHostSelect.value);
+            await fetch('/api/laser/host', { method: 'POST', body: formData });
+            loadLaserBoardInfo();
+            refreshLaserStatus();
+            refreshLaserQueue();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
+const laserScanBtn = document.getElementById('laser-scan-btn');
+if (laserScanBtn) {
+    laserScanBtn.addEventListener('click', scanLaserNetwork);
+}
+
+function renderLaserConsoleLog(messages) {
+    const logEl = document.getElementById('laser-console-log');
+    if (!logEl) return;
+    if (!messages || !messages.length) {
+        logEl.innerHTML = '';
+        return;
+    }
+    const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
+    logEl.innerHTML = messages.map(msg => {
+        const time = msg.time ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+        return `<div class="console-line"><span class="console-line-time">${time}</span><span class="console-line-message">${escapeHtml(msg.message || '')}</span></div>`;
+    }).join('');
+    if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function refreshLaserConsole() {
+    try {
+        const response = await fetch('/api/laser/console?count=150');
+        const data = await response.json();
+        renderLaserConsoleLog(data.messages || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+const laserConsoleForm = document.getElementById('laser-console-form');
+if (laserConsoleForm) {
+    laserConsoleForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.getElementById('laser-console-input');
+        const command = input?.value.trim();
+        if (!command) return;
+        input.value = '';
+        await sendLaserRawCommand(command);
+        refreshLaserConsole();
+    });
+}
+
+function renderLaserSettings(settings) {
+    const container = document.getElementById('laser-settings-grid');
+    if (!container) return;
+    if (!settings || !settings.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('laserOffline')}</div>`;
+        return;
+    }
+    container.innerHTML = settings.map(setting => `
+        <div class="laser-settings-item" data-key="${setting.key}">
+            <span>${setting.key}</span>
+            <input type="text" value="${escapeHtml(setting.value)}" data-key="${setting.key}">
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.laser-settings-item input').forEach(input => {
+        input.addEventListener('keydown', async (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            input.blur();
+            const key = input.dataset.key;
+            const value = input.value.trim();
+            const item = input.closest('.laser-settings-item');
+            try {
+                const formData = new FormData();
+                formData.append('key', key);
+                formData.append('value', value);
+                const response = await fetch('/api/laser/settings', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.detail || 'No se pudo guardar el parámetro.');
+                }
+                if (item) {
+                    item.classList.add('saved');
+                    setTimeout(() => item.classList.remove('saved'), 1500);
+                }
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'No se pudo guardar el parámetro.');
+            }
+        });
+    });
+}
+
+async function loadLaserSettings() {
+    try {
+        const response = await fetch('/api/laser/settings');
+        if (!response.ok) throw new Error('No se pudo cargar la configuración');
+        const data = await response.json();
+        renderLaserSettings(data.settings || []);
+    } catch (error) {
+        console.error(error);
+        renderLaserSettings([]);
+    }
+}
+
+const laserSettingsReloadBtn = document.getElementById('laser-settings-reload-btn');
+if (laserSettingsReloadBtn) laserSettingsReloadBtn.addEventListener('click', loadLaserSettings);
+
+function loadLaserSection() {
+    loadLaserHostSelector();
+    loadLaserBoardInfo();
+    loadLaserSettings();
+    startLaserPolling();
+}
+
+const laserPauseBtn = document.getElementById('laser-pause-btn');
+if (laserPauseBtn) {
+    laserPauseBtn.addEventListener('click', async () => {
+        try {
+            await fetch('/api/laser/job/pause', { method: 'POST' });
+            refreshLaserJob();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
+const laserResumeBtn = document.getElementById('laser-resume-btn');
+if (laserResumeBtn) {
+    laserResumeBtn.addEventListener('click', async () => {
+        try {
+            await fetch('/api/laser/job/resume', { method: 'POST' });
+            refreshLaserJob();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
+const laserCancelBtn = document.getElementById('laser-cancel-btn');
+if (laserCancelBtn) {
+    laserCancelBtn.addEventListener('click', async () => {
+        if (!(await appConfirm(t('laserCancelConfirm'), t('laserCancel')))) return;
+        try {
+            await fetch('/api/laser/job/cancel', { method: 'POST' });
+            refreshLaserJob();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
+async function sendLaserRawCommand(command) {
+    try {
+        const formData = new FormData();
+        formData.append('command', command);
+        const response = await fetch('/api/laser/command', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error('No se pudo enviar el comando');
+        return true;
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+}
+
+let laserJogStep = 10;
+const LASER_JOG_FEED = 1500;
+
+document.querySelectorAll('.laser-jog-btn[data-axis]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const axis = btn.dataset.axis;
+        const dir = parseInt(btn.dataset.dir, 10);
+        const distance = (laserJogStep * dir).toFixed(3);
+        await sendLaserRawCommand(`$J=G91 G21 ${axis}${distance} F${LASER_JOG_FEED}`);
+        refreshLaserStatus();
+    });
+});
+
+document.querySelectorAll('.laser-step-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        laserJogStep = parseFloat(btn.dataset.step);
+        document.querySelectorAll('.laser-step-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+});
+
+function isLaserHomeConfirmEnabled() {
+    return localStorage.getItem('laserHomeConfirmEnabled') !== 'false';
+}
+
+const laserHomeBtn = document.getElementById('laser-home-btn');
+if (laserHomeBtn) {
+    laserHomeBtn.addEventListener('click', async () => {
+        if (isLaserHomeConfirmEnabled()) {
+            if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome')))) return;
+        }
+        await sendLaserRawCommand('$H');
+        refreshLaserStatus();
+    });
+}
+
+const laserUnlockBtn = document.getElementById('laser-unlock-btn');
+if (laserUnlockBtn) {
+    laserUnlockBtn.addEventListener('click', async () => {
+        await sendLaserRawCommand('$X');
+        refreshLaserStatus();
+    });
+}
+
 // ── Navigation ──
 function switchSection(sectionName) {
     // Hide all sections
@@ -2210,6 +3037,15 @@ function switchSection(sectionName) {
     }
     if (sectionName === 'macros') {
         loadMacrosSection();
+    }
+    if (sectionName === 'laser') {
+        loadLaserSection();
+    } else {
+        stopLaserPolling();
+    }
+    if (sectionName === 'settings') {
+        loadUpdatesStatus();
+        refreshUsbPorts();
     }
 }
 
@@ -2354,6 +3190,7 @@ const settingsTheme = document.getElementById('settings-theme');
 const settingsLanguage = document.getElementById('settings-language');
 const settingsPreviewQuality = document.getElementById('settings-preview-quality');
 const settingsAutoRefresh = document.getElementById('settings-autorefresh');
+const settingsLaserHomeConfirm = document.getElementById('settings-laser-home-confirm');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
 const settingsStatus = document.getElementById('settings-status');
 
@@ -2393,10 +3230,58 @@ function loadSettingsPanel() {
     updateCustomThemeCardUI();
     if (settingsTheme) settingsTheme.value = savedTheme;
     if (settingsLanguage) settingsLanguage.value = savedLanguage;
-    if (settingsPreviewQuality) settingsPreviewQuality.value = savedQuality;
+    if (settingsPreviewQuality) settingsPreviewQuality.checked = savedQuality === 'performance';
     if (settingsAutoRefresh) settingsAutoRefresh.checked = savedAutoRefresh !== 'false';
+    if (settingsLaserHomeConfirm) settingsLaserHomeConfirm.checked = isLaserHomeConfirmEnabled();
 
     setActiveThemeCard(savedTheme);
+}
+
+async function loadUpdatesStatus() {
+    const versionEl = document.getElementById('updates-version');
+    const pillEl = document.getElementById('updates-status-pill');
+    const metaEl = document.getElementById('updates-meta');
+    if (!versionEl || !pillEl) return;
+
+    pillEl.textContent = t('updatesChecking');
+    pillEl.className = 'updates-status-pill checking';
+
+    try {
+        const response = await fetch('/api/system/version');
+        if (!response.ok) throw new Error('No se pudo verificar la versión');
+        const data = await response.json();
+
+        versionEl.textContent = data.app_version ? `v${data.app_version}` : '—';
+
+        if (data.status === 'update_available') {
+            pillEl.textContent = t('updatesAvailable');
+            pillEl.className = 'updates-status-pill available';
+        } else if (data.status === 'up_to_date') {
+            pillEl.textContent = t('updatesUpToDate');
+            pillEl.className = 'updates-status-pill current';
+        } else {
+            pillEl.textContent = t('updatesUnknown');
+            pillEl.className = 'updates-status-pill unknown';
+        }
+
+        if (metaEl) {
+            const parts = [];
+            if (data.branch) parts.push(data.branch);
+            if (data.commit) parts.push(data.commit);
+            if (data.date) parts.push(new Date(data.date).toLocaleString());
+            if (data.status === 'update_available' && data.behind) parts.push(`${data.behind} commit(s) atrás`);
+            metaEl.textContent = parts.join(' · ');
+        }
+    } catch (error) {
+        console.error(error);
+        pillEl.textContent = t('updatesUnknown');
+        pillEl.className = 'updates-status-pill unknown';
+    }
+}
+
+const updatesCheckBtn = document.getElementById('updates-check-btn');
+if (updatesCheckBtn) {
+    updatesCheckBtn.addEventListener('click', loadUpdatesStatus);
 }
 
 function getAutoRefreshEnabled() {
@@ -2425,10 +3310,13 @@ function saveSettings() {
         if (langDisplay) langDisplay.textContent = languageValue.toUpperCase();
     }
     if (settingsPreviewQuality) {
-        localStorage.setItem('previewQuality', settingsPreviewQuality.value);
+        localStorage.setItem('previewQuality', settingsPreviewQuality.checked ? 'performance' : 'standard');
     }
     if (settingsAutoRefresh) {
         localStorage.setItem('autoRefreshPrinters', settingsAutoRefresh.checked ? 'true' : 'false');
+    }
+    if (settingsLaserHomeConfirm) {
+        localStorage.setItem('laserHomeConfirmEnabled', settingsLaserHomeConfirm.checked ? 'true' : 'false');
     }
     setupPrinterRefresh();
     if (settingsStatus) {
@@ -2465,6 +3353,9 @@ if (settingsPreviewQuality) {
 }
 if (settingsAutoRefresh) {
     settingsAutoRefresh.addEventListener('change', saveSettings);
+}
+if (settingsLaserHomeConfirm) {
+    settingsLaserHomeConfirm.addEventListener('change', saveSettings);
 }
 if (settingsSaveBtn) {
     settingsSaveBtn.addEventListener('click', saveSettings);
@@ -2624,7 +3515,11 @@ loadModels();
 loadPrinters();
 loadRecentPrinterFiles();
 loadTopbarServerStats();
+refreshDashboardLaserCard();
+refreshUsbPorts();
 
 // Refresh printers every 5 seconds
 setInterval(loadPrinters, 5000);
 setInterval(loadTopbarServerStats, 10000);
+setInterval(refreshDashboardLaserCard, 4000);
+setInterval(refreshUsbPorts, 8000);
