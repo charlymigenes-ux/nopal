@@ -14,7 +14,7 @@
   <tr>
     <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/9c682844-5b96-4828-b52c-0bded137b954" /></td>
     <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/a058caab-656c-47b9-91bb-5a50cbe8c393" /></td>
-    <td></td>
+    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/1d1f7ee0-c43a-425a-beaf-339e33201df7" /></td>
   </tr>
 </table>
 
