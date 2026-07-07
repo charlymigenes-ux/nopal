@@ -366,6 +366,21 @@ _serial_connections: Dict[str, Any] = {}  # usb (serial.Serial), keyed por host 
 _serial_reader_threads: Dict[str, threading.Thread] = {}
 _serial_stop_flags: Dict[str, threading.Event] = {}
 
+_main_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """Guarda una referencia al loop principal de FastAPI/uvicorn.
+
+    _ensure_serial_listener() se dispara desde un hilo de ThreadPoolExecutor
+    (via run_in_executor), donde asyncio.get_event_loop() ya no funciona en
+    Python 3.13 ('no hay event loop en este hilo'). El hilo lector de serie
+    necesita ese loop para reenviar datos de forma segura con
+    call_soon_threadsafe, así que lo capturamos una vez al arrancar la app.
+    """
+    global _main_loop
+    _main_loop = loop
+
 
 async def _ws_listener_loop(host: str):
     uri = f"ws://{host}:{WS_PORT}"
@@ -443,7 +458,11 @@ def _ensure_serial_listener(host: str, baud: int = 115200):
     _listener_ready_events.setdefault(host, asyncio.Event()).clear()
     _subscribers.setdefault(host, [])
     _serial_stop_flags[host] = threading.Event()
-    loop = asyncio.get_event_loop()
+    loop = _main_loop
+    if loop is None:
+        # Fallback por si se llama fuera de una app FastAPI ya arrancada
+        # (p. ej. en un script suelto): intenta el loop del hilo actual.
+        loop = asyncio.get_event_loop()
     device = _usb_device(host)
     thread = threading.Thread(
         target=_serial_reader_loop,
