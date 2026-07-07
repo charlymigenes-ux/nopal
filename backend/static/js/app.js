@@ -4305,6 +4305,23 @@ function switchSection(sectionName) {
         loadUpdatesStatus();
         refreshUsbPorts();
     }
+    if (sectionName === 'help') {
+        loadHelpVersion();
+    }
+}
+
+async function loadHelpVersion() {
+    const badge = document.getElementById('help-version-badge');
+    if (!badge) return;
+    try {
+        const response = await fetch('/api/system/version');
+        if (!response.ok) throw new Error('No se pudo cargar la versión');
+        const data = await response.json();
+        badge.textContent = data.app_version ? `v${data.app_version}` : '—';
+    } catch (error) {
+        console.error(error);
+        badge.textContent = '—';
+    }
 }
 
 // Add click listeners to nav items

@@ -3368,6 +3368,23 @@ body.green .laser-start-confirm-copies input {
     color: var(--text);
 }
 
+.help-about-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.help-version-badge {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(34, 197, 94, 0.14);
+    color: var(--green-dark);
+}
+
 .updates-status-pill-wrap {
     position: relative;
     display: inline-flex;
