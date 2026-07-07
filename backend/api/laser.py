@@ -1,7 +1,8 @@
+import asyncio
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from backend.services.laser_service import (
     get_status,
@@ -29,6 +30,12 @@ from backend.services.laser_service import (
     get_registered_lasers,
     register_laser,
     unregister_laser,
+    sd_list_files,
+    sd_create_folder,
+    sd_delete_entry,
+    sd_upload_file,
+    has_sd_card,
+    start_sd_job,
 )
 from backend.utils import safe_section_path
 
@@ -98,10 +105,11 @@ async def laser_registry_remove_endpoint(host: str = Form(...)):
 @router.get("/api/laser/status")
 async def laser_status_endpoint(host: Optional[str] = None):
     """Estado en vivo del láser (posición, estado GRBL) vía websocket."""
-    status = await get_status(host=host or get_active_host())
+    resolved_host = host or get_active_host()
+    status = await get_status(host=resolved_host)
     if status is None:
-        return {"connected": False}
-    return {"connected": True, **status}
+        return {"connected": False, "host": resolved_host}
+    return {"connected": True, "host": resolved_host, **status}
 
 
 @router.get("/api/laser/info")
@@ -143,27 +151,27 @@ async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = 
 
 
 @router.get("/api/laser/job/status")
-async def laser_job_status_endpoint():
-    return get_job_status()
+async def laser_job_status_endpoint(host: Optional[str] = None):
+    return get_job_status(host or get_active_host())
 
 
 @router.post("/api/laser/job/pause")
-async def laser_job_pause_endpoint():
-    if not pause_job():
+async def laser_job_pause_endpoint(host: Optional[str] = Form(None)):
+    if not pause_job(host or get_active_host()):
         raise HTTPException(status_code=409, detail="No hay un trabajo en curso para pausar")
     return {"success": True}
 
 
 @router.post("/api/laser/job/resume")
-async def laser_job_resume_endpoint():
-    if not resume_job():
+async def laser_job_resume_endpoint(host: Optional[str] = Form(None)):
+    if not resume_job(host or get_active_host()):
         raise HTTPException(status_code=409, detail="No hay un trabajo pausado para reanudar")
     return {"success": True}
 
 
 @router.post("/api/laser/job/cancel")
-async def laser_job_cancel_endpoint():
-    if not cancel_job():
+async def laser_job_cancel_endpoint(host: Optional[str] = Form(None)):
+    if not cancel_job(host or get_active_host()):
         raise HTTPException(status_code=409, detail="No hay un trabajo en curso para cancelar")
     return {"success": True}
 
@@ -225,12 +233,27 @@ async def laser_queue_remove_endpoint(id: int = Form(...)):
     return {"success": True}
 
 
+@router.get("/api/laser/sd/available")
+async def laser_sd_available_endpoint(host: Optional[str] = None):
+    """Indica si la placa activa tiene una tarjeta SD navegable."""
+    target = host or get_active_host()
+    loop = asyncio.get_event_loop()
+    available = await loop.run_in_executor(None, has_sd_card, target)
+    return {"available": available}
+
+
 @router.post("/api/laser/queue/start")
 async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = Form(None)):
-    """Saca un trabajo de la cola y lo empieza a enviar al láser."""
-    current = get_job_status()
+    """Saca un trabajo de la cola y lo empieza a enviar al láser.
+
+    Si la placa tiene tarjeta SD, primero sube el archivo y lo corre local
+    (más confiable para archivos grandes); si no, lo transmite línea por línea.
+    """
+    target = host or get_active_host()
+
+    current = get_job_status(target)
     if current.get("state") in ("running", "paused"):
-        raise HTTPException(status_code=409, detail="Ya hay un trabajo en curso en el láser")
+        raise HTTPException(status_code=409, detail="Ya hay un trabajo en curso en este láser")
 
     entry = pop_from_queue(id)
     if entry is None:
@@ -240,8 +263,96 @@ async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = 
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
-    with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
-        gcode_text = handle.read()
+    loop = asyncio.get_event_loop()
+    sd_available = await loop.run_in_executor(None, has_sd_card, target)
 
-    job = start_job(host or get_active_host(), gcode_text, filename=entry["filename"])
+    try:
+        if sd_available:
+            with open(file_path, "rb") as handle:
+                contents = handle.read()
+            uploaded = await loop.run_in_executor(None, sd_upload_file, target, "/", entry["filename"], contents)
+            if not uploaded:
+                raise HTTPException(status_code=502, detail="No se pudo subir el archivo a la SD")
+            job = start_sd_job(target, entry["filename"])
+        else:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+                gcode_text = handle.read()
+            job = start_job(target, gcode_text, filename=entry["filename"])
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
     return job
+
+
+@router.get("/api/laser/sd/files")
+async def laser_sd_files_endpoint(path: str = "/", host: Optional[str] = None):
+    """Lista archivos/carpetas de la tarjeta SD insertada en la placa (ESP3D)."""
+    target = host or get_active_host()
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, sd_list_files, target, path)
+
+
+@router.post("/api/laser/sd/folder")
+async def laser_sd_folder_endpoint(path: str = Form(""), name: str = Form(...), host: Optional[str] = Form(None)):
+    """Crea una carpeta en la tarjeta SD."""
+    target = host or get_active_host()
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(None, sd_create_folder, target, path, name)
+    if not success:
+        raise HTTPException(status_code=502, detail="No se pudo crear la carpeta en la SD")
+    return {"success": True}
+
+
+@router.post("/api/laser/sd/delete")
+async def laser_sd_delete_endpoint(
+    path: str = Form(""),
+    name: str = Form(...),
+    is_dir: bool = Form(False),
+    host: Optional[str] = Form(None),
+):
+    """Elimina un archivo o carpeta de la tarjeta SD."""
+    target = host or get_active_host()
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(None, sd_delete_entry, target, path, name, is_dir)
+    if not success:
+        raise HTTPException(status_code=502, detail="No se pudo eliminar en la SD")
+    return {"success": True}
+
+
+@router.post("/api/laser/sd/upload")
+async def laser_sd_upload_endpoint(
+    path: str = Form(""),
+    host: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+):
+    """Sube un archivo (desde tu computadora) directo a la tarjeta SD de la placa."""
+    target = host or get_active_host()
+    contents = await file.read()
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(None, sd_upload_file, target, path, file.filename, contents)
+    if not success:
+        raise HTTPException(status_code=502, detail="No se pudo subir el archivo a la SD")
+    return {"success": True}
+
+
+@router.post("/api/laser/sd/upload-from-library")
+async def laser_sd_upload_from_library_endpoint(
+    gcode_path: str = Form(...),
+    sd_path: str = Form(""),
+    host: Optional[str] = Form(None),
+):
+    """Envía un archivo ya subido a la biblioteca de G-code de NOPAL directo a la SD de la placa."""
+    file_path = safe_section_path("gcode", gcode_path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en la biblioteca")
+
+    with open(file_path, "rb") as handle:
+        contents = handle.read()
+
+    filename = os.path.basename(gcode_path)
+    target = host or get_active_host()
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(None, sd_upload_file, target, sd_path, filename, contents)
+    if not success:
+        raise HTTPException(status_code=502, detail="No se pudo subir el archivo a la SD")
+    return {"success": True}

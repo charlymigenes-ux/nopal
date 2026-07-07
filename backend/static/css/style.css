@@ -115,9 +115,10 @@ body.green .sidebar {
 }
 
 .brand-logo {
-    width: 100%;
-    max-width: 150px;
+    width: auto;
+    //max-width: 150px;
     height: auto;
+    max-height: 140px;
     object-fit: contain;
 }
 
@@ -160,9 +161,10 @@ body.green .sidebar {
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 5px;
     margin-top: auto;
-    padding: 12px;
+    margin-bottom: 6px;
+    padding: 8px;
     background: var(--card-bg);
     border-radius: var(--radius-lg);
 }
@@ -745,11 +747,17 @@ body.green .topbar-search input::placeholder {
 }
 
 .settings-card {
-    background: var(--card-bg);
+    background: var(--panel-bg);
+    backdrop-filter: blur(8px);
     border: 1px solid rgba(0,0,0,0.08);
     border-radius: var(--radius-lg);
     padding: 24px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.08);
+}
+
+body.dark .settings-card,
+body.green .settings-card {
+    border-color: rgba(255, 255, 255, 0.08);
 }
 
 .settings-card h2 {
@@ -1212,6 +1220,28 @@ body.green .topbar-search input::placeholder {
     color: #fecaca;
 }
 
+.laser-card-accent .laser-card-subtitle,
+.laser-card-accent .laser-sd-row-size,
+.laser-card-accent .breadcrumb-sep {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.laser-card-accent .laser-sd-row {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.laser-card-accent .laser-sd-row-name {
+    color: #fff;
+}
+
+.laser-card-accent .breadcrumb-segment {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.laser-card-accent .laser-sd-from-library {
+    border-bottom-color: rgba(255, 255, 255, 0.18);
+}
+
 @media (max-width: 860px) {
     .laser-row {
         flex-direction: column;
@@ -1313,6 +1343,7 @@ body.green .topbar-search input::placeholder {
     flex-shrink: 0;
     width: 35%;
     max-width: 115px;
+    cursor: pointer;
 }
 
 .laser-illustration-compact img {
@@ -1438,13 +1469,13 @@ body.green .topbar-search input::placeholder {
 
 .laser-jog-pad {
     display: grid;
-    grid-template-columns: repeat(3, 52px);
-    grid-template-rows: repeat(3, 52px);
+    grid-template-columns: repeat(3, 60px);
+    grid-template-rows: repeat(3, 60px);
     grid-template-areas:
         ".       yplus  ."
         "xminus  home   xplus"
         ".       yminus .";
-    gap: 6px;
+    gap: 7px;
 }
 
 .laser-jog-slot-yplus { grid-area: yplus; }
@@ -1540,6 +1571,139 @@ body.green .topbar-search input::placeholder {
     margin-top: 20px;
 }
 
+.laser-goto-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.laser-goto-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.laser-goto-field label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.laser-goto-field input {
+    width: 90px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.laser-fire-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 36px;
+    margin-top: 22px;
+}
+
+.laser-fire-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.laser-fire-btn {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    border: none;
+    background: radial-gradient(circle at 35% 30%, #ff5c5c, #dc2626 60%, #b91c1c);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18), 0 8px 20px rgba(220, 38, 38, 0.45);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.laser-fire-btn:hover {
+    transform: scale(1.05);
+}
+
+.laser-fire-btn.active {
+    background: radial-gradient(circle at 35% 30%, #4ade80, #16a34a 60%, #15803d);
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25), 0 8px 24px rgba(22, 163, 74, 0.5);
+    animation: laserFirePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes laserFirePulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25), 0 8px 24px rgba(22, 163, 74, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.12), 0 8px 24px rgba(22, 163, 74, 0.5); }
+}
+
+.laser-air-btn {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    border: none;
+    background: radial-gradient(circle at 35% 30%, #60a5fa, #2563eb 60%, #1d4ed8);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18), 0 8px 20px rgba(37, 99, 235, 0.45);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.laser-air-btn:hover {
+    transform: scale(1.05);
+}
+
+.laser-air-btn.active {
+    animation: laserAirPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes laserAirPulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.25), 0 8px 24px rgba(37, 99, 235, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.12), 0 8px 24px rgba(37, 99, 235, 0.5); }
+}
+
+.laser-fire-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.laser-fire-power {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.laser-fire-power label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.laser-fire-power input {
+    width: 64px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
 .laser-card-header-row {
     display: flex;
     align-items: flex-start;
@@ -1564,37 +1728,192 @@ body.green .topbar-search input::placeholder {
     font-size: 0.85rem;
 }
 
+.laser-settings-modal-content {
+    width: 92%;
+    max-width: 640px;
+    height: auto;
+    max-height: 85vh;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+.laser-settings-modal-header h2 {
+    margin: 0 0 6px;
+}
+
+.laser-sd-header-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.laser-sd-header-row .laser-card-subtitle {
+    margin: 0;
+}
+
+.laser-sd-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.laser-sd-breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.laser-sd-toolbar-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.laser-sd-upload-label {
+    cursor: pointer;
+}
+
+.laser-sd-from-library {
+    display: flex;
+    gap: 10px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.laser-sd-from-library .settings-select {
+    flex: 1;
+}
+
+.laser-sd-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 120px;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.laser-sd-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+
+.laser-sd-row-icon {
+    color: #22c55e;
+    flex-shrink: 0;
+}
+
+.laser-sd-row-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.laser-sd-row-name:hover {
+    color: #22c55e;
+}
+
+.laser-sd-row-size {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.laser-settings-field {
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.laser-name-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.laser-name-row input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+
+.laser-settings-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
 .laser-settings-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 10px;
-    max-height: 360px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 340px;
     overflow-y: auto;
     padding-right: 4px;
 }
 
 .laser-settings-item {
     background: rgba(255, 255, 255, 0.05);
-    border-radius: var(--radius-md);
-    padding: 8px 12px;
+    border-radius: 10px;
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 
-.laser-settings-item span {
+.laser-settings-item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.laser-settings-item-label {
+    flex-shrink: 0;
+    width: 48px;
     font-size: 0.72rem;
     color: var(--text-muted);
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
+.laser-settings-item-hint {
+    margin: 0;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    color: #f59e0b;
+}
+
 .laser-settings-item input {
+    flex: 1;
+    min-width: 0;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     background: var(--bg);
     color: var(--text);
-    padding: 6px 8px;
-    font-size: 0.85rem;
+    padding: 5px 8px;
+    font-size: 0.82rem;
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
@@ -1723,6 +2042,11 @@ body.green .topbar-search input::placeholder {
 .theme-option-icon-btn:hover {
     background: rgba(34, 197, 94, 0.22);
     color: #16a34a;
+}
+
+.laser-scan-btn-lg {
+    width: 30px;
+    height: 30px;
 }
 
 .theme-option-icon-btn-danger {
@@ -1877,6 +2201,25 @@ body.green .topbar-search input::placeholder {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+}
+
+.laser-start-confirm-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.laser-start-confirm-actions .btn-file-action {
+    justify-content: center;
+}
+
+.laser-start-confirm-row {
+    display: flex;
+    gap: 10px;
+}
+
+.laser-start-confirm-row .btn-file-action {
+    flex: 1;
 }
 
 .laser-queue-list {
@@ -2105,6 +2448,11 @@ body.green .topbar-search input::placeholder {
     color: var(--text);
 }
 
+.updates-status-pill-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
 .updates-status-pill {
     font-size: 0.75rem;
     font-weight: 700;
@@ -2112,6 +2460,51 @@ body.green .topbar-search input::placeholder {
     border-radius: 999px;
     background: rgba(148, 163, 184, 0.16);
     color: var(--text-muted);
+    cursor: default;
+}
+
+.updates-status-pill.available {
+    cursor: help;
+}
+
+.updates-pill-tooltip {
+    display: none;
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    z-index: 20;
+    min-width: 220px;
+    max-width: 300px;
+    background: var(--card-bg);
+    color: var(--text);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+.updates-status-pill-wrap.show-tooltip .updates-pill-tooltip {
+    display: block;
+}
+
+.updates-pill-tooltip-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #f59e0b;
+    margin-bottom: 8px;
+}
+
+.updates-pill-tooltip ul {
+    margin: 0;
+    padding-left: 16px;
+    display: grid;
+    gap: 4px;
+}
+
+.updates-pill-tooltip li {
+    font-size: 0.76rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    color: var(--text);
 }
 
 .updates-status-pill.current {
@@ -2134,6 +2527,40 @@ body.green .topbar-search input::placeholder {
     margin: 0 0 16px;
     color: var(--text-muted);
     font-size: 0.78rem;
+}
+
+.updates-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.updates-changelog {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    border-radius: var(--radius-md);
+}
+
+.updates-changelog-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #22c55e;
+    margin-bottom: 8px;
+}
+
+.updates-changelog ul {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 4px;
+}
+
+.updates-changelog li {
+    font-size: 0.8rem;
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 .usb-ports-list {
@@ -2231,6 +2658,12 @@ body.green .topbar-search input::placeholder {
 .usb-port-add-btn {
     padding: 6px 12px;
     font-size: 0.78rem;
+}
+
+.usb-port-registered {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .usb-port-registered-badge {
@@ -2361,16 +2794,16 @@ body.green .models-table tbody tr.selected {
 }
 
 .btn-icon-light {
-    height: 44px;
-    padding: 0 14px;
+    height: 34px;
+    padding: 0 10px;
     background: var(--surface);
     color: var(--black);
     border-radius: var(--radius-sm);
 }
 
 .theme-toggle {
-    width: 44px;
-    height: 44px;
+    width: 34px;
+    height: 34px;
     padding: 0;
     justify-content: center;
 }
@@ -2980,7 +3413,7 @@ header {
 }
 
 #lang-toggle {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.5px;
 }
@@ -3033,19 +3466,19 @@ header {
 
 .printers-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
 }
 
 .printer-card {
     background: var(--panel-bg);
     border-radius: var(--radius-lg);
-    padding: 24px;
+    padding: 19px;
     box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
     transition: transform 0.18s ease, box-shadow 0.18s ease;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 13px;
     cursor: pointer;
 }
 
@@ -3066,10 +3499,16 @@ header {
 }
 
 .printer-name {
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--text);
     margin: 0;
+}
+
+.printer-name-sub {
+    font-size: 0.64rem;
+    color: var(--text-muted);
+    margin: 2px 0 0;
 }
 
 .printer-status-icon {
@@ -3087,8 +3526,8 @@ header {
 .printer-status-line {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
+    gap: 6px;
+    font-size: 0.72rem;
     font-weight: 600;
     color: #999;
 }
@@ -3106,8 +3545,8 @@ header {
 }
 
 .printer-status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: #999;
     flex-shrink: 0;
@@ -3135,8 +3574,8 @@ header {
 }
 
 .printer-illustration img {
-    width: 130px;
-    height: 130px;
+    width: 104px;
+    height: 104px;
     object-fit: contain;
 }
 
@@ -3147,29 +3586,29 @@ header {
 
 .laser-dashboard-metric {
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-    font-size: 0.95rem;
+    font-size: 0.76rem;
 }
 
 .printer-temps {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 15px;
+    gap: 12px;
 }
 
 .temp-label {
-    font-size: 0.85rem;
+    font-size: 0.68rem;
     color: var(--text-muted);
-    margin-bottom: 6px;
+    margin-bottom: 5px;
 }
 
 .temp-value {
-    font-size: 1.4rem;
+    font-size: 1.12rem;
     font-weight: 700;
     color: var(--orange);
 }
 
 .temp-unit {
-    font-size: 0.85rem;
+    font-size: 0.68rem;
     color: var(--orange);
     margin-left: 2px;
 }
@@ -3177,14 +3616,14 @@ header {
 .printer-progress-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 0.85rem;
+    font-size: 0.68rem;
     font-weight: 700;
     color: var(--green-dark);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .temp-progress {
-    height: 8px;
+    height: 6px;
     background: rgba(148, 163, 184, 0.25);
     border-radius: 999px;
     overflow: hidden;

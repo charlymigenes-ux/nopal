@@ -270,6 +270,83 @@ def get_board_info(host: str = DEFAULT_LASER_HOST) -> Dict[str, Any]:
     return info
 
 
+# ── Tarjeta SD (ESP3D, solo placas de red) ──
+#
+# El endpoint real de ESP3D para la SD (descubierto inspeccionando su propio
+# WebUI) es `/upload`, no `/files` (ese solo sirve la memoria interna SPIFFS
+# y en esta placa siempre reporta vacío). `/upload?path=X` (GET) lista, y con
+# `action=delete|deletedir|createdir&filename=Y` administra archivos/carpetas.
+# La subida real es POST multipart con un campo `path`, un campo
+# `<path><nombre>S` con el tamaño en bytes, y el archivo en `myfile[]`.
+
+SD_HTTP_TIMEOUT = 30
+
+
+def _normalize_sd_path(path: str) -> str:
+    path = path or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    if not path.endswith("/"):
+        path += "/"
+    return path
+
+
+def sd_list_files(host: str, path: str = "/") -> Dict[str, Any]:
+    if _is_usb_host(host):
+        return {"status": "error", "message": "La tarjeta SD solo está disponible en placas de red (ESP3D)", "files": [], "path": path}
+    try:
+        response = requests.get(
+            f"http://{host}/upload",
+            params={"path": _normalize_sd_path(path)},
+            timeout=SD_HTTP_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+    except (requests.exceptions.RequestException, ValueError) as e:
+        return {"status": "error", "message": str(e), "files": [], "path": path}
+
+
+def sd_create_folder(host: str, path: str, name: str) -> bool:
+    try:
+        response = requests.get(
+            f"http://{host}/upload",
+            params={"path": _normalize_sd_path(path), "action": "createdir", "filename": name},
+            timeout=HTTP_TIMEOUT,
+        )
+        return response.ok
+    except requests.exceptions.RequestException:
+        return False
+
+
+def sd_delete_entry(host: str, path: str, name: str, is_dir: bool) -> bool:
+    action = "deletedir" if is_dir else "delete"
+    try:
+        response = requests.get(
+            f"http://{host}/upload",
+            params={"path": _normalize_sd_path(path), "action": action, "filename": name},
+            timeout=HTTP_TIMEOUT,
+        )
+        return response.ok
+    except requests.exceptions.RequestException:
+        return False
+
+
+def sd_upload_file(host: str, path: str, filename: str, file_bytes: bytes) -> bool:
+    norm_path = _normalize_sd_path(path)
+    full_name = f"{norm_path}{filename}"
+    size_field = f"{full_name}S"
+    try:
+        response = requests.post(
+            f"http://{host}/upload",
+            data={"path": norm_path, size_field: str(len(file_bytes))},
+            files={"myfile[]": (full_name, file_bytes)},
+            timeout=120,
+        )
+        return response.ok
+    except requests.exceptions.RequestException:
+        return False
+
+
 # ── Conexión (websocket o serie) única y compartida por host ──
 #
 # La placa (ESP32 con ESP3D) solo soporta UN cliente websocket a la vez: abrir
@@ -502,10 +579,11 @@ async def set_grbl_setting(host: str, key: str, value: str, timeout: float = 4.0
 
 
 class LaserJob:
-    def __init__(self, host: str, lines: List[str], filename: str = ""):
+    def __init__(self, host: str, lines: List[str], filename: str = "", source: str = "stream"):
         self.host = host
         self.lines = lines
         self.filename = filename
+        self.source = source  # "stream" (línea por línea vía WiFi/USB) o "sd" (corre local desde la SD)
         self.total = len([line for line in lines if line.strip() and not line.strip().startswith((";", "("))])
         self.current = 0
         self.state = "running"
@@ -516,6 +594,7 @@ class LaserJob:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "filename": self.filename,
+            "source": self.source,
             "state": self.state,
             "current": self.current,
             "total": self.total,
@@ -523,10 +602,13 @@ class LaserJob:
         }
 
 
-_current_job: Optional[LaserJob] = None
+# Un trabajo activo por placa (host) — así se puede correr un trabajo distinto
+# en cada láser/impresora al mismo tiempo, sin que uno bloquee a los demás.
+_jobs: Dict[str, LaserJob] = {}
 
 
 async def _run_job(job: LaserJob):
+    """Streaming línea por línea (WiFi/USB), esperando el 'ok' de cada línea."""
     await ensure_listener_ready(job.host)
     queue = _subscribe(job.host)
     loop = asyncio.get_event_loop()
@@ -581,48 +663,119 @@ async def _run_job(job: LaserJob):
         _unsubscribe(job.host, queue)
 
 
+async def _run_sd_job(job: LaserJob):
+    """Corre un archivo ya subido a la SD directo en la placa ($F=archivo),
+    sin transmitir línea por línea. El progreso se seduce del estado GRBL
+    (Run -> Idle = terminado; Alarm = error)."""
+    sd_filename = job.filename
+    sent = await asyncio.get_event_loop().run_in_executor(
+        None, send_raw_command, job.host, f"$F={sd_filename}"
+    )
+    if not sent:
+        job.state = "error"
+        job.error_message = "No se pudo iniciar el trabajo desde la SD"
+        return
+
+    await asyncio.sleep(2)  # da tiempo a que la placa deje Idle y entre a Run
+
+    try:
+        while True:
+            if job.cancel_requested:
+                await asyncio.get_event_loop().run_in_executor(None, send_raw_command, job.host, "\x18")
+                job.state = "cancelled"
+                return
+
+            while job.pause_requested:
+                await asyncio.sleep(0.5)
+                if job.cancel_requested:
+                    await asyncio.get_event_loop().run_in_executor(None, send_raw_command, job.host, "\x18")
+                    job.state = "cancelled"
+                    return
+
+            status = await get_status(job.host, timeout=3)
+            if status:
+                state_value = (status.get("state") or "").lower()
+                if state_value == "alarm":
+                    job.state = "error"
+                    job.error_message = "La placa reportó una alarma"
+                    return
+                if state_value == "idle":
+                    job.state = "completed"
+                    return
+
+            await asyncio.sleep(2)
+    except Exception as e:
+        job.state = "error"
+        job.error_message = str(e)
+
+
 def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:
-    global _current_job
-    if _current_job is not None and _current_job.state in ("running", "paused"):
-        raise RuntimeError("Ya hay un trabajo en curso en el láser")
+    """Inicia streaming línea por línea (WiFi/USB) — para placas sin SD."""
+    existing = _jobs.get(host)
+    if existing is not None and existing.state in ("running", "paused"):
+        raise RuntimeError("Ya hay un trabajo en curso en este láser")
 
     lines = gcode_text.splitlines()
-    job = LaserJob(host, lines, filename)
-    _current_job = job
+    job = LaserJob(host, lines, filename, source="stream")
+    _jobs[host] = job
     asyncio.create_task(_run_job(job))
     return job.to_dict()
 
 
-def get_job_status() -> Dict[str, Any]:
-    if _current_job is None:
-        return {"filename": "", "state": "idle", "current": 0, "total": 0, "error": None}
-    return _current_job.to_dict()
+def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:
+    """Inicia un trabajo ya subido a la SD, corriéndolo localmente en la placa."""
+    existing = _jobs.get(host)
+    if existing is not None and existing.state in ("running", "paused"):
+        raise RuntimeError("Ya hay un trabajo en curso en este láser")
+
+    job = LaserJob(host, [], sd_filename, source="sd")
+    _jobs[host] = job
+    asyncio.create_task(_run_sd_job(job))
+    return job.to_dict()
 
 
-def pause_job() -> bool:
-    if _current_job and _current_job.state == "running":
-        _current_job.pause_requested = True
-        _current_job.state = "paused"
-        send_raw_command(_current_job.host, "!")
+def get_job_status(host: str) -> Dict[str, Any]:
+    job = _jobs.get(host)
+    if job is None:
+        return {"filename": "", "source": "", "state": "idle", "current": 0, "total": 0, "error": None}
+    return job.to_dict()
+
+
+def pause_job(host: str) -> bool:
+    job = _jobs.get(host)
+    if job and job.state == "running":
+        job.pause_requested = True
+        job.state = "paused"
+        send_raw_command(job.host, "!")
         return True
     return False
 
 
-def resume_job() -> bool:
-    if _current_job and _current_job.state == "paused":
-        _current_job.pause_requested = False
-        _current_job.state = "running"
-        send_raw_command(_current_job.host, "~")
+def resume_job(host: str) -> bool:
+    job = _jobs.get(host)
+    if job and job.state == "paused":
+        job.pause_requested = False
+        job.state = "running"
+        send_raw_command(job.host, "~")
         return True
     return False
 
 
-def cancel_job() -> bool:
-    if _current_job and _current_job.state in ("running", "paused"):
-        _current_job.cancel_requested = True
-        _current_job.pause_requested = False
+def cancel_job(host: str) -> bool:
+    job = _jobs.get(host)
+    if job and job.state in ("running", "paused"):
+        job.cancel_requested = True
+        job.pause_requested = False
         return True
     return False
+
+
+def has_sd_card(host: str) -> bool:
+    """Detecta si `host` tiene una tarjeta SD navegable (solo placas de red/ESP3D)."""
+    if _is_usb_host(host):
+        return False
+    result = sd_list_files(host, "/")
+    return result.get("status") == "Ok"
 
 
 # ── Cola de trabajos ──

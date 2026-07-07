@@ -98,6 +98,7 @@ async def get_version_endpoint():
     status_value = "unknown"
     ahead = 0
     behind = 0
+    pending_commits = []
 
     fetched = _run_git(["fetch", "--quiet", "origin", branch]) is not None
     if fetched:
@@ -108,6 +109,10 @@ async def get_version_endpoint():
                 ahead, behind = int(parts[0]), int(parts[1])
         status_value = "update_available" if behind > 0 else "up_to_date"
 
+        if behind > 0:
+            log_output = _run_git(["log", "--oneline", f"HEAD..origin/{branch}"]) or ""
+            pending_commits = [line for line in log_output.splitlines() if line.strip()]
+
     return {
         "app_version": get_app_version(),
         "commit": local_sha or "unknown",
@@ -116,4 +121,45 @@ async def get_version_endpoint():
         "status": status_value,
         "ahead": ahead,
         "behind": behind,
+        "pending_commits": pending_commits,
+    }
+
+
+@router.post("/api/system/update")
+async def update_app_endpoint():
+    """Aplica `git pull --ff-only` para traer la última versión del repositorio."""
+    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"]) or "main"
+
+    dirty = _run_git(["status", "--porcelain"])
+    if dirty:
+        raise HTTPException(
+            status_code=409,
+            detail="Hay cambios locales sin guardar en el servidor. Guárdalos o descártalos antes de actualizar.",
+        )
+
+    before_sha = _run_git(["rev-parse", "HEAD"])
+    if before_sha is None:
+        raise HTTPException(status_code=500, detail="No se pudo leer el estado de git")
+
+    _run_git(["fetch", "--quiet", "origin", branch])
+    pull_output = _run_git(["pull", "--ff-only", "origin", branch])
+    if pull_output is None:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo actualizar (sin conexión, o el historial local y el remoto ya no coinciden).",
+        )
+
+    after_sha = _run_git(["rev-parse", "HEAD"])
+
+    if before_sha == after_sha:
+        return {"success": True, "updated": False, "commits": [], "app_version": get_app_version()}
+
+    log_output = _run_git(["log", "--oneline", f"{before_sha}..{after_sha}"]) or ""
+    commits = [line for line in log_output.splitlines() if line.strip()]
+
+    return {
+        "success": True,
+        "updated": True,
+        "commits": commits,
+        "app_version": get_app_version(),
     }

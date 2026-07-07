@@ -1620,6 +1620,13 @@ function getLaserVisualState(status) {
     return 'idle';
 }
 
+function laserHostLabel(host) {
+    if (!host) return '';
+    const registeredName = registeredLaserMap.get(host);
+    if (registeredName) return registeredName;
+    return host.startsWith('usb:') ? host.slice(4) : host;
+}
+
 function laserDashboardCardHtml(status) {
     const visualState = getLaserVisualState(status);
     const isOnline = visualState !== 'offline';
@@ -1627,11 +1634,15 @@ function laserDashboardCardHtml(status) {
     const stateLabel = isOnline ? (status.state || t('idle')) : t('laserOffline');
     const position = isOnline ? `X${status.x.toFixed(1)} Y${status.y.toFixed(1)} Z${status.z.toFixed(1)}` : '—';
     const feedSpeed = isOnline ? `${status.feed} / ${status.speed}` : '—';
+    const hostLabel = laserHostLabel(status.host);
 
     return `
         <div class="printer-card laser-dashboard-card ${isOnline ? 'online' : 'offline'}" id="laser-dashboard-card">
             <div class="printer-card-top">
-                <h3 class="printer-name">${t('laser')}</h3>
+                <div>
+                    <h3 class="printer-name">${t('laser')}</h3>
+                    ${hostLabel ? `<p class="printer-name-sub">${escapeHtml(hostLabel)}</p>` : ''}
+                </div>
                 <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
                 </div>
@@ -2385,13 +2396,13 @@ function showToast(message, tone = 'success') {
 
 // ── Detección de controladoras láser por USB ──
 let knownUsbPorts = null;
-let registeredLaserHosts = new Set();
+let registeredLaserMap = new Map();
 
 async function refreshRegisteredLasers() {
     try {
         const response = await fetch('/api/laser/registry');
         const data = await response.json();
-        registeredLaserHosts = new Set((data.lasers || []).map(entry => entry.host));
+        registeredLaserMap = new Map((data.lasers || []).map(entry => [entry.host, entry.name]));
     } catch (error) {
         console.error(error);
     }
@@ -2405,9 +2416,18 @@ function renderUsbPorts(ports, newDevices) {
         return;
     }
     container.innerHTML = ports.map(port => {
-        const registered = registeredLaserHosts.has(`usb:${port.device}`);
-        const actionHtml = registered
-            ? `<span class="usb-port-registered-badge">${escapeHtml(t('usbPortRegistered'))}</span>`
+        const host = `usb:${port.device}`;
+        const registeredName = registeredLaserMap.get(host);
+        const actionHtml = registeredName
+            ? `<div class="usb-port-registered">
+                    <span class="usb-port-registered-badge">${escapeHtml(registeredName)}</span>
+                    <button type="button" class="theme-option-icon-btn usb-port-rename-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(registeredName)}" title="${escapeHtml(t('usbPortRename'))}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    </button>
+                    <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger usb-port-unlink-btn" data-host="${escapeHtml(host)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+               </div>`
             : `<button type="button" class="btn-file-action usb-port-add-btn" data-device="${escapeHtml(port.device)}" data-chip="${escapeHtml(port.chip)}">${escapeHtml(t('usbPortAdd'))}</button>`;
         return `
             <div class="usb-port-item ${newDevices.has(port.device) ? 'usb-port-item-new' : ''}">
@@ -2424,6 +2444,39 @@ function renderUsbPorts(ports, newDevices) {
     container.querySelectorAll('.usb-port-add-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             openUsbClassifyModal(btn.dataset.device, btn.dataset.chip);
+        });
+    });
+
+    container.querySelectorAll('.usb-port-rename-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const newName = prompt(t('usbRegisterNamePrompt'), btn.dataset.name);
+            if (!newName || !newName.trim()) return;
+            try {
+                const formData = new FormData();
+                formData.append('host', btn.dataset.host);
+                formData.append('name', newName.trim());
+                formData.append('transport', btn.dataset.host.startsWith('usb:') ? 'usb' : 'network');
+                await fetch('/api/laser/registry', { method: 'POST', body: formData });
+                refreshUsbPorts();
+                if (document.getElementById('laser-host-select')) loadLaserHostSelector();
+            } catch (error) {
+                console.error(error);
+            }
+        });
+    });
+
+    container.querySelectorAll('.usb-port-unlink-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!(await appConfirm(t('usbUnlinkConfirm'), t('usbPortUnlink')))) return;
+            try {
+                const formData = new FormData();
+                formData.append('host', btn.dataset.host);
+                await fetch('/api/laser/registry/remove', { method: 'POST', body: formData });
+                refreshUsbPorts();
+                if (document.getElementById('laser-host-select')) loadLaserHostSelector();
+            } catch (error) {
+                console.error(error);
+            }
         });
     });
 }
@@ -2598,7 +2651,7 @@ function renderLaserJob(job) {
     if (progressText) progressText.textContent = `${job?.current || 0} / ${job?.total || 0}`;
     if (errorEl) errorEl.textContent = job?.error || '';
 
-    document.querySelectorAll('.laser-jog-btn, .laser-step-btn, #laser-unlock-btn').forEach(el => {
+    document.querySelectorAll('.laser-jog-btn, .laser-step-btn, #laser-unlock-btn, #laser-goto-btn, #laser-fire-btn, #laser-fire-power-input, #laser-air-btn').forEach(el => {
         el.disabled = isActive;
     });
 }
@@ -2642,7 +2695,7 @@ function renderLaserQueue(queue) {
         return;
     }
     container.innerHTML = queue.map(item => `
-        <div class="laser-queue-item" data-id="${item.id}">
+        <div class="laser-queue-item" data-id="${item.id}" data-path="${escapeHtml(item.path)}">
             <span class="laser-queue-item-name">${escapeHtml(item.filename)}</span>
             <div class="laser-queue-item-actions">
                 <button type="button" class="theme-option-icon-btn" data-action="play" title="${t('laserQueuePlay')}">
@@ -2657,10 +2710,19 @@ function renderLaserQueue(queue) {
 
     container.querySelectorAll('.laser-queue-item').forEach(row => {
         const id = parseInt(row.dataset.id, 10);
+        const itemPath = row.dataset.path;
         row.querySelectorAll('button[data-action]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 if (btn.dataset.action === 'play') {
-                    if (!(await appConfirm(t('laserStartConfirm'), t('laserStart')))) return;
+                    let gcodeText = '';
+                    try {
+                        const fileUrl = `/uploads/gcode/${itemPath.split('/').map(encodeURIComponent).join('/')}`;
+                        const fileResponse = await fetch(fileUrl);
+                        if (fileResponse.ok) gcodeText = await fileResponse.text();
+                    } catch (error) {
+                        console.error(error);
+                    }
+                    if (!(await confirmLaserJobStart(gcodeText))) return;
                     try {
                         const formData = new FormData();
                         formData.append('id', id);
@@ -2791,6 +2853,7 @@ if (laserHostSelect) {
             loadLaserBoardInfo();
             refreshLaserStatus();
             refreshLaserQueue();
+            checkSdAvailability();
         } catch (error) {
             console.error(error);
         }
@@ -2840,6 +2903,47 @@ if (laserConsoleForm) {
     });
 }
 
+const GRBL_SETTING_DESCRIPTIONS = {
+    '$0': 'Duración del pulso de paso (microsegundos).',
+    '$1': 'Retardo de reposo de los motores tras detenerse (ms).',
+    '$2': 'Máscara de inversión del pulso de paso por eje.',
+    '$3': 'Máscara de inversión de dirección por eje.',
+    '$4': 'Invierte la señal de habilitación de motores.',
+    '$5': 'Invierte los pines de los interruptores límite.',
+    '$6': 'Invierte el pin de la sonda (probe).',
+    '$10': 'Qué datos incluye el reporte de estado (?).',
+    '$11': 'Desviación de unión entre movimientos, mm (junction deviation).',
+    '$12': 'Tolerancia de arcos, mm.',
+    '$13': 'Reporta posiciones en pulgadas en vez de mm.',
+    '$20': 'Activa límites por software.',
+    '$21': 'Activa límites por hardware (interruptores físicos).',
+    '$22': 'Activa el ciclo de home ($H).',
+    '$23': 'Máscara de dirección invertida al hacer home.',
+    '$24': 'Velocidad de acercamiento final al hacer home, mm/min.',
+    '$25': 'Velocidad de búsqueda al hacer home, mm/min.',
+    '$26': 'Retardo anti-rebote de los interruptores de home, ms.',
+    '$27': 'Distancia de separación tras tocar el interruptor de home, mm.',
+    '$30': 'Velocidad máxima del spindle/láser (RPM o intensidad).',
+    '$31': 'Velocidad mínima del spindle/láser.',
+    '$32': 'Activa el modo láser (velocidad continua en curvas).',
+    '$100': 'Pasos por milímetro, eje X.',
+    '$101': 'Pasos por milímetro, eje Y.',
+    '$102': 'Pasos por milímetro, eje Z.',
+    '$110': 'Velocidad máxima, eje X (mm/min).',
+    '$111': 'Velocidad máxima, eje Y (mm/min).',
+    '$112': 'Velocidad máxima, eje Z (mm/min).',
+    '$120': 'Aceleración, eje X (mm/s²).',
+    '$121': 'Aceleración, eje Y (mm/s²).',
+    '$122': 'Aceleración, eje Z (mm/s²).',
+    '$130': 'Recorrido máximo, eje X (mm).',
+    '$131': 'Recorrido máximo, eje Y (mm).',
+    '$132': 'Recorrido máximo, eje Z (mm).',
+};
+
+function grblSettingDescription(key) {
+    return GRBL_SETTING_DESCRIPTIONS[key] || t('laserSettingsUnknownParam');
+}
+
 function renderLaserSettings(settings) {
     const container = document.getElementById('laser-settings-grid');
     if (!container) return;
@@ -2849,8 +2953,11 @@ function renderLaserSettings(settings) {
     }
     container.innerHTML = settings.map(setting => `
         <div class="laser-settings-item" data-key="${setting.key}">
-            <span>${setting.key}</span>
-            <input type="text" value="${escapeHtml(setting.value)}" data-key="${setting.key}">
+            <div class="laser-settings-item-row">
+                <span class="laser-settings-item-label">${setting.key}</span>
+                <input type="text" value="${escapeHtml(setting.value)}" data-key="${setting.key}">
+            </div>
+            <p class="laser-settings-item-hint">${escapeHtml(grblSettingDescription(setting.key))}</p>
         </div>
     `).join('');
 
@@ -2898,11 +3005,300 @@ async function loadLaserSettings() {
 const laserSettingsReloadBtn = document.getElementById('laser-settings-reload-btn');
 if (laserSettingsReloadBtn) laserSettingsReloadBtn.addEventListener('click', loadLaserSettings);
 
+async function loadLaserNameField() {
+    const input = document.getElementById('laser-name-input');
+    if (!input) return;
+    try {
+        const [hostResponse, registryResponse] = await Promise.all([
+            fetch('/api/laser/host'),
+            fetch('/api/laser/registry'),
+        ]);
+        const hostData = await hostResponse.json();
+        const registryData = await registryResponse.json();
+        const entry = (registryData.lasers || []).find(item => item.host === hostData.host);
+        input.value = entry ? entry.name : '';
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+const laserNameSaveBtn = document.getElementById('laser-name-save-btn');
+if (laserNameSaveBtn) {
+    laserNameSaveBtn.addEventListener('click', async () => {
+        const input = document.getElementById('laser-name-input');
+        const name = input?.value.trim();
+        if (!name) return;
+        try {
+            const hostResponse = await fetch('/api/laser/host');
+            const hostData = await hostResponse.json();
+            const formData = new FormData();
+            formData.append('host', hostData.host);
+            formData.append('name', name);
+            formData.append('transport', hostData.host.startsWith('usb:') ? 'usb' : 'network');
+            await fetch('/api/laser/registry', { method: 'POST', body: formData });
+            showToast(t('laserNameSaved'));
+            loadLaserHostSelector();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
+function openLaserSettingsModal() {
+    const modal = document.getElementById('laser-settings-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+    loadLaserNameField();
+    loadLaserSettings();
+}
+
+function closeLaserSettingsModal() {
+    const modal = document.getElementById('laser-settings-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+const laserIllustrationWrap = document.getElementById('laser-illustration-wrap');
+if (laserIllustrationWrap) {
+    laserIllustrationWrap.addEventListener('click', openLaserSettingsModal);
+}
+
+const laserSettingsModalClose = document.getElementById('laser-settings-modal-close');
+if (laserSettingsModalClose) laserSettingsModalClose.addEventListener('click', closeLaserSettingsModal);
+
+const laserSettingsModalBackdrop = document.getElementById('laser-settings-modal-backdrop');
+if (laserSettingsModalBackdrop) laserSettingsModalBackdrop.addEventListener('click', closeLaserSettingsModal);
+
+// ── Tarjeta SD (placas de red / ESP3D) ──
+let sdCurrentPath = '/';
+let sdCurrentEntries = { files: [] };
+
+function sdPathSegments(path) {
+    return path.split('/').filter(Boolean);
+}
+
+function renderSdBreadcrumb(path) {
+    const el = document.getElementById('laser-sd-breadcrumb');
+    if (!el) return;
+    const segments = sdPathSegments(path);
+    let acc = '';
+    const crumbs = [`<button type="button" class="breadcrumb-segment" data-path="/">${t('root')}</button>`];
+    segments.forEach(segment => {
+        acc += `${segment}/`;
+        crumbs.push(`<span class="breadcrumb-sep">/</span><button type="button" class="breadcrumb-segment" data-path="${escapeHtml(acc)}">${escapeHtml(segment)}</button>`);
+    });
+    el.innerHTML = crumbs.join('');
+    el.querySelectorAll('.breadcrumb-segment').forEach(btn => {
+        btn.addEventListener('click', () => loadSdFolder(btn.dataset.path));
+    });
+}
+
+function sdFolderIcon() {
+    return '<svg class="laser-sd-row-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+}
+
+function sdFileIcon() {
+    return '<svg class="laser-sd-row-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+}
+
+function renderSdList(data) {
+    const listEl = document.getElementById('laser-sd-list');
+    const spaceEl = document.getElementById('laser-sd-space');
+    if (!listEl) return;
+
+    if (spaceEl) {
+        spaceEl.textContent = data.total ? `${data.used || '—'} / ${data.total}` : '';
+    }
+
+    const entries = data.files || [];
+    if (!entries.length) {
+        listEl.innerHTML = `<div class="empty-state-small">${t('laserSdEmpty')}</div>`;
+        return;
+    }
+
+    listEl.innerHTML = entries.map(entry => {
+        const isDir = entry.size === '-1' || entry.size === -1;
+        return `
+            <div class="laser-sd-row" data-name="${escapeHtml(entry.name)}" data-dir="${isDir ? '1' : '0'}">
+                ${isDir ? sdFolderIcon() : sdFileIcon()}
+                <span class="laser-sd-row-name">${escapeHtml(entry.name)}</span>
+                ${!isDir ? `<span class="laser-sd-row-size">${escapeHtml(entry.size)}</span>` : ''}
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger laser-sd-delete-btn" title="${escapeHtml(t('delete'))}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        `;
+    }).join('');
+
+    listEl.querySelectorAll('.laser-sd-row').forEach(row => {
+        const isDir = row.dataset.dir === '1';
+        const name = row.dataset.name;
+        if (isDir) {
+            row.querySelector('.laser-sd-row-name').addEventListener('click', () => {
+                loadSdFolder(`${sdCurrentPath}${name}/`);
+            });
+        }
+        row.querySelector('.laser-sd-delete-btn').addEventListener('click', async () => {
+            if (!(await appConfirm(t('laserSdDeleteConfirm'), t('delete')))) return;
+            try {
+                const formData = new FormData();
+                formData.append('path', sdCurrentPath);
+                formData.append('name', name);
+                formData.append('is_dir', isDir ? 'true' : 'false');
+                const response = await fetch('/api/laser/sd/delete', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.detail || t('laserSdError'));
+                }
+                loadSdFolder(sdCurrentPath);
+            } catch (error) {
+                console.error(error);
+                alert(error.message || t('laserSdError'));
+            }
+        });
+    });
+}
+
+async function loadSdFolder(path) {
+    sdCurrentPath = path;
+    renderSdBreadcrumb(path);
+    const listEl = document.getElementById('laser-sd-list');
+    if (listEl) listEl.innerHTML = `<div class="empty-state-small">${t('laserSdLoading')}</div>`;
+    try {
+        const response = await fetch(`/api/laser/sd/files?path=${encodeURIComponent(path)}`);
+        const data = await response.json();
+        if (data.status && data.status !== 'Ok') {
+            listEl.innerHTML = `<div class="empty-state-small">${escapeHtml(data.message || t('laserSdError'))}</div>`;
+            return;
+        }
+        sdCurrentEntries = data;
+        renderSdList(data);
+    } catch (error) {
+        console.error(error);
+        if (listEl) listEl.innerHTML = `<div class="empty-state-small">${t('laserSdError')}</div>`;
+    }
+}
+
+async function loadSdLibraryOptions() {
+    const selectEl = document.getElementById('laser-sd-library-select');
+    if (!selectEl) return;
+    try {
+        const response = await fetch('/api/models');
+        const models = await response.json();
+        const gcodeFiles = models.filter(m => m.id.startsWith('gcode/'));
+        if (!gcodeFiles.length) {
+            selectEl.innerHTML = `<option value="">${t('noFilesFound')}</option>`;
+            return;
+        }
+        selectEl.innerHTML = `<option value="">${t('laserSdSelectFile')}</option>` + gcodeFiles.map(file => {
+            const relPath = stripSectionPrefix(file.id, 'gcode');
+            return `<option value="${escapeHtml(relPath)}">${escapeHtml(file.name)}</option>`;
+        }).join('');
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function checkSdAvailability() {
+    const queueCard = document.getElementById('laser-queue-card');
+    const sdCard = document.getElementById('laser-sd-card');
+    if (!queueCard || !sdCard) return;
+    try {
+        const response = await fetch('/api/laser/sd/available');
+        const data = await response.json();
+        if (data.available) {
+            queueCard.hidden = true;
+            sdCard.hidden = false;
+            loadSdLibraryOptions();
+            loadSdFolder('/');
+        } else {
+            queueCard.hidden = false;
+            sdCard.hidden = true;
+        }
+    } catch (error) {
+        console.error(error);
+        queueCard.hidden = false;
+        sdCard.hidden = true;
+    }
+}
+
+const laserSdReloadBtn = document.getElementById('laser-sd-reload-btn');
+if (laserSdReloadBtn) laserSdReloadBtn.addEventListener('click', () => loadSdFolder(sdCurrentPath));
+
+const laserSdNewFolderBtn = document.getElementById('laser-sd-newfolder-btn');
+if (laserSdNewFolderBtn) {
+    laserSdNewFolderBtn.addEventListener('click', async () => {
+        const name = prompt(t('laserSdNewFolderPrompt'));
+        if (!name || !name.trim()) return;
+        try {
+            const formData = new FormData();
+            formData.append('path', sdCurrentPath);
+            formData.append('name', name.trim());
+            const response = await fetch('/api/laser/sd/folder', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || t('laserSdError'));
+            }
+            loadSdFolder(sdCurrentPath);
+        } catch (error) {
+            console.error(error);
+            alert(error.message || t('laserSdError'));
+        }
+    });
+}
+
+const laserSdUploadInput = document.getElementById('laser-sd-upload-input');
+if (laserSdUploadInput) {
+    laserSdUploadInput.addEventListener('change', async () => {
+        const file = laserSdUploadInput.files?.[0];
+        laserSdUploadInput.value = '';
+        if (!file) return;
+        try {
+            const formData = new FormData();
+            formData.append('path', sdCurrentPath);
+            formData.append('file', file);
+            const response = await fetch('/api/laser/sd/upload', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || t('laserSdError'));
+            }
+            showToast(t('laserSdUploadSuccess'));
+            loadSdFolder(sdCurrentPath);
+        } catch (error) {
+            console.error(error);
+            alert(error.message || t('laserSdError'));
+        }
+    });
+}
+
+const laserSdSendLibraryBtn = document.getElementById('laser-sd-send-library-btn');
+if (laserSdSendLibraryBtn) {
+    laserSdSendLibraryBtn.addEventListener('click', async () => {
+        const selectEl = document.getElementById('laser-sd-library-select');
+        const gcodePath = selectEl?.value;
+        if (!gcodePath) return;
+        try {
+            const formData = new FormData();
+            formData.append('gcode_path', gcodePath);
+            formData.append('sd_path', sdCurrentPath);
+            const response = await fetch('/api/laser/sd/upload-from-library', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || t('laserSdError'));
+            }
+            showToast(t('laserSdSendSuccess'));
+            loadSdFolder(sdCurrentPath);
+        } catch (error) {
+            console.error(error);
+            alert(error.message || t('laserSdError'));
+        }
+    });
+}
+
 function loadLaserSection() {
     loadLaserHostSelector();
     loadLaserBoardInfo();
-    loadLaserSettings();
     startLaserPolling();
+    checkSdAvailability();
 }
 
 const laserPauseBtn = document.getElementById('laser-pause-btn');
@@ -2955,6 +3351,117 @@ async function sendLaserRawCommand(command) {
     }
 }
 
+function parseGcodeBoundingBox(text) {
+    const lines = text.split(/\r?\n/);
+    let x = 0, y = 0;
+    let absolute = true;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const parseValue = token => parseFloat(token.slice(1));
+
+    for (const raw of lines) {
+        const line = raw.replace(/;.*$/, '').replace(/\(.*?\)/g, '').trim();
+        if (!line) continue;
+        const parts = line.split(/\s+/);
+        const code = parts[0].toUpperCase();
+
+        if (code === 'G90') { absolute = true; continue; }
+        if (code === 'G91') { absolute = false; continue; }
+        if (code === 'G92') {
+            for (let i = 1; i < parts.length; i++) {
+                const token = parts[i].toUpperCase();
+                if (token.startsWith('X')) x = parseValue(token);
+                if (token.startsWith('Y')) y = parseValue(token);
+            }
+            continue;
+        }
+        if (!['G0', 'G1', 'G00', 'G01'].includes(code)) continue;
+
+        let nx = x, ny = y;
+        for (let i = 1; i < parts.length; i++) {
+            const token = parts[i].toUpperCase();
+            if (token.length < 2) continue;
+            const letter = token[0];
+            const value = parseValue(token);
+            if (Number.isNaN(value)) continue;
+            if (letter === 'X') nx = absolute ? value : x + value;
+            if (letter === 'Y') ny = absolute ? value : y + value;
+        }
+        x = nx; y = ny;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+
+    if (!isFinite(minX)) return null;
+    return { minX, maxX, minY, maxY };
+}
+
+async function frameLaserJob(gcodeText) {
+    const bbox = parseGcodeBoundingBox(gcodeText || '');
+    if (!bbox) {
+        alert(t('laserFrameError'));
+        return;
+    }
+    const feed = 3000;
+    const corners = [
+        [bbox.minX, bbox.minY],
+        [bbox.maxX, bbox.minY],
+        [bbox.maxX, bbox.maxY],
+        [bbox.minX, bbox.maxY],
+        [bbox.minX, bbox.minY],
+    ];
+    await sendLaserRawCommand('G90 G21');
+    for (const [cx, cy] of corners) {
+        await sendLaserRawCommand(`G0 X${cx.toFixed(3)} Y${cy.toFixed(3)} F${feed}`);
+        await new Promise(resolve => setTimeout(resolve, 350));
+    }
+}
+
+function confirmLaserJobStart(gcodeText) {
+    return new Promise(resolve => {
+        const modal = document.getElementById('laser-start-confirm-modal');
+        const messageEl = document.getElementById('laser-start-confirm-message');
+        const cancelBtn = document.getElementById('laser-start-confirm-cancel-btn');
+        const frameBtn = document.getElementById('laser-start-confirm-frame-btn');
+        const startBtn = document.getElementById('laser-start-confirm-start-btn');
+
+        if (!modal || !cancelBtn || !frameBtn || !startBtn) {
+            resolve(window.confirm(t('laserStartConfirm')));
+            return;
+        }
+
+        if (messageEl) messageEl.textContent = t('laserStartConfirm');
+        modal.classList.add('active');
+
+        const cleanup = (result) => {
+            modal.classList.remove('active');
+            cancelBtn.removeEventListener('click', onCancel);
+            startBtn.removeEventListener('click', onStart);
+            frameBtn.removeEventListener('click', onFrame);
+            resolve(result);
+        };
+        const onCancel = () => cleanup(false);
+        const onStart = () => cleanup(true);
+        const onFrame = async () => {
+            const label = frameBtn.querySelector('span');
+            const originalLabel = label ? label.textContent : '';
+            frameBtn.disabled = true;
+            if (label) label.textContent = t('laserFramingBusy');
+            try {
+                await frameLaserJob(gcodeText);
+            } catch (error) {
+                console.error(error);
+            } finally {
+                frameBtn.disabled = false;
+                if (label) label.textContent = originalLabel;
+            }
+        };
+
+        cancelBtn.addEventListener('click', onCancel);
+        startBtn.addEventListener('click', onStart);
+        frameBtn.addEventListener('click', onFrame);
+    });
+}
+
 let laserJogStep = 10;
 const LASER_JOG_FEED = 1500;
 
@@ -2995,6 +3502,70 @@ if (laserUnlockBtn) {
     laserUnlockBtn.addEventListener('click', async () => {
         await sendLaserRawCommand('$X');
         refreshLaserStatus();
+    });
+}
+
+const laserGotoBtn = document.getElementById('laser-goto-btn');
+if (laserGotoBtn) {
+    laserGotoBtn.addEventListener('click', async () => {
+        const xInput = document.getElementById('laser-goto-x');
+        const yInput = document.getElementById('laser-goto-y');
+        const x = parseFloat(xInput?.value);
+        const y = parseFloat(yInput?.value);
+        if (Number.isNaN(x) && Number.isNaN(y)) return;
+
+        const parts = ['G90', 'G21', 'G0'];
+        if (!Number.isNaN(x)) parts.push(`X${x}`);
+        if (!Number.isNaN(y)) parts.push(`Y${y}`);
+        parts.push(`F${LASER_JOG_FEED}`);
+        await sendLaserRawCommand(parts.join(' '));
+        refreshLaserStatus();
+    });
+}
+
+let laserFireActive = false;
+let laserFireLastOffAt = 0;
+
+const laserFireBtn = document.getElementById('laser-fire-btn');
+if (laserFireBtn) {
+    laserFireBtn.addEventListener('click', async () => {
+        if (!laserFireActive) return;
+        const label = document.getElementById('laser-fire-label');
+        await sendLaserRawCommand('M5');
+        laserFireActive = false;
+        laserFireLastOffAt = Date.now();
+        laserFireBtn.classList.remove('active');
+        if (label) label.textContent = t('laserFireOn');
+    });
+
+    laserFireBtn.addEventListener('dblclick', async () => {
+        if (laserFireActive) return;
+        if (Date.now() - laserFireLastOffAt < 600) return;
+        const label = document.getElementById('laser-fire-label');
+        const powerInput = document.getElementById('laser-fire-power-input');
+        const power = Math.max(0, Math.min(1000, parseInt(powerInput?.value, 10) || 1));
+        await sendLaserRawCommand(`M3 S${power}`);
+        laserFireActive = true;
+        laserFireBtn.classList.add('active');
+        if (label) label.textContent = t('laserFireOff');
+    });
+}
+
+let laserAirActive = false;
+
+const laserAirBtn = document.getElementById('laser-air-btn');
+if (laserAirBtn) {
+    laserAirBtn.addEventListener('click', async () => {
+        const label = document.getElementById('laser-air-label');
+        if (!laserAirActive) {
+            await sendLaserRawCommand('M8');
+            laserAirActive = true;
+        } else {
+            await sendLaserRawCommand('M9');
+            laserAirActive = false;
+        }
+        laserAirBtn.classList.toggle('active', laserAirActive);
+        if (label) label.textContent = laserAirActive ? t('laserAirAssistOff') : t('laserAirAssistOn');
     });
 }
 
@@ -3191,7 +3762,13 @@ const settingsLanguage = document.getElementById('settings-language');
 const settingsPreviewQuality = document.getElementById('settings-preview-quality');
 const settingsAutoRefresh = document.getElementById('settings-autorefresh');
 const settingsLaserHomeConfirm = document.getElementById('settings-laser-home-confirm');
+const settingsUiScale = document.getElementById('settings-ui-scale');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
+
+function applyUiScale(scale) {
+    document.documentElement.style.fontSize = `${scale}%`;
+}
+applyUiScale(localStorage.getItem('uiScale') || '100');
 const settingsStatus = document.getElementById('settings-status');
 
 const THEME_PALETTES = {
@@ -3226,6 +3803,7 @@ function loadSettingsPanel() {
     const savedLanguage = localStorage.getItem('language') || 'es';
     const savedQuality = localStorage.getItem('previewQuality') || 'standard';
     const savedAutoRefresh = localStorage.getItem('autoRefreshPrinters');
+    const savedUiScale = localStorage.getItem('uiScale') || '100';
 
     updateCustomThemeCardUI();
     if (settingsTheme) settingsTheme.value = savedTheme;
@@ -3233,6 +3811,7 @@ function loadSettingsPanel() {
     if (settingsPreviewQuality) settingsPreviewQuality.checked = savedQuality === 'performance';
     if (settingsAutoRefresh) settingsAutoRefresh.checked = savedAutoRefresh !== 'false';
     if (settingsLaserHomeConfirm) settingsLaserHomeConfirm.checked = isLaserHomeConfirmEnabled();
+    if (settingsUiScale) settingsUiScale.value = savedUiScale;
 
     setActiveThemeCard(savedTheme);
 }
@@ -3241,10 +3820,12 @@ async function loadUpdatesStatus() {
     const versionEl = document.getElementById('updates-version');
     const pillEl = document.getElementById('updates-status-pill');
     const metaEl = document.getElementById('updates-meta');
+    const applyBtn = document.getElementById('updates-apply-btn');
     if (!versionEl || !pillEl) return;
 
     pillEl.textContent = t('updatesChecking');
     pillEl.className = 'updates-status-pill checking';
+    if (applyBtn) applyBtn.hidden = true;
 
     try {
         const response = await fetch('/api/system/version');
@@ -3256,6 +3837,7 @@ async function loadUpdatesStatus() {
         if (data.status === 'update_available') {
             pillEl.textContent = t('updatesAvailable');
             pillEl.className = 'updates-status-pill available';
+            if (applyBtn) applyBtn.hidden = false;
         } else if (data.status === 'up_to_date') {
             pillEl.textContent = t('updatesUpToDate');
             pillEl.className = 'updates-status-pill current';
@@ -3272,11 +3854,78 @@ async function loadUpdatesStatus() {
             if (data.status === 'update_available' && data.behind) parts.push(`${data.behind} commit(s) atrás`);
             metaEl.textContent = parts.join(' · ');
         }
+
+        const tooltipEl = document.getElementById('updates-pill-tooltip');
+        if (tooltipEl) {
+            if (data.status === 'update_available' && data.pending_commits && data.pending_commits.length) {
+                tooltipEl.innerHTML = `
+                    <div class="updates-pill-tooltip-title">${escapeHtml(t('updatesPendingTitle'))}</div>
+                    <ul>${data.pending_commits.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
+                `;
+            } else {
+                tooltipEl.innerHTML = '';
+            }
+        }
     } catch (error) {
         console.error(error);
         pillEl.textContent = t('updatesUnknown');
         pillEl.className = 'updates-status-pill unknown';
     }
+}
+
+const updatesPillWrap = document.querySelector('.updates-status-pill-wrap');
+if (updatesPillWrap) {
+    updatesPillWrap.addEventListener('mouseenter', () => {
+        const pillEl = document.getElementById('updates-status-pill');
+        const tooltipEl = document.getElementById('updates-pill-tooltip');
+        if (pillEl?.classList.contains('available') && tooltipEl?.innerHTML.trim()) {
+            updatesPillWrap.classList.add('show-tooltip');
+        }
+    });
+    updatesPillWrap.addEventListener('mouseleave', () => {
+        updatesPillWrap.classList.remove('show-tooltip');
+    });
+}
+
+const updatesApplyBtn = document.getElementById('updates-apply-btn');
+if (updatesApplyBtn) {
+    updatesApplyBtn.addEventListener('click', async () => {
+        const changelogEl = document.getElementById('updates-changelog');
+        const label = updatesApplyBtn.querySelector('span');
+        const originalLabel = label ? label.textContent : '';
+
+        if (!(await appConfirm(t('updatesApply') + '?', t('updatesApply')))) return;
+
+        updatesApplyBtn.disabled = true;
+        if (label) label.textContent = t('updatesApplying');
+
+        try {
+            const response = await fetch('/api/system/update', { method: 'POST' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || t('updatesApplyError'));
+
+            if (changelogEl) {
+                changelogEl.hidden = false;
+                if (data.updated && data.commits && data.commits.length) {
+                    changelogEl.innerHTML = `
+                        <div class="updates-changelog-title">${escapeHtml(t('updatesAppliedTitle'))}</div>
+                        <ul>${data.commits.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
+                        <div class="updates-changelog-title" style="margin-top:8px;">${escapeHtml(t('updatesReloadHint'))}</div>
+                    `;
+                } else {
+                    changelogEl.innerHTML = `<div class="updates-changelog-title">${escapeHtml(t('updatesAlreadyCurrent'))}</div>`;
+                }
+            }
+
+            loadUpdatesStatus();
+        } catch (error) {
+            console.error(error);
+            alert(error.message || t('updatesApplyError'));
+        } finally {
+            updatesApplyBtn.disabled = false;
+            if (label) label.textContent = originalLabel;
+        }
+    });
 }
 
 const updatesCheckBtn = document.getElementById('updates-check-btn');
@@ -3318,6 +3967,10 @@ function saveSettings() {
     if (settingsLaserHomeConfirm) {
         localStorage.setItem('laserHomeConfirmEnabled', settingsLaserHomeConfirm.checked ? 'true' : 'false');
     }
+    if (settingsUiScale) {
+        localStorage.setItem('uiScale', settingsUiScale.value);
+        applyUiScale(settingsUiScale.value);
+    }
     setupPrinterRefresh();
     if (settingsStatus) {
         settingsStatus.textContent = t('settingsSaved');
@@ -3356,6 +4009,9 @@ if (settingsAutoRefresh) {
 }
 if (settingsLaserHomeConfirm) {
     settingsLaserHomeConfirm.addEventListener('change', saveSettings);
+}
+if (settingsUiScale) {
+    settingsUiScale.addEventListener('change', saveSettings);
 }
 if (settingsSaveBtn) {
     settingsSaveBtn.addEventListener('click', saveSettings);
