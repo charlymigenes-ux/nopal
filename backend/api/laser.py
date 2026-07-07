@@ -35,7 +35,6 @@ from backend.services.laser_service import (
     sd_delete_entry,
     sd_upload_file,
     has_sd_card,
-    start_sd_job,
 )
 from backend.utils import safe_section_path
 
@@ -244,10 +243,13 @@ async def laser_sd_available_endpoint(host: Optional[str] = None):
 
 @router.post("/api/laser/queue/start")
 async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = Form(None)):
-    """Saca un trabajo de la cola y lo empieza a enviar al láser.
+    """Saca un trabajo de la cola y lo transmite línea por línea al láser.
 
-    Si la placa tiene tarjeta SD, primero sube el archivo y lo corre local
-    (más confiable para archivos grandes); si no, lo transmite línea por línea.
+    Nota: la ejecución directa desde SD ($F=archivo) se probó contra el
+    firmware real (DLC32) y no arranca el trabajo (la placa se queda en
+    Idle sin moverse, aunque acepta el comando sin error) — por eso,
+    mientras no se identifique el comando correcto de este firmware,
+    siempre se transmite por streaming, que sí es confiable.
     """
     target = host or get_active_host()
 
@@ -263,21 +265,10 @@ async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = 
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
-    loop = asyncio.get_event_loop()
-    sd_available = await loop.run_in_executor(None, has_sd_card, target)
-
     try:
-        if sd_available:
-            with open(file_path, "rb") as handle:
-                contents = handle.read()
-            uploaded = await loop.run_in_executor(None, sd_upload_file, target, "/", entry["filename"], contents)
-            if not uploaded:
-                raise HTTPException(status_code=502, detail="No se pudo subir el archivo a la SD")
-            job = start_sd_job(target, entry["filename"])
-        else:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
-                gcode_text = handle.read()
-            job = start_job(target, gcode_text, filename=entry["filename"])
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+            gcode_text = handle.read()
+        job = start_job(target, gcode_text, filename=entry["filename"])
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -290,6 +281,30 @@ async def laser_sd_files_endpoint(path: str = "/", host: Optional[str] = None):
     target = host or get_active_host()
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, sd_list_files, target, path)
+
+
+@router.post("/api/laser/sd/run")
+async def laser_sd_run_endpoint(
+    path: str = Form(""),
+    name: str = Form(...),
+    host: Optional[str] = Form(None),
+):
+    """Corre directamente un archivo que ya está en la SD, sin volver a subirlo.
+
+    Deshabilitado: se confirmó contra hardware real que $F=archivo no arranca
+    el trabajo en este firmware (DLC32) — la placa se queda en Idle sin
+    moverse, sin reportar error. Hasta identificar el comando correcto de
+    este firmware, no hay forma confiable de ejecutar un archivo que ya
+    está en la SD (no tenemos su texto para transmitirlo por streaming).
+    """
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "No se pudo confirmar el comando correcto para correr archivos "
+            "directo desde la SD en este firmware. Usa la Cola (Biblioteca "
+            "G-code) para enviar el archivo por streaming."
+        ),
+    )
 
 
 @router.post("/api/laser/sd/folder")

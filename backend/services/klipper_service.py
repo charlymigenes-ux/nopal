@@ -53,6 +53,11 @@ def normalize_printer_payload(printer: Dict[str, Any], port: int) -> Dict[str, A
     state_text = str(raw_state).lower()
     is_online = state_text in {"ready", "printing", "paused", "busy", "standby"}
 
+    print_stats = status_data.get("print_stats") or {}
+    virtual_sdcard = status_data.get("virtual_sdcard") or {}
+    progress = virtual_sdcard.get("progress")
+    print_duration = print_stats.get("print_duration") or 0
+
     return {
         "name": printer.get("name") or f"printer_{port}",
         "port": port,
@@ -66,6 +71,17 @@ def normalize_printer_payload(printer: Dict[str, Any], port: int) -> Dict[str, A
             "extruder": {
                 "temperature": status_data.get("extruder", {}).get("temperature")
             },
+        },
+        "job": {
+            "filename": print_stats.get("filename") or "",
+            "state": print_stats.get("state") or "",
+            "progress": round((progress or 0) * 100),
+            "print_duration": print_duration,
+            "estimated_remaining": (
+                round((print_duration / progress) - print_duration)
+                if progress and progress > 0.01
+                else None
+            ),
         },
         "path": printer_info.get("config_file") or printer_info.get("log_file") or f"/printer/{port}",
     }
@@ -106,8 +122,11 @@ class MoonrakerClient:
 
     def get_printer_status(self):
         return self._get(
-            "/printer/objects/query?extruder&heater_bed&print_stats&toolhead"
+            "/printer/objects/query?extruder&heater_bed&print_stats&toolhead&virtual_sdcard"
         )
+
+    def get_toolhead_objects(self):
+        return self._get("/printer/objects/query?toolhead&gcode_move").get("status", {})
 
     def get_mainsail_printername(self):
         """Nombre configurado por el usuario en Mainsail (Machine > General)."""
@@ -416,6 +435,25 @@ def set_heater_target(port: int, heater: str, target: float) -> bool:
     gcode_name = _heater_gcode_name(heater)
     script = f"SET_HEATER_TEMPERATURE HEATER={gcode_name} TARGET={target}"
     return client.run_gcode_script(script)
+
+
+def get_toolhead_status(port: int) -> Dict[str, Any]:
+    """Posición actual del cabezal, ejes homeados, factor de velocidad y offset Z."""
+    client = MoonrakerClient(port)
+    status = client.get_toolhead_objects()
+    toolhead = status.get("toolhead", {})
+    gcode_move = status.get("gcode_move", {})
+    position = toolhead.get("position") or [0, 0, 0, 0]
+    gcode_position = gcode_move.get("gcode_position") or position
+    homing_origin = gcode_move.get("homing_origin") or [0, 0, 0, 0]
+    return {
+        "position": {"x": position[0], "y": position[1], "z": position[2]},
+        "gcode_position": {"x": gcode_position[0], "y": gcode_position[1], "z": gcode_position[2]},
+        "homed_axes": toolhead.get("homed_axes", ""),
+        "speed_factor": gcode_move.get("speed_factor", 1.0),
+        "z_offset": homing_origin[2] if len(homing_origin) > 2 else 0,
+        "absolute_coordinates": gcode_move.get("absolute_coordinates", True),
+    }
 
 
 def get_console_messages(port: int, count: int = 50) -> List[Dict[str, Any]]:

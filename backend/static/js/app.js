@@ -22,6 +22,7 @@ const modalClose = document.getElementById('modal-close');
 const modalBackdrop = document.querySelector('.modal-backdrop');
 let allModels = [];
 let allPrinters = [];
+const dashboardPrinterThemeMode = new Map(); // port(String) -> 'warm' | 'cool'
 let recentPrinterFiles = [];
 let selectedGcodeId = null;
 let currentScene = null;
@@ -30,6 +31,7 @@ let currentMesh = null;
 let currentAnimationFrame = null;
 let selectedModelId = null;
 let currentViewMode = localStorage.getItem('viewMode') || 'grid';
+let printersViewMode = localStorage.getItem('printersViewMode') || 'grid';
 const gcodePreviewCache = new Map();
 
 const PALETTE = ['#A3D9B6', '#6EC4A0', '#FFD4B8', '#FF8A4D', '#B8D4BE', '#C4E0C8'];
@@ -41,12 +43,6 @@ const NOPAL_LOGO_SVG = `<svg viewBox="0 0 32 32" width="20" height="20" fill="no
     <circle cx="19" cy="10" r="1" fill="#22C55E"/>
 </svg>`;
 
-const DEMO_QUEUE = [
-    { id: 456, name: 'bracket_v1', progress: 72, time: '7hr', status: 'green' },
-    { id: 457, name: 'gear_v2', progress: 45, time: '6hr', status: 'green' },
-    { id: 458, name: 'mount_plate', progress: 91, time: '0m', status: 'green' },
-    { id: 459, name: 'fan_duct', progress: 28, time: '4hr', status: 'orange' },
-];
 
 function formatSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -551,6 +547,7 @@ function applyTheme(theme) {
     document.body.classList.remove('dark', 'green', 'custom', 'light');
     document.body.classList.add(resolvedTheme);
     document.body.setAttribute('data-theme', resolvedTheme);
+    applyCustomThemeBackground();
 
     const colors = getThemeColors(resolvedTheme);
     document.documentElement.style.setProperty('--accent', colors.accent);
@@ -664,7 +661,7 @@ async function renameFolder(section, path) {
         else loadModelsFolder(currentModelsPath);
     } catch (error) {
         console.error(error);
-        alert(error.message);
+        appAlert(error.message, '', 'danger');
     }
 }
 
@@ -681,7 +678,7 @@ async function deleteFolder(section, path) {
         else loadModelsFolder(currentModelsPath);
     } catch (error) {
         console.error(error);
-        alert(error.message);
+        appAlert(error.message, '', 'danger');
     }
 }
 
@@ -692,7 +689,6 @@ function updateStats(models) {
 
     if (totalModelsEl) totalModelsEl.textContent = total.toLocaleString();
     if (gcodeReadyEl) gcodeReadyEl.textContent = gcodeReady.toLocaleString();
-    if (activePrintersEl) activePrintersEl.textContent = DEMO_QUEUE.length.toLocaleString();
 
     // Fetch storage information
     fetch('/api/storage')
@@ -1135,17 +1131,34 @@ function closeModelModal() {
 function renderPrintQueue() {
     if (!printQueue) return;
 
-    printQueue.innerHTML = DEMO_QUEUE.map(job => `
-        <div class="queue-item">
-            <div class="queue-header">
-                <span class="queue-name">Print #${job.id} — ${job.name}</span>
-                <span class="queue-time">${job.time}</span>
+    const activeJobs = (allPrinters || []).filter(printer => {
+        const jobState = printer.job?.state;
+        return jobState === 'printing' || jobState === 'paused';
+    });
+
+    if (!activeJobs.length) {
+        printQueue.innerHTML = `<div class="empty-state-small">${t('noActivePrints')}</div>`;
+        return;
+    }
+
+    printQueue.innerHTML = activeJobs.map(printer => {
+        const printerName = printer.name || `Printer ${printer.port}`;
+        const filename = printer.job.filename || '—';
+        const progress = printer.job.progress || 0;
+        const remainingMinutes = printer.job.estimated_remaining != null ? Math.round(printer.job.estimated_remaining / 60) : null;
+        const statusClass = printer.job.state === 'paused' ? 'orange' : 'green';
+        return `
+            <div class="queue-item">
+                <div class="queue-header">
+                    <span class="queue-name">${escapeHtml(printerName)} — ${escapeHtml(filename)}</span>
+                    <span class="queue-time">${remainingMinutes != null ? formatEstimatedTime(remainingMinutes) : '—'}</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill ${statusClass}" style="width: ${progress}%"></div>
+                </div>
             </div>
-            <div class="progress-bar">
-                <div class="progress-fill ${job.status}" style="width: ${job.progress}%"></div>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 async function loadModels() {
@@ -1215,6 +1228,38 @@ function renderSystemStats(data) {
 }
 
 const TEMP_SERIES_COLORS = ['#ec4899', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#eab308'];
+
+const HEAT_COLOR_STOPS = [
+    { p: 0, c: [96, 165, 250] },   // azul (frío)
+    { p: 25, c: [248, 250, 252] }, // blanco (ambiente)
+    { p: 50, c: [250, 204, 21] },  // amarillo
+    { p: 75, c: [249, 115, 22] },  // naranja
+    { p: 100, c: [239, 68, 68] },  // rojo (caliente)
+];
+
+function heatColor(percent) {
+    const clamped = Math.max(0, Math.min(100, percent || 0));
+    let lower = HEAT_COLOR_STOPS[0];
+    let upper = HEAT_COLOR_STOPS[HEAT_COLOR_STOPS.length - 1];
+    for (let i = 0; i < HEAT_COLOR_STOPS.length - 1; i++) {
+        if (clamped >= HEAT_COLOR_STOPS[i].p && clamped <= HEAT_COLOR_STOPS[i + 1].p) {
+            lower = HEAT_COLOR_STOPS[i];
+            upper = HEAT_COLOR_STOPS[i + 1];
+            break;
+        }
+    }
+    const range = upper.p - lower.p || 1;
+    const t = (clamped - lower.p) / range;
+    const r = Math.round(lower.c[0] + (upper.c[0] - lower.c[0]) * t);
+    const g = Math.round(lower.c[1] + (upper.c[1] - lower.c[1]) * t);
+    const b = Math.round(lower.c[2] + (upper.c[2] - lower.c[2]) * t);
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+function heatColorForSensor(current, key) {
+    const max = (key || '').includes('bed') ? 120 : 280;
+    return heatColor(((current || 0) / max) * 100);
+}
 
 function temperatureRowIcon(kind) {
     if (kind === 'heater') {
@@ -1306,6 +1351,7 @@ async function setTemperatureTarget(port, heater, target) {
 }
 
 let temperatureCardCollapsed = false;
+let temperatureCardThemeMode = null; // 'warm' | 'cool' | null
 
 function renderTemperaturesCard(data, port) {
     const container = document.getElementById('printer-modal-temperatures');
@@ -1315,6 +1361,11 @@ function renderTemperaturesCard(data, port) {
     if (!sensors.length) {
         container.innerHTML = '';
         return;
+    }
+
+    if (temperatureCardThemeMode === 'cool') {
+        const stillCooling = sensors.some(sensor => sensor.kind === 'heater' && (sensor.current || 0) > 40);
+        if (!stillCooling) temperatureCardThemeMode = null;
     }
 
     const rows = sensors.map((sensor, index) => {
@@ -1333,22 +1384,24 @@ function renderTemperaturesCard(data, port) {
                     <span>${sensor.label}</span>
                 </div>
                 <div class="temp-row-state">${stateLabel}</div>
-                <div class="temp-row-current">${sensor.current != null ? sensor.current.toFixed(1) + '°C' : '—'}</div>
+                <div class="temp-row-current" style="${sensor.current != null ? `color:${heatColorForSensor(sensor.current, sensor.key)}` : ''}">${sensor.current != null ? sensor.current.toFixed(1) + '°C' : '—'}</div>
                 <div class="temp-row-target">${targetCell}</div>
             </div>
         `;
     }).join('');
 
+    const themeClass = temperatureCardThemeMode === 'warm' ? ' temp-card-warm' : temperatureCardThemeMode === 'cool' ? ' temp-card-cool' : '';
     container.innerHTML = `
-        <div class="temp-card">
+        <div class="temp-card${themeClass}">
             <div class="temp-card-header">
                 <div class="temp-card-header-left">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
                     <span>${t('temperatures')}</span>
                 </div>
                 <div class="temp-card-header-actions">
-                    <span class="temp-preset-pill">${t('tempPreset')}</span>
-                    <button type="button" class="temp-icon-btn" title="Configuración">
+                    <button type="button" class="temp-cool-pill" id="temp-cool-btn">${t('tempCool')}</button>
+                    <button type="button" class="temp-preset-pill" id="temp-preset-btn">${t('tempPreset')}</button>
+                    <button type="button" class="temp-icon-btn" id="temp-config-btn" title="Configuración">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </button>
                     <button type="button" class="temp-icon-btn" id="temp-collapse-btn" title="Colapsar">
@@ -1399,6 +1452,99 @@ function renderTemperaturesCard(data, port) {
             }
         });
     }
+
+    const heaterSensors = sensors.filter(sensor => sensor.kind === 'heater');
+
+    const coolBtn = document.getElementById('temp-cool-btn');
+    if (coolBtn) {
+        coolBtn.addEventListener('click', () => {
+            temperatureCardThemeMode = 'cool';
+            heaterSensors.forEach(sensor => setTemperatureTarget(port, sensor.key, 0));
+            setTimeout(() => loadPrinterTemperatures(port), 400);
+        });
+    }
+
+    const presetBtn = document.getElementById('temp-preset-btn');
+    if (presetBtn) {
+        presetBtn.addEventListener('click', async () => {
+            temperatureCardThemeMode = 'warm';
+            try {
+                const response = await fetch('/api/system/temperature-presets');
+                const presets = await response.json();
+                heaterSensors.forEach(sensor => {
+                    if (presets[sensor.key] != null) {
+                        setTemperatureTarget(port, sensor.key, presets[sensor.key]);
+                    }
+                });
+                setTimeout(() => loadPrinterTemperatures(port), 400);
+            } catch (error) {
+                console.error(error);
+            }
+        });
+    }
+
+    const configBtn = document.getElementById('temp-config-btn');
+    if (configBtn) {
+        configBtn.addEventListener('click', () => openTempPresetsModal(heaterSensors));
+    }
+}
+
+async function openTempPresetsModal(heaterSensors) {
+    const modal = document.getElementById('temp-presets-modal');
+    const fieldsEl = document.getElementById('temp-presets-fields');
+    if (!modal || !fieldsEl) return;
+
+    let presets = {};
+    try {
+        const response = await fetch('/api/system/temperature-presets');
+        presets = await response.json();
+    } catch (error) {
+        console.error(error);
+    }
+
+    fieldsEl.innerHTML = heaterSensors.map(sensor => `
+        <div class="temp-presets-field">
+            <label for="temp-preset-input-${escapeHtml(sensor.key)}">${escapeHtml(sensor.label)}</label>
+            <div class="temp-target-input-wrap">
+                <input type="number" id="temp-preset-input-${escapeHtml(sensor.key)}" data-heater="${escapeHtml(sensor.key)}" value="${presets[sensor.key] ?? ''}" step="1" min="0">
+                <span class="temp-target-unit">°C</span>
+            </div>
+        </div>
+    `).join('');
+
+    modal.classList.add('active');
+}
+
+function closeTempPresetsModal() {
+    const modal = document.getElementById('temp-presets-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+const tempPresetsCancelBtn = document.getElementById('temp-presets-cancel-btn');
+if (tempPresetsCancelBtn) tempPresetsCancelBtn.addEventListener('click', closeTempPresetsModal);
+
+const tempPresetsBackdrop = document.getElementById('temp-presets-modal-backdrop');
+if (tempPresetsBackdrop) tempPresetsBackdrop.addEventListener('click', closeTempPresetsModal);
+
+const tempPresetsSaveBtn = document.getElementById('temp-presets-save-btn');
+if (tempPresetsSaveBtn) {
+    tempPresetsSaveBtn.addEventListener('click', async () => {
+        const fieldsEl = document.getElementById('temp-presets-fields');
+        if (!fieldsEl) return;
+        const presets = {};
+        fieldsEl.querySelectorAll('input[data-heater]').forEach(input => {
+            const value = parseFloat(input.value);
+            if (!Number.isNaN(value)) presets[input.dataset.heater] = value;
+        });
+        try {
+            const formData = new FormData();
+            formData.append('presets', JSON.stringify(presets));
+            await fetch('/api/system/temperature-presets', { method: 'POST', body: formData });
+            closeTempPresetsModal();
+        } catch (error) {
+            console.error(error);
+        }
+    });
 }
 
 async function loadPrinterTemperatures(port) {
@@ -1431,8 +1577,12 @@ function renderTopbarServerStats(data) {
 
     const cpuPercent = Math.max(0, Math.min(100, host.cpu_percent || 0));
     const memPercent = Math.max(0, Math.min(100, host.mem_percent || 0));
+    const tempValue = host.temp != null ? host.temp : null;
+    const TEMP_GAUGE_MAX = 90;
+    const tempPercent = tempValue != null ? Math.max(0, Math.min(100, (tempValue / TEMP_GAUGE_MAX) * 100)) : 0;
     const cpuOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (cpuPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
     const memOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (memPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
+    const tempOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (tempPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
     const networkLine = host.network_interface
         ? `${host.network_interface}${host.network_ip ? ` (${host.network_ip})` : ''} : ${t('hostBandwidth')}: ${host.bandwidth_kbps} kB/s , ${t('hostReceived')}: ${host.rx_gb} GB , ${t('hostTransmitted')}: ${host.tx_gb} GB`
         : '—';
@@ -1464,6 +1614,14 @@ function renderTopbarServerStats(data) {
                 <span class="gauge-value">${memPercent}</span>
                 <span class="gauge-label">${t('memory')}.</span>
             </div>
+            <div class="topbar-gauge">
+                <svg viewBox="0 0 60 60">
+                    <circle class="gauge-track" cx="30" cy="30" r="24"/>
+                    <circle class="gauge-fill gauge-fill-temp" cx="30" cy="30" r="24" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${tempOffset}"/>
+                </svg>
+                <span class="gauge-value">${tempValue != null ? Math.round(tempValue) : '—'}</span>
+                <span class="gauge-label">${t('temperature')}</span>
+            </div>
         </div>
     `;
 }
@@ -1483,9 +1641,253 @@ async function loadTopbarServerStats() {
     }
 }
 
+let toolheadCardCollapsed = false;
+let toolheadJogStep = 25;
+let toolheadPort = null;
+
+async function sendPrinterGcode(port, script) {
+    try {
+        const formData = new FormData();
+        formData.append('port', port);
+        formData.append('command', script);
+        const response = await fetch('/api/console/command', { method: 'POST', body: formData });
+        return response.ok;
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+}
+
+function renderToolheadCard(data, port) {
+    const container = document.getElementById('printer-modal-toolhead');
+    if (!container) return;
+
+    const position = data?.position || { x: 0, y: 0, z: 0 };
+    const target = data?.gcode_position || position;
+    const zOffset = data?.z_offset || 0;
+    const speedPercent = Math.round((data?.speed_factor || 1) * 100);
+    const isAbsolute = data?.absolute_coordinates !== false;
+    const modeLabel = isAbsolute ? t('positionAbsolute') : t('positionRelative');
+
+    container.innerHTML = `
+        <div class="temp-card toolhead-card">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    <span>${t('toolhead')}</span>
+                </div>
+                <div class="temp-card-header-actions">
+                    <button type="button" class="temp-icon-btn" id="toolhead-collapse-btn" title="Colapsar">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="temp-card-body" id="toolhead-card-body" ${toolheadCardCollapsed ? 'hidden' : ''}>
+                <div class="toolhead-position-mode">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>
+                    <span>${t('positionLabel')}: ${modeLabel}</span>
+                </div>
+
+                <div class="toolhead-position-row">
+                    <div class="toolhead-position-field">
+                        <div class="toolhead-position-field-top">
+                            <span class="toolhead-position-letter">X</span>
+                            <span class="toolhead-position-target">[${target.x.toFixed(2)}]</span>
+                        </div>
+                        <div class="toolhead-position-box"><span class="toolhead-position-value">${position.x.toFixed(2)}</span></div>
+                    </div>
+                    <div class="toolhead-position-field">
+                        <div class="toolhead-position-field-top">
+                            <span class="toolhead-position-letter">Y</span>
+                            <span class="toolhead-position-target">[${target.y.toFixed(2)}]</span>
+                        </div>
+                        <div class="toolhead-position-box"><span class="toolhead-position-value">${position.y.toFixed(2)}</span></div>
+                    </div>
+                    <div class="toolhead-position-field">
+                        <div class="toolhead-position-field-top">
+                            <span class="toolhead-position-letter">Z</span>
+                            <span class="toolhead-position-target">[${target.z.toFixed(2)}]</span>
+                        </div>
+                        <div class="toolhead-position-box"><span class="toolhead-position-value">${position.z.toFixed(3)}</span></div>
+                    </div>
+                </div>
+
+                <div class="toolhead-jog-row">
+                    <button type="button" class="toolhead-jog-btn" data-axis="X" data-dir="-1" title="X-">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <div class="toolhead-jog-col">
+                        <button type="button" class="toolhead-jog-btn" data-axis="Y" data-dir="1" title="Y+">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button type="button" class="toolhead-jog-btn" data-axis="Y" data-dir="-1" title="Y-">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                    </div>
+                    <button type="button" class="toolhead-jog-btn" data-axis="X" data-dir="1" title="X+">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                    <div class="toolhead-jog-col">
+                        <button type="button" class="toolhead-jog-btn" data-axis="Z" data-dir="1" title="Z+">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button type="button" class="toolhead-jog-btn" data-axis="Z" data-dir="-1" title="Z-">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                    </div>
+                    <div class="toolhead-jog-actions">
+                        <button type="button" class="toolhead-home-all-btn" id="toolhead-home-all-btn" title="G28">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            <span>${t('homeAll')}</span>
+                        </button>
+                        <button type="button" class="toolhead-motors-off-btn" id="toolhead-motors-off-btn" title="M84">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="toolhead-axis-home-row">
+                    <button type="button" id="toolhead-home-x-btn">X</button>
+                    <button type="button" id="toolhead-home-y-btn">Y</button>
+                    <button type="button" id="toolhead-home-z-btn">Z</button>
+                </div>
+
+                <div class="toolhead-steps-row" id="toolhead-jog-steps">
+                    <button type="button" class="toolhead-step-btn" data-step="1">1</button>
+                    <button type="button" class="toolhead-step-btn" data-step="10">10</button>
+                    <button type="button" class="toolhead-step-btn" data-step="25">25</button>
+                    <button type="button" class="toolhead-step-btn active" data-step="50">50</button>
+                    <button type="button" class="toolhead-step-btn" data-step="100">100</button>
+                    <button type="button" class="toolhead-step-btn" data-step="200">200</button>
+                </div>
+
+                <div class="toolhead-zoffset-row">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 8.5 12 15l10-6.5z"/><path d="M2 15.5 12 22l10-6.5"/></svg>
+                    <span id="toolhead-zoffset-label">${t('zOffset')}: ${zOffset.toFixed(3)}</span>
+                </div>
+                <div class="toolhead-zoffset-buttons">
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="-0.05">−0.05</button>
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="-0.025">−0.025</button>
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="-0.01">−0.01</button>
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="-0.005">↓ −0.005</button>
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="0.005">↑ +0.005</button>
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="0.01">+0.01</button>
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="0.025">+0.025</button>
+                    <button type="button" class="toolhead-zoffset-btn" data-adjust="0.05">+0.05</button>
+                </div>
+
+                <div class="toolhead-speed-row">
+                    <span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        ${t('speedFactor')}
+                    </span>
+                    <span class="toolhead-speed-badge" id="toolhead-speed-value">${speedPercent} %</span>
+                </div>
+                <div class="toolhead-speed-slider-row">
+                    <button type="button" id="toolhead-speed-minus">−</button>
+                    <input type="range" id="toolhead-speed-slider" min="20" max="200" value="${speedPercent}">
+                    <button type="button" id="toolhead-speed-plus">+</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const collapseBtn = document.getElementById('toolhead-collapse-btn');
+    const body = document.getElementById('toolhead-card-body');
+    if (collapseBtn && body) {
+        collapseBtn.classList.toggle('collapsed', toolheadCardCollapsed);
+        collapseBtn.addEventListener('click', () => {
+            toolheadCardCollapsed = !toolheadCardCollapsed;
+            body.hidden = toolheadCardCollapsed;
+            collapseBtn.classList.toggle('collapsed', toolheadCardCollapsed);
+        });
+    }
+
+    container.querySelectorAll('#toolhead-jog-steps .toolhead-step-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            toolheadJogStep = parseFloat(btn.dataset.step);
+            container.querySelectorAll('#toolhead-jog-steps .toolhead-step-btn').forEach(b => b.classList.toggle('active', b === btn));
+        });
+        if (btn.classList.contains('active')) toolheadJogStep = parseFloat(btn.dataset.step);
+    });
+
+    container.querySelectorAll('.toolhead-jog-btn[data-axis]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const axis = btn.dataset.axis;
+            const dir = parseInt(btn.dataset.dir, 10);
+            const distance = (toolheadJogStep * dir).toFixed(3);
+            const feed = axis === 'Z' ? 600 : 3000;
+            await sendPrinterGcode(port, `G91\nG1 ${axis}${distance} F${feed}\nG90`);
+            loadPrinterToolhead(port);
+        });
+    });
+
+    const homeAllBtn = document.getElementById('toolhead-home-all-btn');
+    if (homeAllBtn) homeAllBtn.addEventListener('click', async () => {
+        await sendPrinterGcode(port, 'G28');
+        loadPrinterToolhead(port);
+    });
+
+    ['x', 'y', 'z'].forEach(axis => {
+        const btn = document.getElementById(`toolhead-home-${axis}-btn`);
+        if (btn) btn.addEventListener('click', async () => {
+            await sendPrinterGcode(port, `G28 ${axis.toUpperCase()}`);
+            loadPrinterToolhead(port);
+        });
+    });
+
+    const motorsOffBtn = document.getElementById('toolhead-motors-off-btn');
+    if (motorsOffBtn) motorsOffBtn.addEventListener('click', async () => {
+        await sendPrinterGcode(port, 'M84');
+    });
+
+    container.querySelectorAll('.toolhead-zoffset-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const adjust = parseFloat(btn.dataset.adjust);
+            await sendPrinterGcode(port, `SET_GCODE_OFFSET Z_ADJUST=${adjust} MOVE=1`);
+            loadPrinterToolhead(port);
+        });
+    });
+
+    const speedSlider = document.getElementById('toolhead-speed-slider');
+    const speedValue = document.getElementById('toolhead-speed-value');
+    const applySpeed = async (value) => {
+        speedSlider.value = value;
+        if (speedValue) speedValue.textContent = `${value} %`;
+        await sendPrinterGcode(port, `M220 S${value}`);
+    };
+    if (speedSlider) {
+        speedSlider.addEventListener('input', () => {
+            if (speedValue) speedValue.textContent = `${speedSlider.value} %`;
+        });
+        speedSlider.addEventListener('change', () => applySpeed(speedSlider.value));
+    }
+    const speedMinusBtn = document.getElementById('toolhead-speed-minus');
+    if (speedMinusBtn) speedMinusBtn.addEventListener('click', () => applySpeed(Math.max(20, parseInt(speedSlider.value, 10) - 10)));
+    const speedPlusBtn = document.getElementById('toolhead-speed-plus');
+    if (speedPlusBtn) speedPlusBtn.addEventListener('click', () => applySpeed(Math.min(200, parseInt(speedSlider.value, 10) + 10)));
+}
+
+async function loadPrinterToolhead(port) {
+    const container = document.getElementById('printer-modal-toolhead');
+    if (container && container.contains(document.activeElement) && document.activeElement.id === 'toolhead-speed-slider') {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/system/toolhead?port=${port}`);
+        if (!response.ok) throw new Error('No se pudo cargar la posición del cabezal');
+        const data = await response.json();
+        renderToolheadCard(data, port);
+    } catch (error) {
+        console.error(error);
+        if (container) container.innerHTML = '';
+    }
+}
+
 const printerModal = document.getElementById('printer-modal');
 
 let printerModalTemperatureInterval = null;
+let printerModalToolheadInterval = null;
 
 function closePrinterModal() {
     if (!printerModal) return;
@@ -1493,6 +1895,10 @@ function closePrinterModal() {
     if (printerModalTemperatureInterval) {
         clearInterval(printerModalTemperatureInterval);
         printerModalTemperatureInterval = null;
+    }
+    if (printerModalToolheadInterval) {
+        clearInterval(printerModalToolheadInterval);
+        printerModalToolheadInterval = null;
     }
 }
 
@@ -1515,6 +1921,7 @@ async function openPrinterModal(printer) {
     const modalStatusText = document.getElementById('printer-modal-status-text');
     const statsContainer = document.getElementById('printer-modal-stats');
     const temperaturesContainer = document.getElementById('printer-modal-temperatures');
+    const toolheadContainer = document.getElementById('printer-modal-toolhead');
 
     if (modalContent) modalContent.className = `modal-content printer-modal-content ${visualState}`;
     if (modalImage) modalImage.src = PRINTER_STATE_IMAGES[visualState];
@@ -1524,12 +1931,17 @@ async function openPrinterModal(printer) {
     if (modalStatusText) modalStatusText.textContent = stateDisplay;
     if (statsContainer) statsContainer.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
     if (temperaturesContainer) temperaturesContainer.innerHTML = '';
+    if (toolheadContainer) toolheadContainer.innerHTML = '';
 
     printerModal.classList.add('active');
 
     if (printerModalTemperatureInterval) {
         clearInterval(printerModalTemperatureInterval);
         printerModalTemperatureInterval = null;
+    }
+    if (printerModalToolheadInterval) {
+        clearInterval(printerModalToolheadInterval);
+        printerModalToolheadInterval = null;
     }
 
     try {
@@ -1545,6 +1957,8 @@ async function openPrinterModal(printer) {
     if (printer.port) {
         loadPrinterTemperatures(printer.port);
         printerModalTemperatureInterval = setInterval(() => loadPrinterTemperatures(printer.port), 4000);
+        loadPrinterToolhead(printer.port);
+        printerModalToolheadInterval = setInterval(() => loadPrinterToolhead(printer.port), 3000);
     }
 }
 
@@ -1556,6 +1970,7 @@ async function loadPrinters() {
         allPrinters = data.printers || [];
         renderPrinters(allPrinters);
         updateActivePrintersCount();
+        renderPrintQueue();
     } catch (error) {
         console.error(error);
         if (printersGrid) {
@@ -1593,11 +2008,6 @@ function getPrinterSortPriority(printer) {
     return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
 }
 
-function sortPrintersByStatus(printers) {
-    return [...printers].sort((a, b) => getPrinterSortPriority(a) - getPrinterSortPriority(b));
-}
-
-let dashboardLaserStatus = null;
 
 const LASER_STATE_IMAGES = {
     printing: '/static/img/Laser_ready.png',
@@ -1627,17 +2037,24 @@ function laserHostLabel(host) {
     return host.startsWith('usb:') ? host.slice(4) : host;
 }
 
-function laserDashboardCardHtml(status) {
+function laserDashboardSortPriority(status) {
+    const visualState = getLaserVisualState(status);
+    if (visualState === 'offline') return 4;
+    return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
+}
+
+function laserDashboardCardHtml(entry) {
+    const { host, status } = entry;
     const visualState = getLaserVisualState(status);
     const isOnline = visualState !== 'offline';
     const statusText = isOnline ? t('online') : t('offline');
     const stateLabel = isOnline ? (status.state || t('idle')) : t('laserOffline');
     const position = isOnline ? `X${status.x.toFixed(1)} Y${status.y.toFixed(1)} Z${status.z.toFixed(1)}` : '—';
     const feedSpeed = isOnline ? `${status.feed} / ${status.speed}` : '—';
-    const hostLabel = laserHostLabel(status.host);
+    const hostLabel = laserHostLabel(host);
 
     return `
-        <div class="printer-card laser-dashboard-card ${isOnline ? 'online' : 'offline'}" id="laser-dashboard-card">
+        <div class="printer-card printer-card-type-laser laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${t('laser')}</h3>
@@ -1656,36 +2073,67 @@ function laserDashboardCardHtml(status) {
                 ${laserIllustrationImg(visualState)}
             </div>
 
-            <div class="printer-temps">
-                <div class="temp-item">
-                    <div class="temp-label">${t('laserPosition')}</div>
-                    <div class="temp-value laser-dashboard-metric">${position}</div>
+            ${visualState === 'printing' || visualState === 'paused' ? `
+                <div class="printer-temps">
+                    <div class="temp-item">
+                        <div class="temp-label">${t('laserPosition')}</div>
+                        <div class="temp-value laser-dashboard-metric">${position}</div>
+                    </div>
+                    <div class="temp-item">
+                        <div class="temp-label">${t('laserFeedSpeed')}</div>
+                        <div class="temp-value laser-dashboard-metric">${feedSpeed}</div>
+                    </div>
                 </div>
-                <div class="temp-item">
-                    <div class="temp-label">${t('laserFeedSpeed')}</div>
-                    <div class="temp-value laser-dashboard-metric">${feedSpeed}</div>
-                </div>
-            </div>
+            ` : ''}
         </div>
     `;
 }
 
+let dashboardLaserEntries = [];
+
 async function refreshDashboardLaserCard() {
     try {
-        const response = await fetch('/api/laser/status');
-        dashboardLaserStatus = await response.json();
+        const registryResponse = await fetch('/api/laser/registry');
+        const registryData = await registryResponse.json();
+        const lasers = registryData.lasers || [];
+        dashboardLaserEntries = await Promise.all(lasers.map(async laser => {
+            try {
+                const response = await fetch(`/api/laser/status?host=${encodeURIComponent(laser.host)}`);
+                const status = await response.json();
+                return { host: laser.host, status };
+            } catch (error) {
+                return { host: laser.host, status: { connected: false } };
+            }
+        }));
     } catch (error) {
-        dashboardLaserStatus = { connected: false };
+        console.error(error);
+        dashboardLaserEntries = [];
     }
     renderPrinters(allPrinters);
+}
+
+function isShowOfflineMachinesEnabled() {
+    return localStorage.getItem('showOfflineMachines') !== 'false';
+}
+
+function updatePrintersViewMode(mode) {
+    printersViewMode = mode;
+    localStorage.setItem('printersViewMode', mode);
+    if (printersGrid) printersGrid.classList.toggle('list-view', mode === 'list');
+    const gridBtn = document.getElementById('view-grid-printers');
+    const listBtn = document.getElementById('view-list-printers');
+    if (gridBtn) gridBtn.classList.toggle('btn-view-toggle-active', mode === 'grid');
+    if (listBtn) listBtn.classList.toggle('btn-view-toggle-active', mode === 'list');
 }
 
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
-    const printers = printersInput && printersInput.length ? sortPrintersByStatus(printersInput) : [];
+    printersGrid.classList.toggle('list-view', printersViewMode === 'list');
+    const showOffline = isShowOfflineMachinesEnabled();
+    const printers = printersInput || [];
 
-    const printerCardsHtml = printers.length ? printers.map(printer => {
+    const printerEntries = printers.map(printer => {
         const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
         const normalizedStatus = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue) ? 'online' : 'offline';
         const isOnline = normalizedStatus === 'online';
@@ -1712,11 +2160,21 @@ function renderPrinters(printersInput) {
 
         const printerName = printer.name || printer.printer_info?.name || printer.printer_info?.hostname || `Printer ${printer.port || ''}`;
         const overallPercent = Math.round((bedPercent + extruderPercent) / 2);
+        const portKey = String(printer.port);
+        if (dashboardPrinterThemeMode.get(portKey) === 'cool') {
+            const stillCooling = (typeof bedTemp === 'number' && bedTemp > 40) || (typeof extruderTemp === 'number' && extruderTemp > 40);
+            if (!stillCooling) dashboardPrinterThemeMode.delete(portKey);
+        }
+        const themeMode = visualState === 'idle' ? dashboardPrinterThemeMode.get(portKey) : null;
+        const themeModeClass = themeMode ? ` printer-card-${themeMode}` : '';
 
-        return `
-            <div class="printer-card ${normalizedStatus}" data-port="${printer.port}">
+        const html = `
+            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${visualState}${themeModeClass}" data-port="${printer.port}">
                 <div class="printer-card-top">
-                    <h3 class="printer-name">${printerName}</h3>
+                    <div>
+                        <h3 class="printer-name">${t('printerType3D')}</h3>
+                        <p class="printer-name-sub">${escapeHtml(printerName)}</p>
+                    </div>
                     <div class="printer-status-icon ${normalizedStatus}" title="${statusText}">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
@@ -1732,29 +2190,57 @@ function renderPrinters(printersInput) {
                     ${printerIllustrationImg(visualState)}
                 </div>
 
-                <div class="printer-temps">
-                    <div class="temp-item">
-                        <div class="temp-label">${t('bedTemp')}</div>
-                        <div class="temp-value">${bedTemp}<span class="temp-unit">°C</span></div>
+                ${visualState === 'printing' || visualState === 'paused' || visualState === 'idle' ? `
+                    <div class="printer-temps">
+                        <div class="temp-item">
+                            <div class="temp-label">${t('bedTemp')}</div>
+                            <div class="temp-value" style="color:${heatColor(bedPercent)}">${bedTemp}<span class="temp-unit">°C</span></div>
+                        </div>
+                        <div class="temp-item">
+                            <div class="temp-label">${t('extruderTemp')}</div>
+                            <div class="temp-value" style="color:${heatColor(extruderPercent)}">${extruderTemp}<span class="temp-unit">°C</span></div>
+                        </div>
                     </div>
-                    <div class="temp-item">
-                        <div class="temp-label">${t('extruderTemp')}</div>
-                        <div class="temp-value">${extruderTemp}<span class="temp-unit">°C</span></div>
-                    </div>
-                </div>
+                ` : ''}
 
-                <div class="printer-progress">
-                    <div class="printer-progress-labels">
-                        <span>${bedPercent}%</span>
-                        <span>${extruderPercent}%</span>
+                ${visualState === 'printing' || visualState === 'paused' ? `
+                    <div class="printer-progress">
+                        <div class="printer-progress-labels">
+                            <span>${bedPercent}%</span>
+                            <span>${extruderPercent}%</span>
+                        </div>
+                        <div class="temp-progress"><div class="temp-progress-fill" style="width: ${overallPercent}%"></div></div>
                     </div>
-                    <div class="temp-progress"><div class="temp-progress-fill" style="width: ${overallPercent}%"></div></div>
-                </div>
+                ` : ''}
+
+                ${visualState === 'idle' ? `
+                    <div class="printer-quick-actions">
+                        <button type="button" class="printer-quick-action-btn" data-quick-action="cool" data-port="${printer.port}">${t('tempCool')}</button>
+                        <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent" data-quick-action="preheat" data-port="${printer.port}">${t('tempPreset')}</button>
+                    </div>
+                ` : ''}
             </div>
         `;
-    }).join('') : `<div class="empty-state">${t('noPrintersFound')}</div>`;
 
-    printersGrid.innerHTML = printerCardsHtml + laserDashboardCardHtml(dashboardLaserStatus);
+        return { isOnline, sortPriority: getPrinterSortPriority(printer), html };
+    });
+
+    const laserEntries = dashboardLaserEntries.map(entry => {
+        const isOnline = getLaserVisualState(entry.status) !== 'offline';
+        return {
+            isOnline,
+            sortPriority: laserDashboardSortPriority(entry.status),
+            html: laserDashboardCardHtml(entry),
+        };
+    });
+
+    let combined = [...printerEntries, ...laserEntries];
+    if (!showOffline) combined = combined.filter(entry => entry.isOnline);
+    combined.sort((a, b) => a.sortPriority - b.sortPriority);
+
+    printersGrid.innerHTML = combined.length
+        ? combined.map(entry => entry.html).join('')
+        : `<div class="empty-state">${t('noPrintersFound')}</div>`;
 
     printersGrid.querySelectorAll('.printer-card[data-port]').forEach(card => {
         card.addEventListener('click', () => {
@@ -1764,10 +2250,47 @@ function renderPrinters(printersInput) {
         });
     });
 
-    const laserDashboardCard = document.getElementById('laser-dashboard-card');
-    if (laserDashboardCard) {
-        laserDashboardCard.addEventListener('click', () => switchSection('laser'));
-    }
+    printersGrid.querySelectorAll('.printer-card[data-laser-host]').forEach(card => {
+        card.addEventListener('click', async () => {
+            const host = card.dataset.laserHost;
+            try {
+                const formData = new FormData();
+                formData.append('host', host);
+                await fetch('/api/laser/host', { method: 'POST', body: formData });
+            } catch (error) {
+                console.error(error);
+            }
+            switchSection('laser');
+        });
+    });
+
+    printersGrid.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
+        btn.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const port = btn.dataset.port;
+            const action = btn.dataset.quickAction;
+            try {
+                if (action === 'cool') {
+                    dashboardPrinterThemeMode.set(port, 'cool');
+                    await Promise.all([
+                        setTemperatureTarget(port, 'heater_bed', 0),
+                        setTemperatureTarget(port, 'extruder', 0),
+                    ]);
+                } else if (action === 'preheat') {
+                    dashboardPrinterThemeMode.set(port, 'warm');
+                    const response = await fetch('/api/system/temperature-presets');
+                    const presets = await response.json();
+                    const tasks = [];
+                    if (presets.heater_bed != null) tasks.push(setTemperatureTarget(port, 'heater_bed', presets.heater_bed));
+                    if (presets.extruder != null) tasks.push(setTemperatureTarget(port, 'extruder', presets.extruder));
+                    await Promise.all(tasks);
+                }
+                loadPrinters();
+            } catch (error) {
+                console.error(error);
+            }
+        });
+    });
 }
 
 function updateActivePrintersCount() {
@@ -1871,13 +2394,13 @@ function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDon
                 onDone();
             } else {
                 if (row) row.remove();
-                alert('No se pudo subir el archivo.');
+                appAlert('No se pudo subir el archivo.', '', 'danger');
             }
         });
 
         xhr.addEventListener('error', () => {
             if (row) row.remove();
-            alert('No se pudo subir el archivo.');
+            appAlert('No se pudo subir el archivo.', '', 'danger');
         });
 
         xhr.send(formData);
@@ -1909,7 +2432,7 @@ function wireCreateFolderButton(btnId, type, getPath, onDone) {
             onDone();
         } catch (error) {
             console.error(error);
-            alert(error.message || 'No se pudo crear la carpeta.');
+            appAlert(error.message || 'No se pudo crear la carpeta.', '', 'danger');
         }
     });
 }
@@ -1967,7 +2490,7 @@ async function renameFile(section, model, reloadFn) {
         reloadFn();
     } catch (error) {
         console.error(error);
-        alert(error.message || 'No se pudo renombrar el archivo.');
+        appAlert(error.message || 'No se pudo renombrar el archivo.', '', 'danger');
     }
 }
 
@@ -1987,7 +2510,7 @@ async function deleteFile(section, model, reloadFn, clearSelection) {
         reloadFn();
     } catch (error) {
         console.error(error);
-        alert(error.message || 'No se pudo eliminar el archivo.');
+        appAlert(error.message || 'No se pudo eliminar el archivo.', '', 'danger');
     }
 }
 
@@ -2087,7 +2610,7 @@ async function confirmMoveFile() {
         if (moveFileReloadFn) moveFileReloadFn();
     } catch (error) {
         console.error(error);
-        alert(error.message || 'No se pudo mover el archivo.');
+        appAlert(error.message || 'No se pudo mover el archivo.', '', 'danger');
     }
 }
 
@@ -2153,7 +2676,7 @@ if (gcodeSendLaserBtn) {
             refreshLaserQueue();
         } catch (error) {
             console.error(error);
-            alert(error.message || 'No se pudo agregar a la cola del láser.');
+            appAlert(error.message || 'No se pudo agregar a la cola del láser.', '', 'danger');
         }
     });
 }
@@ -2301,7 +2824,7 @@ function renderMacrosGrid(macros) {
                 if (!response.ok) throw new Error('No se pudo ejecutar el macro');
             } catch (error) {
                 console.error(error);
-                alert(error.message || 'No se pudo ejecutar el macro.');
+                appAlert(error.message || 'No se pudo ejecutar el macro.', '', 'danger');
             } finally {
                 btn.disabled = false;
             }
@@ -2341,9 +2864,19 @@ if (macrosPrinterSelect) {
 }
 
 // ── Generic in-app confirm modal (reemplaza confirm() nativo) ──
-function appConfirm(message, title = '') {
+const APP_DIALOG_ICONS = {
+    danger: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+    warning: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    success: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>',
+    info: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+};
+
+function showAppDialog(message, title, options = {}) {
+    const { type = 'danger', okLabel = null, cancelLabel = null, showCancel = true } = options;
     return new Promise(resolve => {
         const modal = document.getElementById('app-confirm-modal');
+        const content = document.getElementById('app-confirm-content');
+        const iconEl = document.getElementById('app-confirm-icon');
         const titleEl = document.getElementById('app-confirm-title');
         const messageEl = document.getElementById('app-confirm-message');
         const okBtn = document.getElementById('app-confirm-ok-btn');
@@ -2351,12 +2884,24 @@ function appConfirm(message, title = '') {
         const backdrop = document.getElementById('app-confirm-backdrop');
 
         if (!modal || !okBtn || !cancelBtn || !backdrop) {
-            resolve(window.confirm(message));
+            if (showCancel) {
+                resolve(window.confirm(message));
+            } else {
+                window.alert(message);
+                resolve(true);
+            }
             return;
         }
 
-        if (titleEl) titleEl.textContent = title;
+        if (content) content.className = `modal-content app-confirm-modal-content app-confirm-type-${type}`;
+        if (iconEl) iconEl.innerHTML = APP_DIALOG_ICONS[type] || '';
+        if (titleEl) titleEl.textContent = title || '';
         if (messageEl) messageEl.textContent = message;
+        const okSpan = okBtn.querySelector('span');
+        if (okSpan) okSpan.textContent = okLabel || t('confirmAction');
+        const cancelSpan = cancelBtn.querySelector('span');
+        if (cancelSpan) cancelSpan.textContent = cancelLabel || t('cancelAction');
+        cancelBtn.hidden = !showCancel;
         modal.classList.add('active');
 
         const cleanup = (result) => {
@@ -2371,8 +2916,16 @@ function appConfirm(message, title = '') {
 
         okBtn.addEventListener('click', onOk);
         cancelBtn.addEventListener('click', onCancel);
-        backdrop.addEventListener('click', onCancel);
+        if (showCancel) backdrop.addEventListener('click', onCancel);
     });
+}
+
+function appConfirm(message, title = '', type = 'danger') {
+    return showAppDialog(message, title, { type, showCancel: true });
+}
+
+function appAlert(message, title = '', type = 'success') {
+    return showAppDialog(message, title, { type, showCancel: false, okLabel: t('understood') });
 }
 
 // ── Toasts (notificaciones flotantes) ──
@@ -2539,7 +3092,8 @@ async function handleUsbClassifyLaser() {
 
         const confirmed = await appConfirm(
             `${t('usbRegisterConfirm')} (${target.chip}, ${target.device})`,
-            t('usbClassifyLaser')
+            t('usbClassifyLaser'),
+            'info'
         );
         if (!confirmed) return;
 
@@ -2722,7 +3276,8 @@ function renderLaserQueue(queue) {
                     } catch (error) {
                         console.error(error);
                     }
-                    if (!(await confirmLaserJobStart(gcodeText))) return;
+                    const { confirmed } = await confirmLaserJobStart(gcodeText);
+                    if (!confirmed) return;
                     try {
                         const formData = new FormData();
                         formData.append('id', id);
@@ -2735,7 +3290,7 @@ function renderLaserQueue(queue) {
                         refreshLaserQueue();
                     } catch (error) {
                         console.error(error);
-                        alert(error.message || 'No se pudo iniciar el trabajo.');
+                        appAlert(error.message || 'No se pudo iniciar el trabajo.', '', 'danger');
                     }
                 } else if (btn.dataset.action === 'remove') {
                     try {
@@ -2792,6 +3347,12 @@ async function loadLaserBoardInfo() {
 
 let laserHostOptions = [];
 
+function laserConnectionModeLabel(host) {
+    if (!host) return '';
+    if (host.startsWith('usb:')) return t('laserConnectionModeUsb');
+    return `${t('laserConnectionModeNetwork')} · ${host}`;
+}
+
 function renderLaserHostOptions(activeHost) {
     const selectEl = document.getElementById('laser-host-select');
     if (!selectEl) return;
@@ -2803,6 +3364,8 @@ function renderLaserHostOptions(activeHost) {
         return `<option value="${escapeHtml(device.host)}">${escapeHtml(label)}</option>`;
     }).join('');
     selectEl.value = activeHost;
+    const modeEl = document.getElementById('laser-connection-mode');
+    if (modeEl) modeEl.textContent = laserConnectionModeLabel(activeHost);
 }
 
 async function loadLaserHostSelector() {
@@ -2850,6 +3413,8 @@ if (laserHostSelect) {
             const formData = new FormData();
             formData.append('host', laserHostSelect.value);
             await fetch('/api/laser/host', { method: 'POST', body: formData });
+            const modeEl = document.getElementById('laser-connection-mode');
+            if (modeEl) modeEl.textContent = laserConnectionModeLabel(laserHostSelect.value);
             loadLaserBoardInfo();
             refreshLaserStatus();
             refreshLaserQueue();
@@ -2984,7 +3549,7 @@ function renderLaserSettings(settings) {
                 }
             } catch (error) {
                 console.error(error);
-                alert(error.message || 'No se pudo guardar el parámetro.');
+                appAlert(error.message || 'No se pudo guardar el parámetro.', '', 'danger');
             }
         });
     });
@@ -3100,6 +3665,16 @@ function sdFileIcon() {
     return '<svg class="laser-sd-row-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 }
 
+function sdMoreIcon() {
+    return '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>';
+}
+
+function closeAllSdRowMenus() {
+    document.querySelectorAll('.laser-sd-row-menu').forEach(menu => { menu.hidden = true; });
+}
+
+document.addEventListener('click', closeAllSdRowMenus);
+
 function renderSdList(data) {
     const listEl = document.getElementById('laser-sd-list');
     const spaceEl = document.getElementById('laser-sd-space');
@@ -3117,14 +3692,29 @@ function renderSdList(data) {
 
     listEl.innerHTML = entries.map(entry => {
         const isDir = entry.size === '-1' || entry.size === -1;
+        const deleteBtnHtml = `
+            <button type="button" class="laser-sd-row-menu-item laser-sd-row-menu-item-danger laser-sd-delete-btn">${escapeHtml(t('delete'))}</button>
+        `;
         return `
             <div class="laser-sd-row" data-name="${escapeHtml(entry.name)}" data-dir="${isDir ? '1' : '0'}">
                 ${isDir ? sdFolderIcon() : sdFileIcon()}
                 <span class="laser-sd-row-name">${escapeHtml(entry.name)}</span>
                 ${!isDir ? `<span class="laser-sd-row-size">${escapeHtml(entry.size)}</span>` : ''}
-                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger laser-sd-delete-btn" title="${escapeHtml(t('delete'))}">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
+                ${isDir ? `
+                    <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger laser-sd-delete-btn" title="${escapeHtml(t('delete'))}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                ` : `
+                    <div class="laser-sd-row-menu-wrap">
+                        <button type="button" class="theme-option-icon-btn laser-sd-more-btn" title="${escapeHtml(t('laserSdMenuMore'))}">
+                            ${sdMoreIcon()}
+                        </button>
+                        <div class="laser-sd-row-menu" hidden>
+                            <button type="button" class="laser-sd-row-menu-item laser-sd-print-btn">${escapeHtml(t('laserSdPrint'))}</button>
+                            ${deleteBtnHtml}
+                        </div>
+                    </div>
+                `}
             </div>
         `;
     }).join('');
@@ -3136,8 +3726,28 @@ function renderSdList(data) {
             row.querySelector('.laser-sd-row-name').addEventListener('click', () => {
                 loadSdFolder(`${sdCurrentPath}${name}/`);
             });
+        } else {
+            const moreBtn = row.querySelector('.laser-sd-more-btn');
+            const menu = row.querySelector('.laser-sd-row-menu');
+            if (moreBtn && menu) {
+                moreBtn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const wasHidden = menu.hidden;
+                    closeAllSdRowMenus();
+                    menu.hidden = !wasHidden;
+                });
+            }
+            const printBtn = row.querySelector('.laser-sd-print-btn');
+            if (printBtn) {
+                printBtn.addEventListener('click', () => {
+                    if (menu) menu.hidden = true;
+                    startSdFilePrint(name);
+                });
+            }
         }
-        row.querySelector('.laser-sd-delete-btn').addEventListener('click', async () => {
+        row.querySelector('.laser-sd-delete-btn').addEventListener('click', async (event) => {
+            event.stopPropagation();
+            closeAllSdRowMenus();
             if (!(await appConfirm(t('laserSdDeleteConfirm'), t('delete')))) return;
             try {
                 const formData = new FormData();
@@ -3152,10 +3762,72 @@ function renderSdList(data) {
                 loadSdFolder(sdCurrentPath);
             } catch (error) {
                 console.error(error);
-                alert(error.message || t('laserSdError'));
+                appAlert(error.message || t('laserSdError'), '', 'danger');
             }
         });
     });
+}
+
+async function waitForLaserJobCompletion(host) {
+    while (true) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+            const response = await fetch(`/api/laser/job/status?host=${encodeURIComponent(host)}`);
+            const data = await response.json();
+            if (['completed', 'error', 'cancelled', 'idle'].includes(data.state)) return data.state;
+        } catch (error) {
+            console.error(error);
+            return 'error';
+        }
+    }
+}
+
+async function startSdFilePrint(name) {
+    let gcodeText = '';
+    try {
+        const modelsResponse = await fetch('/api/models');
+        const models = await modelsResponse.json();
+        const match = models.find(m => m.id.startsWith('gcode/') && m.id.split('/').pop() === name);
+        if (match) {
+            const relPath = stripSectionPrefix(match.id, 'gcode');
+            const fileUrl = `/uploads/gcode/${relPath.split('/').map(encodeURIComponent).join('/')}`;
+            const fileResponse = await fetch(fileUrl);
+            if (fileResponse.ok) gcodeText = await fileResponse.text();
+        }
+    } catch (error) {
+        console.error(error);
+    }
+
+    const { confirmed, copies } = await confirmLaserJobStart(gcodeText, {
+        allowFrame: !!gcodeText,
+        message: gcodeText ? undefined : `${t('laserStartConfirm')} ${t('laserSdFrameUnavailable')}`,
+    });
+    if (!confirmed) return;
+
+    try {
+        const hostResponse = await fetch('/api/laser/host');
+        const hostData = await hostResponse.json();
+        const activeHost = hostData.host;
+
+        for (let i = 0; i < copies; i++) {
+            const formData = new FormData();
+            formData.append('path', sdCurrentPath);
+            formData.append('name', name);
+            const response = await fetch('/api/laser/sd/run', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || t('laserSdError'));
+            }
+            refreshLaserJob();
+            if (i < copies - 1) {
+                const finalState = await waitForLaserJobCompletion(activeHost);
+                if (finalState !== 'completed') break;
+            }
+        }
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('laserSdError'), '', 'danger');
+    }
 }
 
 async function loadSdFolder(path) {
@@ -3241,7 +3913,7 @@ if (laserSdNewFolderBtn) {
             loadSdFolder(sdCurrentPath);
         } catch (error) {
             console.error(error);
-            alert(error.message || t('laserSdError'));
+            appAlert(error.message || t('laserSdError'), '', 'danger');
         }
     });
 }
@@ -3265,7 +3937,7 @@ if (laserSdUploadInput) {
             loadSdFolder(sdCurrentPath);
         } catch (error) {
             console.error(error);
-            alert(error.message || t('laserSdError'));
+            appAlert(error.message || t('laserSdError'), '', 'danger');
         }
     });
 }
@@ -3289,7 +3961,7 @@ if (laserSdSendLibraryBtn) {
             loadSdFolder(sdCurrentPath);
         } catch (error) {
             console.error(error);
-            alert(error.message || t('laserSdError'));
+            appAlert(error.message || t('laserSdError'), '', 'danger');
         }
     });
 }
@@ -3398,7 +4070,7 @@ function parseGcodeBoundingBox(text) {
 async function frameLaserJob(gcodeText) {
     const bbox = parseGcodeBoundingBox(gcodeText || '');
     if (!bbox) {
-        alert(t('laserFrameError'));
+        appAlert(t('laserFrameError'), '', 'danger');
         return;
     }
     const feed = 3000;
@@ -3416,20 +4088,24 @@ async function frameLaserJob(gcodeText) {
     }
 }
 
-function confirmLaserJobStart(gcodeText) {
+function confirmLaserJobStart(gcodeText, options = {}) {
+    const allowFrame = options.allowFrame !== false && !!gcodeText;
     return new Promise(resolve => {
         const modal = document.getElementById('laser-start-confirm-modal');
         const messageEl = document.getElementById('laser-start-confirm-message');
         const cancelBtn = document.getElementById('laser-start-confirm-cancel-btn');
         const frameBtn = document.getElementById('laser-start-confirm-frame-btn');
         const startBtn = document.getElementById('laser-start-confirm-start-btn');
+        const copiesInput = document.getElementById('laser-start-confirm-copies-input');
 
         if (!modal || !cancelBtn || !frameBtn || !startBtn) {
-            resolve(window.confirm(t('laserStartConfirm')));
+            resolve({ confirmed: window.confirm(t('laserStartConfirm')), copies: 1 });
             return;
         }
 
-        if (messageEl) messageEl.textContent = t('laserStartConfirm');
+        if (messageEl) messageEl.textContent = options.message || t('laserStartConfirm');
+        frameBtn.hidden = !allowFrame;
+        if (copiesInput) copiesInput.value = '1';
         modal.classList.add('active');
 
         const cleanup = (result) => {
@@ -3437,7 +4113,8 @@ function confirmLaserJobStart(gcodeText) {
             cancelBtn.removeEventListener('click', onCancel);
             startBtn.removeEventListener('click', onStart);
             frameBtn.removeEventListener('click', onFrame);
-            resolve(result);
+            const copies = Math.max(1, parseInt(copiesInput?.value, 10) || 1);
+            resolve({ confirmed: result, copies });
         };
         const onCancel = () => cleanup(false);
         const onStart = () => cleanup(true);
@@ -3490,7 +4167,7 @@ const laserHomeBtn = document.getElementById('laser-home-btn');
 if (laserHomeBtn) {
     laserHomeBtn.addEventListener('click', async () => {
         if (isLaserHomeConfirmEnabled()) {
-            if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome')))) return;
+            if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
         }
         await sendLaserRawCommand('$H');
         refreshLaserStatus();
@@ -3568,6 +4245,16 @@ if (laserAirBtn) {
         if (label) label.textContent = laserAirActive ? t('laserAirAssistOff') : t('laserAirAssistOn');
     });
 }
+
+// ── Contraer/expandir genérico de fichas (.card-header-std + .card-collapse-toggle) ──
+document.addEventListener('click', (event) => {
+    const toggle = event.target.closest('.card-collapse-toggle');
+    if (!toggle) return;
+    const card = toggle.closest('.card-collapsible');
+    if (!card) return;
+    card.classList.toggle('collapsed');
+    toggle.classList.toggle('collapsed', card.classList.contains('collapsed'));
+});
 
 // ── Navigation ──
 function switchSection(sectionName) {
@@ -3758,12 +4445,36 @@ if (viewListFull) {
 
 // Settings controls
 const settingsTheme = document.getElementById('settings-theme');
-const settingsLanguage = document.getElementById('settings-language');
 const settingsPreviewQuality = document.getElementById('settings-preview-quality');
 const settingsAutoRefresh = document.getElementById('settings-autorefresh');
+const settingsShowOfflineMachines = document.getElementById('settings-show-offline-machines');
 const settingsLaserHomeConfirm = document.getElementById('settings-laser-home-confirm');
-const settingsUiScale = document.getElementById('settings-ui-scale');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
+
+function createOptionSwitch(containerId, onSelect) {
+    const container = document.getElementById(containerId);
+    const buttons = container ? Array.from(container.querySelectorAll('.option-switch-btn')) : [];
+    let value = null;
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            value = btn.dataset.value;
+            buttons.forEach(b => b.classList.toggle('active', b === btn));
+            if (onSelect) onSelect(value);
+        });
+    });
+    return {
+        setValue(v) {
+            value = v;
+            buttons.forEach(b => b.classList.toggle('active', b.dataset.value === v));
+        },
+        getValue() {
+            return value;
+        },
+    };
+}
+
+const settingsLanguageSwitch = createOptionSwitch('settings-language-switch', () => saveSettings());
+const settingsUiScaleSwitch = createOptionSwitch('settings-ui-scale-switch', () => saveSettings());
 
 function applyUiScale(scale) {
     document.documentElement.style.fontSize = `${scale}%`;
@@ -3807,11 +4518,12 @@ function loadSettingsPanel() {
 
     updateCustomThemeCardUI();
     if (settingsTheme) settingsTheme.value = savedTheme;
-    if (settingsLanguage) settingsLanguage.value = savedLanguage;
+    settingsLanguageSwitch.setValue(savedLanguage);
     if (settingsPreviewQuality) settingsPreviewQuality.checked = savedQuality === 'performance';
     if (settingsAutoRefresh) settingsAutoRefresh.checked = savedAutoRefresh !== 'false';
+    if (settingsShowOfflineMachines) settingsShowOfflineMachines.checked = isShowOfflineMachinesEnabled();
     if (settingsLaserHomeConfirm) settingsLaserHomeConfirm.checked = isLaserHomeConfirmEnabled();
-    if (settingsUiScale) settingsUiScale.value = savedUiScale;
+    settingsUiScaleSwitch.setValue(savedUiScale);
 
     setActiveThemeCard(savedTheme);
 }
@@ -3894,7 +4606,7 @@ if (updatesApplyBtn) {
         const label = updatesApplyBtn.querySelector('span');
         const originalLabel = label ? label.textContent : '';
 
-        if (!(await appConfirm(t('updatesApply') + '?', t('updatesApply')))) return;
+        if (!(await appConfirm(t('updatesApply') + '?', t('updatesApply'), 'warning'))) return;
 
         updatesApplyBtn.disabled = true;
         if (label) label.textContent = t('updatesApplying');
@@ -3920,7 +4632,7 @@ if (updatesApplyBtn) {
             loadUpdatesStatus();
         } catch (error) {
             console.error(error);
-            alert(error.message || t('updatesApplyError'));
+            appAlert(error.message || t('updatesApplyError'), '', 'danger');
         } finally {
             updatesApplyBtn.disabled = false;
             if (label) label.textContent = originalLabel;
@@ -3953,10 +4665,10 @@ function saveSettings() {
         localStorage.setItem('theme', themeValue);
         applyTheme(themeValue);
     }
-    if (settingsLanguage) {
-        const languageValue = settingsLanguage.value;
+    const languageValue = settingsLanguageSwitch.getValue();
+    if (languageValue) {
         setLanguage(languageValue);
-        if (langDisplay) langDisplay.textContent = languageValue.toUpperCase();
+        updateLangSwitchUI();
     }
     if (settingsPreviewQuality) {
         localStorage.setItem('previewQuality', settingsPreviewQuality.checked ? 'performance' : 'standard');
@@ -3964,12 +4676,18 @@ function saveSettings() {
     if (settingsAutoRefresh) {
         localStorage.setItem('autoRefreshPrinters', settingsAutoRefresh.checked ? 'true' : 'false');
     }
+    if (settingsShowOfflineMachines) {
+        localStorage.setItem('showOfflineMachines', settingsShowOfflineMachines.checked ? 'true' : 'false');
+        updateToggleOfflineMachinesBtn();
+        renderPrinters(allPrinters);
+    }
     if (settingsLaserHomeConfirm) {
         localStorage.setItem('laserHomeConfirmEnabled', settingsLaserHomeConfirm.checked ? 'true' : 'false');
     }
-    if (settingsUiScale) {
-        localStorage.setItem('uiScale', settingsUiScale.value);
-        applyUiScale(settingsUiScale.value);
+    const uiScaleValue = settingsUiScaleSwitch.getValue();
+    if (uiScaleValue) {
+        localStorage.setItem('uiScale', uiScaleValue);
+        applyUiScale(uiScaleValue);
     }
     setupPrinterRefresh();
     if (settingsStatus) {
@@ -3981,15 +4699,19 @@ function saveSettings() {
 }
 
 // Language switcher
-const langToggle = document.getElementById('lang-toggle');
-const langDisplay = document.getElementById('lang-display');
-if (langToggle) {
-    langToggle.addEventListener('click', () => {
-        const newLang = currentLanguage === 'es' ? 'en' : 'es';
-        setLanguage(newLang);
-        if (langDisplay) langDisplay.textContent = newLang.toUpperCase();
+const langSwitchBtns = document.querySelectorAll('.lang-switch-btn');
+function updateLangSwitchUI() {
+    langSwitchBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === currentLanguage);
     });
 }
+langSwitchBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        setLanguage(btn.dataset.lang);
+        updateLangSwitchUI();
+    });
+});
+updateLangSwitchUI();
 
 if (settingsTheme) {
     settingsTheme.addEventListener('change', () => {
@@ -3998,20 +4720,17 @@ if (settingsTheme) {
         saveSettings();
     });
 }
-if (settingsLanguage) {
-    settingsLanguage.addEventListener('change', saveSettings);
-}
 if (settingsPreviewQuality) {
     settingsPreviewQuality.addEventListener('change', saveSettings);
 }
 if (settingsAutoRefresh) {
     settingsAutoRefresh.addEventListener('change', saveSettings);
 }
+if (settingsShowOfflineMachines) {
+    settingsShowOfflineMachines.addEventListener('change', saveSettings);
+}
 if (settingsLaserHomeConfirm) {
     settingsLaserHomeConfirm.addEventListener('change', saveSettings);
-}
-if (settingsUiScale) {
-    settingsUiScale.addEventListener('change', saveSettings);
 }
 if (settingsSaveBtn) {
     settingsSaveBtn.addEventListener('click', saveSettings);
@@ -4074,6 +4793,64 @@ const customThemeSurfaceInput = document.getElementById('custom-theme-surface');
 const customThemeTextInput = document.getElementById('custom-theme-text');
 const customThemeMutedInput = document.getElementById('custom-theme-muted');
 const customThemeSaveBtn = document.getElementById('custom-theme-save-btn');
+const customThemeBgInput = document.getElementById('custom-theme-bg-input');
+const customThemeBgClearBtn = document.getElementById('custom-theme-bg-clear-btn');
+
+const CUSTOM_THEME_BG_KEY = 'customThemeBackground';
+const CUSTOM_THEME_BG_MAX_BYTES = 2 * 1024 * 1024;
+
+function getCustomThemeBackground() {
+    return localStorage.getItem(CUSTOM_THEME_BG_KEY) || null;
+}
+
+function setCustomThemeBackground(dataUrl) {
+    if (dataUrl) localStorage.setItem(CUSTOM_THEME_BG_KEY, dataUrl);
+    else localStorage.removeItem(CUSTOM_THEME_BG_KEY);
+}
+
+function applyCustomThemeBackground() {
+    const bg = document.body.classList.contains('custom') ? getCustomThemeBackground() : null;
+    if (bg) {
+        document.body.style.backgroundImage = `url(${bg})`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundAttachment = 'fixed';
+        document.body.style.backgroundRepeat = 'no-repeat';
+    } else {
+        document.body.style.backgroundImage = '';
+        document.body.style.backgroundSize = '';
+        document.body.style.backgroundPosition = '';
+        document.body.style.backgroundAttachment = '';
+        document.body.style.backgroundRepeat = '';
+    }
+}
+
+if (customThemeBgInput) {
+    customThemeBgInput.addEventListener('change', () => {
+        const file = customThemeBgInput.files?.[0];
+        customThemeBgInput.value = '';
+        if (!file) return;
+        if (file.size > CUSTOM_THEME_BG_MAX_BYTES) {
+            appAlert(t('customThemeBgTooLarge'), '', 'warning');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            setCustomThemeBackground(reader.result);
+            if (customThemeBgClearBtn) customThemeBgClearBtn.hidden = false;
+            if (document.body.classList.contains('custom')) applyCustomThemeBackground();
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+if (customThemeBgClearBtn) {
+    customThemeBgClearBtn.addEventListener('click', () => {
+        setCustomThemeBackground(null);
+        customThemeBgClearBtn.hidden = true;
+        if (document.body.classList.contains('custom')) applyCustomThemeBackground();
+    });
+}
 
 function updateCustomThemeCardUI() {
     const custom = getCustomTheme();
@@ -4093,6 +4870,7 @@ function openCustomThemeModal() {
     if (customThemeSurfaceInput) customThemeSurfaceInput.value = custom?.surface || '#1f2937';
     if (customThemeTextInput) customThemeTextInput.value = custom?.text || '#f8fafc';
     if (customThemeMutedInput) customThemeMutedInput.value = custom?.muted || '#94a3b8';
+    if (customThemeBgClearBtn) customThemeBgClearBtn.hidden = !getCustomThemeBackground();
     if (customThemeModal) customThemeModal.classList.add('active');
 }
 
@@ -4105,9 +4883,9 @@ if (customThemeEditBtn) customThemeEditBtn.addEventListener('click', (event) => 
     event.stopPropagation();
     openCustomThemeModal();
 });
-if (customThemeDeleteBtn) customThemeDeleteBtn.addEventListener('click', (event) => {
+if (customThemeDeleteBtn) customThemeDeleteBtn.addEventListener('click', async (event) => {
     event.stopPropagation();
-    if (!confirm(t('deleteCustomThemeConfirm'))) return;
+    if (!(await appConfirm(t('deleteCustomThemeConfirm'), t('deleteCustomTheme')))) return;
     deleteCustomTheme();
     updateCustomThemeCardUI();
     const fallbackTheme = document.body.getAttribute('data-theme') === 'custom' ? 'light' : (settingsTheme ? settingsTheme.value : 'light');
@@ -4162,8 +4940,38 @@ if (currentViewMode === 'list') {
     updateViewMode('list');
 }
 
+const viewGridPrintersBtn = document.getElementById('view-grid-printers');
+const viewListPrintersBtn = document.getElementById('view-list-printers');
+
+if (viewGridPrintersBtn) {
+    viewGridPrintersBtn.addEventListener('click', () => updatePrintersViewMode('grid'));
+}
+if (viewListPrintersBtn) {
+    viewListPrintersBtn.addEventListener('click', () => updatePrintersViewMode('list'));
+}
+if (printersViewMode === 'list') {
+    updatePrintersViewMode('list');
+}
+
+const toggleOfflineMachinesBtn = document.getElementById('toggle-offline-machines-btn');
+function updateToggleOfflineMachinesBtn() {
+    if (toggleOfflineMachinesBtn) {
+        toggleOfflineMachinesBtn.classList.toggle('btn-view-toggle-active', isShowOfflineMachinesEnabled());
+    }
+}
+if (toggleOfflineMachinesBtn) {
+    toggleOfflineMachinesBtn.addEventListener('click', () => {
+        const nextValue = !isShowOfflineMachinesEnabled();
+        localStorage.setItem('showOfflineMachines', nextValue ? 'true' : 'false');
+        if (settingsShowOfflineMachines) settingsShowOfflineMachines.checked = nextValue;
+        updateToggleOfflineMachinesBtn();
+        renderPrinters(allPrinters);
+    });
+}
+updateToggleOfflineMachinesBtn();
+
 // Update language display on load
-langDisplay.textContent = currentLanguage.toUpperCase();
+updateLangSwitchUI();
 updatePageLanguage();
 
 renderPrintQueue();

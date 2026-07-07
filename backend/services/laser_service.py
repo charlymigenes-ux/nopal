@@ -607,13 +607,32 @@ class LaserJob:
 _jobs: Dict[str, LaserJob] = {}
 
 
+GRBL_RX_BUFFER_SIZE = 120  # margen seguro bajo el buffer serie real de GRBL/grblHAL (128 bytes)
+
+
 async def _run_job(job: LaserJob):
-    """Streaming línea por línea (WiFi/USB), esperando el 'ok' de cada línea."""
+    """Streaming con protocolo de conteo de caracteres: llena el buffer serie
+    de GRBL con varias líneas en vez de esperar el 'ok' de cada una antes de
+    enviar la siguiente. Esperar línea por línea vacía el planificador de
+    movimiento de GRBL y produce cortes/tirones visibles en el grabado
+    (confirmado con Sculpfun por USB); manteniendo el buffer lleno, GRBL
+    puede anticipar los siguientes movimientos y el trazo queda fluido."""
     await ensure_listener_ready(job.host)
     queue = _subscribe(job.host)
     loop = asyncio.get_event_loop()
+
+    lines = [
+        line.strip() for line in job.lines
+        if line.strip() and not line.strip().startswith((";", "("))
+    ]
+    job.total = len(lines)
+
+    pending_lengths: List[int] = []  # bytes en tránsito por línea enviada, en orden
+    buffer_used = 0
+    idx = 0
+
     try:
-        for line in job.lines:
+        while idx < len(lines) or pending_lengths:
             if job.cancel_requested:
                 job.state = "cancelled"
                 await loop.run_in_executor(None, send_raw_command, job.host, "\x18")
@@ -626,34 +645,40 @@ async def _run_job(job: LaserJob):
                     await loop.run_in_executor(None, send_raw_command, job.host, "\x18")
                     return
 
-            clean_line = line.strip()
-            if not clean_line or clean_line.startswith((";", "(")):
-                continue
+            # Llena el buffer serie con tantas líneas como entren de una vez.
+            while idx < len(lines):
+                next_line = lines[idx]
+                needed = len(next_line) + 1  # +1 por el salto de línea
+                if pending_lengths and buffer_used + needed > GRBL_RX_BUFFER_SIZE:
+                    break
+                sent = await loop.run_in_executor(None, send_raw_command, job.host, next_line)
+                if not sent:
+                    job.state = "error"
+                    job.error_message = f"No se pudo enviar la línea {job.current + 1}"
+                    return
+                pending_lengths.append(needed)
+                buffer_used += needed
+                idx += 1
 
-            sent = await loop.run_in_executor(None, send_raw_command, job.host, clean_line)
-            if not sent:
+            if not pending_lengths:
+                break
+
+            try:
+                text = await asyncio.wait_for(queue.get(), timeout=20)
+            except asyncio.TimeoutError:
                 job.state = "error"
-                job.error_message = f"No se pudo enviar la línea {job.current + 1}"
+                job.error_message = f"Sin respuesta del láser en la línea {job.current + 1}"
                 return
 
-            acknowledged = False
-            while not acknowledged:
-                try:
-                    text = await asyncio.wait_for(queue.get(), timeout=20)
-                except asyncio.TimeoutError:
-                    job.state = "error"
-                    job.error_message = f"Sin respuesta del láser en la línea {job.current + 1}"
-                    return
-
-                normalized = text.lower()
-                if normalized == "ok":
-                    acknowledged = True
-                elif normalized.startswith("error") or normalized.startswith("alarm"):
-                    job.state = "error"
-                    job.error_message = f"{text} (línea {job.current + 1})"
-                    return
-
-            job.current += 1
+            normalized = text.lower()
+            if normalized == "ok":
+                buffer_used -= pending_lengths.pop(0)
+                job.current += 1
+            elif normalized.startswith("error") or normalized.startswith("alarm"):
+                job.state = "error"
+                job.error_message = f"{text} (línea {job.current + 1})"
+                return
+            # otras líneas (reportes de estado, etc.) se ignoran
 
         job.state = "completed"
     except Exception as e:
@@ -678,6 +703,10 @@ async def _run_sd_job(job: LaserJob):
 
     await asyncio.sleep(2)  # da tiempo a que la placa deje Idle y entre a Run
 
+    run_seen = False
+    waited_for_run = 0.0
+    RUN_TIMEOUT = 20  # segundos máximos esperando que la placa arranque el archivo
+
     try:
         while True:
             if job.cancel_requested:
@@ -699,9 +728,21 @@ async def _run_sd_job(job: LaserJob):
                     job.state = "error"
                     job.error_message = "La placa reportó una alarma"
                     return
-                if state_value == "idle":
-                    job.state = "completed"
-                    return
+                if state_value == "run":
+                    run_seen = True
+                elif state_value == "idle":
+                    if run_seen:
+                        job.state = "completed"
+                        return
+                    if waited_for_run >= RUN_TIMEOUT:
+                        job.state = "error"
+                        job.error_message = (
+                            "La placa nunca inició el archivo (revisa el nombre/ruta en la SD)"
+                        )
+                        return
+
+            if not run_seen:
+                waited_for_run += 2
 
             await asyncio.sleep(2)
     except Exception as e:

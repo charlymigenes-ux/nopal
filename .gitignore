@@ -11,6 +11,7 @@ previews/
 backups/
 database/
 laser_registry.json
+temperature_presets.json
 
 # Entorno / configuración local
 .env

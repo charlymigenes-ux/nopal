@@ -1,13 +1,29 @@
+import json
 import os
 import shutil
 import subprocess
 from typing import Optional
 from fastapi import APIRouter, Form, HTTPException
 
-from backend.services.klipper_service import get_system_stats, get_temperature_snapshot, set_heater_target
+from backend.services.klipper_service import get_system_stats, get_temperature_snapshot, set_heater_target, get_toolhead_status
 from backend.utils import get_app_version
 
 router = APIRouter()
+
+TEMP_PRESETS_PATH = "temperature_presets.json"
+
+
+def _load_temperature_presets() -> dict:
+    try:
+        with open(TEMP_PRESETS_PATH, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_temperature_presets(presets: dict) -> None:
+    with open(TEMP_PRESETS_PATH, "w", encoding="utf-8") as handle:
+        json.dump(presets, handle, indent=2, ensure_ascii=False)
 
 
 def _run_git(args, timeout: int = 6) -> Optional[str]:
@@ -85,6 +101,34 @@ async def set_temperature_target_endpoint(port: int = Form(...), heater: str = F
     success = set_heater_target(port=port, heater=heater, target=target)
     if not success:
         raise HTTPException(status_code=502, detail="No se pudo actualizar la temperatura objetivo")
+    return {"success": True}
+
+
+@router.get("/api/system/toolhead")
+async def get_toolhead_endpoint(port: int):
+    """Posición actual del cabezal, ejes homeados, factor de velocidad y offset Z."""
+    try:
+        return get_toolhead_status(port=port)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/system/temperature-presets")
+async def get_temperature_presets_endpoint():
+    """Temperaturas preestablecidas (globales) por heater, usadas por el botón PREESTAB."""
+    return _load_temperature_presets()
+
+
+@router.post("/api/system/temperature-presets")
+async def set_temperature_presets_endpoint(presets: str = Form(...)):
+    """Guarda las temperaturas preestablecidas por heater (JSON: {heater: target})."""
+    try:
+        parsed = json.loads(presets)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="JSON inválido")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Formato inválido")
+    _save_temperature_presets(parsed)
     return {"success": True}
 
 
