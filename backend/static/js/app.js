@@ -4457,21 +4457,230 @@ document.getElementById('laser-bed-map-viewport')?.addEventListener('wheel', (ev
 // ── Detección de control/joystick (Gamepad API) — por ahora solo se muestra
 // como conectado; el mapeo a movimiento del cabezal queda para más adelante.
 function renderGamepadBadge() {
-    const badge = document.getElementById('laser-gamepad-badge');
-    const label = document.getElementById('laser-gamepad-badge-label');
-    if (!badge || !label) return;
     const pads = (navigator.getGamepads ? navigator.getGamepads() : []) || [];
     const active = Array.from(pads).find(pad => pad);
-    badge.classList.toggle('connected', !!active);
-    label.textContent = active ? active.id.replace(/\s*\(.*?\)\s*$/, '') : t('laserGamepadNone');
-    badge.title = active ? active.id : '';
+    const shortName = active ? active.id.replace(/\s*\(.*?\)\s*$/, '') : t('laserGamepadNone');
+
+    document.querySelectorAll('.laser-gamepad-badge').forEach(badge => {
+        badge.classList.toggle('connected', !!active);
+        badge.title = active ? active.id : '';
+        const label = badge.querySelector('.laser-gamepad-badge-label');
+        if (label) label.textContent = shortName;
+    });
+
+    const selectLabel = document.getElementById('laser-gamepad-select-label');
+    if (selectLabel) selectLabel.textContent = shortName;
 }
 
 if ('getGamepads' in navigator) {
+    // El evento gamepadconnected no es confiable en todos los navegadores
+    // (Chrome/Edge suelen requerir que se presione un botón del control antes
+    // de dispararlo), así que además se hace sondeo periódico como respaldo.
     window.addEventListener('gamepadconnected', renderGamepadBadge);
     window.addEventListener('gamepaddisconnected', renderGamepadBadge);
     renderGamepadBadge();
+    setInterval(renderGamepadBadge, 1000);
 }
+
+// ── Mapeo de botones del control/pendant a acciones del láser ──
+// Pensado para pendants tipo Sculpfun (Pausa/Parar/Iniciar/Origen/Regresar a 0/
+// Láser + cruceta de movimiento), que se enumeran como gamepad genérico con
+// botones fijos — no hay forma de conocer de antemano qué índice de botón
+// corresponde a cada etiqueta física, así que el usuario los asigna a mano.
+const LASER_GAMEPAD_ACTIONS = [
+    { id: 'jogUp', label: t('laserGamepadJogUp'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>' },
+    { id: 'jogDown', label: t('laserGamepadJogDown'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>' },
+    { id: 'jogLeft', label: t('laserGamepadJogLeft'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>' },
+    { id: 'jogRight', label: t('laserGamepadJogRight'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>' },
+    { id: 'pause', label: t('laserPause'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>' },
+    { id: 'resume', label: t('laserGamepadResume'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>' },
+    { id: 'cancel', label: t('laserGamepadStop'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>' },
+    { id: 'laserToggle', label: t('laserGamepadToggle'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>' },
+    { id: 'goToOrigin', label: t('laserGamepadGoToOrigin'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>' },
+    { id: 'setOrigin', label: t('laserGamepadSetOrigin'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>' },
+    { id: 'frame', label: t('laserGamepadFrame'), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>' },
+];
+const LASER_GAMEPAD_MAP_KEY = 'laserGamepadMap';
+
+function getLaserGamepadMap() {
+    try {
+        return JSON.parse(localStorage.getItem(LASER_GAMEPAD_MAP_KEY) || '{}');
+    } catch (error) {
+        return {};
+    }
+}
+
+function saveLaserGamepadMap(map) {
+    localStorage.setItem(LASER_GAMEPAD_MAP_KEY, JSON.stringify(map));
+}
+
+async function laserGamepadJog(axis, dir) {
+    if (laserJobIsActive) return;
+    await sendLaserRawCommand(`$J=G91 G21 ${axis}${(laserJogStep * dir).toFixed(3)} F${LASER_JOG_FEED}`);
+    refreshLaserStatus();
+}
+
+async function laserGamepadGoToOrigin() {
+    if (laserJobIsActive) return;
+    await sendLaserRawCommand(`G90 G21 G0 X0 Y0 F${LASER_JOG_FEED}`);
+    refreshLaserStatus();
+}
+
+async function laserGamepadSetOrigin() {
+    if (laserJobIsActive) return;
+    await sendLaserRawCommand('G92 X0 Y0');
+    refreshLaserStatus();
+}
+
+async function frameQueuedLaserJob() {
+    if (laserJobIsActive) return;
+    try {
+        const response = await fetch('/api/laser/queue');
+        const data = await response.json();
+        const first = (data.queue || [])[0];
+        if (!first) {
+            appAlert(t('laserQueueEmpty'), '', 'warning');
+            return;
+        }
+        const fileUrl = `/uploads/gcode/${first.path.split('/').map(encodeURIComponent).join('/')}`;
+        const fileResponse = await fetch(fileUrl);
+        const gcodeText = fileResponse.ok ? await fileResponse.text() : '';
+        await frameLaserJob(gcodeText);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function runLaserGamepadAction(actionId) {
+    switch (actionId) {
+        case 'jogUp': laserGamepadJog('Y', 1); break;
+        case 'jogDown': laserGamepadJog('Y', -1); break;
+        case 'jogLeft': laserGamepadJog('X', -1); break;
+        case 'jogRight': laserGamepadJog('X', 1); break;
+        case 'pause': handleLaserPause(); break;
+        case 'resume': handleLaserResume(); break;
+        case 'cancel': handleLaserCancel(); break;
+        case 'laserToggle': toggleLaserFire(); break;
+        case 'goToOrigin': laserGamepadGoToOrigin(); break;
+        case 'setOrigin': laserGamepadSetOrigin(); break;
+        case 'frame': frameQueuedLaserJob(); break;
+    }
+}
+
+let laserGamepadLearnTarget = null;
+let laserGamepadPrevPressed = [];
+let laserGamepadLastJogAt = 0;
+
+function pollLaserGamepad() {
+    const laserSection = document.getElementById('laser-section');
+    const onLaserSection = laserSection && laserSection.classList.contains('active');
+    const pads = (navigator.getGamepads ? navigator.getGamepads() : []) || [];
+    const pad = Array.from(pads).find(p => p);
+
+    if (pad && (onLaserSection || laserGamepadLearnTarget)) {
+        const map = getLaserGamepadMap();
+        const now = Date.now();
+        const pressedNow = pad.buttons.map(btn => btn.pressed || btn.value > 0.5);
+
+        pressedNow.forEach((isPressed, index) => {
+            const wasPressed = !!laserGamepadPrevPressed[index];
+
+            if (isPressed && !wasPressed && laserGamepadLearnTarget) {
+                const newMap = getLaserGamepadMap();
+                newMap[laserGamepadLearnTarget] = index;
+                saveLaserGamepadMap(newMap);
+                laserGamepadLearnTarget = null;
+                renderLaserGamepadMapList();
+                return;
+            }
+            if (laserGamepadLearnTarget || !onLaserSection) return;
+
+            const actionId = Object.keys(map).find(key => map[key] === index);
+            if (!actionId) return;
+
+            if (actionId.startsWith('jog')) {
+                if (isPressed && now - laserGamepadLastJogAt > 160) {
+                    runLaserGamepadAction(actionId);
+                    laserGamepadLastJogAt = now;
+                }
+            } else if (isPressed && !wasPressed) {
+                runLaserGamepadAction(actionId);
+            }
+        });
+
+        laserGamepadPrevPressed = pressedNow;
+    } else {
+        laserGamepadPrevPressed = [];
+    }
+
+    requestAnimationFrame(pollLaserGamepad);
+}
+
+if ('getGamepads' in navigator) {
+    requestAnimationFrame(pollLaserGamepad);
+}
+
+function renderLaserGamepadMapList() {
+    const lists = document.querySelectorAll('.laser-gamepad-map-list');
+    const map = getLaserGamepadMap();
+
+    if (lists.length) {
+        const html = LASER_GAMEPAD_ACTIONS.map(action => {
+            const assigned = map[action.id];
+            const listening = laserGamepadLearnTarget === action.id;
+            return `
+                <div class="laser-gamepad-map-row">
+                    <span class="laser-gamepad-map-row-label"><span class="laser-gamepad-map-row-icon">${action.icon || ''}</span>${escapeHtml(action.label)}</span>
+                    <span class="laser-gamepad-map-state">
+                        <span class="laser-gamepad-map-state-dot${assigned != null ? ' assigned' : ''}"></span>
+                        ${assigned != null ? t('laserGamepadStateAssigned') : t('laserGamepadStateUnassigned')}
+                    </span>
+                    <button type="button" class="laser-gamepad-assign-btn${listening ? ' listening' : ''}" data-action="${action.id}">
+                        ${listening ? t('laserGamepadListening') : t('laserGamepadAssign')}
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        lists.forEach(list => {
+            list.innerHTML = html;
+            list.querySelectorAll('.laser-gamepad-assign-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    laserGamepadLearnTarget = laserGamepadLearnTarget === btn.dataset.action ? null : btn.dataset.action;
+                    renderLaserGamepadMapList();
+                });
+            });
+        });
+    }
+
+    document.querySelectorAll('#laser-gamepad-console [data-console-action]').forEach(el => {
+        el.classList.toggle('assigned', map[el.dataset.consoleAction] != null);
+    });
+}
+
+function openLaserGamepadModal() {
+    laserGamepadLearnTarget = null;
+    renderLaserGamepadMapList();
+    document.getElementById('laser-gamepad-modal')?.classList.add('active');
+}
+
+function closeLaserGamepadModal() {
+    laserGamepadLearnTarget = null;
+    document.getElementById('laser-gamepad-modal')?.classList.remove('active');
+}
+
+document.querySelectorAll('.laser-gamepad-badge').forEach(badge => {
+    badge.addEventListener('click', openLaserGamepadModal);
+});
+document.getElementById('laser-gamepad-modal-backdrop')?.addEventListener('click', closeLaserGamepadModal);
+document.getElementById('laser-gamepad-modal-close')?.addEventListener('click', closeLaserGamepadModal);
+document.getElementById('laser-gamepad-save-btn')?.addEventListener('click', closeLaserGamepadModal);
+document.getElementById('laser-gamepad-reset-btn')?.addEventListener('click', async () => {
+    if (!(await appConfirm(t('laserGamepadResetConfirm'), t('customThemeReset'), 'danger'))) return;
+    saveLaserGamepadMap({});
+    laserGamepadLearnTarget = null;
+    renderLaserGamepadMapList();
+});
 
 async function loadLaserHostSelector() {
     try {
@@ -5355,29 +5564,40 @@ if (laserUnlockBtn) {
 let laserFireActive = false;
 let laserFireLastOffAt = 0;
 
+async function laserFireOff() {
+    const label = document.getElementById('laser-fire-label');
+    await sendLaserRawCommand('M5');
+    laserFireActive = false;
+    laserFireLastOffAt = Date.now();
+    document.getElementById('laser-fire-btn')?.classList.remove('active');
+    if (label) label.textContent = t('laserFireOn');
+}
+
+async function laserFireOn() {
+    if (Date.now() - laserFireLastOffAt < 600) return;
+    const label = document.getElementById('laser-fire-label');
+    const powerInput = document.getElementById('laser-fire-power-input');
+    const powerPercent = Math.max(0, Math.min(100, parseInt(powerInput?.value, 10) || 0));
+    const powerS = Math.round((powerPercent / 100) * LASER_POWER_S_MAX);
+    await sendLaserRawCommand(`M3 S${powerS}`);
+    laserFireActive = true;
+    document.getElementById('laser-fire-btn')?.classList.add('active');
+    if (label) label.textContent = t('laserFireOff');
+}
+
+function toggleLaserFire() {
+    if (laserFireActive) laserFireOff();
+    else laserFireOn();
+}
+
 const laserFireBtn = document.getElementById('laser-fire-btn');
 if (laserFireBtn) {
-    laserFireBtn.addEventListener('click', async () => {
-        if (!laserFireActive) return;
-        const label = document.getElementById('laser-fire-label');
-        await sendLaserRawCommand('M5');
-        laserFireActive = false;
-        laserFireLastOffAt = Date.now();
-        laserFireBtn.classList.remove('active');
-        if (label) label.textContent = t('laserFireOn');
+    laserFireBtn.addEventListener('click', () => {
+        if (laserFireActive) laserFireOff();
     });
 
-    laserFireBtn.addEventListener('dblclick', async () => {
-        if (laserFireActive) return;
-        if (Date.now() - laserFireLastOffAt < 600) return;
-        const label = document.getElementById('laser-fire-label');
-        const powerInput = document.getElementById('laser-fire-power-input');
-        const powerPercent = Math.max(0, Math.min(100, parseInt(powerInput?.value, 10) || 0));
-        const powerS = Math.round((powerPercent / 100) * LASER_POWER_S_MAX);
-        await sendLaserRawCommand(`M3 S${powerS}`);
-        laserFireActive = true;
-        laserFireBtn.classList.add('active');
-        if (label) label.textContent = t('laserFireOff');
+    laserFireBtn.addEventListener('dblclick', () => {
+        if (!laserFireActive) laserFireOn();
     });
 }
 
@@ -5457,6 +5677,7 @@ function switchSection(sectionName) {
         loadWifiDevices();
         renderSidebarOrderList();
         renderLaserMarkerSettings();
+        renderGamepadBadge();
     }
     if (sectionName === 'help') {
         loadHelpVersion();
@@ -5489,6 +5710,11 @@ navItems.forEach(item => {
 const sidebarSettingsBtn = document.getElementById('sidebar-settings-btn');
 if (sidebarSettingsBtn) {
     sidebarSettingsBtn.addEventListener('click', () => switchSection('settings'));
+}
+
+const sidebarHelpBtn = document.getElementById('sidebar-help-btn');
+if (sidebarHelpBtn) {
+    sidebarHelpBtn.addEventListener('click', () => switchSection('help'));
 }
 
 let currentModelsPath = '';
