@@ -11,6 +11,7 @@ previews/
 backups/
 database/
 laser_registry.json
+laser_history.json
 temperature_presets.json
 
 # Entorno / configuración local

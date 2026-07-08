@@ -35,6 +35,8 @@ from backend.services.laser_service import (
     sd_delete_entry,
     sd_upload_file,
     has_sd_card,
+    get_laser_history,
+    attach_laser_history_snapshot,
 )
 from backend.utils import safe_section_path
 
@@ -86,10 +88,32 @@ async def laser_registry_list_endpoint():
     return {"lasers": get_registered_lasers()}
 
 
+@router.get("/api/laser/history")
+async def laser_history_endpoint(limit: int = 50):
+    """Historial de trabajos láser (completados, cancelados o con error), más recientes primero."""
+    return {"jobs": get_laser_history(limit)}
+
+
+@router.post("/api/laser/history/snapshot")
+async def laser_history_snapshot_endpoint(host: str = Form(...), snapshot: str = Form(...)):
+    """Adjunta la captura del grill (figura trazada) al trabajo más reciente de ese host."""
+    if not attach_laser_history_snapshot(host, snapshot):
+        raise HTTPException(status_code=404, detail="No hay historial para ese host")
+    return {"success": True}
+
+
 @router.post("/api/laser/registry")
-async def laser_registry_add_endpoint(host: str = Form(...), name: str = Form(...), transport: str = Form(...)):
-    """Registra una placa (red o USB) como láser disponible en NOPAL."""
-    entry = register_laser(host, name, transport)
+async def laser_registry_add_endpoint(
+    host: str = Form(...),
+    name: str = Form(...),
+    transport: str = Form(...),
+    work_area_width: Optional[float] = Form(None),
+    work_area_height: Optional[float] = Form(None),
+    home_corner: Optional[str] = Form(None),
+    kind: str = Form("laser"),
+):
+    """Registra una placa (red o USB) como láser o CNC disponible en NOPAL."""
+    entry = register_laser(host, name, transport, work_area_width, work_area_height, home_corner, kind)
     return entry
 
 

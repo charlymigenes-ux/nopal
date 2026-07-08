@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import json
+import os
 import re
 import socket
 import threading
@@ -16,6 +17,8 @@ DEFAULT_LASER_HOST = "192.168.0.61"
 HTTP_TIMEOUT = 4
 WS_PORT = 81
 REGISTRY_PATH = "laser_registry.json"
+HISTORY_PATH = "laser_history.json"
+HISTORY_MAX_ENTRIES = 200
 
 STATUS_RE = re.compile(
     r"<(?P<state>\w+)(?::\d+)?\|MPos:(?P<x>[-\d.]+),(?P<y>[-\d.]+),(?P<z>[-\d.]+)"
@@ -64,9 +67,77 @@ def get_registered_lasers() -> List[Dict[str, Any]]:
     return _load_registry()
 
 
-def register_laser(host: str, name: str, transport: str) -> Dict[str, Any]:
+# ── Historial de trabajos láser (persistido) ──
+
+def _load_history() -> List[Dict[str, Any]]:
+    try:
+        with open(HISTORY_PATH, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_history(entries: List[Dict[str, Any]]):
+    try:
+        with open(HISTORY_PATH, "w", encoding="utf-8") as handle:
+            json.dump(entries, handle, indent=2)
+    except OSError:
+        pass
+
+
+def get_laser_history(limit: int = 50) -> List[Dict[str, Any]]:
+    """Trabajos láser más recientes primero."""
+    entries = _load_history()
+    return entries[:limit]
+
+
+def record_laser_job_history(job: "LaserJob"):
+    """Guarda el resultado final de un trabajo (completado, cancelado o con
+    error) en el historial persistente, más reciente primero."""
+    entries = _load_history()
+    entry = {
+        "host": job.host,
+        "filename": job.filename,
+        "source": job.source,
+        "state": job.state,
+        "current": job.current,
+        "total": job.total,
+        "error": job.error_message,
+        "started_at": job.started_at,
+        "completed_at": time.time(),
+    }
+    entries.insert(0, entry)
+    _save_history(entries[:HISTORY_MAX_ENTRIES])
+
+
+def attach_laser_history_snapshot(host: str, snapshot: str) -> bool:
+    """Adjunta la captura del grill (con la figura trazada) a la entrada más
+    reciente del historial para ese host — el navegador la genera y la manda
+    justo después de ver que el trabajo terminó."""
+    entries = _load_history()
+    for entry in entries:
+        if entry.get("host") == host:
+            entry["snapshot"] = snapshot
+            _save_history(entries)
+            return True
+    return False
+
+
+def register_laser(
+    host: str,
+    name: str,
+    transport: str,
+    work_area_width: Optional[float] = None,
+    work_area_height: Optional[float] = None,
+    home_corner: Optional[str] = None,
+    kind: str = "laser",
+) -> Dict[str, Any]:
     entries = [e for e in _load_registry() if e.get("host") != host]
-    entry = {"host": host, "name": name, "transport": transport}
+    entry = {"host": host, "name": name, "transport": transport, "kind": kind or "laser"}
+    if work_area_width is not None and work_area_height is not None:
+        entry["work_area"] = {"width": work_area_width, "height": work_area_height}
+    if home_corner:
+        entry["home_corner"] = home_corner
     entries.append(entry)
     _save_registry(entries)
     return entry
@@ -149,11 +220,19 @@ KNOWN_USB_CHIPS = [
 
 def list_usb_laser_ports() -> List[Dict[str, Any]]:
     """Lista los puertos serie USB conectados que coinciden con chips
-    típicos de controladoras láser (CH340, CP2102, ESP32)."""
+    típicos de controladoras láser (CH340, CP2102, ESP32), excluyendo los
+    puertos que ya están configurados como MCU de alguna impresora Klipper
+    local."""
     try:
         from serial.tools import list_ports
     except ImportError:
         return []
+
+    try:
+        from backend.services.klipper_service import get_claimed_serial_devices
+        claimed = set(get_claimed_serial_devices())
+    except Exception:
+        claimed = set()
 
     results = []
     for port in list_ports.comports():
@@ -167,6 +246,9 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
                 break
 
         if not chip_label:
+            continue
+
+        if claimed and os.path.realpath(port.device) in claimed:
             continue
 
         vid_pid = f"{port.vid:04X}:{port.pid:04X}" if port.pid is not None else f"{port.vid:04X}"
@@ -428,6 +510,13 @@ def _serial_reader_loop(host: str, device: str, baud: int, loop: asyncio.Abstrac
     except Exception:
         return
 
+    # La mayoría de los adaptadores USB-serie (incluido CH340) reinician la
+    # placa al abrir el puerto (toggle de DTR). Si el primer comando se manda
+    # de inmediato, la placa puede seguir arrancando y la respuesta se pierde
+    # — dando un falso "no responde" en el test de detección. Le damos margen
+    # antes de avisar que el listener ya está listo para recibir comandos.
+    time.sleep(2)
+
     loop.call_soon_threadsafe(_listener_ready_events.setdefault(host, asyncio.Event()).set)
 
     while not stop_flag.is_set():
@@ -609,6 +698,7 @@ class LaserJob:
         self.error_message: Optional[str] = None
         self.cancel_requested = False
         self.pause_requested = False
+        self.started_at = time.time()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -705,6 +795,7 @@ async def _run_job(job: LaserJob):
         job.error_message = str(e)
     finally:
         _unsubscribe(job.host, queue)
+        record_laser_job_history(job)
 
 
 async def _run_sd_job(job: LaserJob):
@@ -718,6 +809,7 @@ async def _run_sd_job(job: LaserJob):
     if not sent:
         job.state = "error"
         job.error_message = "No se pudo iniciar el trabajo desde la SD"
+        record_laser_job_history(job)
         return
 
     await asyncio.sleep(2)  # da tiempo a que la placa deje Idle y entre a Run
@@ -767,6 +859,8 @@ async def _run_sd_job(job: LaserJob):
     except Exception as e:
         job.state = "error"
         job.error_message = str(e)
+    finally:
+        record_laser_job_history(job)
 
 
 def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:

@@ -85,6 +85,15 @@ async def get_models():
     return files
 
 
+def _count_files_recursive(dir_path: str, extensions: set) -> int:
+    count = 0
+    for _root, _dirs, filenames in os.walk(dir_path):
+        for filename in filenames:
+            if os.path.splitext(filename)[1].lower() in extensions:
+                count += 1
+    return count
+
+
 @router.get("/api/browse")
 async def browse_folder(path: str = "", type: str = "model"):
     """Contenido (carpetas + archivos) de una carpeta dentro de la sección indicada."""
@@ -110,7 +119,11 @@ async def browse_folder(path: str = "", type: str = "model"):
 
         if os.path.isdir(entry_path):
             rel_entry = f"{path}/{entry}" if path else entry
-            folders.append({"name": entry, "path": rel_entry})
+            folders.append({
+                "name": entry,
+                "path": rel_entry,
+                "file_count": _count_files_recursive(entry_path, extensions),
+            })
         else:
             extension = os.path.splitext(entry)[1].lower()
             if extension in extensions:

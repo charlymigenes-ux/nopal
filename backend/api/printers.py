@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from backend.services.klipper_service import (
+    cancel_printer_print,
     find_moonraker_instances,
     get_all_printers_status,
     get_printer_status,
     get_recent_printer_files,
+    pause_printer_print,
+    resume_printer_print,
 )
 
 router = APIRouter()
@@ -26,10 +29,10 @@ async def get_printers():
 
 
 @router.get("/api/printers/status")
-async def get_all_status():
+async def get_all_status(request: Request):
     """Obtener estado de todas las impresoras"""
     try:
-        printers = get_all_printers_status()
+        printers = get_all_printers_status(host=request.url.hostname)
 
         return {
             "count": len(printers),
@@ -53,6 +56,27 @@ async def get_printers_recent_files(request: Request):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/printers/{port}/pause")
+async def pause_printer(port: int):
+    if not pause_printer_print(port):
+        raise HTTPException(status_code=409, detail="No se pudo pausar la impresión")
+    return {"success": True}
+
+
+@router.post("/api/printers/{port}/resume")
+async def resume_printer(port: int):
+    if not resume_printer_print(port):
+        raise HTTPException(status_code=409, detail="No se pudo reanudar la impresión")
+    return {"success": True}
+
+
+@router.post("/api/printers/{port}/cancel")
+async def cancel_printer(port: int):
+    if not cancel_printer_print(port):
+        raise HTTPException(status_code=409, detail="No se pudo cancelar la impresión")
+    return {"success": True}
 
 
 @router.get("/api/printers/{printer_name}/status")

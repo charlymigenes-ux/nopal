@@ -1,6 +1,8 @@
 import logging
+import os
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from urllib.parse import quote
 
 import requests
 
@@ -42,7 +44,12 @@ def _derive_printer_name(
     return port_names.get(port, f"printer_{port}")
 
 
-def normalize_printer_payload(printer: Dict[str, Any], port: int) -> Dict[str, Any]:
+def normalize_printer_payload(
+    printer: Dict[str, Any],
+    port: int,
+    client: Optional["MoonrakerClient"] = None,
+    host: Optional[str] = None,
+) -> Dict[str, Any]:
     """Convierte la respuesta de Moonraker a un formato simple para la UI."""
 
     printer_info = printer.get("printer_info") or {}
@@ -54,9 +61,30 @@ def normalize_printer_payload(printer: Dict[str, Any], port: int) -> Dict[str, A
     is_online = state_text in {"ready", "printing", "paused", "busy", "standby"}
 
     print_stats = status_data.get("print_stats") or {}
+    print_stats_info = print_stats.get("info") or {}
+    gcode_move = status_data.get("gcode_move") or {}
     virtual_sdcard = status_data.get("virtual_sdcard") or {}
     progress = virtual_sdcard.get("progress")
     print_duration = print_stats.get("print_duration") or 0
+    job_state = print_stats.get("state") or ""
+    filename = print_stats.get("filename") or ""
+
+    layer_height = None
+    filament_type = None
+    estimated_time = None
+    thumbnail_url = None
+    if client and host and filename and job_state in ("printing", "paused"):
+        metadata = client.get_file_metadata(filename) or {}
+        layer_height = metadata.get("layer_height")
+        filament_type = metadata.get("filament_type")
+        estimated_time = metadata.get("estimated_time")
+        thumbnails = metadata.get("thumbnails") or []
+        if thumbnails:
+            largest = max(thumbnails, key=lambda thumb: thumb.get("width", 0))
+            relative_path = largest.get("relative_path", "")
+            directory = filename.rsplit("/", 1)[0] if "/" in filename else ""
+            thumb_path = f"{directory}/{relative_path}" if directory else relative_path
+            thumbnail_url = f"http://{host}:{port}/server/files/gcodes/{thumb_path}"
 
     return {
         "name": printer.get("name") or f"printer_{port}",
@@ -73,8 +101,8 @@ def normalize_printer_payload(printer: Dict[str, Any], port: int) -> Dict[str, A
             },
         },
         "job": {
-            "filename": print_stats.get("filename") or "",
-            "state": print_stats.get("state") or "",
+            "filename": filename,
+            "state": job_state,
             "progress": round((progress or 0) * 100),
             "print_duration": print_duration,
             "estimated_remaining": (
@@ -82,6 +110,13 @@ def normalize_printer_payload(printer: Dict[str, Any], port: int) -> Dict[str, A
                 if progress and progress > 0.01
                 else None
             ),
+            "current_layer": print_stats_info.get("current_layer"),
+            "total_layer": print_stats_info.get("total_layer"),
+            "speed": gcode_move.get("speed"),
+            "layer_height": layer_height,
+            "filament_type": filament_type,
+            "estimated_time": estimated_time,
+            "thumbnail_url": thumbnail_url,
         },
         "path": printer_info.get("config_file") or printer_info.get("log_file") or f"/printer/{port}",
     }
@@ -122,8 +157,12 @@ class MoonrakerClient:
 
     def get_printer_status(self):
         return self._get(
-            "/printer/objects/query?extruder&heater_bed&print_stats&toolhead&virtual_sdcard"
+            "/printer/objects/query?extruder&heater_bed&print_stats&toolhead&virtual_sdcard&gcode_move"
         )
+
+    def get_file_metadata(self, filename: str):
+        """Metadata del gcode (altura de capa, filamento, miniaturas) que Moonraker extrae al cargar el archivo."""
+        return self._get(f"/server/files/metadata?filename={quote(filename)}")
 
     def get_toolhead_objects(self):
         return self._get("/printer/objects/query?toolhead&gcode_move").get("status", {})
@@ -178,6 +217,15 @@ class MoonrakerClient:
             logger.warning(f"[{self.port}] {e}")
             return False
 
+    def pause_print(self) -> bool:
+        return self.run_gcode_script("PAUSE")
+
+    def resume_print(self) -> bool:
+        return self.run_gcode_script("RESUME")
+
+    def cancel_print(self) -> bool:
+        return self.run_gcode_script("CANCEL_PRINT")
+
 
 def find_moonraker_instances() -> List[Dict[str, Any]]:
     """
@@ -211,7 +259,42 @@ def find_moonraker_instances() -> List[Dict[str, Any]]:
     return printers
 
 
-def get_all_printers_status() -> List[Dict[str, Any]]:
+def get_claimed_serial_devices() -> List[str]:
+    """Rutas serie (resueltas a su ruta real, sin symlinks) que ya están
+    configuradas en el printer.cfg de alguna instancia Klipper detectada
+    localmente, para no ofrecerlas también como láser."""
+    claimed = set()
+    for printer in find_moonraker_instances():
+        client = MoonrakerClient(printer["port"])
+        config_path = client.get_printer_info().get("config_file")
+        if not config_path or not os.path.isfile(config_path):
+            continue
+        try:
+            with open(config_path, "r", encoding="utf-8", errors="ignore") as handle:
+                text = handle.read()
+        except OSError:
+            continue
+        for match in re.finditer(r"^\s*serial\s*:\s*(\S+)", text, re.MULTILINE):
+            try:
+                claimed.add(os.path.realpath(match.group(1)))
+            except OSError:
+                continue
+    return list(claimed)
+
+
+def pause_printer_print(port: int) -> bool:
+    return MoonrakerClient(port).pause_print()
+
+
+def resume_printer_print(port: int) -> bool:
+    return MoonrakerClient(port).resume_print()
+
+
+def cancel_printer_print(port: int) -> bool:
+    return MoonrakerClient(port).cancel_print()
+
+
+def get_all_printers_status(host: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Devuelve el estado de todas las impresoras detectadas.
     """
@@ -235,6 +318,8 @@ def get_all_printers_status() -> List[Dict[str, Any]]:
                     "status": status,
                 },
                 printer["port"],
+                client=client,
+                host=host,
             )
         )
 
@@ -468,16 +553,29 @@ def send_console_command(port: int, command: str) -> bool:
     return client.run_gcode_script(command)
 
 
-def get_macros(port: int) -> List[str]:
-    """Lista de macros configurados (objetos `gcode_macro <nombre>`)."""
+def get_macros(port: int) -> List[Dict[str, str]]:
+    """Lista de macros configurados (nombre + descripción, si Klipper la expone
+    vía `description:` en el [gcode_macro <nombre>] del printer.cfg)."""
     client = MoonrakerClient(port)
     objects = client.get_object_list()
-    macros = [
-        obj.split(" ", 1)[1]
-        for obj in objects
+    macro_objects = [
+        obj for obj in objects
         if obj.startswith("gcode_macro ") and not obj.split(" ", 1)[1].startswith("_")
     ]
-    return sorted(macros)
+    if not macro_objects:
+        return []
+
+    query = "&".join(obj.replace(" ", "%20") for obj in macro_objects)
+    status = client._get(f"/printer/objects/query?{query}").get("status", {})
+
+    macros = []
+    for obj in macro_objects:
+        name = obj.split(" ", 1)[1]
+        description = (status.get(obj, {}) or {}).get("description", "")
+        if description == "G-Code macro":
+            description = ""
+        macros.append({"name": name, "description": description})
+    return sorted(macros, key=lambda m: m["name"])
 
 
 def run_macro(port: int, macro: str) -> bool:

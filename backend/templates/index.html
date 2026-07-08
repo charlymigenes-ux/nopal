@@ -8,53 +8,52 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=89">
+    <link rel="stylesheet" href="/static/css/style.css?v=153">
 </head>
 <body>
     <div class="app-shell">
         <aside class="sidebar">
             <div class="brand">
                 <img class="brand-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Contraer/expandir menú">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
             </div>
 
             <nav class="nav-list">
-                <button class="nav-item active" data-section="dashboard">
+                <button class="nav-item active" data-section="dashboard" data-i18n-title="dashboard" title="Dashboard">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span data-i18n="dashboard">Dashboard</span>
                 </button>
-                <button class="nav-item" data-section="console">
+                <button class="nav-item" data-section="console" data-i18n-title="console" title="Console">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                     <span data-i18n="console">Console</span>
                 </button>
-                <button class="nav-item" data-section="models">
+                <button class="nav-item" data-section="models" data-i18n-title="models" title="Models">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                     <span data-i18n="models">Models</span>
                 </button>
-                <button class="nav-item" data-section="gcode">
+                <button class="nav-item" data-section="gcode" data-i18n-title="gcode" title="G-code">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <span data-i18n="gcode">G-code</span>
                 </button>
-                <button class="nav-item" data-section="macros">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    <span data-i18n="macros">Macros</span>
-                </button>
-                <button class="nav-item" data-section="laser">
+                <button class="nav-item" data-section="laser" data-i18n-title="laser" title="Láser">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
                     <span data-i18n="laser">Láser</span>
                 </button>
-                <button class="nav-item" data-section="queue">
+                <button class="nav-item" data-section="queue" data-i18n-title="printQueue" title="Print Queue">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                     <span data-i18n="printQueue">Print Queue</span>
                 </button>
-                <button class="nav-item" data-section="settings">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    <span data-i18n="settings">Settings</span>
-                </button>
-                <button class="nav-item" data-section="help">
+                <button class="nav-item" data-section="help" data-i18n-title="help" title="Ayuda">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     <span data-i18n="help">Ayuda</span>
                 </button>
             </nav>
+
+            <div class="sidebar-logo-gap">
+                <img class="sidebar-logo-bg" src="/static/img/Logo_O2.png" alt="">
+            </div>
 
             <div class="sidebar-actions-card">
                 <div class="lang-switch" id="lang-switch">
@@ -64,8 +63,8 @@
                 <button class="btn-icon btn-icon-light theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema" title="Cambiar tema">
                     <span id="theme-icon">🌙</span>
                 </button>
-                <button class="btn-icon btn-icon-light" aria-label="Download" title="Descargar">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+                <button class="btn-icon btn-icon-light theme-toggle sidebar-settings-btn" id="sidebar-settings-btn" type="button" data-i18n-title="settings" aria-label="Configuración" title="Configuración">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 </button>
             </div>
         </aside>
@@ -87,12 +86,18 @@
                             <span data-i18n="totalModels">Total Models</span>
                             <strong id="total-models">0</strong>
                         </div>
+                        <span class="stat-icon">
+                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/><circle cx="18.5" cy="18.5" r="3.1"/><line x1="20.7" y1="20.7" x2="22.7" y2="22.7"/></svg>
+                        </span>
                     </article>
                     <article class="stat-card stat-green">
                         <div class="stat-info">
                             <span data-i18n="gcodeReady">G-code Ready</span>
                             <strong id="gcode-ready">0</strong>
                         </div>
+                        <span class="stat-icon">
+                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9.5 13.5 8 15 9.5 16.5"/><polyline points="14.5 13.5 16 15 14.5 16.5"/></svg>
+                        </span>
                     </article>
                     <article class="stat-card stat-orange">
                         <div class="stat-info">
@@ -100,12 +105,18 @@
                             <strong id="storage-used">0 MB</strong>
                             <span class="stat-substat" id="storage-total">/ — MB</span>
                         </div>
+                        <span class="stat-icon">
+                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="11" cy="5" rx="8" ry="3"/><path d="M3 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M3 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/><circle cx="18.5" cy="18.5" r="3.1"/><line x1="20.7" y1="20.7" x2="22.7" y2="22.7"/></svg>
+                        </span>
                     </article>
                     <article class="stat-card stat-purple">
                         <div class="stat-info">
                             <span data-i18n="activePrinters">Active Printers</span>
                             <strong id="active-printers">0</strong>
                         </div>
+                        <span class="stat-icon">
+                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        </span>
                     </article>
                 </section>
 
@@ -128,12 +139,7 @@
                 </section>
 
                 <section class="dashboard-bottom">
-                    <div class="queue-section">
-                        <div class="section-title">
-                            <h2 data-i18n="activePrintQueue">Active Print Queue</h2>
-                        </div>
-                        <div id="print-queue" class="queue-list"></div>
-                    </div>
+                    <div id="print-queue" class="active-print-queue"></div>
                 </section>
             </main>
         </section>
@@ -142,6 +148,7 @@
                 <main class="main-content models-page-content">
                     <div class="models-page-layout">
                         <div class="models-table-panel">
+                            <div class="gcode-table-panel-inner">
                             <div class="models-list-header">
                                 <div class="models-list-header-top">
                                     <div>
@@ -187,7 +194,20 @@
                                 <span id="models-breadcrumb">Ruta actual: /</span>
                                 <span id="models-disk-free">—</span>
                             </div>
+                            <div class="bulk-actions-bar" id="models-bulk-bar" hidden>
+                                <span id="models-bulk-count">0</span>
+                                <button type="button" class="btn-file-action" id="models-bulk-move-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/></svg>
+                                    <span data-i18n="moveFile">Mover</span>
+                                </button>
+                                <button type="button" class="btn-file-action btn-file-action-danger" id="models-bulk-delete-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                    <span data-i18n="delete">Eliminar</span>
+                                </button>
+                                <button type="button" class="bulk-actions-clear-btn" id="models-bulk-clear-btn" data-i18n="clearSelection">Cancelar selección</button>
+                            </div>
                             <div id="models-full" class="models-table-wrapper"></div>
+                            </div>
                         </div>
 
                         <aside class="models-preview-card">
@@ -237,6 +257,7 @@
                 <main class="main-content models-page-content">
                     <div class="models-page-layout">
                         <div class="models-table-panel">
+                            <div class="gcode-table-panel-inner">
                             <div class="models-list-header">
                                 <div class="models-list-header-top">
                                     <div>
@@ -273,7 +294,20 @@
                                 <span id="gcode-breadcrumb">Ruta actual: /</span>
                                 <span id="gcode-disk-free">—</span>
                             </div>
+                            <div class="bulk-actions-bar" id="gcode-bulk-bar" hidden>
+                                <span id="gcode-bulk-count">0</span>
+                                <button type="button" class="btn-file-action" id="gcode-bulk-move-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/></svg>
+                                    <span data-i18n="moveFile">Mover</span>
+                                </button>
+                                <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-bulk-delete-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                    <span data-i18n="delete">Eliminar</span>
+                                </button>
+                                <button type="button" class="bulk-actions-clear-btn" id="gcode-bulk-clear-btn" data-i18n="clearSelection">Cancelar selección</button>
+                            </div>
                             <div id="gcode-table" class="models-table-wrapper"></div>
+                            </div>
                         </div>
                         <aside class="gcode-preview-card">
                             <div class="preview-card-inner">
@@ -337,49 +371,49 @@
             </section>
 
             <section id="console-section" class="view-section" style="display: none;">
-                <main class="main-content">
-                    <section class="page-header">
-                        <h1 data-i18n="console">Consola</h1>
-                        <p data-i18n="consoleDescription">Envía comandos G-code directamente a la impresora y observa la respuesta en tiempo real.</p>
-                    </section>
-                    <div class="console-card">
-                        <div class="console-toolbar">
-                            <select id="console-printer-select" class="settings-select"></select>
-                            <button type="button" class="btn-icon-dark" id="console-clear-btn" title="Limpiar">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                            </button>
+                <main class="main-content console-macros-main">
+                    <div class="console-macros-topbar">
+                        <section class="page-header console-macros-header">
+                            <h1 data-i18n="console">Consola</h1>
+                            <p data-i18n="consoleDescription">Selecciona una impresora y envía comandos G-code directamente, observando la respuesta en tiempo real.</p>
+                        </section>
+                        <section class="page-header console-macros-header">
+                            <h1 data-i18n="macros">Macros</h1>
+                            <p data-i18n="macrosDescription">Ejecuta macros configurados en Klipper con un clic. Se cargan los de la impresora seleccionada del lado izquierdo.</p>
+                        </section>
+                    </div>
+                    <div class="console-macros-split">
+                        <div class="console-macros-half">
+                            <div class="console-printer-picker" id="console-printer-picker"></div>
+                            <div class="console-card">
+                                <div class="console-toolbar">
+                                    <div class="console-font-size-toggle" data-target="console-log">
+                                        <button type="button" class="console-font-size-btn" data-size="sm">A-</button>
+                                        <button type="button" class="console-font-size-btn active" data-size="md">A</button>
+                                        <button type="button" class="console-font-size-btn" data-size="lg">A+</button>
+                                    </div>
+                                    <button type="button" class="btn-icon-dark" id="console-clear-btn" title="Limpiar">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                    </button>
+                                </div>
+                                <div class="console-log" id="console-log"></div>
+                                <form class="console-input-row" id="console-input-form">
+                                    <input type="text" id="console-input" autocomplete="off" data-i18n-placeholder="consoleInputPlaceholder" placeholder="Enviar comando...">
+                                    <button type="submit" class="btn-icon-dark" title="Enviar">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                    </button>
+                                </form>
+                            </div>
                         </div>
-                        <div class="console-log" id="console-log"></div>
-                        <form class="console-input-row" id="console-input-form">
-                            <input type="text" id="console-input" autocomplete="off" data-i18n-placeholder="consoleInputPlaceholder" placeholder="Enviar comando...">
-                            <button type="submit" class="btn-icon-dark" title="Enviar">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                            </button>
-                        </form>
+                        <div class="console-macros-half">
+                            <div class="macros-grid" id="macros-grid"></div>
+                        </div>
                     </div>
-                </main>
-            </section>
-
-            <section id="macros-section" class="view-section" style="display: none;">
-                <main class="main-content">
-                    <section class="page-header">
-                        <h1 data-i18n="macros">Macros</h1>
-                        <p data-i18n="macrosDescription">Ejecuta macros configurados en Klipper con un clic.</p>
-                    </section>
-                    <div class="macros-toolbar">
-                        <select id="macros-printer-select" class="settings-select"></select>
-                    </div>
-                    <div class="macros-grid" id="macros-grid"></div>
                 </main>
             </section>
 
             <section id="laser-section" class="view-section" style="display: none;">
                 <main class="main-content">
-                    <section class="page-header">
-                        <h1 data-i18n="laser">Láser</h1>
-                        <p data-i18n="laserDescription">Controla tu cortadora/grabadora láser GRBL y envía archivos G-code directamente.</p>
-                    </section>
-
                     <div class="laser-columns">
                     <div class="laser-column">
                     <div class="laser-card laser-card-translucent laser-card-half card-collapsible" id="laser-connection-card">
@@ -388,9 +422,6 @@
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
                             </span>
                             <h2 class="card-header-std-title" data-i18n="laserConnectionTitle">Conexión</h2>
-                            <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
                         </div>
                         <div class="laser-connection-header">
                             <div class="laser-illustration laser-illustration-compact" id="laser-illustration-wrap" title="Configuración GRBL">
@@ -416,6 +447,12 @@
                         </div>
 
                         <div class="laser-info-compact" id="laser-info-grid"></div>
+
+                        <div class="laser-connection-toggle-row">
+                            <button type="button" class="card-collapse-toggle laser-connection-toggle-btn" title="Contraer/expandir">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="laser-card laser-card-accent laser-card-half card-collapsible laser-card-compact" id="laser-queue-card">
@@ -480,6 +517,11 @@
                             </div>
                         </div>
 
+                        <div class="upload-progress-track laser-sd-upload-progress" id="laser-sd-upload-progress" hidden>
+                            <div class="upload-progress-fill" id="laser-sd-upload-progress-fill" style="width:0%"></div>
+                            <span class="upload-progress-label" id="laser-sd-upload-progress-label">0%</span>
+                        </div>
+
                         <div class="laser-sd-from-library">
                             <select id="laser-sd-library-select" class="settings-select"></select>
                             <button type="button" class="btn-file-action btn-file-action-accent" id="laser-sd-send-library-btn">
@@ -498,29 +540,45 @@
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
                             </span>
                             <h2 class="card-header-std-title" data-i18n="laserJogTitle">Movimiento del cabezal</h2>
+                            <span class="laser-gamepad-badge" id="laser-gamepad-badge" title="Control detectado">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15" cy="13" r="1"/><circle cx="18" cy="11" r="1"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+                                <span id="laser-gamepad-badge-label" data-i18n="laserGamepadNone">Sin control</span>
+                            </span>
                             <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                             </button>
                         </div>
                         <div class="laser-jog-layout">
-                            <div class="laser-jog-pad">
-                                <button type="button" class="laser-jog-btn laser-jog-slot-yplus" data-axis="Y" data-dir="1" title="Y+">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-                                </button>
-                                <button type="button" class="laser-jog-btn laser-jog-slot-xminus" data-axis="X" data-dir="-1" title="X-">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg>
-                                </button>
-                                <button type="button" class="laser-jog-btn laser-jog-slot-home" id="laser-home-btn" title="Home ($H)">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                                </button>
-                                <button type="button" class="laser-jog-btn laser-jog-slot-xplus" data-axis="X" data-dir="1" title="X+">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                                </button>
-                                <button type="button" class="laser-jog-btn laser-jog-slot-yminus" data-axis="Y" data-dir="-1" title="Y-">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-                                </button>
-                            </div>
-                            <div class="laser-jog-side">
+                            <div class="laser-jog-cross-col">
+                                <div class="laser-jog-pad">
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-nw" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="-1" title="Y+ X-">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="17" x2="7" y2="7"/><polyline points="7 15 7 7 15 7"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-yplus" data-axis="Y" data-dir="1" title="Y+">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-ne" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="1" title="Y+ X+">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="9 7 17 7 17 15"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-xminus" data-axis="X" data-dir="-1" title="X-">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-home" id="laser-home-btn" title="Home ($H)">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-xplus" data-axis="X" data-dir="1" title="X+">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-sw" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="-1" title="Y- X-">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="15 17 7 17 7 9"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-yminus" data-axis="Y" data-dir="-1" title="Y-">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-se" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="1" title="Y- X+">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="7" x2="17" y2="17"/><polyline points="9 17 17 17 17 9"/></svg>
+                                    </button>
+                                </div>
                                 <div class="laser-jog-z">
                                     <button type="button" class="laser-jog-btn" data-axis="Z" data-dir="1" title="Z+">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
@@ -530,45 +588,83 @@
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
                                     </button>
                                 </div>
-                                <span class="laser-jog-steps-label" data-i18n="laserStepSize">Paso (mm)</span>
-                                <div class="laser-jog-steps" id="laser-jog-steps">
-                                    <button type="button" class="laser-step-btn" data-step="0.1">0.1</button>
-                                    <button type="button" class="laser-step-btn" data-step="1">1</button>
-                                    <button type="button" class="laser-step-btn active" data-step="10">10</button>
-                                    <button type="button" class="laser-step-btn" data-step="50">50</button>
-                                </div>
-                                <div class="laser-goto-row">
-                                    <div class="laser-goto-field">
-                                        <label for="laser-goto-x">X</label>
-                                        <input type="number" id="laser-goto-x" step="0.1" placeholder="0.00">
+                                <div class="laser-jog-steps-block">
+                                    <span class="laser-jog-steps-label" data-i18n="laserStepSize">Paso (mm)</span>
+                                    <div class="laser-jog-steps" id="laser-jog-steps">
+                                        <button type="button" class="laser-step-btn" data-step="0.1">0.1</button>
+                                        <button type="button" class="laser-step-btn" data-step="1">1</button>
+                                        <button type="button" class="laser-step-btn active" data-step="10">10</button>
+                                        <button type="button" class="laser-step-btn" data-step="50">50</button>
                                     </div>
-                                    <div class="laser-goto-field">
-                                        <label for="laser-goto-y">Y</label>
-                                        <input type="number" id="laser-goto-y" step="0.1" placeholder="0.00">
-                                    </div>
-                                    <button type="button" class="btn-file-action" id="laser-goto-btn">
-                                        <span data-i18n="laserGoTo">Ir</span>
-                                    </button>
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="laser-fire-row">
-                            <div class="laser-fire-group">
-                                <button type="button" class="laser-fire-btn" id="laser-fire-btn" title="Doble clic para encender">
-                                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
-                                </button>
-                                <span class="laser-fire-label" id="laser-fire-label" data-i18n="laserFireOn">Encender láser</span>
+                            <div class="laser-jog-quick-col">
+                                <div class="laser-fire-group">
+                                    <button type="button" class="laser-fire-btn" id="laser-fire-btn" title="Doble clic para encender">
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                                    </button>
+                                    <span class="laser-fire-label" id="laser-fire-label" data-i18n="laserFireOn">Encender láser</span>
+                                </div>
+                                <div class="laser-fire-group">
+                                    <button type="button" class="laser-air-btn" id="laser-air-btn" title="Aire asistido">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2"/><path d="M12.59 19.41A2 2 0 1 0 14 16H2"/><path d="M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/></svg>
+                                    </button>
+                                    <span class="laser-fire-label" id="laser-air-label" data-i18n="laserAirAssistOn">Aire asistido</span>
+                                </div>
                                 <div class="laser-fire-power">
                                     <label for="laser-fire-power-input" data-i18n="laserFirePower">Potencia</label>
-                                    <input type="number" id="laser-fire-power-input" min="0" max="1000" step="1" value="1">
+                                    <input type="number" id="laser-fire-power-input" min="0" max="100" step="1" value="10">
+                                    <div class="laser-power-presets" id="laser-power-presets">
+                                        <button type="button" class="laser-step-btn" data-power="25">25</button>
+                                        <button type="button" class="laser-step-btn" data-power="50">50</button>
+                                        <button type="button" class="laser-step-btn" data-power="100">100</button>
+                                    </div>
+                                </div>
+                                <div class="laser-job-toolbar" id="laser-job-controls-panel">
+                                    <button type="button" class="btn-file-action" id="laser-pause-btn-panel" hidden>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                        <span data-i18n="laserPause">Pausar</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action" id="laser-resume-btn-panel" hidden>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                        <span data-i18n="laserResume">Reanudar</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action btn-file-action-danger" id="laser-cancel-btn-panel" hidden>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                        <span data-i18n="laserCancel">Cancelar</span>
+                                    </button>
+                                </div>
+                                <div class="laser-job-progress" id="laser-job-progress-panel" hidden>
+                                    <div class="laser-job-progress-bar">
+                                        <div class="laser-job-progress-fill" id="laser-job-progress-fill-panel"></div>
+                                    </div>
+                                    <span id="laser-job-progress-text-panel">0 / 0</span>
                                 </div>
                             </div>
-                            <div class="laser-fire-group">
-                                <button type="button" class="laser-air-btn" id="laser-air-btn" title="Aire asistido">
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2"/><path d="M12.59 19.41A2 2 0 1 0 14 16H2"/><path d="M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/></svg>
-                                </button>
-                                <span class="laser-fire-label" id="laser-air-label" data-i18n="laserAirAssistOn">Aire asistido</span>
+                            <div class="laser-jog-side">
+                                <div class="laser-bed-map-viewport" id="laser-bed-map-viewport">
+                                    <div class="laser-bed-map" id="laser-bed-map">
+                                        <svg class="laser-bed-map-trace" id="laser-bed-map-trace" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                            <polyline id="laser-bed-map-trace-line" points="" fill="none" vector-effect="non-scaling-stroke"/>
+                                        </svg>
+                                        <span class="laser-bed-map-dims" id="laser-bed-map-dims"></span>
+                                        <span class="laser-bed-map-hover-coords" id="laser-bed-map-hover-coords" hidden></span>
+                                        <div class="laser-bed-map-dot" id="laser-bed-map-dot" hidden></div>
+                                        <span class="laser-bed-map-empty" id="laser-bed-map-empty" data-i18n="laserBedMapEmpty">Sin medidas configuradas</span>
+                                    </div>
+                                </div>
+                                <div class="laser-bed-map-zoom-controls">
+                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-out" title="Alejar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                    </button>
+                                    <span class="laser-bed-map-zoom-label" id="laser-bed-map-zoom-label">100%</span>
+                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-in" title="Acercar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                    </button>
+                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-reset" title="Restablecer zoom">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -588,26 +684,27 @@
                                 <strong id="laser-feed-speed">— / —</strong>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="laser-card laser-card-half card-collapsible laser-card-compact">
-                        <div class="card-header-std">
-                            <span class="card-header-std-icon">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                            </span>
-                            <h2 class="card-header-std-title" data-i18n="laserConsole">Consola</h2>
-                            <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
+                        <div class="laser-console-dock">
+                            <div class="laser-console-dock-header">
+                                <span class="card-header-std-icon">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                                </span>
+                                <h3><span data-i18n="laserConsole">Consola Láser</span> <span data-i18n="laserConsoleOf">de:</span> <span id="laser-console-active-name">—</span></h3>
+                                <div class="console-font-size-toggle" data-target="laser-console-log">
+                                    <button type="button" class="console-font-size-btn" data-size="sm">A-</button>
+                                    <button type="button" class="console-font-size-btn active" data-size="md">A</button>
+                                    <button type="button" class="console-font-size-btn" data-size="lg">A+</button>
+                                </div>
+                            </div>
+                            <div class="console-log" id="laser-console-log"></div>
+                            <form class="console-input-row" id="laser-console-form">
+                                <input type="text" id="laser-console-input" autocomplete="off" data-i18n-placeholder="laserConsoleInputPlaceholder" placeholder="Enviar comando GRBL...">
+                                <button type="submit" class="btn-icon-dark" title="Enviar">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                </button>
+                            </form>
                         </div>
-                        <p class="laser-card-subtitle" data-i18n="laserConsoleDescription">Envía comandos GRBL sueltos y observa la respuesta en vivo.</p>
-                        <div class="console-log" id="laser-console-log"></div>
-                        <form class="console-input-row" id="laser-console-form">
-                            <input type="text" id="laser-console-input" autocomplete="off" data-i18n-placeholder="laserConsoleInputPlaceholder" placeholder="Enviar comando GRBL...">
-                            <button type="submit" class="btn-icon-dark" title="Enviar">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                            </button>
-                        </form>
                     </div>
                     </div>
                     </div>
@@ -616,27 +713,40 @@
             </section>
 
             <section id="queue-section" class="view-section" style="display: none;">
-                <main class="main-content">
-                    <section class="page-header">
-                        <h1 data-i18n="printQueue">Print Queue</h1>
-                    </section>
-                    <div class="recent-section">
-                        <div class="section-title">
-                            <h2 data-i18n="printHistory">Historial de impresión</h2>
-                            <div class="section-search">
-                                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                <input id="search-recent" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
-                            </div>
-                            <div class="view-controls">
-                                <button class="btn-view-toggle btn-view-toggle-active" id="view-grid" title="Grid view" data-view="grid">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                                </button>
-                                <button class="btn-view-toggle" id="view-list" title="List view" data-view="list">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                                </button>
+                <main class="main-content history-split-main">
+                    <div class="history-split-topbar">
+                        <section class="page-header history-split-header">
+                            <h1 data-i18n="printHistory3d">Historial de impresión 3D</h1>
+                            <p data-i18n="printHistory3dDescription">Archivos ya impresos por cada impresora.</p>
+                        </section>
+                        <section class="page-header history-split-header">
+                            <h1 data-i18n="laserHistoryTitle">Historial del láser</h1>
+                            <p data-i18n="laserHistoryDescription">Trabajos láser completados, cancelados o con error.</p>
+                        </section>
+                    </div>
+                    <div class="history-split-body">
+                        <div class="history-split-half">
+                            <div class="recent-section">
+                                <div class="section-title">
+                                    <div class="section-search">
+                                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                        <input id="search-recent" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
+                                    </div>
+                                    <div class="view-controls">
+                                        <button class="btn-view-toggle btn-view-toggle-active" id="view-grid" title="Grid view" data-view="grid">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                                        </button>
+                                        <button class="btn-view-toggle" id="view-list" title="List view" data-view="list">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="models"></div>
                             </div>
                         </div>
-                        <div id="models"></div>
+                        <div class="history-split-half">
+                            <div class="laser-history-list" id="laser-history-list"></div>
+                        </div>
                     </div>
                 </main>
             </section>
@@ -653,8 +763,109 @@
                     </div>
                 </header>
                 <main class="main-content">
-                    <div class="settings-grid">
-                        <div class="settings-card theme-config-card card-collapsible">
+                    <div class="settings-layout">
+                        <div class="settings-card card-collapsible settings-general-card">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="generalSettings">Configuración General</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="generalSettingsDescription">Idioma, calidad de vista previa y avisos de seguridad.</p>
+                            <div class="settings-field">
+                                <label class="settings-field-label" data-i18n="language">Language</label>
+                                <div class="option-switch" id="settings-language-switch">
+                                    <button type="button" class="option-switch-btn" data-value="es">Español</button>
+                                    <button type="button" class="option-switch-btn" data-value="en">English</button>
+                                </div>
+                            </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="previewQuality">Preview Quality</span>
+                                    <p class="settings-field-hint" data-i18n="previewQualityDescription">Adjust renderer detail for thumbnails and previews.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-preview-quality">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-field-label" data-i18n="uiScale">Tamaño de interfaz</label>
+                                <div class="option-switch" id="settings-ui-scale-switch">
+                                    <button type="button" class="option-switch-btn" data-value="100">100%</button>
+                                    <button type="button" class="option-switch-btn" data-value="95">95%</button>
+                                    <button type="button" class="option-switch-btn" data-value="90">90%</button>
+                                    <button type="button" class="option-switch-btn" data-value="85">85%</button>
+                                </div>
+                            </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="laserHomeConfirmToggle">Confirmar antes de hacer Home</span>
+                                    <p class="settings-field-hint" data-i18n="laserHomeConfirmToggleDescription">Muestra un aviso de seguridad antes de mover el cabezal a los interruptores límite.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-laser-home-confirm">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="autoRefresh">Auto Refresh</span>
+                                    <p class="settings-field-hint" data-i18n="autoRefreshDescription">Enable automatic printer status updates every few seconds.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-autorefresh">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="showOfflineMachines">Ver máquinas sin conexión</span>
+                                    <p class="settings-field-hint" data-i18n="showOfflineMachinesDescription">Si lo apagas, el dashboard solo muestra las impresoras y láseres conectados.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-show-offline-machines">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
+                            <div class="settings-field settings-uiux-field">
+                                <label class="settings-field-label" data-i18n="uiUxSection">UI/UX</label>
+                                <p class="settings-field-hint" data-i18n="sidebarOrderDescription">Organiza el orden de los accesos del menú lateral.</p>
+                                <div class="sidebar-order-list" id="sidebar-order-list"></div>
+                                <div class="settings-uiux-subfield">
+                                    <span class="settings-field-label" data-i18n="laserMarkerLabel">Marcador de posición del láser</span>
+                                    <p class="settings-field-hint" data-i18n="laserMarkerDescription">Elige la forma y el color del marcador en el mapa de cama.</p>
+                                    <div class="laser-marker-settings-row">
+                                        <div class="laser-marker-controls">
+                                            <div class="laser-marker-shape-options" id="laser-marker-shape-options">
+                                                <button type="button" class="laser-marker-shape-btn" data-shape="dot" data-i18n="laserMarkerDot">Punto</button>
+                                                <button type="button" class="laser-marker-shape-btn" data-shape="cross" data-i18n="laserMarkerCross">Cruz</button>
+                                            </div>
+                                            <div class="laser-marker-color-options" id="laser-marker-color-options">
+                                                <button type="button" class="laser-marker-color-btn" data-color="#22c55e" style="background:#22c55e"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#f59e0b" style="background:#f59e0b"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#3b82f6" style="background:#3b82f6"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#ef4444" style="background:#ef4444"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#a855f7" style="background:#a855f7"></button>
+                                            </div>
+                                        </div>
+                                        <div class="laser-marker-preview" id="laser-marker-preview">
+                                            <div class="laser-marker-preview-dot" id="laser-marker-preview-dot"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-right-col">
+                        <div class="settings-row-pair">
+                            <div class="settings-card theme-config-card card-collapsible">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 6 6 0 0 0 0-12 4 4 0 0 1 0-8z"/></svg>
@@ -664,7 +875,6 @@
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                                 </button>
                             </div>
-                            <p data-i18n="themeDescription">Choose the default display mode for the dashboard.</p>
                             <select id="settings-theme" class="settings-select" hidden>
                                 <option value="light" data-i18n="lightMode">Light</option>
                                 <option value="dark" data-i18n="darkMode">Dark</option>
@@ -741,78 +951,6 @@
                         <div class="settings-card card-collapsible">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="generalSettings">Configuración General</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="generalSettingsDescription">Idioma, calidad de vista previa y avisos de seguridad.</p>
-                            <div class="settings-field">
-                                <label class="settings-field-label" data-i18n="language">Language</label>
-                                <div class="option-switch" id="settings-language-switch">
-                                    <button type="button" class="option-switch-btn" data-value="es">Español</button>
-                                    <button type="button" class="option-switch-btn" data-value="en">English</button>
-                                </div>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="previewQuality">Preview Quality</span>
-                                    <p class="settings-field-hint" data-i18n="previewQualityDescription">Adjust renderer detail for thumbnails and previews.</p>
-                                </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-preview-quality">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field">
-                                <label class="settings-field-label" data-i18n="uiScale">Tamaño de interfaz</label>
-                                <div class="option-switch" id="settings-ui-scale-switch">
-                                    <button type="button" class="option-switch-btn" data-value="100">100%</button>
-                                    <button type="button" class="option-switch-btn" data-value="95">95%</button>
-                                    <button type="button" class="option-switch-btn" data-value="90">90%</button>
-                                    <button type="button" class="option-switch-btn" data-value="85">85%</button>
-                                </div>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="laserHomeConfirmToggle">Confirmar antes de hacer Home</span>
-                                    <p class="settings-field-hint" data-i18n="laserHomeConfirmToggleDescription">Muestra un aviso de seguridad antes de mover el cabezal a los interruptores límite.</p>
-                                </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-laser-home-confirm">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="autoRefresh">Auto Refresh</span>
-                                    <p class="settings-field-hint" data-i18n="autoRefreshDescription">Enable automatic printer status updates every few seconds.</p>
-                                </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-autorefresh">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="showOfflineMachines">Ver máquinas sin conexión</span>
-                                    <p class="settings-field-hint" data-i18n="showOfflineMachinesDescription">Si lo apagas, el dashboard solo muestra las impresoras y láseres conectados.</p>
-                                </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-show-offline-machines">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div class="settings-card card-collapsible">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
                                 </span>
                                 <h2 class="card-header-std-title" data-i18n="updates">Actualizaciones</h2>
@@ -841,18 +979,44 @@
                             </div>
                             <div class="updates-changelog" id="updates-changelog" hidden></div>
                         </div>
-                        <div class="settings-card card-collapsible">
+                    </div>
+                        <div class="settings-card card-collapsible usb-ports-settings-card">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h7"/><circle cx="18" cy="18" r="3"/></svg>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
                                 </span>
-                                <h2 class="card-header-std-title" data-i18n="laserUsbPorts">Puertos USB detectados</h2>
+                                <h2 class="card-header-std-title" data-i18n="devicesTitle">Dispositivos</h2>
                                 <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                                 </button>
                             </div>
-                            <p data-i18n="laserUsbPortsDescription">Controladoras láser (CH340, CP210x, ESP32) conectadas directo por USB al servidor.</p>
-                            <div class="usb-ports-list" id="usb-ports-list"></div>
+                            <p class="devices-subtitle" data-i18n="devicesDescription">Controladoras láser detectadas por USB o por red, listas para agregarse a NOPAL.</p>
+
+                            <div class="devices-subcard">
+                                <div class="devices-subcard-header">
+                                    <span class="card-header-std-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h7"/><circle cx="18" cy="18" r="3"/></svg>
+                                    </span>
+                                    <h3 data-i18n="laserUsbPorts">Puertos USB detectados</h3>
+                                </div>
+                                <p data-i18n="laserUsbPortsDescription">Controladoras láser (CH340, CP210x, ESP32) conectadas directo por USB al servidor.</p>
+                                <div class="usb-ports-list" id="usb-ports-list"></div>
+                            </div>
+
+                            <div class="devices-subcard">
+                                <div class="devices-subcard-header">
+                                    <span class="card-header-std-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                                    </span>
+                                    <h3 data-i18n="laserWifiDevices">Redes WiFi</h3>
+                                    <button type="button" class="theme-option-icon-btn" id="wifi-devices-scan-btn" title="Escanear red">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                    </button>
+                                </div>
+                                <p data-i18n="laserWifiDevicesDescription">Controladoras láser (ESP3D/GRBL) detectadas en la red local.</p>
+                                <div class="usb-ports-list" id="wifi-devices-list"></div>
+                            </div>
+                        </div>
                         </div>
                     </div>
                 </main>
@@ -1068,47 +1232,178 @@
     <div id="custom-theme-modal" class="modal">
         <div class="modal-backdrop" id="custom-theme-modal-backdrop"></div>
         <div class="modal-content custom-theme-modal-content">
-            <button class="modal-close" id="custom-theme-modal-close">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <button class="custom-theme-close-btn" id="custom-theme-modal-close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
-            <div class="modal-title-row">
-                <div class="modal-icon modal-icon-purple">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+            <div class="custom-theme-header">
+                <div class="custom-theme-header-icon">
+                    <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
+                        <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(34,197,94,0.1)" stroke="#22C55E" stroke-width="2"/>
+                        <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="#22C55E" stroke-width="2" stroke-linecap="round" fill="none"/>
+                        <circle cx="13" cy="10" r="1" fill="#22C55E"/>
+                        <circle cx="19" cy="10" r="1" fill="#22C55E"/>
+                    </svg>
                 </div>
-                <h2 data-i18n="customThemeTitle">Tema personalizado</h2>
+                <div>
+                    <h2 data-i18n="customThemeTitle">Tema personalizado</h2>
+                    <p data-i18n="customThemeSubtitle">Personaliza los colores y el fondo de tu panel de control NOPAL.</p>
+                </div>
             </div>
-            <div class="custom-theme-fields">
-                <label class="custom-theme-field">
-                    <span data-i18n="colorAccent">Acento</span>
-                    <input type="color" id="custom-theme-accent" value="#8b5cf6">
-                </label>
-                <label class="custom-theme-field">
-                    <span data-i18n="colorSurface">Superficie</span>
-                    <input type="color" id="custom-theme-surface" value="#1f2937">
-                </label>
-                <label class="custom-theme-field">
-                    <span data-i18n="colorText">Texto</span>
-                    <input type="color" id="custom-theme-text" value="#f8fafc">
-                </label>
-                <label class="custom-theme-field">
-                    <span data-i18n="colorMuted">Secundario</span>
-                    <input type="color" id="custom-theme-muted" value="#94a3b8">
-                </label>
+
+            <div class="custom-theme-columns">
+                <div class="custom-theme-panel">
+                    <div class="custom-theme-panel-header">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+                        <span data-i18n="customThemeColorsHeader">Colores del tema</span>
+                    </div>
+                    <div class="custom-theme-color-rows">
+                        <div class="custom-theme-color-row">
+                            <span class="custom-theme-color-row-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
+                            <span class="custom-theme-color-row-label">
+                                <strong data-i18n="colorAccent">Acento</strong>
+                                <small data-i18n="customThemeAccentDesc">Color principal de acento</small>
+                            </span>
+                            <input type="color" class="custom-theme-color-swatch" id="custom-theme-accent" value="#8b5cf6">
+                            <button type="button" class="custom-theme-color-edit-btn" data-target="custom-theme-accent" title="Editar">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+                            </button>
+                        </div>
+                        <div class="custom-theme-color-row">
+                            <span class="custom-theme-color-row-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+                            <span class="custom-theme-color-row-label">
+                                <strong data-i18n="colorSurface">Superficie</strong>
+                                <small data-i18n="customThemeSurfaceDesc">Fondo de tarjetas y paneles</small>
+                            </span>
+                            <input type="color" class="custom-theme-color-swatch" id="custom-theme-surface" value="#1f2937">
+                            <button type="button" class="custom-theme-color-edit-btn" data-target="custom-theme-surface" title="Editar">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+                            </button>
+                        </div>
+                        <div class="custom-theme-color-row">
+                            <span class="custom-theme-color-row-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
+                            <span class="custom-theme-color-row-label">
+                                <strong data-i18n="colorText">Texto</strong>
+                                <small data-i18n="customThemeTextDesc">Texto principal</small>
+                            </span>
+                            <input type="color" class="custom-theme-color-swatch" id="custom-theme-text" value="#f8fafc">
+                            <button type="button" class="custom-theme-color-edit-btn" data-target="custom-theme-text" title="Editar">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+                            </button>
+                        </div>
+                        <div class="custom-theme-color-row">
+                            <span class="custom-theme-color-row-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg></span>
+                            <span class="custom-theme-color-row-label">
+                                <strong data-i18n="colorMuted">Secundario</strong>
+                                <small data-i18n="customThemeMutedDesc">Texto secundario y descripciones</small>
+                            </span>
+                            <input type="color" class="custom-theme-color-swatch" id="custom-theme-muted" value="#94a3b8">
+                            <button type="button" class="custom-theme-color-edit-btn" data-target="custom-theme-muted" title="Editar">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="custom-theme-panel custom-theme-preview-panel">
+                    <div class="custom-theme-panel-header">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <span data-i18n="customThemePreviewHeader">Vista previa</span>
+                    </div>
+                    <div class="custom-theme-preview" id="custom-theme-preview">
+                        <div class="ctp-topbar">
+                            <div class="ctp-brand">
+                                <svg viewBox="0 0 32 32" width="16" height="16" fill="none">
+                                    <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(34,197,94,0.1)" stroke="#22C55E" stroke-width="2"/>
+                                    <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="#22C55E" stroke-width="2" stroke-linecap="round" fill="none"/>
+                                    <circle cx="13" cy="10" r="1" fill="#22C55E"/>
+                                    <circle cx="19" cy="10" r="1" fill="#22C55E"/>
+                                </svg>
+                                <strong>NOPAL</strong>
+                            </div>
+                            <span class="ctp-status"><span class="ctp-status-dot"></span>Run</span>
+                            <div class="ctp-gauges">
+                                <div class="ctp-gauge ctp-gauge-cpu"><span>47</span><small>CPU</small></div>
+                                <div class="ctp-gauge ctp-gauge-mem"><span>29</span><small>MEM.</small></div>
+                                <div class="ctp-gauge ctp-gauge-temp"><span>25</span><small>TEMP.</small></div>
+                            </div>
+                        </div>
+                        <div class="ctp-stats">
+                            <div class="ctp-stat ctp-stat-green"><span>MODELOS TOTALES</span><strong>20</strong></div>
+                            <div class="ctp-stat ctp-stat-green"><span>G-CODE LISTOS</span><strong>7</strong></div>
+                            <div class="ctp-stat ctp-stat-orange"><span>ALMACENAMIENTO</span><strong>92.9 MB</strong><small>/ 400.9 GB</small></div>
+                            <div class="ctp-stat ctp-stat-purple"><span>IMPRESORAS ACTIVAS</span><strong>1</strong></div>
+                        </div>
+                        <div class="ctp-devices">
+                            <div class="ctp-device">
+                                <div class="ctp-device-icon">🦎</div>
+                                <div class="ctp-device-info"><strong>Láser</strong><span>TTS 55-PRO</span></div>
+                                <span class="ctp-device-state"><span class="ctp-status-dot"></span>Run</span>
+                            </div>
+                            <div class="ctp-device">
+                                <div class="ctp-device-icon">🖨️</div>
+                                <div class="ctp-device-info"><strong>Impresora 3D</strong><span>MANCHAS-3</span></div>
+                                <div class="ctp-device-temps"><span>Cama <b>19.5 °C</b></span><span>Extrusor <b class="ctp-warm">18.7 °C</b></span></div>
+                            </div>
+                        </div>
+                        <div class="ctp-actions">
+                            <button type="button" class="ctp-action ctp-action-pause"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>PAUSAR</button>
+                            <button type="button" class="ctp-action ctp-action-stop"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>DETENER</button>
+                            <button type="button" class="ctp-action"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>CANCELAR</button>
+                            <button type="button" class="ctp-action"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>SILENCIAR</button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="custom-theme-bg-row">
-                <label class="btn-icon-dark custom-theme-bg-upload-label" title="Subir fondo">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    <span data-i18n="customThemeBgUpload">Subir imagen de fondo</span>
-                    <input type="file" id="custom-theme-bg-input" accept="image/*" hidden>
-                </label>
-                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" id="custom-theme-bg-clear-btn" title="Quitar fondo" hidden>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+
+            <div class="custom-theme-panel custom-theme-bg-panel">
+                <div class="custom-theme-panel-header">
+                    <span data-i18n="customThemeBgHeader">Fondo del dashboard</span>
+                </div>
+                <div class="custom-theme-bg-columns">
+                    <label class="custom-theme-bg-dropzone" id="custom-theme-bg-dropzone">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+                        <strong data-i18n="customThemeBgDrag">Arrastra una imagen aquí</strong>
+                        <span data-i18n="customThemeBgClick">o haz clic para seleccionar</span>
+                        <small data-i18n="customThemeBgFormats">PNG, JPG, WEBP · Máximo 2 MB · Recomendado 1600×900 o superior</small>
+                        <input type="file" id="custom-theme-bg-input" accept="image/*" hidden>
+                    </label>
+                    <div class="custom-theme-bg-preview" id="custom-theme-bg-preview">
+                        <div class="custom-theme-bg-preview-placeholder" id="custom-theme-bg-preview-placeholder">
+                            <svg viewBox="0 0 32 32" width="40" height="40" fill="none">
+                                <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(34,197,94,0.1)" stroke="#22C55E" stroke-width="2"/>
+                                <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="#22C55E" stroke-width="2" stroke-linecap="round" fill="none"/>
+                                <circle cx="13" cy="10" r="1" fill="#22C55E"/>
+                                <circle cx="19" cy="10" r="1" fill="#22C55E"/>
+                            </svg>
+                        </div>
+                        <img id="custom-theme-bg-preview-img" alt="" hidden>
+                    </div>
+                </div>
+                <div class="custom-theme-bg-actions">
+                    <button type="button" class="custom-theme-bg-change-btn" id="custom-theme-bg-change-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        <span data-i18n="customThemeChangeImage">Cambiar imagen</span>
+                    </button>
+                    <button type="button" class="custom-theme-bg-remove-btn" id="custom-theme-bg-clear-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        <span data-i18n="customThemeRemoveImage">Eliminar</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="custom-theme-footer">
+                <button type="button" class="custom-theme-reset-btn" id="custom-theme-reset-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="customThemeReset">Restablecer valores</span>
                 </button>
+                <div class="custom-theme-footer-right">
+                    <button type="button" class="custom-theme-cancel-btn" id="custom-theme-cancel-btn" data-i18n="cancelAction">Cancelar</button>
+                    <button type="button" class="btn-file-action custom-theme-save-btn" id="custom-theme-save-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span data-i18n="saveCustomTheme">Guardar tema</span>
+                    </button>
+                </div>
             </div>
-            <p class="custom-theme-bg-hint" data-i18n="customThemeBgHint">Máximo 2 MB. Se recomienda una imagen de al menos 1600×900.</p>
-            <button type="button" class="btn-file-action custom-theme-save-btn" id="custom-theme-save-btn">
-                <span data-i18n="saveCustomTheme">Guardar tema</span>
-            </button>
         </div>
     </div>
 
@@ -1226,21 +1521,93 @@
             <div class="modal-icon modal-icon-blue">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h7"/><circle cx="18" cy="18" r="3"/></svg>
             </div>
-            <h2 data-i18n="usbClassifyTitle">¿Qué tipo de dispositivo es?</h2>
-            <p id="usb-classify-device-label"></p>
-            <div class="usb-classify-options">
-                <button type="button" class="btn-file-action btn-file-action-accent" id="usb-classify-laser-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
-                    <span data-i18n="usbClassifyLaser">Láser (GRBL)</span>
-                </button>
-                <button type="button" class="btn-file-action" id="usb-classify-printer-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                    <span data-i18n="usbClassifyPrinter">Impresora 3D</span>
+            <div id="usb-classify-step-type">
+                <h2 data-i18n="usbClassifyTitle">¿Qué tipo de dispositivo es?</h2>
+                <p id="usb-classify-device-label"></p>
+                <div class="usb-classify-options">
+                    <button type="button" class="btn-file-action btn-file-action-accent" id="usb-classify-laser-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                        <span data-i18n="usbClassifyLaser">Láser (GRBL)</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-accent" id="usb-classify-cnc-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg>
+                        <span data-i18n="usbClassifyCnc">CNC (GRBL)</span>
+                    </button>
+                    <button type="button" class="btn-file-action" id="usb-classify-printer-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                        <span data-i18n="usbClassifyPrinter">Impresora 3D</span>
+                    </button>
+                </div>
+                <button type="button" class="btn-file-action usb-classify-cancel-btn" id="usb-classify-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
                 </button>
             </div>
-            <button type="button" class="btn-file-action usb-classify-cancel-btn" id="usb-classify-cancel-btn">
-                <span data-i18n="cancelAction">Cancelar</span>
-            </button>
+            <div id="usb-classify-step-name" hidden>
+                <h2 data-i18n="usbRegisterNamePrompt">Nombre para este láser:</h2>
+                <p id="usb-classify-device-label-name"></p>
+                <div class="usb-classify-scan-status" id="usb-classify-scan-status">
+                    <span class="usb-classify-scan-spinner"></span>
+                    <span data-i18n="usbScanning">Escaneando la placa...</span>
+                </div>
+                <div class="usb-classify-name-field">
+                    <label for="usb-classify-name-input" data-i18n="usbRegisterNameLabel">Nombre del dispositivo</label>
+                    <input type="text" id="usb-classify-name-input" autocomplete="off">
+                </div>
+                <div class="usb-classify-scan-grid" id="usb-classify-scan-grid" hidden>
+                    <div class="usb-classify-name-field">
+                        <label for="usb-classify-scan-width" data-i18n="usbScanWidthLabel">Ancho (mm)</label>
+                        <input type="number" id="usb-classify-scan-width" step="0.1">
+                    </div>
+                    <div class="usb-classify-name-field">
+                        <label for="usb-classify-scan-height" data-i18n="usbScanHeightLabel">Alto (mm)</label>
+                        <input type="number" id="usb-classify-scan-height" step="0.1">
+                    </div>
+                    <div class="usb-classify-name-field usb-classify-scan-home">
+                        <label data-i18n="usbScanHomeLabel">Posición de home</label>
+                        <span id="usb-classify-scan-home-value">—</span>
+                    </div>
+                </div>
+                <div class="usb-classify-name-actions">
+                    <button type="button" class="btn-file-action btn-file-action-accent" id="usb-classify-name-confirm-btn">
+                        <span data-i18n="confirmAction">Confirmar</span>
+                    </button>
+                    <button type="button" class="btn-file-action usb-classify-cancel-btn" id="usb-classify-name-cancel-btn">
+                        <span data-i18n="cancelAction">Cancelar</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="device-rename-modal" class="modal">
+        <div class="modal-backdrop" id="device-rename-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </div>
+            <h2 data-i18n="deviceEditTitle">Editar dispositivo</h2>
+            <div class="usb-classify-name-field">
+                <label for="device-rename-input" data-i18n="usbRegisterNameLabel">Nombre del dispositivo</label>
+                <input type="text" id="device-rename-input" autocomplete="off">
+            </div>
+            <div class="usb-classify-scan-grid">
+                <div class="usb-classify-name-field">
+                    <label for="device-rename-width" data-i18n="usbScanWidthLabel">Ancho (mm)</label>
+                    <input type="number" id="device-rename-width" step="0.1">
+                </div>
+                <div class="usb-classify-name-field">
+                    <label for="device-rename-height" data-i18n="usbScanHeightLabel">Alto (mm)</label>
+                    <input type="number" id="device-rename-height" step="0.1">
+                </div>
+            </div>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action btn-file-action-accent" id="device-rename-confirm-btn">
+                    <span data-i18n="confirmAction">Confirmar</span>
+                </button>
+                <button type="button" class="btn-file-action usb-classify-cancel-btn" id="device-rename-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1248,6 +1615,6 @@
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
     <script src="/static/js/translations.js"></script>
-    <script src="/static/js/app.js?v=73"></script>
+    <script src="/static/js/app.js?v=110"></script>
 </body>
 </html>
