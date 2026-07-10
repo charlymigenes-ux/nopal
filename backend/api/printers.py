@@ -1,13 +1,22 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 
 from backend.services.klipper_service import (
+    add_scheduled_print,
     cancel_printer_print,
     find_moonraker_instances,
+    firmware_restart_printer,
     get_all_printers_status,
+    get_printer_job_queue,
     get_printer_status,
     get_recent_printer_files,
+    get_scheduled_prints,
     pause_printer_print,
+    remove_printer_queue_job,
+    remove_scheduled_print,
+    restart_printer_klipper,
     resume_printer_print,
+    send_gcode_to_printer,
+    start_printer_job_queue,
 )
 
 router = APIRouter()
@@ -76,6 +85,77 @@ async def resume_printer(port: int):
 async def cancel_printer(port: int):
     if not cancel_printer_print(port):
         raise HTTPException(status_code=409, detail="No se pudo cancelar la impresión")
+    return {"success": True}
+
+
+@router.post("/api/printers/{port}/restart")
+async def restart_printer_endpoint(port: int):
+    """Reinicia el proceso de Klipper (equivalente a RESTART)."""
+    if not restart_printer_klipper(port):
+        raise HTTPException(status_code=400, detail="No se pudo reiniciar Klipper")
+    return {"success": True}
+
+
+@router.post("/api/printers/{port}/firmware-restart")
+async def firmware_restart_endpoint(port: int):
+    """Reinicia el firmware del MCU (equivalente a FIRMWARE_RESTART)."""
+    if not firmware_restart_printer(port):
+        raise HTTPException(status_code=400, detail="No se pudo reiniciar el firmware")
+    return {"success": True}
+
+
+@router.post("/api/printers/{port}/send")
+async def send_to_printer_endpoint(port: int, path: str = Form(...), mode: str = Form("print"), section: str = Form("model")):
+    """Sube un archivo de la biblioteca de NOPAL al firmware y lo imprime
+    de inmediato o lo agrega a la cola nativa de Moonraker."""
+    result = send_gcode_to_printer(port, path, mode, section)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "No se pudo enviar el archivo"))
+    return result
+
+
+@router.get("/api/printers/{port}/queue")
+async def printer_queue_endpoint(port: int):
+    return get_printer_job_queue(port)
+
+
+@router.delete("/api/printers/{port}/queue/{job_id}")
+async def printer_queue_remove_endpoint(port: int, job_id: str):
+    if not remove_printer_queue_job(port, [job_id]):
+        raise HTTPException(status_code=400, detail="No se pudo quitar el trabajo de la cola")
+    return {"success": True}
+
+
+@router.post("/api/printers/{port}/queue/start")
+async def printer_queue_start_endpoint(port: int):
+    if not start_printer_job_queue(port):
+        raise HTTPException(status_code=400, detail="No se pudo iniciar la cola")
+    return {"success": True}
+
+
+@router.get("/api/printers/schedule")
+async def get_scheduled_prints_endpoint():
+    return get_scheduled_prints()
+
+
+@router.post("/api/printers/schedule")
+async def add_scheduled_print_endpoint(
+    port: int = Form(...),
+    path: str = Form(...),
+    filename: str = Form(...),
+    scheduled_at: str = Form(...),
+    section: str = Form("model"),
+):
+    result = add_scheduled_print(port, path, section, filename, scheduled_at)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "No se pudo programar la impresión"))
+    return result
+
+
+@router.delete("/api/printers/schedule/{schedule_id}")
+async def remove_scheduled_print_endpoint(schedule_id: str):
+    if not remove_scheduled_print(schedule_id):
+        raise HTTPException(status_code=404, detail="Programación no encontrada")
     return {"success": True}
 
 

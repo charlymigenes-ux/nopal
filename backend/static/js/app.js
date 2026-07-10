@@ -366,7 +366,7 @@ function createGcodeLine(fileUrl, points) {
         flattened[index * 3 + 2] = point.z;
     });
     geometry.setAttribute('position', new THREE.BufferAttribute(flattened, 3));
-    const material = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+    const material = new THREE.LineBasicMaterial({ color: 0x39e87a, linewidth: 2 });
     const line = new THREE.LineSegments(geometry, material);
     return line;
 }
@@ -484,15 +484,30 @@ async function renderGcodeThumbnail(thumb, fileUrl) {
     renderer.render(scene, camera);
 }
 
+// Miniatura real incrustada por el slicer (igual que Mainsail/Fluidd) en vez
+// de re-renderizar la trayectoria — más fiel y mucho más barata de generar.
+// Si el archivo no trae miniatura incrustada, cae de vuelta al render 3D.
+function loadRealGcodeThumbnail(container, relPath, section, fallbackFileUrl) {
+    container.innerHTML = '';
+    const img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    img.onerror = () => {
+        if (fallbackFileUrl) renderGcodeThumbnail(container, fallbackFileUrl);
+    };
+    img.src = `/api/models/thumbnail?path=${encodeURIComponent(relPath)}&section=${encodeURIComponent(section)}`;
+    container.appendChild(img);
+}
+
 async function renderGcodePreview(container, fileUrl) {
     if (!container || !window.THREE || typeof window.THREE.Scene !== 'function') return;
     container.innerHTML = '';
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xffffff);
+    scene.background = new THREE.Color(0x081410);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0xffffff, 1);
+    renderer.setClearColor(0x081410, 1);
     container.appendChild(renderer.domElement);
 
     const light = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -658,14 +673,20 @@ function renderSelectedPreview(model) {
     const previewImage = document.getElementById('preview-image');
     if (!previewImage) return;
     previewImage.innerHTML = '';
-    previewImage.style.backgroundImage = 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(31,41,55,1) 100%)';
 
     const fileUrl = model.file_url;
     const extension = (fileUrl || '').toLowerCase();
-    if (extension.endsWith('.gcode')) {
+    if (isGcodeFile(model) || GCODE_FILE_EXTENSIONS.some(ext => extension.endsWith(ext))) {
+        // El visor de G-code dibuja sobre fondo blanco (como en la página de
+        // G-code); el degradado oscuro es solo para el visor de modelos STL/3MF.
+        previewImage.style.backgroundImage = 'none';
+        previewImage.classList.add('gcode-mode');
         renderGcodePreview(previewImage, fileUrl);
         return;
     }
+
+    previewImage.classList.remove('gcode-mode');
+    previewImage.style.backgroundImage = 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(31,41,55,1) 100%)';
 
     if (extension.endsWith('.stl') || extension.endsWith('.3mf') || extension.endsWith('.obj')) {
         renderStandardModelPreview(previewImage, fileUrl);
@@ -730,19 +751,28 @@ function getThemeColors(theme) {
     };
 }
 
+function hexToRgbTriplet(hex) {
+    const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+    if (!match) return '34, 197, 94';
+    const [, r, g, b] = match;
+    return `${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}`;
+}
+
 function applyTheme(theme) {
     let resolvedTheme = theme === 'custom' && getCustomTheme() ? 'custom' : theme;
-    if (!['dark', 'green', 'custom'].includes(resolvedTheme)) resolvedTheme = 'light';
-    document.body.classList.remove('dark', 'green', 'custom', 'light');
+    if (!['dark', 'green', 'red', 'custom'].includes(resolvedTheme)) resolvedTheme = 'light';
+    document.body.classList.remove('dark', 'green', 'red', 'custom', 'light');
     document.body.classList.add(resolvedTheme);
     document.body.setAttribute('data-theme', resolvedTheme);
     applyCustomThemeBackground();
 
     const colors = getThemeColors(resolvedTheme);
     document.documentElement.style.setProperty('--accent', colors.accent);
+    document.documentElement.style.setProperty('--accent-rgb', hexToRgbTriplet(colors.accent));
     document.documentElement.style.setProperty('--surface', colors.surface);
     document.documentElement.style.setProperty('--text', colors.text);
     document.documentElement.style.setProperty('--text-muted', colors.muted);
+    document.documentElement.style.setProperty('--text-secondary', colors.muted);
     document.documentElement.style.setProperty('--black', colors.text);
     document.documentElement.style.setProperty('--card-bg', colors.surface);
     document.documentElement.style.setProperty('--bg', colors.bg);
@@ -760,6 +790,7 @@ function applyTheme(theme) {
             const icons = {
                 light: '☀️',
                 dark: '🌙',
+                red: '🔴',
             };
             themeIcon.textContent = icons[resolvedTheme] || '☀️';
         }
@@ -1327,13 +1358,20 @@ function renderThumbPreview(thumb, fileUrl = '', isGcode = false) {
 
 function openModelModal(fileUrl, filename, model = {}) {
     if (!modelModal) return;
-    
+
+    const isGcode = isGcodeFile(model);
+
     modelModal.classList.add('active');
     document.getElementById('modal-filename').textContent = filename;
-    document.getElementById('modal-tags').textContent = (model.tags || ['#modelo3D', '#impresion3D']).join(' ');
-    document.getElementById('modal-material').textContent = model.material || 'PLA';
-    document.getElementById('modal-time').textContent = model.estimated_time || formatEstimatedTime(model.estimated_time_minutes);
-    
+
+    const infoGroups = document.getElementById('modal-info-groups');
+    if (infoGroups) infoGroups.hidden = isGcode;
+    if (!isGcode) {
+        document.getElementById('modal-tags').textContent = (model.tags || ['#modelo3D', '#impresion3D']).join(' ');
+        document.getElementById('modal-material').textContent = model.material || 'PLA';
+        document.getElementById('modal-time').textContent = model.estimated_time || formatEstimatedTime(model.estimated_time_minutes);
+    }
+
     const downloadBtn = document.getElementById('modal-download');
     downloadBtn.onclick = () => {
         const link = document.createElement('a');
@@ -1347,11 +1385,12 @@ function openModelModal(fileUrl, filename, model = {}) {
 
     const sendBtn = document.getElementById('modal-send-printer');
     if (sendBtn) {
-        sendBtn.onclick = () => {
-            const preferredPrinter = allPrinters.find(printer => printer.status === 'online') || allPrinters[0] || null;
-            const url = getPrinterWebUrl(preferredPrinter);
-            window.open(url, '_blank', 'noopener,noreferrer');
-        };
+        sendBtn.hidden = !isGcode;
+        sendBtn.onclick = isGcode ? () => {
+            closeModelModal();
+            const relPath = stripSectionPrefix(model.id, 'model');
+            openPrinterSendModal(relPath, model.name, 'model', model);
+        } : null;
     }
 
     // Wait for the modal to render before initializing Three.js
@@ -1362,7 +1401,7 @@ function openModelModal(fileUrl, filename, model = {}) {
 
 function initializeThreeViewer(modalViewer, fileUrl) {
     const extension = (fileUrl || '').toLowerCase();
-    const isGcode = extension.endsWith('.gcode');
+    const isGcode = GCODE_FILE_EXTENSIONS.some(ext => extension.endsWith(ext));
     const isStl = extension.endsWith('.stl');
     const isThreeMf = extension.endsWith('.3mf');
 
@@ -1480,7 +1519,7 @@ function closeModelModal() {
 }
 
 const mutedActivePrintPorts = new Set();
-const ACTIVE_PRINT_RING_RADIUS = 45;
+const ACTIVE_PRINT_RING_RADIUS = 38;
 const ACTIVE_PRINT_RING_CIRCUMFERENCE = 2 * Math.PI * ACTIVE_PRINT_RING_RADIUS;
 
 function formatSecondsShort(seconds) {
@@ -1505,10 +1544,10 @@ function activePrintCardHtml(printer) {
             : '—');
 
     return `
-        <div class="active-print-card" data-port="${port}">
-            <div class="active-print-card-title">${escapeHtml(printer.name || `Printer ${port}`)} — ${t('activePrintQueue')}</div>
+        <div class="active-print-card ${isPaused ? 'paused' : 'printing'}" data-port="${port}">
             <div class="active-print-body">
                 <div class="active-print-col active-print-col-info">
+                    <div class="active-print-card-title">${escapeHtml(printer.name || `Printer ${port}`)} — ${t('activePrintQueue')}</div>
                     <div class="active-print-thumb">
                         ${NOPAL_LOGO_SVG}
                         ${job.thumbnail_url ? `<img src="${job.thumbnail_url}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}
@@ -1518,20 +1557,15 @@ function activePrintCardHtml(printer) {
                         <div class="active-print-meta-row"><span>${t('activePrintLayerHeight')}</span><strong>${job.layer_height != null ? `${job.layer_height} mm` : '—'}</strong></div>
                         <div class="active-print-meta-row"><span>${t('activePrintFilament')}</span><strong>${job.filament_type ? escapeHtml(job.filament_type) : '—'}</strong></div>
                         <div class="active-print-meta-row"><span>${t('activePrintEstimatedTime')}</span><strong>${estimatedTotal}</strong></div>
-                        <div class="active-print-progress-label">${t('activePrintProgress')}</div>
-                        <div class="active-print-progress-row">
-                            <div class="active-print-progress-bar"><div class="active-print-progress-fill" style="width:${progress}%"></div></div>
-                            <span class="active-print-progress-pct">${progress}%</span>
-                        </div>
                     </div>
                 </div>
                 <div class="active-print-col active-print-col-ring">
                     <div class="active-print-col-header">${t('activePrintProgressHeader')}</div>
                     <div class="active-print-ring-body">
                         <div class="active-print-ring">
-                            <svg width="110" height="110" viewBox="0 0 110 110">
-                                <circle class="active-print-ring-track" cx="55" cy="55" r="${ACTIVE_PRINT_RING_RADIUS}" fill="none" stroke-width="10"/>
-                                <circle class="active-print-ring-fill" cx="55" cy="55" r="${ACTIVE_PRINT_RING_RADIUS}" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="${ACTIVE_PRINT_RING_CIRCUMFERENCE}" stroke-dashoffset="${dashOffset}"/>
+                            <svg width="94" height="94" viewBox="0 0 94 94">
+                                <circle class="active-print-ring-track" cx="47" cy="47" r="${ACTIVE_PRINT_RING_RADIUS}" fill="none" stroke-width="9"/>
+                                <circle class="active-print-ring-fill" cx="47" cy="47" r="${ACTIVE_PRINT_RING_RADIUS}" fill="none" stroke-width="9" stroke-linecap="round" stroke-dasharray="${ACTIVE_PRINT_RING_CIRCUMFERENCE}" stroke-dashoffset="${dashOffset}"/>
                             </svg>
                             <span class="active-print-ring-pct">${progress}%</span>
                         </div>
@@ -1820,7 +1854,6 @@ async function setTemperatureTarget(port, heater, target) {
     }
 }
 
-let temperatureCardCollapsed = false;
 let temperatureCardThemeMode = null; // 'warm' | 'cool' | null
 
 function renderTemperaturesCard(data, port) {
@@ -1840,7 +1873,15 @@ function renderTemperaturesCard(data, port) {
 
     const rows = sensors.map((sensor, index) => {
         const color = TEMP_SERIES_COLORS[index % TEMP_SERIES_COLORS.length];
-        const stateLabel = sensor.kind === 'heater' ? (sensor.target > 0 ? t('printing') : 'off') : '';
+        // Encendido (target>0) = subiendo hacia el objetivo; apagado = bajando
+        // por calor residual. Es el estado real del calentador, no el del
+        // trabajo de impresión — antes decía "Inactivo" aunque estuviera
+        // calentando de verdad.
+        const stateLabel = sensor.kind === 'heater'
+            ? (sensor.target > 0
+                ? '<span class="temp-state-arrow temp-state-arrow-up">▲</span>'
+                : '<span class="temp-state-arrow temp-state-arrow-down">▼</span>')
+            : '';
         const targetCell = sensor.kind === 'heater'
             ? `<div class="temp-target-input-wrap">
                     <input type="number" class="temp-target-input" data-heater="${sensor.key}" value="${sensor.target ?? 0}" step="1" min="0">
@@ -1874,12 +1915,9 @@ function renderTemperaturesCard(data, port) {
                     <button type="button" class="temp-icon-btn" id="temp-config-btn" title="Configuración">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </button>
-                    <button type="button" class="temp-icon-btn" id="temp-collapse-btn" title="Colapsar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
                 </div>
             </div>
-            <div class="temp-card-body" id="temp-card-body" ${temperatureCardCollapsed ? 'hidden' : ''}>
+            <div class="temp-card-body" id="temp-card-body">
                 <div class="temp-table">
                     <div class="temp-table-head">
                         <div>${t('columnName')}</div>
@@ -1898,7 +1936,7 @@ function renderTemperaturesCard(data, port) {
 
     const canvas = document.getElementById('temp-chart-canvas');
     const seriesData = data.history?.series || {};
-    if (canvas && !temperatureCardCollapsed) {
+    if (canvas) {
         requestAnimationFrame(() => drawTemperatureChart(canvas, seriesData, sensors));
     }
 
@@ -1908,20 +1946,6 @@ function renderTemperaturesCard(data, port) {
             setTemperatureTarget(port, input.dataset.heater, target);
         });
     });
-
-    const collapseBtn = document.getElementById('temp-collapse-btn');
-    const body = document.getElementById('temp-card-body');
-    if (collapseBtn && body) {
-        collapseBtn.classList.toggle('collapsed', temperatureCardCollapsed);
-        collapseBtn.addEventListener('click', () => {
-            temperatureCardCollapsed = !temperatureCardCollapsed;
-            body.hidden = temperatureCardCollapsed;
-            collapseBtn.classList.toggle('collapsed', temperatureCardCollapsed);
-            if (!temperatureCardCollapsed && canvas) {
-                requestAnimationFrame(() => drawTemperatureChart(canvas, seriesData, sensors));
-            }
-        });
-    }
 
     const heaterSensors = sensors.filter(sensor => sensor.kind === 'heater');
 
@@ -2111,7 +2135,6 @@ async function loadTopbarServerStats() {
     }
 }
 
-let toolheadCardCollapsed = false;
 let toolheadJogStep = 25;
 let toolheadPort = null;
 
@@ -2146,13 +2169,8 @@ function renderToolheadCard(data, port) {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span>${t('toolhead')}</span>
                 </div>
-                <div class="temp-card-header-actions">
-                    <button type="button" class="temp-icon-btn" id="toolhead-collapse-btn" title="Colapsar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                </div>
             </div>
-            <div class="temp-card-body" id="toolhead-card-body" ${toolheadCardCollapsed ? 'hidden' : ''}>
+            <div class="temp-card-body" id="toolhead-card-body">
                 <div class="toolhead-position-mode">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>
                     <span>${t('positionLabel')}: ${modeLabel}</span>
@@ -2265,17 +2283,6 @@ function renderToolheadCard(data, port) {
         </div>
     `;
 
-    const collapseBtn = document.getElementById('toolhead-collapse-btn');
-    const body = document.getElementById('toolhead-card-body');
-    if (collapseBtn && body) {
-        collapseBtn.classList.toggle('collapsed', toolheadCardCollapsed);
-        collapseBtn.addEventListener('click', () => {
-            toolheadCardCollapsed = !toolheadCardCollapsed;
-            body.hidden = toolheadCardCollapsed;
-            collapseBtn.classList.toggle('collapsed', toolheadCardCollapsed);
-        });
-    }
-
     container.querySelectorAll('#toolhead-jog-steps .toolhead-step-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             toolheadJogStep = parseFloat(btn.dataset.step);
@@ -2361,6 +2368,7 @@ const printerModal = document.getElementById('printer-modal');
 
 let printerModalTemperatureInterval = null;
 let printerModalToolheadInterval = null;
+let printerModalQueueInterval = null;
 
 function closePrinterModal() {
     if (!printerModal) return;
@@ -2373,12 +2381,149 @@ function closePrinterModal() {
         clearInterval(printerModalToolheadInterval);
         printerModalToolheadInterval = null;
     }
+    if (printerModalQueueInterval) {
+        clearInterval(printerModalQueueInterval);
+        printerModalQueueInterval = null;
+    }
+    const banner = document.getElementById('printer-modal-error-banner');
+    if (banner) banner.hidden = true;
 }
 
-async function openPrinterModal(printer) {
-    if (!printerModal) return;
+function renderPrinterErrorBanner(printer, stateValue) {
+    const banner = document.getElementById('printer-modal-error-banner');
+    if (!banner) return;
 
-    const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
+    const errorStates = ['error', 'shutdown', 'disconnected'];
+    if (!errorStates.includes(stateValue) || !printer.port) {
+        banner.hidden = true;
+        return;
+    }
+
+    const port = printer.port;
+    const message = printer.printer_info?.state_message || '';
+    const titleEl = document.getElementById('printer-error-banner-title');
+    const messageEl = document.getElementById('printer-error-banner-message');
+    const klippyLogBtn = document.getElementById('printer-error-klippy-log-btn');
+    const moonrakerLogBtn = document.getElementById('printer-error-moonraker-log-btn');
+    const restartBtn = document.getElementById('printer-error-restart-btn');
+    const firmwareRestartBtn = document.getElementById('printer-error-firmware-restart-btn');
+
+    if (titleEl) titleEl.textContent = `${t('printerReportsKlipper')}: ${stateValue.toUpperCase()}`;
+    if (messageEl) messageEl.textContent = message;
+
+    const logHost = window.location.hostname;
+    if (klippyLogBtn) klippyLogBtn.href = `http://${logHost}:${port}/server/files/logs/klippy.log`;
+    if (moonrakerLogBtn) moonrakerLogBtn.href = `http://${logHost}:${port}/server/files/logs/moonraker.log`;
+
+    if (restartBtn) {
+        restartBtn.onclick = async () => {
+            if (!(await appConfirm(t('printerRestartConfirm'), t('printerRestart'), 'warning'))) return;
+            try {
+                await fetch(`/api/printers/${port}/restart`, { method: 'POST' });
+                showToast(t('printerRestart'));
+                setTimeout(() => openPrinterModal(printer), 2000);
+            } catch (error) {
+                console.error(error);
+            }
+        };
+    }
+    if (firmwareRestartBtn) {
+        firmwareRestartBtn.onclick = async () => {
+            if (!(await appConfirm(t('printerFirmwareRestartConfirm'), t('printerFirmwareRestart'), 'warning'))) return;
+            try {
+                await fetch(`/api/printers/${port}/firmware-restart`, { method: 'POST' });
+                showToast(t('printerFirmwareRestart'));
+                setTimeout(() => openPrinterModal(printer), 3000);
+            } catch (error) {
+                console.error(error);
+            }
+        };
+    }
+
+    banner.hidden = false;
+}
+
+function printerQueueJobLabel(job) {
+    return job.filename || job.job_id || '—';
+}
+
+async function loadPrinterQueue(port) {
+    const container = document.getElementById('printer-modal-queue');
+    if (!container) return;
+    try {
+        const response = await fetch(`/api/printers/${port}/queue`);
+        if (!response.ok) throw new Error('No se pudo cargar la cola de impresión');
+        const data = await response.json();
+        renderPrinterQueueCard(port, data);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderPrinterQueueCard(port, data) {
+    const container = document.getElementById('printer-modal-queue');
+    if (!container) return;
+    const jobs = data?.queued_jobs || [];
+    if (!jobs.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="temp-card printer-queue-card">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    <span>${t('printerQueueTitle')}</span>
+                </div>
+                ${data.queue_state !== 'ready' ? `
+                    <button type="button" class="temp-preset-pill" id="printer-queue-start-btn">${t('printerQueueStart')}</button>
+                ` : ''}
+            </div>
+            <div class="temp-card-body">
+                <div class="printer-queue-list">
+                    ${jobs.map(job => `
+                        <div class="printer-queue-item">
+                            <span class="printer-queue-item-name">${escapeHtml(printerQueueJobLabel(job))}</span>
+                            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" data-job-id="${escapeHtml(job.job_id || '')}" title="${t('laserQueueRemove')}">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+
+    container.querySelectorAll('.printer-queue-item button[data-job-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            try {
+                await fetch(`/api/printers/${port}/queue/${encodeURIComponent(btn.dataset.jobId)}`, { method: 'DELETE' });
+                loadPrinterQueue(port);
+            } catch (error) {
+                console.error(error);
+            }
+        });
+    });
+
+    document.getElementById('printer-queue-start-btn')?.addEventListener('click', async () => {
+        try {
+            await fetch(`/api/printers/${port}/queue/start`, { method: 'POST' });
+            loadPrinterQueue(port);
+        } catch (error) {
+            console.error(error);
+        }
+    });
+}
+
+// Actualiza el encabezado del modal (nombre, punto/estado, imagen, banner de
+// error) a partir del último objeto printer conocido. Se llama al abrir el
+// modal Y en cada poll de temperaturas mientras sigue abierto — antes solo se
+// llamaba una vez al abrir, así que si la impresora pasaba de inactiva a
+// imprimiendo con el modal ya abierto, el encabezado se quedaba "Inactivo"
+// aunque las tarjetas de temperatura ya mostraran "Imprimiendo".
+function refreshPrinterModalHeader(printer) {
+    const stateValue = getPrinterEffectiveStateValue(printer);
     const normalizedStatus = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue) ? 'online' : 'offline';
     const isOnline = normalizedStatus === 'online';
     const stateKey = stateValue === 'ready' ? 'idle' : stateValue;
@@ -2392,9 +2537,7 @@ async function openPrinterModal(printer) {
     const modalStatusLine = document.getElementById('printer-modal-status-line');
     const modalStatusDot = document.getElementById('printer-modal-status-dot');
     const modalStatusText = document.getElementById('printer-modal-status-text');
-    const statsContainer = document.getElementById('printer-modal-stats');
-    const temperaturesContainer = document.getElementById('printer-modal-temperatures');
-    const toolheadContainer = document.getElementById('printer-modal-toolhead');
+    const queueContainer = document.getElementById('printer-modal-queue');
 
     if (modalContent) modalContent.className = `modal-content printer-modal-content ${visualState}`;
     if (modalImage) modalImage.src = PRINTER_STATE_IMAGES[visualState];
@@ -2402,9 +2545,34 @@ async function openPrinterModal(printer) {
     if (modalStatusLine) modalStatusLine.className = `printer-status-line ${visualState}`;
     if (modalStatusDot) modalStatusDot.className = `printer-status-dot ${visualState}`;
     if (modalStatusText) modalStatusText.textContent = stateDisplay;
+
+    renderPrinterErrorBanner(printer, stateValue);
+    // Con Klipper en error/shutdown, Toolhead/Temperaturas/Cola no tienen
+    // datos reales que mostrar (el firmware no está corriendo) — se ocultan
+    // y solo queda visible el banner de error con sus acciones.
+    const printerErrorStates = ['error', 'shutdown', 'disconnected'];
+    const isPrinterInError = printerErrorStates.includes(stateValue);
+    const modalBody = document.querySelector('.printer-modal-body');
+    if (modalBody) modalBody.hidden = isPrinterInError;
+    if (queueContainer) queueContainer.hidden = isPrinterInError;
+
+    return { stateValue, isPrinterInError };
+}
+
+async function openPrinterModal(printer) {
+    if (!printerModal) return;
+
+    const statsContainer = document.getElementById('printer-modal-stats');
+    const temperaturesContainer = document.getElementById('printer-modal-temperatures');
+    const toolheadContainer = document.getElementById('printer-modal-toolhead');
+    const queueContainer = document.getElementById('printer-modal-queue');
+
     if (statsContainer) statsContainer.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
     if (temperaturesContainer) temperaturesContainer.innerHTML = '';
     if (toolheadContainer) toolheadContainer.innerHTML = '';
+    if (queueContainer) queueContainer.innerHTML = '';
+
+    const { isPrinterInError } = refreshPrinterModalHeader(printer);
 
     printerModal.classList.add('active');
 
@@ -2427,11 +2595,18 @@ async function openPrinterModal(printer) {
         if (statsContainer) statsContainer.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
     }
 
-    if (printer.port) {
-        loadPrinterTemperatures(printer.port);
-        printerModalTemperatureInterval = setInterval(() => loadPrinterTemperatures(printer.port), 4000);
-        loadPrinterToolhead(printer.port);
-        printerModalToolheadInterval = setInterval(() => loadPrinterToolhead(printer.port), 3000);
+    if (printer.port && !isPrinterInError) {
+        const port = printer.port;
+        loadPrinterTemperatures(port);
+        printerModalTemperatureInterval = setInterval(() => {
+            const latest = allPrinters.find(p => p.port === port);
+            if (latest) refreshPrinterModalHeader(latest);
+            loadPrinterTemperatures(port);
+        }, 4000);
+        loadPrinterToolhead(port);
+        printerModalToolheadInterval = setInterval(() => loadPrinterToolhead(port), 3000);
+        loadPrinterQueue(port);
+        printerModalQueueInterval = setInterval(() => loadPrinterQueue(port), 5000);
     }
 }
 
@@ -2457,6 +2632,7 @@ const PRINTER_STATE_IMAGES = {
     paused: '/static/img/printer_atencion.png',
     error: '/static/img/printer_Alert.png',
     idle: '/static/img/printer_ready.png',
+    heating: '/static/img/printer_atencion.png',
 };
 
 function getPrinterVisualState(stateValue, isOnline) {
@@ -2466,6 +2642,17 @@ function getPrinterVisualState(stateValue, isOnline) {
     return 'idle';
 }
 
+// `printer.state`/`printer.printer_info.state` es el estado de Klipper como
+// software (ready/error/shutdown) — sigue siendo "ready" mientras imprime,
+// eso NO cambia con el trabajo. El estado real del trabajo vive aparte en
+// `printer.job.state` (printing/paused/complete/standby). Antes toda la app
+// leía solo el primero, así que todo se veía "Inactivo" mientras imprimía.
+function getPrinterEffectiveStateValue(printer) {
+    const jobState = (printer.job?.state || '').toString().toLowerCase();
+    if (jobState === 'printing' || jobState === 'paused') return jobState;
+    return (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
+}
+
 function printerIllustrationImg(visualState) {
     return `<img src="${PRINTER_STATE_IMAGES[visualState]}" alt="" loading="lazy">`;
 }
@@ -2473,7 +2660,7 @@ function printerIllustrationImg(visualState) {
 const PRINTER_STATUS_SORT_ORDER = { printing: 0, paused: 1, error: 2, idle: 3 };
 
 function getPrinterSortPriority(printer) {
-    const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
+    const stateValue = getPrinterEffectiveStateValue(printer);
     const normalizedStatus = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue) ? 'online' : 'offline';
     const isOnline = normalizedStatus === 'online';
     if (!isOnline) return 4;
@@ -2510,6 +2697,14 @@ function laserHostLabel(host) {
     return host.startsWith('usb:') ? host.slice(4) : host;
 }
 
+// Mismo código de colores que las tarjetas del dashboard: verde=impresora,
+// morado=láser, ámbar=CNC.
+function getDeviceKindColor(kind) {
+    if (kind === 'cnc') return 'var(--orange)';
+    if (kind === '3d' || kind === 'printer') return '#22c55e';
+    return '#8b5cf6';
+}
+
 function laserDashboardSortPriority(status) {
     const visualState = getLaserVisualState(status);
     if (visualState === 'offline') return 4;
@@ -2526,9 +2721,10 @@ function laserDashboardCardHtml(entry) {
     const feedSpeed = isOnline ? `${status.feed} / ${status.speed}` : '—';
     const hostLabel = laserHostLabel(host);
     const typeLabel = kind === 'cnc' ? t('cnc') : t('laser');
+    const typeClass = kind === 'cnc' ? 'printer-card-type-cnc' : 'printer-card-type-laser';
 
     return `
-        <div class="printer-card printer-card-type-laser laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
+        <div class="printer-card ${typeClass} laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${typeLabel}</h3>
@@ -2590,6 +2786,65 @@ function isShowOfflineMachinesEnabled() {
     return localStorage.getItem('showOfflineMachines') !== 'false';
 }
 
+// ── Alertas sonoras y notificaciones nativas (trabajos de impresión/láser) ──
+const ALERT_SOUNDS = {
+    success: '/static/audio/success.mp3',
+    error: '/static/audio/error.mp3',
+    warning: '/static/audio/warning.mp3',
+};
+
+function isSoundAlertsEnabled() {
+    return localStorage.getItem('soundAlertsEnabled') === 'true';
+}
+
+function playAlertSound(tone) {
+    if (!isSoundAlertsEnabled()) return;
+    const src = ALERT_SOUNDS[tone] || ALERT_SOUNDS.warning;
+    try {
+        const audio = new Audio(src);
+        audio.play().catch(() => {});
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+// La notificación nativa del navegador solo se dispara si la pestaña no está
+// enfocada (si el usuario ya está mirando la app sería redundante), pero el
+// globo en pantalla y el flash del título de la pestaña se muestran siempre
+// que suena una alerta — así queda claro por qué sonó, esté o no enfocada.
+const ORIGINAL_TAB_TITLE = document.title;
+let tabTitleFlashTimeout = null;
+
+function flashBrowserTabTitle(text) {
+    if (tabTitleFlashTimeout) clearTimeout(tabTitleFlashTimeout);
+    document.title = `🔔 ${text}`;
+    tabTitleFlashTimeout = setTimeout(() => {
+        document.title = ORIGINAL_TAB_TITLE;
+        tabTitleFlashTimeout = null;
+    }, 5000);
+}
+
+function notifyUser(title, body, tone = 'warning') {
+    playAlertSound(tone);
+    if (!isSoundAlertsEnabled()) return;
+    const toastTone = tone === 'error' ? 'error' : tone === 'success' ? 'success' : 'warning';
+    showToast(body ? `${title}: ${body}` : title, toastTone);
+    flashBrowserTabTitle(title);
+    if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+        try {
+            new Notification(title, { body, icon: '/static/img/favicon.ico' });
+        } catch (error) {
+            console.error(error);
+        }
+    }
+}
+
 function updatePrintersViewMode(mode) {
     printersViewMode = mode;
     localStorage.setItem('printersViewMode', mode);
@@ -2600,15 +2855,86 @@ function updatePrintersViewMode(mode) {
     if (listBtn) listBtn.classList.toggle('btn-view-toggle-active', mode === 'list');
 }
 
+const printerJobLastState = new Map(); // port -> último job.state visto, para detectar transiciones
+
+function checkPrinterJobTransitions(printers) {
+    (printers || []).forEach(printer => {
+        const port = printer.port;
+        const jobState = printer.job?.state || '';
+        if (!jobState || port == null) return;
+        const previous = printerJobLastState.get(port);
+        if (jobState !== previous) {
+            // No avisar en el primer poll tras cargar la página — solo en
+            // transiciones que ocurren mientras la app ya está abierta.
+            if (previous != null) {
+                const printerName = printer.name || `Printer ${port}`;
+                if (jobState === 'complete') {
+                    notifyUser(t('printerJobCompleteTitle'), printerName, 'success');
+                } else if (jobState === 'error') {
+                    notifyUser(t('printerJobErrorTitle'), printerName, 'error');
+                }
+            }
+            printerJobLastState.set(port, jobState);
+        }
+    });
+}
+
+const printerConnLastState = new Map(); // port -> último online/offline visto, para avisar conexión/desconexión
+const laserConnLastState = new Map(); // host -> último online/offline visto
+
+function checkPrinterConnectionTransitions(printers) {
+    (printers || []).forEach(printer => {
+        const port = printer.port;
+        if (port == null) return;
+        const stateValue = getPrinterEffectiveStateValue(printer);
+        const isOnline = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
+        const previous = printerConnLastState.get(port);
+        if (isOnline !== previous) {
+            if (previous != null) {
+                const printerName = printer.name || `Printer ${port}`;
+                if (isOnline) {
+                    notifyUser(t('deviceConnectedTitle'), printerName, 'success');
+                } else {
+                    notifyUser(t('deviceDisconnectedTitle'), printerName, 'warning');
+                }
+            }
+            printerConnLastState.set(port, isOnline);
+        }
+    });
+}
+
+function checkLaserConnectionTransitions(laserEntries) {
+    (laserEntries || []).forEach(entry => {
+        const host = entry.host;
+        if (!host) return;
+        const isOnline = getLaserVisualState(entry.status) !== 'offline';
+        const previous = laserConnLastState.get(host);
+        if (isOnline !== previous) {
+            if (previous != null) {
+                const laserName = laserHostLabel(host);
+                if (isOnline) {
+                    notifyUser(t('deviceConnectedTitle'), laserName, 'success');
+                } else {
+                    notifyUser(t('deviceDisconnectedTitle'), laserName, 'warning');
+                }
+            }
+            laserConnLastState.set(host, isOnline);
+        }
+    });
+}
+
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
     printersGrid.classList.toggle('list-view', printersViewMode === 'list');
     const showOffline = isShowOfflineMachinesEnabled();
     const printers = printersInput || [];
+    checkPrinterJobTransitions(printers);
+    checkPrinterConnectionTransitions(printers);
+    checkLaserConnectionTransitions(dashboardLaserEntries);
 
     const printerEntries = printers.map(printer => {
-        const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
+        const stateValue = getPrinterEffectiveStateValue(printer);
         const normalizedStatus = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue) ? 'online' : 'offline';
         const isOnline = normalizedStatus === 'online';
         const statusText = isOnline ? t('online') : t('offline');
@@ -2627,6 +2953,15 @@ function renderPrinters(printersInput) {
             extruderTemp = Math.round(data.extruder.temperature * 10) / 10;
         }
 
+        // Un calentador con target>0 sigue "trabajando" aunque Klipper diga
+        // idle (no hay trabajo activo) — antes la ficha decía "Inactivo" con
+        // fondo neutro mientras precalentaba de verdad.
+        const bedTarget = data.heater_bed && typeof data.heater_bed.target === 'number' ? data.heater_bed.target : 0;
+        const extruderTarget = data.extruder && typeof data.extruder.target === 'number' ? data.extruder.target : 0;
+        const isHeating = visualState === 'idle' && (bedTarget > 0 || extruderTarget > 0);
+        const displayState = isHeating ? 'heating' : visualState;
+        const displayStateText = isHeating ? t('heating') : stateDisplay;
+
         const BED_MAX_TEMP = 110;
         const EXTRUDER_MAX_TEMP = 260;
         const bedPercent = typeof bedTemp === 'number' ? Math.min(100, Math.round((bedTemp / BED_MAX_TEMP) * 100)) : 0;
@@ -2644,7 +2979,7 @@ function renderPrinters(printersInput) {
         const themeModeClass = themeMode ? ` printer-card-${themeMode}` : '';
 
         const html = `
-            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${visualState}${themeModeClass}" data-port="${printer.port}">
+            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}" data-port="${printer.port}">
                 <div class="printer-card-top">
                     <div>
                         <h3 class="printer-name">${t('printerType3D')}</h3>
@@ -2657,12 +2992,12 @@ function renderPrinters(printersInput) {
                     </div>
                 </div>
 
-                <div class="printer-status-line ${visualState}">
-                    <span class="printer-status-dot ${visualState}"></span>${stateDisplay}
+                <div class="printer-status-line ${displayState}">
+                    <span class="printer-status-dot ${displayState}"></span>${displayStateText}
                 </div>
 
-                <div class="printer-illustration printer-illustration-${visualState}">
-                    ${printerIllustrationImg(visualState)}
+                <div class="printer-illustration printer-illustration-${displayState}">
+                    ${printerIllustrationImg(displayState)}
                 </div>
 
                 ${visualState === 'printing' || visualState === 'paused' || visualState === 'idle' ? `
@@ -2771,7 +3106,7 @@ function renderPrinters(printersInput) {
 function updateActivePrintersCount() {
     if (activePrintersEl) {
         const onlineCount = allPrinters.filter(printer => {
-            const stateValue = (printer.state || printer.printer_info?.state || '').toString().toLowerCase();
+            const stateValue = getPrinterEffectiveStateValue(printer);
             return printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
         }).length;
         activePrintersEl.textContent = onlineCount.toLocaleString();
@@ -2822,7 +3157,8 @@ function renderUploadingRow(tableContainerId, filename) {
     const row = document.createElement('tr');
     row.className = 'uploading-row';
     row.innerHTML = `
-        <td class="model-name" colspan="10">
+        <td class="select-col"></td>
+        <td class="model-name" colspan="9">
             <svg class="green-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
             <div class="uploading-info">
                 <strong>${filename}</strong>
@@ -3159,6 +3495,220 @@ if (gcodeSendLaserBtn) {
         }
     });
 }
+
+// ── Enviar G-code a impresora 3D (imprimir ahora, cola nativa de Moonraker o programada) ──
+let printerSendTarget = null;
+let printerSendSelectedPort = null;
+let printerSendMode = 'now';
+
+function renderPrinterSendPicker(selectedPort) {
+    const container = document.getElementById('printer-send-picker');
+    if (!container) return;
+    if (!allPrinters.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('noPrintersFound')}</div>`;
+        return;
+    }
+    const validPorts = allPrinters.map(p => p.port);
+    const onlinePorts = allPrinters.filter(p => p.status === 'online').map(p => p.port);
+    // Preferir el puerto ya elegido, si sigue siendo válido; si no, la primera
+    // impresora en línea (evita mandar por defecto a una apagada/offline).
+    const nextPort = (selectedPort && validPorts.includes(selectedPort))
+        ? selectedPort
+        : (onlinePorts[0] ?? validPorts[0]);
+    printerSendSelectedPort = nextPort;
+
+    container.innerHTML = allPrinters.map(printer => {
+        const name = getPrinterDisplayName(printer);
+        const isOnline = printer.status === 'online';
+        const active = printer.port === nextPort ? ' active' : '';
+        const offlineClass = isOnline ? '' : ' offline';
+        const stateValue = getPrinterEffectiveStateValue(printer);
+        const isBusy = isOnline && (stateValue === 'printing' || stateValue === 'paused');
+        const busyClass = isBusy ? ' busy' : '';
+        const stateKey = stateValue === 'ready' ? 'idle' : stateValue;
+        const stateDisplay = t(stateKey) !== stateKey ? t(stateKey) : (stateValue || t('idle'));
+        const statusLine = isOnline ? `${t('online')} · ${stateDisplay}` : t('offline');
+        return `
+            <button type="button" class="printer-send-row${active}${offlineClass}${busyClass}" data-port="${printer.port}" data-busy="${isBusy ? '1' : '0'}">
+                <span class="printer-send-row-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                </span>
+                <span class="printer-send-row-info">
+                    <span class="printer-send-row-name">${escapeHtml(name)}</span>
+                    <span class="printer-send-row-status"><span class="printer-send-row-status-dot"></span>${escapeHtml(statusLine)}</span>
+                </span>
+                <span class="printer-send-row-pill">${isOnline ? t('online') : t('offline')}</span>
+                <span class="printer-send-row-radio"><span class="printer-send-row-radio-dot"></span></span>
+            </button>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.printer-send-row').forEach(btn => {
+        btn.addEventListener('click', () => {
+            printerSendSelectedPort = parseInt(btn.dataset.port, 10);
+            container.querySelectorAll('.printer-send-row').forEach(el => {
+                el.classList.toggle('active', parseInt(el.dataset.port, 10) === printerSendSelectedPort);
+            });
+            updatePrinterSendBusyWarning();
+        });
+    });
+
+    updatePrinterSendBusyWarning();
+}
+
+function updatePrinterSendBusyWarning() {
+    const warningEl = document.getElementById('printer-send-busy-warning');
+    const warningTextEl = document.getElementById('printer-send-busy-warning-text');
+    const primaryBtn = document.getElementById('printer-send-primary-btn');
+    if (!warningEl) return;
+
+    const selectedPrinter = allPrinters.find(p => p.port === printerSendSelectedPort);
+    const stateValue = selectedPrinter ? getPrinterEffectiveStateValue(selectedPrinter) : '';
+    const isBusy = selectedPrinter?.status === 'online' && (stateValue === 'printing' || stateValue === 'paused');
+
+    warningEl.hidden = !isBusy;
+    if (isBusy && warningTextEl) {
+        warningTextEl.textContent = stateValue === 'paused' ? t('printerSendBusyPausedWarning') : t('printerSendBusyWarning');
+    }
+    if (primaryBtn) primaryBtn.disabled = isBusy && printerSendMode === 'now';
+}
+
+function setPrinterSendMode(mode) {
+    printerSendMode = mode;
+    document.querySelectorAll('.printer-send-mode-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.mode === mode);
+    });
+    const scheduleField = document.getElementById('printer-send-schedule-field');
+    if (scheduleField) scheduleField.hidden = mode !== 'schedule';
+    const primaryIcon = document.getElementById('printer-send-primary-icon');
+    const primaryLabel = document.getElementById('printer-send-primary-label');
+    if (mode === 'schedule') {
+        if (primaryIcon) primaryIcon.innerHTML = '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>';
+        if (primaryLabel) primaryLabel.textContent = t('printerSendModeScheduleTitle');
+    } else {
+        if (primaryIcon) primaryIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+        if (primaryLabel) primaryLabel.textContent = t('printNow');
+    }
+    updatePrinterSendBusyWarning();
+}
+
+document.querySelectorAll('.printer-send-mode-card').forEach(card => {
+    card.addEventListener('click', () => setPrinterSendMode(card.dataset.mode));
+});
+
+function openPrinterSendModal(relPath, filename, section = 'model', model = null) {
+    printerSendTarget = { path: relPath, filename, section };
+    document.getElementById('printer-send-modal')?.classList.add('active');
+    const filenameEl = document.getElementById('printer-send-filename');
+    if (filenameEl) filenameEl.textContent = filename;
+
+    const detailsEl = document.getElementById('printer-send-filedetails');
+    const thumbEl = document.getElementById('printer-send-thumb');
+    if (thumbEl) thumbEl.innerHTML = '';
+    if (model) {
+        if (detailsEl) detailsEl.textContent = `${formatSize(model.size)} · ${formatDate(model.modified)}`;
+        if (model.file_url) {
+            getGcodeLineCount(model.file_url).then(count => {
+                if (detailsEl && count != null) {
+                    detailsEl.textContent = t('printerSendFileMeta')
+                        .replace('{size}', formatSize(model.size))
+                        .replace('{lines}', count.toLocaleString())
+                        .replace('{date}', formatDate(model.modified));
+                }
+            });
+            if (thumbEl) loadRealGcodeThumbnail(thumbEl, relPath, section, model.file_url);
+        }
+    } else if (detailsEl) {
+        detailsEl.textContent = '';
+    }
+
+    setPrinterSendMode('now');
+    const scheduleInput = document.getElementById('printer-send-schedule-input');
+    if (scheduleInput) scheduleInput.value = '';
+
+    renderPrinterSendPicker(printerSendSelectedPort);
+}
+
+function closePrinterSendModal() {
+    document.getElementById('printer-send-modal')?.classList.remove('active');
+}
+
+async function submitPrinterSend(mode) {
+    if (!printerSendTarget || !printerSendSelectedPort) return;
+    const selectedPrinter = allPrinters.find(p => p.port === printerSendSelectedPort);
+    if (selectedPrinter && selectedPrinter.status !== 'online') {
+        appAlert(t('printerSendOfflineError'), '', 'warning');
+        return;
+    }
+    if (mode === 'print' && selectedPrinter) {
+        const stateValue = getPrinterEffectiveStateValue(selectedPrinter);
+        if (stateValue === 'printing' || stateValue === 'paused') {
+            appAlert(stateValue === 'paused' ? t('printerSendBusyPausedWarning') : t('printerSendBusyWarning'), '', 'warning');
+            return;
+        }
+    }
+    try {
+        const formData = new FormData();
+        formData.append('path', printerSendTarget.path);
+        formData.append('mode', mode);
+        formData.append('section', printerSendTarget.section || 'model');
+        const response = await fetch(`/api/printers/${printerSendSelectedPort}/send`, { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo enviar el archivo.');
+        }
+        closePrinterSendModal();
+        showToast(mode === 'queue' ? t('printerSendQueued') : t('printerSendStarted'));
+        loadPrinters();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || 'No se pudo enviar el archivo.', '', 'danger');
+    }
+}
+
+async function submitPrinterSendSchedule() {
+    if (!printerSendTarget || !printerSendSelectedPort) return;
+    const scheduleInput = document.getElementById('printer-send-schedule-input');
+    const value = scheduleInput?.value;
+    if (!value) {
+        appAlert(t('printerSendScheduleMissing'), '', 'warning');
+        return;
+    }
+    if (new Date(value).getTime() <= Date.now()) {
+        appAlert(t('printerSendScheduleInPast'), '', 'warning');
+        return;
+    }
+    try {
+        const formData = new FormData();
+        formData.append('port', printerSendSelectedPort);
+        formData.append('path', printerSendTarget.path);
+        formData.append('filename', printerSendTarget.filename);
+        formData.append('scheduled_at', value);
+        formData.append('section', printerSendTarget.section || 'model');
+        const response = await fetch('/api/printers/schedule', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo programar la impresión.');
+        }
+        closePrinterSendModal();
+        showToast(t('printerSendScheduled'));
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || 'No se pudo programar la impresión.', '', 'danger');
+    }
+}
+
+document.getElementById('printer-send-backdrop')?.addEventListener('click', closePrinterSendModal);
+document.getElementById('printer-send-close-btn')?.addEventListener('click', closePrinterSendModal);
+document.getElementById('printer-send-cancel-btn')?.addEventListener('click', closePrinterSendModal);
+document.getElementById('printer-send-queue-btn')?.addEventListener('click', () => submitPrinterSend('queue'));
+document.getElementById('printer-send-primary-btn')?.addEventListener('click', () => {
+    if (printerSendMode === 'schedule') {
+        submitPrinterSendSchedule();
+    } else {
+        submitPrinterSend('print');
+    }
+});
 
 // ── Console & Macros ──
 function escapeHtml(value) {
@@ -3517,7 +4067,7 @@ function renderUsbPorts(ports, newDevices) {
                     <button type="button" class="theme-option-icon-btn usb-port-rename-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(registeredName)}" title="${escapeHtml(t('usbPortRename'))}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     </button>
-                    <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger usb-port-unlink-btn" data-host="${escapeHtml(host)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                    <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger usb-port-unlink-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(registeredName)}" data-chip="${escapeHtml(port.chip)}" data-transport="usb" title="${escapeHtml(t('usbPortUnlink'))}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                </div>`
@@ -3551,21 +4101,80 @@ function wireRegisteredDeviceActions(container) {
     });
 
     container.querySelectorAll('.usb-port-unlink-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (!(await appConfirm(t('usbUnlinkConfirm'), t('usbPortUnlink')))) return;
-            try {
-                const formData = new FormData();
-                formData.append('host', btn.dataset.host);
-                await fetch('/api/laser/registry/remove', { method: 'POST', body: formData });
-                refreshUsbPorts();
-                loadWifiDevices();
-                if (document.getElementById('laser-host-select')) loadLaserHostSelector();
-            } catch (error) {
-                console.error(error);
-            }
+        btn.addEventListener('click', () => {
+            openDeviceUnlinkModal(btn.dataset.host, btn.dataset.name, btn.dataset.chip, btn.dataset.transport);
         });
     });
 }
+
+let deviceUnlinkTarget = null;
+
+async function openDeviceUnlinkModal(host, name, chip, transport) {
+    deviceUnlinkTarget = host;
+    const modal = document.getElementById('device-unlink-modal');
+    const nameEl = document.getElementById('device-unlink-name');
+    const pillEl = document.getElementById('device-unlink-status-pill');
+    const chipEl = document.getElementById('device-unlink-chip');
+    const connEl = document.getElementById('device-unlink-connection');
+    const addedEl = document.getElementById('device-unlink-added');
+    const lastSeenEl = document.getElementById('device-unlink-lastseen');
+
+    if (nameEl) nameEl.textContent = name || host;
+    if (chipEl) chipEl.textContent = chip || '—';
+    if (connEl) connEl.textContent = transport === 'usb' ? `USB (${host.replace(/^usb:/, '')})` : `WiFi (${host})`;
+    if (pillEl) { pillEl.textContent = '…'; pillEl.className = 'device-unlink-status-pill offline'; }
+    if (addedEl) addedEl.textContent = '—';
+    if (lastSeenEl) lastSeenEl.textContent = '—';
+
+    modal?.classList.add('active');
+
+    try {
+        const regResponse = await fetch('/api/laser/registry');
+        const regData = await regResponse.json();
+        const entry = (regData.lasers || []).find(l => l.host === host);
+        if (addedEl) addedEl.textContent = entry?.registered_at ? formatDate(entry.registered_at) : '—';
+    } catch (error) {
+        console.error(error);
+    }
+
+    try {
+        const statusResponse = await fetch(`/api/laser/status?host=${encodeURIComponent(host)}`);
+        const status = await statusResponse.json();
+        const isOnline = !!status?.connected;
+        if (pillEl) {
+            pillEl.textContent = isOnline ? t('online') : t('offline');
+            pillEl.className = `device-unlink-status-pill${isOnline ? '' : ' offline'}`;
+        }
+        if (lastSeenEl) lastSeenEl.textContent = isOnline ? t('deviceUnlinkNow') : '—';
+    } catch (error) {
+        if (pillEl) { pillEl.textContent = t('offline'); pillEl.className = 'device-unlink-status-pill offline'; }
+    }
+}
+
+function closeDeviceUnlinkModal() {
+    document.getElementById('device-unlink-modal')?.classList.remove('active');
+    deviceUnlinkTarget = null;
+}
+
+async function handleDeviceUnlinkConfirm() {
+    if (!deviceUnlinkTarget) return;
+    try {
+        const formData = new FormData();
+        formData.append('host', deviceUnlinkTarget);
+        await fetch('/api/laser/registry/remove', { method: 'POST', body: formData });
+        closeDeviceUnlinkModal();
+        refreshUsbPorts();
+        loadWifiDevices();
+        if (document.getElementById('laser-host-select')) loadLaserHostSelector();
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+document.getElementById('device-unlink-backdrop')?.addEventListener('click', closeDeviceUnlinkModal);
+document.getElementById('device-unlink-close-btn')?.addEventListener('click', closeDeviceUnlinkModal);
+document.getElementById('device-unlink-cancel-btn')?.addEventListener('click', closeDeviceUnlinkModal);
+document.getElementById('device-unlink-confirm-btn')?.addEventListener('click', handleDeviceUnlinkConfirm);
 
 async function loadWifiDevices() {
     const container = document.getElementById('wifi-devices-list');
@@ -3597,7 +4206,7 @@ function renderWifiDevices(devices) {
                     <button type="button" class="theme-option-icon-btn usb-port-rename-btn" data-host="${escapeHtml(device.host)}" data-name="${escapeHtml(registeredName)}" title="${escapeHtml(t('usbPortRename'))}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     </button>
-                    <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger usb-port-unlink-btn" data-host="${escapeHtml(device.host)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                    <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger usb-port-unlink-btn" data-host="${escapeHtml(device.host)}" data-name="${escapeHtml(registeredName)}" data-chip="${escapeHtml(device.hostname || device.firmware || '')}" data-transport="network" title="${escapeHtml(t('usbPortUnlink'))}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                </div>`
@@ -3701,6 +4310,10 @@ async function runUsbClassifyScan() {
         : target.chip;
     const label = document.getElementById('usb-classify-device-label-name');
     if (label) label.textContent = `${target.chip} · ${target.transport === 'usb' ? target.device : target.host}`;
+    const titleKind = document.getElementById('usb-classify-name-title-kind');
+    if (titleKind) titleKind.textContent = target.kind === 'cnc' ? t('usbKindCnc') : t('usbKindLaser');
+    const nameStepEl = document.getElementById('usb-classify-step-name');
+    if (nameStepEl) nameStepEl.classList.toggle('theme-cnc', target.kind === 'cnc');
     const input = document.getElementById('usb-classify-name-input');
     const confirmBtn = document.getElementById('usb-classify-name-confirm-btn');
     const scanStatus = document.getElementById('usb-classify-scan-status');
@@ -3790,7 +4403,8 @@ async function handleUsbClassifyNameConfirm() {
         if (homeCorner) registerData.append('home_corner', homeCorner);
         await fetch('/api/laser/registry', { method: 'POST', body: registerData });
 
-        showToast(`${name}: ${t('usbRegisterSuccess')}`);
+        const kindLabel = target.kind === 'cnc' ? t('usbKindCnc') : t('usbKindLaser');
+        showToast(`${name}: ${t('usbRegisterSuccess').replace('{kind}', kindLabel)}`);
         refreshUsbPorts();
         loadWifiDevices();
         if (document.getElementById('laser-host-select')) loadLaserHostSelector();
@@ -3818,6 +4432,9 @@ if (usbClassifyPrinterBtn) usbClassifyPrinterBtn.addEventListener('click', handl
 
 const usbClassifyCancelBtn = document.getElementById('usb-classify-cancel-btn');
 if (usbClassifyCancelBtn) usbClassifyCancelBtn.addEventListener('click', closeUsbClassifyModal);
+
+const usbClassifyCloseBtn = document.getElementById('usb-classify-close-btn');
+if (usbClassifyCloseBtn) usbClassifyCloseBtn.addEventListener('click', closeUsbClassifyModal);
 
 const usbClassifyNameConfirmBtn = document.getElementById('usb-classify-name-confirm-btn');
 if (usbClassifyNameConfirmBtn) usbClassifyNameConfirmBtn.addEventListener('click', handleUsbClassifyNameConfirm);
@@ -4027,9 +4644,11 @@ function renderLaserJob(job) {
     const previousStateForHost = laserJobHostLastState.get(host);
     if (state === 'error' && previousStateForHost && previousStateForHost !== 'error') {
         appAlert(job?.error || t('laserJobErrorGeneric'), t('laserJobErrorTitle'), 'danger');
+        notifyUser(t('laserJobErrorTitle'), job?.error || t('laserJobErrorGeneric'), 'error');
     }
     if (state === 'completed' && previousStateForHost && previousStateForHost !== 'completed') {
         sendLaserBedMapSnapshotToHistory(host);
+        notifyUser(t('laserJobCompleteTitle'), job?.filename || '', 'success');
     }
     // Un trabajo nuevo (no una reanudación tras pausa) empieza con el grill limpio,
     // así la figura que se va formando corresponde solo al corte en curso.
@@ -4217,7 +4836,45 @@ function applyLaserMachineKindUI(host) {
     if (!quickCol) return;
     const device = laserHostOptions.find(item => item.host === host);
     const kind = device && device.kind ? device.kind : 'laser';
-    quickCol.hidden = kind === 'cnc';
+    const isCnc = kind === 'cnc';
+
+    // El aire asistido es específico de láser (para soplar el humo/residuo);
+    // fuera de eso, ambos comparten cabezal, pausa/reanudar/cancelar y
+    // progreso — antes se ocultaba TODA la columna para CNC, incluyendo
+    // esos controles de trabajo que también necesita.
+    const fireGroup = document.getElementById('laser-fire-group-laser');
+    const airGroup = document.getElementById('laser-air-group');
+    const powerGroupLaser = document.getElementById('laser-power-group-laser');
+    const spindleGroup = document.getElementById('laser-spindle-group-cnc');
+    const powerGroupCnc = document.getElementById('laser-power-group-cnc');
+
+    if (fireGroup) fireGroup.hidden = isCnc;
+    if (airGroup) airGroup.hidden = isCnc;
+    if (powerGroupLaser) powerGroupLaser.hidden = isCnc;
+    if (spindleGroup) spindleGroup.hidden = !isCnc;
+    if (powerGroupCnc) powerGroupCnc.hidden = !isCnc;
+
+    // Ficha de conexión + ficha de movimiento: acento verde (láser) vs
+    // naranja (CNC) en bordes, punto de estado y consola — y el nombre del
+    // dispositivo en el selector coloreado según su tipo (verde=impresora,
+    // morado=láser, ámbar=CNC), mismo código de colores que las tarjetas
+    // del dashboard.
+    const connectionCard = document.getElementById('laser-connection-card');
+    const toolheadCard = document.querySelector('.toolhead-card');
+    if (connectionCard) connectionCard.classList.toggle('theme-cnc', isCnc);
+    if (toolheadCard) toolheadCard.classList.toggle('theme-cnc', isCnc);
+
+    const hostSelect = document.getElementById('laser-host-select');
+    if (hostSelect) {
+        hostSelect.style.color = getDeviceKindColor(kind);
+    }
+
+    const machineTitleEl = document.getElementById('laser-connection-machine-title');
+    if (machineTitleEl) {
+        const name = (device && device.hostname) || laserHostLabel(host);
+        machineTitleEl.textContent = name || '';
+        machineTitleEl.style.color = getDeviceKindColor(kind);
+    }
 }
 
 function renderLaserHostOptions(activeHost) {
@@ -4228,7 +4885,8 @@ function renderLaserHostOptions(activeHost) {
     }
     selectEl.innerHTML = laserHostOptions.map(device => {
         const label = device.hostname ? `${device.hostname} (${device.host})` : device.host;
-        return `<option value="${escapeHtml(device.host)}">${escapeHtml(label)}</option>`;
+        const color = getDeviceKindColor(device.kind || 'laser');
+        return `<option value="${escapeHtml(device.host)}" style="color:${color}">${escapeHtml(label)}</option>`;
     }).join('');
     selectEl.value = activeHost;
     const modeEl = document.getElementById('laser-connection-mode');
@@ -4574,10 +5232,11 @@ let laserGamepadLastJogAt = 0;
 function pollLaserGamepad() {
     const laserSection = document.getElementById('laser-section');
     const onLaserSection = laserSection && laserSection.classList.contains('active');
+    const gamepadModalOpen = document.getElementById('laser-gamepad-modal')?.classList.contains('active');
     const pads = (navigator.getGamepads ? navigator.getGamepads() : []) || [];
     const pad = Array.from(pads).find(p => p);
 
-    if (pad && (onLaserSection || laserGamepadLearnTarget)) {
+    if (pad && (onLaserSection || laserGamepadLearnTarget || gamepadModalOpen)) {
         const map = getLaserGamepadMap();
         const now = Date.now();
         const pressedNow = pad.buttons.map(btn => btn.pressed || btn.value > 0.5);
@@ -4593,10 +5252,19 @@ function pollLaserGamepad() {
                 renderLaserGamepadMapList();
                 return;
             }
-            if (laserGamepadLearnTarget || !onLaserSection) return;
 
             const actionId = Object.keys(map).find(key => map[key] === index);
-            if (!actionId) return;
+
+            // Con el modal de mapeo abierto, reflejar en la consola qué botón
+            // se está presionando ahora mismo — independiente de si además
+            // dispara la acción real (eso solo pasa estando en la sección láser).
+            if (gamepadModalOpen && actionId && isPressed !== wasPressed) {
+                document.querySelectorAll(`#laser-gamepad-console [data-console-action="${actionId}"]`).forEach(el => {
+                    el.classList.toggle('pressed', isPressed);
+                });
+            }
+
+            if (laserGamepadLearnTarget || !onLaserSection || !actionId) return;
 
             if (actionId.startsWith('jog')) {
                 if (isPressed && now - laserGamepadLastJogAt > 160) {
@@ -5601,6 +6269,53 @@ if (laserFireBtn) {
     });
 }
 
+let cncSpindleActive = false;
+let cncSpindleLastOffAt = 0;
+
+async function cncSpindleOff() {
+    const label = document.getElementById('laser-spindle-label');
+    await sendLaserRawCommand('M5');
+    cncSpindleActive = false;
+    cncSpindleLastOffAt = Date.now();
+    document.getElementById('laser-spindle-btn')?.classList.remove('active');
+    if (label) label.textContent = t('cncSpindleOn');
+}
+
+async function cncSpindleOn() {
+    if (Date.now() - cncSpindleLastOffAt < 600) return;
+    const label = document.getElementById('laser-spindle-label');
+    const rpmInput = document.getElementById('laser-spindle-rpm-input');
+    const rpm = Math.max(0, parseInt(rpmInput?.value, 10) || 0);
+    await sendLaserRawCommand(`M3 S${rpm}`);
+    cncSpindleActive = true;
+    document.getElementById('laser-spindle-btn')?.classList.add('active');
+    if (label) label.textContent = t('cncSpindleOff');
+}
+
+function toggleCncSpindle() {
+    if (cncSpindleActive) cncSpindleOff();
+    else cncSpindleOn();
+}
+
+const laserSpindleBtn = document.getElementById('laser-spindle-btn');
+if (laserSpindleBtn) {
+    laserSpindleBtn.addEventListener('click', () => {
+        if (cncSpindleActive) cncSpindleOff();
+    });
+
+    laserSpindleBtn.addEventListener('dblclick', () => {
+        if (!cncSpindleActive) cncSpindleOn();
+    });
+}
+
+document.querySelectorAll('#laser-spindle-presets .laser-step-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const rpmInput = document.getElementById('laser-spindle-rpm-input');
+        if (rpmInput) rpmInput.value = btn.dataset.rpm;
+        document.querySelectorAll('#laser-spindle-presets .laser-step-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+});
+
 let laserAirActive = false;
 
 const laserAirBtn = document.getElementById('laser-air-btn');
@@ -5757,15 +6472,19 @@ function renderModelsFullPage(filterQuery = '') {
         const isSelected = model.id === selectedModelId;
         const extensionLabel = model.extension ? model.extension.replace('.', '').toUpperCase() : '—';
         const checked = getBulkSelection('model').has(model.id) ? 'checked' : '';
+        const isGcode = isGcodeFile(model);
+        const icon = isGcode
+            ? '<svg class="orange-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+            : '<svg class="green-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>';
 
         return `
             <tr class="${isSelected ? 'selected' : ''}" data-model-id="${model.id}">
                 <td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${model.id}" ${checked}></td>
                 <td class="model-name">
-                    <svg class="green-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
+                    ${icon}
                     <strong>${model.name}</strong>
                 </td>
-                <td>${t('model3D')}</td>
+                <td>${isGcode ? t('gcode') : t('model3D')}</td>
                 <td><span class="tag-pill">${extensionLabel}</span></td>
                 <td>${formatSize(model.size)}</td>
                 <td>${formatDate(model.modified)}</td>
@@ -5805,29 +6524,109 @@ function renderModelsFullPage(filterQuery = '') {
     }
 }
 
+const GCODE_FILE_EXTENSIONS = ['.gcode', '.gc', '.gco'];
+
+function isGcodeFile(model) {
+    return GCODE_FILE_EXTENSIONS.includes((model?.extension || '').toLowerCase());
+}
+
+function getFavoriteModelIds() {
+    try {
+        return new Set(JSON.parse(localStorage.getItem('favoriteModelIds') || '[]'));
+    } catch (error) {
+        return new Set();
+    }
+}
+
+function toggleFavoriteModel(id) {
+    const favorites = getFavoriteModelIds();
+    if (favorites.has(id)) {
+        favorites.delete(id);
+    } else {
+        favorites.add(id);
+    }
+    localStorage.setItem('favoriteModelIds', JSON.stringify([...favorites]));
+    return favorites.has(id);
+}
+
+function goToOnlinePrinter() {
+    if (!allPrinters.length) {
+        appAlert(t('noPrintersFound'), '', 'warning');
+        return;
+    }
+    const printer = allPrinters.find(p => p.status === 'online') || allPrinters[0];
+    openPrinterModal(printer);
+}
+
 function selectPreviewModel(model, rerender = true) {
     if (!model) return;
     selectedModelId = model.id;
     const previewTitle = document.getElementById('preview-filename');
+    const previewTypePill = document.getElementById('preview-type-pill');
     const previewType = document.getElementById('preview-type');
     const previewSize = document.getElementById('preview-size');
     const previewDate = document.getElementById('preview-date');
     const previewImage = document.getElementById('preview-image');
+    const sendPrinterBtn = document.getElementById('preview-send-printer-btn');
+    const favoriteBtn = document.getElementById('preview-favorite-btn');
+    const gotoPrinterBtn = document.getElementById('preview-goto-printer-btn');
+
+    const extensionLabel = model.extension ? model.extension.replace('.', '').toUpperCase() : '—';
 
     if (previewTitle) previewTitle.textContent = model.name;
-    if (previewType) previewType.textContent = `Tipo: ${model.extension?.replace('.', '').toUpperCase() || '—'}`;
-    if (previewSize) previewSize.textContent = `Tamaño: ${formatSize(model.size)}`;
-    if (previewDate) previewDate.textContent = `Modificado: ${formatDate(model.modified)}`;
+    if (previewTypePill) {
+        previewTypePill.textContent = extensionLabel;
+        previewTypePill.hidden = false;
+    }
+    if (previewType) previewType.textContent = extensionLabel;
+    if (previewSize) previewSize.textContent = formatSize(model.size);
+    if (previewDate) previewDate.textContent = formatDate(model.modified);
     if (previewImage) {
         previewImage.innerHTML = '';
         previewImage.style.backgroundImage = 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(31,41,55,1) 100%)';
     }
+    if (sendPrinterBtn) sendPrinterBtn.hidden = !isGcodeFile(model);
+    if (favoriteBtn) favoriteBtn.classList.toggle('active', getFavoriteModelIds().has(model.id));
+    if (gotoPrinterBtn) gotoPrinterBtn.hidden = false;
 
     renderSelectedPreview(model);
 
     if (rerender) {
         renderModelsFullPage();
     }
+}
+
+const previewSendPrinterBtn = document.getElementById('preview-send-printer-btn');
+if (previewSendPrinterBtn) {
+    previewSendPrinterBtn.addEventListener('click', () => {
+        const model = currentModelsData.files.find(entry => entry.id === selectedModelId);
+        if (!model || !isGcodeFile(model)) return;
+        const relPath = stripSectionPrefix(model.id, 'model');
+        openPrinterSendModal(relPath, model.name, 'model', model);
+    });
+}
+
+const previewFavoriteBtn = document.getElementById('preview-favorite-btn');
+if (previewFavoriteBtn) {
+    previewFavoriteBtn.addEventListener('click', () => {
+        if (!selectedModelId) return;
+        const isFavorite = toggleFavoriteModel(selectedModelId);
+        previewFavoriteBtn.classList.toggle('active', isFavorite);
+    });
+}
+
+const previewGotoPrinterBtn = document.getElementById('preview-goto-printer-btn');
+if (previewGotoPrinterBtn) {
+    previewGotoPrinterBtn.addEventListener('click', goToOnlinePrinter);
+}
+
+const previewExpandBtn = document.getElementById('preview-expand-btn');
+if (previewExpandBtn) {
+    previewExpandBtn.addEventListener('click', () => {
+        const model = currentModelsData.files.find(entry => entry.id === selectedModelId);
+        if (!model) return;
+        openModelModal(model.file_url, model.name, model);
+    });
 }
 
 // View mode switcher for full models page
@@ -5854,6 +6653,7 @@ const settingsTheme = document.getElementById('settings-theme');
 const settingsPreviewQuality = document.getElementById('settings-preview-quality');
 const settingsAutoRefresh = document.getElementById('settings-autorefresh');
 const settingsShowOfflineMachines = document.getElementById('settings-show-offline-machines');
+const settingsSoundAlerts = document.getElementById('settings-sound-alerts');
 const settingsLaserHomeConfirm = document.getElementById('settings-laser-home-confirm');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
 
@@ -5890,28 +6690,36 @@ const settingsStatus = document.getElementById('settings-status');
 
 const THEME_PALETTES = {
     light: {
-        accent: '#52525b',
-        surface: '#ffffff',
-        bg: '#f4f4f5',
-        sidebar: '#ffffff',
-        text: '#18181b',
-        muted: '#71717a',
+        accent: '#22c55e',
+        surface: '#FFFFFF',
+        bg: '#F7F8FA',
+        sidebar: '#FFFFFF',
+        text: '#1E293B',
+        muted: '#64748B',
     },
     dark: {
-        accent: '#a1a1aa',
-        surface: '#27272a',
-        bg: '#18181b',
-        sidebar: '#121214',
-        text: '#fafafa',
-        muted: '#a1a1aa',
+        accent: '#22c55e',
+        surface: '#181818',
+        bg: '#050505',
+        sidebar: '#0C0C0C',
+        text: '#FFFFFF',
+        muted: '#B8B8B8',
     },
     green: {
         accent: '#22c55e',
-        surface: '#334155',
+        surface: '#171D23',
         bg: '#0f172a',
-        sidebar: '#0f172a',
-        text: '#f1f5f9',
-        muted: '#94a3b8',
+        sidebar: '#0A0D10',
+        text: '#F5F7FA',
+        muted: '#B7C1CC',
+    },
+    red: {
+        accent: '#E5484D',
+        surface: '#2E171A',
+        bg: '#120809',
+        sidebar: '#1A0C0D',
+        text: '#FFFFFF',
+        muted: '#D2B8BA',
     },
 };
 
@@ -5928,6 +6736,7 @@ function loadSettingsPanel() {
     if (settingsPreviewQuality) settingsPreviewQuality.checked = savedQuality === 'performance';
     if (settingsAutoRefresh) settingsAutoRefresh.checked = savedAutoRefresh !== 'false';
     if (settingsShowOfflineMachines) settingsShowOfflineMachines.checked = isShowOfflineMachinesEnabled();
+    if (settingsSoundAlerts) settingsSoundAlerts.checked = isSoundAlertsEnabled();
     if (settingsLaserHomeConfirm) settingsLaserHomeConfirm.checked = isLaserHomeConfirmEnabled();
     settingsUiScaleSwitch.setValue(savedUiScale);
 
@@ -6087,6 +6896,10 @@ function saveSettings() {
         updateToggleOfflineMachinesBtn();
         renderPrinters(allPrinters);
     }
+    if (settingsSoundAlerts) {
+        localStorage.setItem('soundAlertsEnabled', settingsSoundAlerts.checked ? 'true' : 'false');
+        if (settingsSoundAlerts.checked) requestNotificationPermission();
+    }
     if (settingsLaserHomeConfirm) {
         localStorage.setItem('laserHomeConfirmEnabled', settingsLaserHomeConfirm.checked ? 'true' : 'false');
     }
@@ -6161,7 +6974,7 @@ if (themeOptionCards.length) {
 }
 
 function getThemeCycleOrder() {
-    const order = ['light', 'dark', 'green'];
+    const order = ['light', 'dark', 'green', 'red'];
     if (getCustomTheme()) order.push('custom');
     return order;
 }

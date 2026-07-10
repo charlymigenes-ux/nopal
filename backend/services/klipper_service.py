@@ -1,10 +1,18 @@
+import json
 import logging
 import os
 import re
+import time
+import uuid
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from urllib.parse import quote
 
 import requests
+
+from backend.utils import safe_section_path
+
+SCHEDULE_PATH = "scheduled_prints.json"
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +102,12 @@ def normalize_printer_payload(
         "printer_info": printer_info,
         "data": {
             "heater_bed": {
-                "temperature": status_data.get("heater_bed", {}).get("temperature")
+                "temperature": status_data.get("heater_bed", {}).get("temperature"),
+                "target": status_data.get("heater_bed", {}).get("target"),
             },
             "extruder": {
-                "temperature": status_data.get("extruder", {}).get("temperature")
+                "temperature": status_data.get("extruder", {}).get("temperature"),
+                "target": status_data.get("extruder", {}).get("target"),
             },
         },
         "job": {
@@ -226,6 +236,90 @@ class MoonrakerClient:
     def cancel_print(self) -> bool:
         return self.run_gcode_script("CANCEL_PRINT")
 
+    def restart_klipper(self) -> bool:
+        try:
+            response = requests.post(f"{self.base_url}/printer/restart", timeout=5)
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
+    def firmware_restart(self) -> bool:
+        try:
+            response = requests.post(f"{self.base_url}/printer/firmware_restart", timeout=5)
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
+    def upload_gcode_file(self, filename: str, content: bytes) -> bool:
+        """Sube un archivo a la carpeta gcodes de Moonraker (biblioteca de la impresora)."""
+        try:
+            response = requests.post(
+                f"{self.base_url}/server/files/upload",
+                files={"file": (filename, content, "text/plain")},
+                data={"root": "gcodes"},
+                timeout=20,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
+    def start_print(self, filename: str) -> bool:
+        try:
+            response = requests.post(
+                f"{self.base_url}/printer/print/start",
+                params={"filename": filename},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
+    def get_job_queue_status(self):
+        return self._get("/server/job_queue/status")
+
+    def add_to_job_queue(self, filenames: List[str]) -> bool:
+        try:
+            response = requests.post(
+                f"{self.base_url}/server/job_queue/job",
+                json={"filenames": filenames},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
+    def start_job_queue(self) -> bool:
+        try:
+            response = requests.post(f"{self.base_url}/server/job_queue/start", timeout=self.timeout)
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
+    def remove_from_job_queue(self, job_ids: List[str]) -> bool:
+        try:
+            response = requests.delete(
+                f"{self.base_url}/server/job_queue/job",
+                params={"job_ids": ",".join(job_ids)},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
 
 def find_moonraker_instances() -> List[Dict[str, Any]]:
     """
@@ -292,6 +386,137 @@ def resume_printer_print(port: int) -> bool:
 
 def cancel_printer_print(port: int) -> bool:
     return MoonrakerClient(port).cancel_print()
+
+
+def restart_printer_klipper(port: int) -> bool:
+    return MoonrakerClient(port).restart_klipper()
+
+
+def firmware_restart_printer(port: int) -> bool:
+    return MoonrakerClient(port).firmware_restart()
+
+
+def send_gcode_to_printer(port: int, file_path: str, mode: str = "print", section: str = "model") -> Dict[str, Any]:
+    """Sube un archivo de la biblioteca de NOPAL (Modelos 3D o G-code) a la
+    impresora y lo imprime de inmediato (mode='print') o lo agrega a la cola
+    nativa de Moonraker (mode='queue')."""
+    abs_path = safe_section_path(section, file_path)
+    if not os.path.isfile(abs_path):
+        return {"success": False, "error": "Archivo no encontrado"}
+
+    filename = os.path.basename(abs_path)
+    with open(abs_path, "rb") as handle:
+        content = handle.read()
+
+    client = MoonrakerClient(port)
+    if not client.upload_gcode_file(filename, content):
+        return {"success": False, "error": "No se pudo subir el archivo a la impresora"}
+
+    if mode == "queue":
+        # Solo se agrega a la cola — no se arranca. El usuario decide cuándo
+        # iniciarla con el botón "Iniciar cola" (evita que "agregar a cola"
+        # termine imprimiendo de inmediato, que era el bug real).
+        if not client.add_to_job_queue([filename]):
+            return {"success": False, "error": "No se pudo agregar el archivo a la cola"}
+    else:
+        if not client.start_print(filename):
+            return {"success": False, "error": "No se pudo iniciar la impresión"}
+
+    return {"success": True, "filename": filename}
+
+
+def get_printer_job_queue(port: int) -> Dict[str, Any]:
+    status = MoonrakerClient(port).get_job_queue_status()
+    return status or {"queued_jobs": [], "queue_state": "paused"}
+
+
+# ── Impresiones programadas (persistidas) ──
+
+def _load_schedule() -> List[Dict[str, Any]]:
+    try:
+        with open(SCHEDULE_PATH, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_schedule(entries: List[Dict[str, Any]]):
+    try:
+        with open(SCHEDULE_PATH, "w", encoding="utf-8") as handle:
+            json.dump(entries, handle, indent=2)
+    except OSError:
+        pass
+
+
+def get_scheduled_prints() -> List[Dict[str, Any]]:
+    return sorted(_load_schedule(), key=lambda entry: entry.get("scheduled_at", 0))
+
+
+def add_scheduled_print(port: int, file_path: str, section: str, filename: str, scheduled_at_iso: str) -> Dict[str, Any]:
+    try:
+        scheduled_dt = datetime.fromisoformat(scheduled_at_iso)
+    except ValueError:
+        return {"success": False, "error": "Fecha/hora inválida"}
+
+    abs_path = safe_section_path(section, file_path)
+    if not os.path.isfile(abs_path):
+        return {"success": False, "error": "Archivo no encontrado"}
+
+    entries = _load_schedule()
+    entry = {
+        "id": uuid.uuid4().hex,
+        "port": port,
+        "file_path": file_path,
+        "section": section,
+        "filename": filename,
+        "scheduled_at": scheduled_dt.timestamp(),
+        "scheduled_at_iso": scheduled_at_iso,
+        "created_at": time.time(),
+    }
+    entries.append(entry)
+    _save_schedule(entries)
+    return {"success": True, "entry": entry}
+
+
+def remove_scheduled_print(schedule_id: str) -> bool:
+    entries = _load_schedule()
+    filtered = [entry for entry in entries if entry.get("id") != schedule_id]
+    if len(filtered) == len(entries):
+        return False
+    _save_schedule(filtered)
+    return True
+
+
+def run_due_scheduled_prints():
+    """Revisa la lista de impresiones programadas y dispara las que ya
+    llegaron a su hora — pensado para llamarse periódicamente desde una
+    tarea de fondo en el arranque de la app."""
+    entries = _load_schedule()
+    if not entries:
+        return
+
+    now = time.time()
+    due = [entry for entry in entries if entry.get("scheduled_at", 0) <= now]
+    if not due:
+        return
+
+    remaining = [entry for entry in entries if entry.get("scheduled_at", 0) > now]
+    _save_schedule(remaining)
+
+    for entry in due:
+        result = send_gcode_to_printer(
+            entry["port"], entry["file_path"], mode="print", section=entry.get("section", "model")
+        )
+        if not result.get("success"):
+            logger.warning(f"Impresión programada falló ({entry.get('filename')}): {result.get('error')}")
+
+
+def remove_printer_queue_job(port: int, job_ids: List[str]) -> bool:
+    return MoonrakerClient(port).remove_from_job_queue(job_ids)
+
+
+def start_printer_job_queue(port: int) -> bool:
+    return MoonrakerClient(port).start_job_queue()
 
 
 def get_all_printers_status(host: Optional[str] = None) -> List[Dict[str, Any]]:

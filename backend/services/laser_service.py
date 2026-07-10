@@ -133,7 +133,14 @@ def register_laser(
     kind: str = "laser",
 ) -> Dict[str, Any]:
     entries = [e for e in _load_registry() if e.get("host") != host]
-    entry = {"host": host, "name": name, "transport": transport, "kind": kind or "laser"}
+    existing = next((e for e in _load_registry() if e.get("host") == host), None)
+    entry = {
+        "host": host,
+        "name": name,
+        "transport": transport,
+        "kind": kind or "laser",
+        "registered_at": existing.get("registered_at") if existing else time.time(),
+    }
     if work_area_width is not None and work_area_height is not None:
         entry["work_area"] = {"width": work_area_width, "height": work_area_height}
     if home_corner:

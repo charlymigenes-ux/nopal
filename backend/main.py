@@ -12,6 +12,7 @@ from backend.api.upload import router as upload_router
 from backend.api.printers import router as printers_router
 from backend.api.console import router as console_router
 from backend.api.laser import router as laser_router
+from backend.services.klipper_service import run_due_scheduled_prints
 from backend.services.laser_service import set_main_event_loop
 from backend.utils import get_app_version
 
@@ -40,6 +41,19 @@ async def _capture_main_event_loop():
     call_soon_threadsafe (asyncio.get_event_loop() ya no sirve para esto
     desde un hilo de ThreadPoolExecutor en Python 3.13)."""
     set_main_event_loop(asyncio.get_running_loop())
+
+
+@app.on_event("startup")
+async def _start_scheduled_prints_loop():
+    """Revisa cada 30s si alguna impresión programada ya llegó a su hora."""
+    async def loop():
+        while True:
+            try:
+                run_due_scheduled_prints()
+            except Exception as e:
+                print(f"[scheduled_prints] {e}")
+            await asyncio.sleep(30)
+    asyncio.create_task(loop())
 
 
 templates = Jinja2Templates(directory="backend/templates")

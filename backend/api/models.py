@@ -1,9 +1,12 @@
+import base64
 import os
 import re
 import shutil
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Form, HTTPException
+from fastapi.responses import Response
 
 from backend.utils import UPLOAD_FOLDER, get_section_root, safe_section_path
 
@@ -11,6 +14,47 @@ router = APIRouter()
 
 MODEL_EXTENSIONS = {".stl", ".3mf", ".obj", ".step", ".stp"}
 GCODE_EXTENSIONS = {".gcode", ".gc", ".gco"}
+
+# Slicers como OrcaSlicer/PrusaSlicer/SuperSlicer incrustan miniaturas PNG en
+# comentarios cerca del encabezado del G-code (formato "thumbnail begin/end").
+# Con esto NOPAL puede mostrar la miniatura real del modelo sin necesidad de
+# re-renderizar la trayectoria — igual que Mainsail/Fluidd.
+THUMBNAIL_HEADER_BYTES = 262144  # 256 KB: de sobra, las miniaturas van al inicio del archivo
+THUMBNAIL_BLOCK_RE = re.compile(
+    r";\s*thumbnail(?:_QOI)?\s+begin\s+(\d+)x(\d+)\s+\d+\s*\r?\n(.*?);\s*thumbnail(?:_QOI)?\s+end",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _extract_embedded_thumbnail(filepath: str) -> Optional[bytes]:
+    """Busca las miniaturas PNG incrustadas por el slicer y devuelve la de
+    mayor resolución ya decodificada, o None si el archivo no trae ninguna."""
+    try:
+        with open(filepath, "rb") as handle:
+            header = handle.read(THUMBNAIL_HEADER_BYTES)
+    except OSError:
+        return None
+
+    text = header.decode("utf-8", errors="ignore")
+    best_pixels = -1
+    best_b64 = None
+    for match in THUMBNAIL_BLOCK_RE.finditer(text):
+        width, height, body = int(match.group(1)), int(match.group(2)), match.group(3)
+        pixels = width * height
+        if pixels <= best_pixels:
+            continue
+        lines = [line.strip().lstrip(";").strip() for line in body.splitlines()]
+        b64_data = "".join(line for line in lines if line)
+        if b64_data:
+            best_pixels = pixels
+            best_b64 = b64_data
+
+    if not best_b64:
+        return None
+    try:
+        return base64.b64decode(best_b64)
+    except (ValueError, base64.binascii.Error):
+        return None
 
 
 def _section_for_type(type_param: str) -> str:
@@ -66,6 +110,21 @@ def _build_file_entry(filepath: str, url_rel_dir: str, filename: str) -> dict:
     }
 
 
+@router.get("/api/models/thumbnail")
+async def get_model_thumbnail(path: str, section: str = "model"):
+    """Miniatura PNG incrustada por el slicer en el propio G-code (thumbnail
+    begin/end). 404 si el archivo no trae ninguna incrustada."""
+    filepath = safe_section_path(section, path)
+    if not os.path.isfile(filepath):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    png_bytes = _extract_embedded_thumbnail(filepath)
+    if not png_bytes:
+        raise HTTPException(status_code=404, detail="El archivo no tiene miniatura incrustada")
+
+    return Response(content=png_bytes, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
 @router.get("/api/models")
 async def get_models():
     """Listado plano y recursivo de todos los archivos (usado por estadísticas)."""
@@ -99,7 +158,9 @@ async def browse_folder(path: str = "", type: str = "model"):
     """Contenido (carpetas + archivos) de una carpeta dentro de la sección indicada."""
     section = _section_for_type(type)
     section_prefix = "gcode" if section == "gcode" else "models"
-    extensions = GCODE_EXTENSIONS if section == "gcode" else MODEL_EXTENSIONS
+    # La sección "model" (Modelos 3D) muestra tanto STL/3MF sin laminar como
+    # G-code de impresora ya listo para enviar, todo en la misma carpeta.
+    extensions = GCODE_EXTENSIONS if section == "gcode" else (MODEL_EXTENSIONS | GCODE_EXTENSIONS)
     target_dir = safe_section_path(section, path)
 
     os.makedirs(get_section_root(section), exist_ok=True)
@@ -205,7 +266,7 @@ async def delete_folder(path: str, type: str = "model"):
 async def rename_file(path: str = Form(...), new_name: str = Form(...), type: str = Form("model")):
     """Renombra un archivo existente (conserva la extensión)."""
     section = _section_for_type(type)
-    extensions = GCODE_EXTENSIONS if section == "gcode" else MODEL_EXTENSIONS
+    extensions = GCODE_EXTENSIONS if section == "gcode" else (MODEL_EXTENSIONS | GCODE_EXTENSIONS)
 
     current_path = safe_section_path(section, path)
     if not os.path.isfile(current_path):
