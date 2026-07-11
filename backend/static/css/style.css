@@ -2148,20 +2148,20 @@ body.green .settings-card {
 
 .toolhead-card .laser-jog-btn {
     background: rgba(15, 15, 35, 0.32);
-    border-color: transparent;
-    color: #fff;
+    border-color: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
 }
 
 .toolhead-card .laser-jog-btn:hover {
-    background: #c2650c;
-    border-color: transparent;
-    color: #fff;
+    background: rgba(34, 197, 94, 0.22);
+    border-color: rgba(34, 197, 94, 0.55);
+    color: #22c55e;
 }
 
 .toolhead-card .laser-jog-slot-home {
-    background: #d9720f;
-    border-color: transparent;
-    color: #fff;
+    background: rgba(34, 197, 94, 0.28);
+    border-color: #22c55e;
+    color: #22c55e;
 }
 
 .toolhead-card .laser-step-btn {
@@ -2183,8 +2183,8 @@ body.green .settings-card {
 }
 
 .toolhead-card .laser-jog-actions .btn-file-action:hover {
-    background: #c2650c;
-    border-color: transparent;
+    background: rgba(34, 197, 94, 0.22);
+    border-color: rgba(34, 197, 94, 0.4);
 }
 
 .toolhead-position-mode {
@@ -2702,52 +2702,14 @@ body.green .settings-card {
     backdrop-filter: blur(6px);
 }
 
+/* Antes esta clase pintaba toda la tarjeta de un morado sólido fijo (var(--purple)
+   casi no cambia entre los 4 temas), lo que la dejaba fuera de estilo frente al
+   resto de tarjetas oscuras con acento de color (ej. .cnc-card). Ahora usa el
+   mismo fondo oscuro que .laser-card y solo el borde izquierdo queda en morado;
+   los textos/filas internas ya heredan los estilos base (var(--text), etc.),
+   pensados para fondo oscuro, así que no hace falta forzarlos acá.  */
 .laser-card-accent {
-    background: var(--purple);
-    color: #fff;
-    border-color: rgba(255, 255, 255, 0.12);
-}
-
-.laser-card-accent .laser-card-title {
-    color: #fff;
-}
-
-.laser-card-accent .laser-queue-item {
-    background: rgba(255, 255, 255, 0.14);
-}
-
-.laser-card-accent .laser-queue-item-name {
-    color: #fff;
-}
-
-.laser-card-accent .empty-state-small {
-    color: rgba(255, 255, 255, 0.75);
-}
-
-.laser-card-accent .laser-job-error {
-    color: #fecaca;
-}
-
-.laser-card-accent .laser-card-subtitle,
-.laser-card-accent .laser-sd-row-size,
-.laser-card-accent .breadcrumb-sep {
-    color: rgba(255, 255, 255, 0.7);
-}
-
-.laser-card-accent .laser-sd-row {
-    background: rgba(255, 255, 255, 0.14);
-}
-
-.laser-card-accent .laser-sd-row-name {
-    color: #fff;
-}
-
-.laser-card-accent .breadcrumb-segment {
-    color: rgba(255, 255, 255, 0.85);
-}
-
-.laser-card-accent .laser-sd-from-library {
-    border-bottom-color: rgba(255, 255, 255, 0.18);
+    border-left-color: var(--purple);
 }
 
 @media (max-width: 860px) {
@@ -2930,6 +2892,30 @@ body.green .settings-card {
     margin-top: 16px;
 }
 
+.laser-metrics-single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.laser-workarea-position {
+    margin-top: 12px;
+    background: rgba(34, 197, 94, 0.1);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+}
+
+.laser-workarea-position span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.laser-workarea-position strong {
+    display: block;
+    margin-top: 6px;
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
 .laser-metrics div {
     background: rgba(34, 197, 94, 0.1);
     border-radius: var(--radius-md);
@@ -3065,6 +3051,112 @@ body.green .settings-card {
     margin: 12px 0 0;
     color: #ef4444;
     font-size: 0.85rem;
+}
+
+.laser-jog-quadrant-job {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+}
+
+.laser-jog-quadrant-job #laser-job-controls-panel {
+    flex: 0 0 88px;
+    margin-top: 0;
+}
+
+.laser-job-info-row {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.laser-job-thumb {
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    background: rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+}
+
+.laser-job-thumb img,
+.laser-job-thumb svg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.laser-job-info-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.laser-job-info-filename {
+    font-size: 0.9rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.laser-job-info-times {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.laser-job-info-times span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.laser-job-info-times strong {
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.laser-jog-quadrant-job .laser-job-progress {
+    flex: 0 0 100%;
+    margin-top: 4px;
+}
+
+.laser-job-stats-row {
+    flex: 0 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.laser-job-stat {
+    flex: 1;
+    min-width: 110px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
+.laser-job-stat svg {
+    color: #22c55e;
+    flex-shrink: 0;
+}
+
+.laser-job-stat strong {
+    margin-left: auto;
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 .laser-card-title {
@@ -3276,6 +3368,16 @@ body.green .settings-card {
     color: #fff;
 }
 
+.laser-gamepad-map-row-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid;
+    background: transparent;
+}
+
 .laser-gamepad-map-row-icon {
     display: inline-flex;
     align-items: center;
@@ -3439,8 +3541,16 @@ body.green .settings-card {
 
 .lgc-dpad {
     display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 14px;
     flex-shrink: 0;
+}
+
+.lgc-dpad-z-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .lgc-dpad-ring {
@@ -3661,21 +3771,50 @@ body.green .settings-card {
 }
 
 .laser-jog-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.laser-jog-quadrant {
     display: flex;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 12px;
     padding: 14px;
-    background: rgba(34, 197, 94, 0.1);
+    background: rgba(34, 197, 94, 0.06);
     border: 1px solid rgba(34, 197, 94, 0.2);
     border-radius: var(--radius-lg);
+    min-width: 0;
+}
+
+.laser-jog-quadrant-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.laser-jog-quadrant-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.laser-jog-quadrant-header .laser-jog-quadrant-title {
+    margin: 0;
+}
+
+.laser-jog-quadrant-manual .laser-jog-cross-col {
+    margin: auto;
 }
 
 .laser-jog-cross-col {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     flex-shrink: 0;
 }
 
@@ -3688,13 +3827,13 @@ body.green .settings-card {
 
 .laser-jog-pad {
     display: grid;
-    grid-template-columns: repeat(3, 50px);
-    grid-template-rows: repeat(3, 50px);
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(3, 64px);
     grid-template-areas:
         "nw      yplus  ne"
         "xminus  home   xplus"
         "sw      yminus se";
-    gap: 6px;
+    gap: 8px;
 }
 
 .laser-jog-slot-nw { grid-area: nw; }
@@ -3711,60 +3850,90 @@ body.green .settings-card {
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text);
+    border: 1px solid rgba(34, 197, 94, 0.22);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.03);
+    color: #4ade80;
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
 
 .laser-jog-btn:hover {
-    background: rgba(34, 197, 94, 0.14);
-    border-color: rgba(34, 197, 94, 0.4);
+    background: rgba(34, 197, 94, 0.18);
+    border-color: rgba(34, 197, 94, 0.55);
     color: #22c55e;
+    transform: translateY(-1px);
+}
+
+.laser-jog-btn:active {
+    transform: scale(0.94);
 }
 
 .laser-jog-slot-home {
-    background: rgba(34, 197, 94, 0.12);
+    background: rgba(34, 197, 94, 0.22);
     color: #22c55e;
-    border-color: rgba(34, 197, 94, 0.3);
+    border-color: #22c55e;
+    box-shadow: 0 0 16px 2px rgba(34, 197, 94, 0.4);
 }
 
 .laser-jog-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: default;
-    background: rgba(255, 255, 255, 0.05) !important;
+    transform: none !important;
+    background: rgba(255, 255, 255, 0.03) !important;
     color: var(--text-muted) !important;
     border-color: rgba(255, 255, 255, 0.1) !important;
-}
-
-.laser-jog-quick-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 0 6px;
-    flex-shrink: 0;
+    box-shadow: none !important;
 }
 
 .laser-jog-side {
     display: flex;
     flex-direction: column;
     flex: 1;
-    min-width: 160px;
+    min-height: 0;
     gap: 10px;
-    padding-left: 14px;
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .laser-bed-map-viewport {
     position: relative;
     flex: 1;
-    min-height: 0;
+    min-height: 220px;
     display: flex;
     overflow: auto;
+    padding-left: 34px;
+    padding-bottom: 22px;
+}
+
+.laser-bed-map-axis {
+    position: absolute;
+    z-index: 2;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    pointer-events: none;
+}
+
+.laser-bed-map-axis-y {
+    top: 0;
+    bottom: 22px;
+    left: 0;
+    width: 30px;
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: space-between;
+}
+
+.laser-bed-map-axis-x {
+    left: 34px;
+    right: 0;
+    bottom: 0;
+    height: 18px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.laser-bed-map-axis span {
+    white-space: nowrap;
 }
 
 .laser-bed-map {
@@ -3808,6 +3977,12 @@ body.green .settings-card {
 
 .laser-bed-map-zoom-btn:hover {
     background: rgba(34, 197, 94, 0.2);
+}
+
+.laser-bed-map-zoom-btn.active {
+    background: #22c55e;
+    color: #06140e;
+    box-shadow: 0 0 10px 2px rgba(34, 197, 94, 0.5);
 }
 
 .laser-bed-map-zoom-label {
@@ -3894,15 +4069,11 @@ body.green .settings-card {
 }
 
 .laser-bed-map-dims {
-    position: absolute;
-    top: 4px;
-    right: 6px;
-    z-index: 2;
-    font-size: 0.6rem;
-    font-weight: 600;
-    color: #f59e0b;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #22c55e;
     text-align: right;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
 }
 
 .laser-bed-map-hover-coords {
@@ -3920,20 +4091,19 @@ body.green .settings-card {
 .laser-jog-z {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
+    gap: 6px;
+    margin-top: 4px;
 }
 
-.laser-jog-z span {
-    font-weight: 700;
+.laser-jog-z-label {
+    font-weight: 800;
     color: var(--text-muted);
-    width: 14px;
-    text-align: center;
+    background: rgba(255, 255, 255, 0.03);
 }
 
-.laser-jog-z .laser-jog-btn {
-    width: 34px;
-    height: 34px;
+.laser-jog-z-btn {
+    width: 60px;
+    height: 42px;
 }
 
 .laser-jog-steps-label {
@@ -3963,123 +4133,1041 @@ body.green .settings-card {
     font-weight: 700;
 }
 
-.laser-jog-actions {
-    margin-top: 20px;
-}
+/* ── Ficha CNC dedicada ("NOPAL CNC") ── */
 
-.laser-fire-group {
+.cnc-main {
     display: flex;
     flex-direction: column;
+    gap: 16px;
+    padding: 20px 32px;
+}
+
+.cnc-topbar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+    background: var(--card-bg);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: var(--radius-lg);
+}
+
+.cnc-topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+}
+
+.cnc-state-pill {
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+}
+
+.cnc-state-pill.state-alarm {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+}
+
+.cnc-state-pill.state-run {
+    background: rgba(245, 158, 11, 0.18);
+    color: var(--orange);
+}
+
+.cnc-topbar-selectors {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.cnc-topbar-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.cnc-topbar-field select {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 600;
+    min-width: 140px;
+}
+
+.cnc-topbar-icons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.cnc-topbar-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(245, 158, 11, 0.18);
+    color: var(--orange);
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.cnc-main-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.cnc-left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.cnc-right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.cnc-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: var(--card-bg);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: var(--radius-lg);
+    min-width: 0;
+}
+
+.cnc-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.cnc-card-title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: var(--orange);
+}
+
+.cnc-card-header-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.cnc-position-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-position-table th,
+.cnc-position-table td {
+    padding: 4px 6px;
+    text-align: right;
+}
+
+.cnc-position-table thead th {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.cnc-position-table tbody th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.cnc-position-table tbody td {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.cnc-position-table tbody td:last-child {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.cnc-feed-spindle-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cnc-feed-spindle-row strong {
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-pin-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.cnc-pin-pill {
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+}
+
+.cnc-pin-pill.active {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+}
+
+.cnc-job-file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--orange);
+}
+
+.cnc-job-file-row div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cnc-job-file-row strong {
+    color: var(--text);
+    font-size: 0.88rem;
+}
+
+.cnc-job-file-row span {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.cnc-job-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-job-progress-row .laser-job-progress-bar {
+    flex: 1;
+}
+
+.cnc-job-buttons-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.cnc-job-buttons-row .btn-file-action,
+.cnc-job-buttons-row .laser-step-btn {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+}
+
+.cnc-override-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cnc-override-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.cnc-override-row {
+    display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.laser-fire-btn {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
+.cnc-override-row .laser-step-btn {
+    flex: 1;
+    text-align: center;
+}
+
+.cnc-override-value {
+    min-width: 46px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-zero-row {
+    display: flex;
+    gap: 8px;
+}
+
+.cnc-shift-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cnc-shift-inputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cnc-shift-inputs label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.cnc-shift-inputs input[type="number"] {
+    width: 64px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-shift-auto {
+    margin-left: auto;
+}
+
+.cnc-spindle-cw-row {
+    display: flex;
+    gap: 6px;
+}
+
+.cnc-spindle-mode-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.cnc-spindle-mode-btn.active {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.18);
+    color: #22c55e;
+}
+
+.cnc-rpm-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.cnc-rpm-row input {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    font-size: 0.95rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-rpm-row span {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.cnc-rpm-presets {
+    display: flex;
+    gap: 6px;
+}
+
+.cnc-rpm-presets .laser-step-btn {
+    flex: 1;
+    text-align: center;
+}
+
+.cnc-jog-card {
+    align-items: center;
+    text-align: center;
+}
+
+.cnc-jog-card .cnc-card-header {
+    width: 100%;
+}
+
+.cnc-feed-mode-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.cnc-feed-mode-group,
+.cnc-rapid-group {
+    display: flex;
+    gap: 6px;
+}
+
+.cnc-feed-mode-group .laser-step-btn,
+.cnc-rapid-group .laser-step-btn {
+    flex: 1;
+    text-align: center;
+}
+
+.cnc-jog-steps {
+    display: flex;
+    gap: 6px;
+}
+
+.cnc-jog-pad-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.cnc-jog-z-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cnc-jog-steps-z {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.cnc-jog-steps-z .laser-step-btn {
+    padding: 3px 6px;
+    font-size: 0.75rem;
+}
+
+.cnc-stop-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
     border: none;
-    background: radial-gradient(circle at 35% 30%, #ff5c5c, #dc2626 60%, #b91c1c);
+    background: #ef4444;
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18), 0 8px 20px rgba(220, 38, 38, 0.45);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
 }
 
-.laser-fire-btn:hover {
-    transform: scale(1.05);
+.cnc-stop-btn:hover {
+    background: #dc2626;
 }
 
-.laser-fire-btn.active {
-    background: radial-gradient(circle at 35% 30%, #4ade80, #16a34a 60%, #15803d);
-    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25), 0 8px 24px rgba(22, 163, 74, 0.5);
-    animation: laserFirePulse 1.2s ease-in-out infinite;
+.cnc-rapid-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    font-size: 0.7rem;
+    color: var(--text-muted);
 }
 
-.laser-spindle-btn {
-    background: radial-gradient(circle at 35% 30%, #fbbf24, var(--orange) 60%, #b45309);
-    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18), 0 8px 20px rgba(217, 119, 6, 0.45);
+.cnc-files-card {
+    gap: 10px;
 }
 
-@keyframes laserFirePulse {
-    0%, 100% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25), 0 8px 24px rgba(22, 163, 74, 0.5); }
-    50% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.12), 0 8px 24px rgba(22, 163, 74, 0.5); }
+.cnc-files-search {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    font-size: 0.82rem;
 }
 
-.laser-air-btn {
-    width: 60px;
-    height: 60px;
-    border-radius: var(--radius-md);
-    border: 1px solid rgba(34, 197, 94, 0.4);
-    background: rgba(34, 197, 94, 0.14);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    color: #22c55e;
+.cnc-files-table-wrap {
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+.cnc-files-table th,
+.cnc-files-table td {
+    font-size: 0.78rem;
+}
+
+.cnc-files-row {
+    cursor: pointer;
+}
+
+.cnc-files-row-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.cnc-footer-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 18px;
+    background: var(--card-bg);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: var(--radius-lg);
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-footer-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    flex-shrink: 0;
+}
+
+.cnc-footer-dot.online {
+    background: #22c55e;
+}
+
+.cnc-footer-sep {
+    opacity: 0.4;
+}
+
+.cnc-footer-spacer {
+    flex: 1;
+}
+
+.cnc-footer-bar strong {
+    color: var(--text);
+}
+
+.cnc-footer-stop-btn {
+    flex-shrink: 0;
+}
+
+/* Modo Simple/Avanzado del panel CNC — ver applyCncDashboardMode() en app.js.
+   Simple es el estado por defecto (sin atributo o cualquier valor distinto
+   de "advanced"): los controles semi-pro quedan ocultos hasta que el
+   usuario active el modo Avanzado en Configuración. */
+body:not([data-cnc-mode="advanced"]) .cnc-advanced-only {
+    display: none;
+}
+
+/* Perfil de máquina CNC — ver applyCncMachineProfile() en app.js. Router
+   (con husillo real) es el default; en plotter (lápiz/marcador) no aplica
+   RPM, dirección de husillo ni sonda montada en husillo. */
+body[data-cnc-profile="plotter"] .cnc-router-only {
+    display: none;
+}
+
+@media (max-width: 1100px) {
+    .cnc-main-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Visor CNC: pestañas VISOR / 3D VIEW / SIMULATION ── */
+
+.cnc-viewer-card {
+    padding: 0;
+    overflow: hidden;
+    min-height: 480px;
+    flex: 1;
+}
+
+.cnc-viewer-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px 14px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+}
+
+.cnc-viewer-tab {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    padding: 8px 12px 10px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+}
+
+.cnc-viewer-tab.active {
+    color: var(--green-dark);
+    border-bottom-color: var(--green-dark);
+}
+
+.cnc-viewer-panels {
+    position: relative;
+    flex: 1;
+    min-height: 420px;
+    display: flex;
+}
+
+.cnc-viewer-panel {
+    display: none;
+    width: 100%;
+    height: 100%;
+}
+
+.cnc-viewer-panel.active {
+    display: flex;
+}
+
+.cnc-visor-canvas-wrap {
+    position: relative;
+    flex: 1;
+    background: #081410;
+}
+
+.cnc-visor-canvas {
+    position: absolute;
+    inset: 0;
+}
+
+.cnc-visor-origin-marker {
+    /* Antes tenía top/left fijos (decorativo, siempre arriba-izquierda sin
+       importar dónde estuviera X0/Y0 real) — ahora la posición la calcula
+       updateOriginMarker() en cada frame vía transform: translate(), acá
+       solo queda position:absolute como base para ese transform. */
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.cnc-visor-coords {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 12px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.78rem;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 6px 12px;
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+.cnc-visor-nav-col {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cnc-visor-legend {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    max-width: 220px;
+    background: var(--card-bg);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    padding: 10px 12px;
+}
+
+.cnc-visor-legend-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.76rem;
+    color: var(--text);
+}
+
+.cnc-visor-legend-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cnc-visor-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.cnc-visor-swatch-rapid {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.cnc-visor-swatch-cut {
+    background: var(--orange);
+}
+
+.cnc-visor-swatch-selected {
+    background: #fbbf24;
+}
+
+.cnc-visor-empty-state {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
 }
 
-.laser-air-btn:hover {
-    transform: scale(1.05);
+.cnc-viewer-soon {
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+    color: var(--text-muted);
+    padding: 20px;
+    max-width: 320px;
+}
+
+/* ── Asistente guiado CNC ── */
+
+.cnc-wizard-modal-content {
+    width: 90%;
+    max-width: 460px;
+    height: auto;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 28px;
+    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.cnc-wizard-steps-indicator {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.cnc-wizard-step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.cnc-wizard-step-dot.active {
+    background: var(--green-dark);
+}
+
+.cnc-wizard-step-dot.done {
+    background: rgba(34, 197, 94, 0.5);
+}
+
+.cnc-wizard-step {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.cnc-wizard-step-title {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    margin: 0;
+}
+
+.cnc-wizard-step-hint {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.cnc-wizard-file-list {
+    width: 100%;
+    max-height: 220px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+}
+
+.cnc-wizard-file-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.cnc-wizard-file-row:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.cnc-wizard-file-row.selected {
+    border-color: var(--green-dark);
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.cnc-wizard-zero-btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.cnc-wizard-unlock-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cnc-wizard-fit-outer {
+    position: relative;
+    width: 100%;
+    max-width: 260px;
+    aspect-ratio: 1;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed rgba(255, 255, 255, 0.25);
+    border-radius: 8px;
+}
+
+.cnc-wizard-fit-inner {
+    position: absolute;
+    background: rgba(245, 158, 11, 0.35);
+    border: 1px solid #f59e0b;
+    border-radius: 2px;
+}
+
+.cnc-wizard-fit-inner.overflow {
+    background: rgba(239, 68, 68, 0.35);
+    border-color: #ef4444;
+}
+
+.cnc-wizard-fit-text {
+    font-size: 0.85rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    color: var(--text);
+    margin: 0;
+}
+
+.cnc-wizard-fit-ack {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: left;
+}
+
+.cnc-viewer-soon strong {
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.cnc-viewer-soon p {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+.laser-jog-actions {
+    margin-top: 20px;
+}
+
+.laser-jog-controls-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.laser-fire-group {
+    flex: 1;
+    min-width: 140px;
+    display: flex;
+}
+
+.laser-fire-btn-wide,
+.laser-air-btn-wide {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 700;
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.laser-fire-btn-wide {
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+}
+
+.laser-fire-btn-wide:hover {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.laser-fire-btn-wide.active {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+    box-shadow: 0 0 16px 2px rgba(34, 197, 94, 0.35);
+    animation: laserFirePulse 1.2s ease-in-out infinite;
+}
+
+.laser-spindle-btn-wide {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--orange);
+}
+
+.laser-spindle-btn-wide.active {
+    border-color: var(--orange);
+    background: rgba(245, 158, 11, 0.22);
+    color: #fbbf24;
+    box-shadow: 0 0 16px 2px rgba(245, 158, 11, 0.35);
+    animation: none;
+}
+
+@keyframes laserFirePulse {
+    0%, 100% { box-shadow: 0 0 16px 2px rgba(34, 197, 94, 0.35); }
+    50% { box-shadow: 0 0 22px 5px rgba(34, 197, 94, 0.2); }
+}
+
+.laser-air-btn-wide {
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    background: rgba(34, 197, 94, 0.14);
+    color: #22c55e;
+}
+
+.laser-air-btn-wide:hover {
     background: rgba(34, 197, 94, 0.22);
 }
 
-.laser-air-btn.active {
-    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25), 0 8px 24px rgba(22, 163, 74, 0.35);
+.laser-air-btn-wide.active {
+    box-shadow: 0 0 16px 2px rgba(34, 197, 94, 0.35);
     animation: laserAirPulse 1.2s ease-in-out infinite;
 }
 
 @keyframes laserAirPulse {
-    0%, 100% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25), 0 8px 24px rgba(22, 163, 74, 0.35); }
-    50% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.12), 0 8px 24px rgba(22, 163, 74, 0.35); }
+    0%, 100% { box-shadow: 0 0 16px 2px rgba(34, 197, 94, 0.35); }
+    50% { box-shadow: 0 0 22px 5px rgba(34, 197, 94, 0.2); }
 }
 
 .laser-fire-label {
-    font-size: 0.68rem;
+    font-size: 0.8rem;
     font-weight: 700;
-    color: var(--text-muted);
-    text-align: center;
 }
 
 .laser-fire-power {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    margin-top: 6px;
+    gap: 6px;
 }
 
 .laser-fire-power label {
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     color: var(--text-muted);
 }
 
+.laser-fire-power-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .laser-fire-power input {
-    width: 64px;
+    width: 72px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.05);
     color: var(--text);
-    padding: 4px 8px;
-    font-size: 0.78rem;
+    padding: 8px 10px;
+    font-size: 0.85rem;
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 .laser-power-presets {
     display: flex;
-    gap: 4px;
-    margin-top: 4px;
+    gap: 6px;
+    flex: 1;
 }
 
 .laser-power-presets .laser-step-btn {
-    padding: 4px 8px;
-    font-size: 0.72rem;
+    flex: 1;
+    text-align: center;
 }
 
 .laser-card-header-row {
@@ -5815,6 +6903,11 @@ body.green .laser-start-confirm-copies input {
     gap: 8px;
 }
 
+.cnc-queue-list {
+    max-height: 110px;
+    overflow-y: auto;
+}
+
 .laser-queue-item {
     display: flex;
     align-items: center;
@@ -6405,6 +7498,36 @@ body.green .laser-start-confirm-copies input {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.wifi-scan-ip-row {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 4px;
+}
+
+.wifi-scan-ip-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    background: rgba(34, 197, 94, 0.05);
+    color: var(--text);
+    font-size: 0.82rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.wifi-scan-ip-row input:focus {
+    outline: none;
+    border-color: rgba(34, 197, 94, 0.5);
+    background: rgba(34, 197, 94, 0.08);
+}
+
+.wifi-scan-ip-row .btn-file-action {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    font-size: 0.82rem;
 }
 
 .usb-port-item {
@@ -8926,8 +10049,8 @@ body.light .laser-card-accent .laser-sd-row-name,
 body.light .laser-illustration-settings-badge,
 body.light .laser-info-compact-row span,
 body.light .laser-card-accent .card-header-std-title,
-body.light .laser-fire-btn,
-body.light .laser-air-btn,
+body.light .laser-fire-btn-wide,
+body.light .laser-air-btn-wide,
 body.light .button,
 body.light .modal-close,
 body.light .btn-primary,

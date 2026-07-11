@@ -13,7 +13,7 @@ from backend.utils import UPLOAD_FOLDER, get_section_root, safe_section_path
 router = APIRouter()
 
 MODEL_EXTENSIONS = {".stl", ".3mf", ".obj", ".step", ".stp"}
-GCODE_EXTENSIONS = {".gcode", ".gc", ".gco"}
+GCODE_EXTENSIONS = {".gcode", ".gc", ".gco", ".nc", ".tap", ".cnc"}
 
 # Slicers como OrcaSlicer/PrusaSlicer/SuperSlicer incrustan miniaturas PNG en
 # comentarios cerca del encabezado del G-code (formato "thumbnail begin/end").

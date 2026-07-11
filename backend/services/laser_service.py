@@ -20,10 +20,7 @@ REGISTRY_PATH = "laser_registry.json"
 HISTORY_PATH = "laser_history.json"
 HISTORY_MAX_ENTRIES = 200
 
-STATUS_RE = re.compile(
-    r"<(?P<state>\w+)(?::\d+)?\|MPos:(?P<x>[-\d.]+),(?P<y>[-\d.]+),(?P<z>[-\d.]+)"
-    r"(?:\|[^|>]*)*\|FS:(?P<feed>[-\d.]+),(?P<speed>[-\d.]+)"
-)
+STATUS_RE = re.compile(r"<(?P<state>\w+)(?::\d+)?\|(?P<fields>[^>]*)>")
 
 _active_host = DEFAULT_LASER_HOST
 
@@ -131,6 +128,7 @@ def register_laser(
     work_area_height: Optional[float] = None,
     home_corner: Optional[str] = None,
     kind: str = "laser",
+    machine_profile: Optional[str] = None,
 ) -> Dict[str, Any]:
     entries = [e for e in _load_registry() if e.get("host") != host]
     existing = next((e for e in _load_registry() if e.get("host") == host), None)
@@ -145,6 +143,16 @@ def register_laser(
         entry["work_area"] = {"width": work_area_width, "height": work_area_height}
     if home_corner:
         entry["home_corner"] = home_corner
+
+    # machine_profile ("router"/"plotter") NO se resetea a un default cuando
+    # no viene explícito: el flujo de renombrar reenvía el registro entero en
+    # cada edición (nombre, ancho, alto...), y si acá cayera a "router" por
+    # defecto, renombrar un dispositivo "plotter" lo reclasificaría solo con
+    # cada guardado. Solo se pisa cuando alguien lo manda a propósito.
+    if machine_profile not in ("router", "plotter"):
+        machine_profile = None
+    entry["machine_profile"] = machine_profile or (existing.get("machine_profile") if existing else None) or "router"
+
     entries.append(entry)
     _save_registry(entries)
     return entry
@@ -172,22 +180,53 @@ def _get_local_subnet() -> str:
         return ".".join(DEFAULT_LASER_HOST.split(".")[:3])
 
 
+def _parse_esp420_response(text: str) -> Dict[str, str]:
+    """Parsea la respuesta del comando [ESP420]. Tanto ESP3D como FluidNC (que
+    trae integrada la misma WebUI de ESP3D) devuelven texto plano "clave:
+    valor" por línea sobre HTTP — confirmado probando en vivo contra una
+    placa FluidNC real, aunque por USB/serie FluidNC sí responde JSON
+    ({"data": [{"id": "...", "value": "..."}]}), por eso se intenta primero."""
+    try:
+        payload = json.loads(text)
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(data, list):
+            return {
+                str(item.get("id", "")).strip(): str(item.get("value", "")).strip()
+                for item in data
+                if isinstance(item, dict) and item.get("id")
+            }
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        pass
+
+    info: Dict[str, str] = {}
+    for line in text.splitlines():
+        # Las líneas "[MSG:...]" son avisos informativos de FluidNC, no un
+        # campo real "clave: valor" — se descartan para no mostrar basura.
+        if line.startswith("[") or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        info[key.strip()] = value.strip()
+    return info
+
+
 def _probe_host(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
-    """Prueba si `ip` responde como una placa ESP3D (comando [ESP420])."""
+    """Prueba si `ip` responde como una placa ESP3D o FluidNC (comando [ESP420]).
+    ESP3D siempre trae "Hostname" en la respuesta; FluidNC no lo expone pero sí
+    "Chip ID"/"FW version" — se acepta si aparece cualquiera de los tres como
+    campo real ya parseado (no una búsqueda de texto suelta), para no aceptar
+    por error una página HTML cualquiera que solo mencione esas palabras."""
     try:
         response = requests.get(
             f"http://{ip}/command",
             params={"commandText": "[ESP420]"},
             timeout=timeout,
         )
-        if response.status_code != 200 or "Hostname" not in response.text:
+        if response.status_code != 200:
             return None
 
-        info: Dict[str, str] = {}
-        for line in response.text.splitlines():
-            if ":" in line:
-                key, _, value = line.partition(":")
-                info[key.strip()] = value.strip()
+        info = _parse_esp420_response(response.text)
+        if not (info.get("Hostname") or info.get("Chip ID") or info.get("FW version") or info.get("Firmware")):
+            return None
 
         return {
             "host": ip,
@@ -213,6 +252,15 @@ async def scan_network() -> List[Dict[str, Any]]:
     """Escanea la red local (en un hilo aparte) buscando placas ESP3D/GRBL."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _scan_network_sync)
+
+
+async def probe_single_host(ip: str, timeout: float = 1.5) -> Optional[Dict[str, Any]]:
+    """Prueba una IP puntual (búsqueda manual), sin barrer toda la subred —
+    útil para placas fuera del rango detectado automáticamente, o que están
+    en modo Punto de Acceso propio (p.ej. FluidNC recién flasheado arranca
+    como AP con IP fija 192.168.0.1 hasta configurarle una red WiFi)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _probe_host(ip, timeout))
 
 
 # ── Detección de placas por USB ──
@@ -274,7 +322,7 @@ def _command_url(host: str) -> str:
     return f"http://{host}/command"
 
 
-REALTIME_SERIAL_COMMANDS = {"?", "!", "~", "\x18"}
+REALTIME_SERIAL_COMMANDS = {"?", "!", "~", "\x18"} | {chr(b) for b in range(0x90, 0x9F)}
 
 
 def _send_serial_command(host: str, command: str) -> bool:
@@ -311,17 +359,80 @@ def send_raw_command(host: str, command: str) -> bool:
 
 
 def parse_status_line(line: str) -> Optional[Dict[str, Any]]:
+    """Parsea una línea de status de GRBL/FluidNC, ej:
+    '<Idle|MPos:-994.500,0.000,0.000|FS:0,0|WCO:0.000,0.000,0.000>'
+    Los campos opcionales (WCO/Pn/Bf/Ov/WCS) no siempre vienen, y el orden
+    varía entre firmwares — confirmado en vivo que en FluidNC aparecen
+    DESPUÉS de FS, no antes como asumía el regex original (que por eso
+    nunca los llegó a capturar). Se parsea genérico por segmentos "clave:valor"
+    en vez de una posición fija, para no depender del orden."""
     match = STATUS_RE.search(line)
     if not match:
         return None
-    return {
+
+    fields: Dict[str, str] = {}
+    for segment in match.group("fields").split("|"):
+        key, _, value = segment.partition(":")
+        if key:
+            fields[key] = value
+
+    mpos = fields.get("MPos", "").split(",")
+    if len(mpos) < 3:
+        return None
+    try:
+        x, y, z = (float(p) for p in mpos[:3])
+    except ValueError:
+        return None
+
+    fs = fields.get("FS", "0,0").split(",")
+    try:
+        feed = float(fs[0]) if fs and fs[0] else 0.0
+        speed = float(fs[1]) if len(fs) > 1 and fs[1] else 0.0
+    except ValueError:
+        feed = speed = 0.0
+
+    result: Dict[str, Any] = {
         "state": match.group("state"),
-        "x": float(match.group("x")),
-        "y": float(match.group("y")),
-        "z": float(match.group("z")),
-        "feed": float(match.group("feed")),
-        "speed": float(match.group("speed")),
+        "x": x,
+        "y": y,
+        "z": z,
+        "feed": feed,
+        "speed": speed,
     }
+
+    if "WCO" in fields:
+        parts = fields["WCO"].split(",")
+        if len(parts) >= 3:
+            try:
+                result["wco"] = {"x": float(parts[0]), "y": float(parts[1]), "z": float(parts[2])}
+            except ValueError:
+                pass
+
+    if "Pn" in fields:
+        # Solo trae las letras de los pines ACTIVOS (ej. "XD" = límite X + puerta).
+        # Ausencia de una letra = ese pin no está activo, no "desconocido".
+        result["pins"] = fields["Pn"]
+
+    if "Bf" in fields:
+        parts = fields["Bf"].split(",")
+        if len(parts) >= 2:
+            try:
+                result["buffer"] = {"planner": int(parts[0]), "rx": int(parts[1])}
+            except ValueError:
+                pass
+
+    if "Ov" in fields:
+        parts = fields["Ov"].split(",")
+        if len(parts) >= 3:
+            try:
+                result["overrides"] = {"feed": int(parts[0]), "rapid": int(parts[1]), "spindle": int(parts[2])}
+            except ValueError:
+                pass
+
+    if "WCS" in fields:
+        result["wcs"] = fields["WCS"]
+
+    return result
 
 
 def get_board_info(host: str = DEFAULT_LASER_HOST) -> Dict[str, Any]:
@@ -350,13 +461,7 @@ def get_board_info(host: str = DEFAULT_LASER_HOST) -> Dict[str, Any]:
     except requests.exceptions.RequestException:
         return {}
 
-    info: Dict[str, str] = {}
-    for line in text.splitlines():
-        if ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        info[key.strip()] = value.strip()
-    return info
+    return _parse_esp420_response(text)
 
 
 # ── Tarjeta SD (ESP3D, solo placas de red) ──
@@ -472,27 +577,34 @@ def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
 
 
 async def _ws_listener_loop(host: str):
-    uri = f"ws://{host}:{WS_PORT}"
+    # ESP3D clásico sirve su websocket en un puerto propio (81); FluidNC (que
+    # reutiliza la WebUI de ESP3D) no abre ese puerto — su websocket vive en
+    # el mismo puerto que el HTTP normal, en la ruta raíz. Confirmado en vivo
+    # contra una placa FluidNC real: por ahí sí llega el volcado de "$$" y el
+    # status en tiempo real, exactamente igual que por el puerto 81 en ESP3D.
+    candidate_uris = [f"ws://{host}:{WS_PORT}", f"ws://{host}/"]
     buffer = _console_buffers.setdefault(host, deque(maxlen=300))
     ready_event = _listener_ready_events.setdefault(host, asyncio.Event())
     while True:
-        try:
-            async with websockets.connect(uri, open_timeout=HTTP_TIMEOUT) as ws:
-                ready_event.set()
-                async for message in ws:
-                    if isinstance(message, bytes):
-                        message = message.decode("utf-8", errors="ignore")
-                    # Un solo frame puede traer varias líneas separadas por \r\n
-                    # (por ejemplo, el volcado completo de "$$").
-                    for line in message.splitlines():
-                        text = line.strip()
-                        if not text:
-                            continue
-                        buffer.append({"message": text, "time": time.time()})
-                        for queue in list(_subscribers.get(host, [])):
-                            queue.put_nowait(text)
-        except Exception:
-            pass
+        for uri in candidate_uris:
+            try:
+                async with websockets.connect(uri, open_timeout=HTTP_TIMEOUT) as ws:
+                    ready_event.set()
+                    async for message in ws:
+                        if isinstance(message, bytes):
+                            message = message.decode("utf-8", errors="ignore")
+                        # Un solo frame puede traer varias líneas separadas por \r\n
+                        # (por ejemplo, el volcado completo de "$$").
+                        for line in message.splitlines():
+                            text = line.strip()
+                            if not text:
+                                continue
+                            buffer.append({"message": text, "time": time.time()})
+                            for queue in list(_subscribers.get(host, [])):
+                                queue.put_nowait(text)
+                break  # el candidato conectó (aunque se haya caído después); no probar el siguiente
+            except Exception:
+                continue
         ready_event.clear()
         await asyncio.sleep(3)
 
@@ -634,6 +746,39 @@ async def get_status(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Op
             parsed = parse_status_line(text)
             if parsed:
                 return parsed
+    finally:
+        _unsubscribe(host, queue)
+    return None
+
+
+GCODE_PARSER_STATE_RE = re.compile(r"\[GC:(?P<words>[^\]]*)\]")
+WORK_COORDINATE_SYSTEMS = {"G54", "G55", "G56", "G57", "G58", "G59"}
+
+
+async def get_parser_state(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+    """Dispara '$G' y espera la línea de estado del parser GRBL, ej.
+    '[GC:G0 G54 G17 G21 G90 G94 M5 M9 T0 F0 S0]' — de ahí se saca el sistema
+    de coordenadas activo (G54/G55/...) para mostrarlo en la ficha CNC."""
+    await ensure_listener_ready(host)
+    queue = _subscribe(host)
+    try:
+        loop = asyncio.get_event_loop()
+        sent = await loop.run_in_executor(None, send_raw_command, host, "$G")
+        if not sent:
+            return None
+        end_time = time.monotonic() + timeout
+        while time.monotonic() < end_time:
+            remaining = max(end_time - time.monotonic(), 0.1)
+            try:
+                text = await asyncio.wait_for(queue.get(), timeout=remaining)
+            except asyncio.TimeoutError:
+                break
+            match = GCODE_PARSER_STATE_RE.search(text)
+            if not match:
+                continue
+            words = match.group("words").split()
+            wcs = next((w for w in words if w in WORK_COORDINATE_SYSTEMS), None)
+            return {"wcs": wcs, "words": words}
     finally:
         _unsubscribe(host, queue)
     return None

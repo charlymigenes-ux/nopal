@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=190">
+    <link rel="stylesheet" href="/static/css/style.css?v=205">
 </head>
 <body>
     <div class="app-shell">
@@ -40,6 +40,10 @@
                 <button class="nav-item" data-section="laser" data-i18n-title="laser" title="Láser">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
                     <span data-i18n="laser">Láser</span>
+                </button>
+                <button class="nav-item" data-section="cnc" data-i18n-title="cnc" title="CNC">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"/><path d="M12 6c0-2-2-3-2-3M12 8c0-2 2-3 2-3"/><path d="M8 12h8l-2 10h-4z"/></svg>
+                    <span data-i18n="cnc">CNC</span>
                 </button>
                 <button class="nav-item" data-section="queue" data-i18n-title="printQueue" title="Print Queue">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -594,44 +598,129 @@
                             </button>
                         </div>
                         <div class="laser-jog-layout">
-                            <div class="laser-jog-cross-col">
-                                <div class="laser-jog-pad">
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-nw" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="-1" title="Y+ X-">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="17" x2="7" y2="7"/><polyline points="7 15 7 7 15 7"/></svg>
+                            <div class="laser-jog-quadrant laser-jog-quadrant-manual">
+                                <div class="laser-jog-quadrant-title" data-i18n="laserManualMove">Movimiento manual</div>
+                                <div class="laser-jog-cross-col">
+                                    <div class="laser-jog-pad">
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-nw" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="-1" title="Y+ X-">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="17" x2="7" y2="7"/><polyline points="7 15 7 7 15 7"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-yplus" data-axis="Y" data-dir="1" title="Y+">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-ne" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="1" title="Y+ X+">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="9 7 17 7 17 15"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-xminus" data-axis="X" data-dir="-1" title="X-">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-home" id="laser-home-btn" title="Home ($H)">
+                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-xplus" data-axis="X" data-dir="1" title="X+">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-sw" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="-1" title="Y- X-">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="15 17 7 17 7 9"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-yminus" data-axis="Y" data-dir="-1" title="Y-">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                                        </button>
+                                        <button type="button" class="laser-jog-btn laser-jog-slot-se" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="1" title="Y- X+">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="7" x2="17" y2="17"/><polyline points="9 17 17 17 17 9"/></svg>
+                                        </button>
+                                    </div>
+                                    <div class="laser-jog-z">
+                                        <button type="button" class="laser-jog-btn laser-jog-z-btn" data-axis="Z" data-dir="1" title="Z+">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                        </button>
+                                        <span class="laser-jog-z-btn laser-jog-z-label">Z</span>
+                                        <button type="button" class="laser-jog-btn laser-jog-z-btn" data-axis="Z" data-dir="-1" title="Z-">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="laser-jog-quadrant laser-jog-quadrant-workarea">
+                                <div class="laser-jog-quadrant-header">
+                                    <span class="laser-jog-quadrant-title" data-i18n="laserWorkArea">Área de trabajo</span>
+                                    <span class="laser-bed-map-dims" id="laser-bed-map-dims"></span>
+                                </div>
+                                <div class="laser-bed-map-viewport" id="laser-bed-map-viewport">
+                                    <div class="laser-bed-map-axis laser-bed-map-axis-y" id="laser-bed-map-axis-y"></div>
+                                    <div class="laser-bed-map-axis laser-bed-map-axis-x" id="laser-bed-map-axis-x"></div>
+                                    <div class="laser-bed-map" id="laser-bed-map">
+                                        <svg class="laser-bed-map-trace" id="laser-bed-map-trace" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                            <polyline id="laser-bed-map-trace-line" points="" fill="none" vector-effect="non-scaling-stroke"/>
+                                        </svg>
+                                        <span class="laser-bed-map-hover-coords" id="laser-bed-map-hover-coords" hidden></span>
+                                        <div class="laser-bed-map-dot" id="laser-bed-map-dot" hidden></div>
+                                        <span class="laser-bed-map-empty" id="laser-bed-map-empty" data-i18n="laserBedMapEmpty">Sin medidas configuradas</span>
+                                    </div>
+                                </div>
+                                <div class="laser-bed-map-zoom-controls">
+                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-out" title="Alejar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
                                     </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-yplus" data-axis="Y" data-dir="1" title="Y+">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                    <span class="laser-bed-map-zoom-label" id="laser-bed-map-zoom-label">100%</span>
+                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-in" title="Acercar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
                                     </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-ne" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="1" title="Y+ X+">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="9 7 17 7 17 15"/></svg>
+                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-fit" title="Ajustar al archivo">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
                                     </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-xminus" data-axis="X" data-dir="-1" title="X-">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg>
-                                    </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-home" id="laser-home-btn" title="Home ($H)">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                                    </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-xplus" data-axis="X" data-dir="1" title="X+">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                                    </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-sw" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="-1" title="Y- X-">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="15 17 7 17 7 9"/></svg>
-                                    </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-yminus" data-axis="Y" data-dir="-1" title="Y-">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-                                    </button>
-                                    <button type="button" class="laser-jog-btn laser-jog-slot-se" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="1" title="Y- X+">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="7" x2="17" y2="17"/><polyline points="9 17 17 17 17 9"/></svg>
+                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-reset" title="Restablecer zoom">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                                     </button>
                                 </div>
-                                <div class="laser-jog-z">
-                                    <button type="button" class="laser-jog-btn" data-axis="Z" data-dir="1" title="Z+">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-                                    </button>
-                                    <span>Z</span>
-                                    <button type="button" class="laser-jog-btn" data-axis="Z" data-dir="-1" title="Z-">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-                                    </button>
+                                <div class="laser-workarea-position">
+                                    <span data-i18n="laserPosition">Posición</span>
+                                    <strong id="laser-position">X0.00 Y0.00 Z0.00</strong>
+                                </div>
+                            </div>
+                            <div class="laser-jog-quadrant laser-jog-quadrant-controls">
+                                <div class="laser-jog-quadrant-title" data-i18n="laserMachineControls">Controles de máquina</div>
+                                <div class="laser-jog-controls-row">
+                                    <div class="laser-fire-group" id="laser-fire-group-laser">
+                                        <button type="button" class="laser-fire-btn-wide" id="laser-fire-btn" title="Doble clic para encender">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                                            <span class="laser-fire-label" id="laser-fire-label" data-i18n="laserFireOn">Encender láser</span>
+                                        </button>
+                                    </div>
+                                    <div class="laser-fire-group" id="laser-air-group">
+                                        <button type="button" class="laser-air-btn-wide" id="laser-air-btn" title="Aire asistido">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2"/><path d="M12.59 19.41A2 2 0 1 0 14 16H2"/><path d="M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/></svg>
+                                            <span class="laser-fire-label" id="laser-air-label" data-i18n="laserAirAssistOn">Aire asistido</span>
+                                        </button>
+                                    </div>
+                                    <div class="laser-fire-group laser-fire-group-cnc" id="laser-spindle-group-cnc" hidden>
+                                        <button type="button" class="laser-fire-btn-wide laser-spindle-btn-wide" id="laser-spindle-btn" title="Doble clic para encender">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                                            <span class="laser-fire-label" id="laser-spindle-label" data-i18n="cncSpindleOn">Encender husillo</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="laser-fire-power" id="laser-power-group-laser">
+                                    <label for="laser-fire-power-input" data-i18n="laserFirePower">Potencia (%)</label>
+                                    <div class="laser-fire-power-row">
+                                        <input type="number" id="laser-fire-power-input" min="0" max="100" step="1" value="10">
+                                        <div class="laser-power-presets" id="laser-power-presets">
+                                            <button type="button" class="laser-step-btn" data-power="25">25</button>
+                                            <button type="button" class="laser-step-btn" data-power="50">50</button>
+                                            <button type="button" class="laser-step-btn" data-power="100">100</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="laser-fire-power laser-fire-power-cnc" id="laser-power-group-cnc" hidden>
+                                    <label for="laser-spindle-rpm-input" data-i18n="cncSpindleSpeed">Velocidad (RPM)</label>
+                                    <div class="laser-fire-power-row">
+                                        <input type="number" id="laser-spindle-rpm-input" min="0" max="24000" step="100" value="10000">
+                                        <div class="laser-power-presets" id="laser-spindle-presets">
+                                            <button type="button" class="laser-step-btn" data-rpm="5000">5k</button>
+                                            <button type="button" class="laser-step-btn" data-rpm="12000">12k</button>
+                                            <button type="button" class="laser-step-btn" data-rpm="24000">24k</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="laser-jog-steps-block">
                                     <span class="laser-jog-steps-label" data-i18n="laserStepSize">Paso (mm)</span>
@@ -643,43 +732,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="laser-jog-quick-col">
-                                <div class="laser-fire-group" id="laser-fire-group-laser">
-                                    <button type="button" class="laser-fire-btn" id="laser-fire-btn" title="Doble clic para encender">
-                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
-                                    </button>
-                                    <span class="laser-fire-label" id="laser-fire-label" data-i18n="laserFireOn">Encender láser</span>
-                                </div>
-                                <div class="laser-fire-group" id="laser-air-group">
-                                    <button type="button" class="laser-air-btn" id="laser-air-btn" title="Aire asistido">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2"/><path d="M12.59 19.41A2 2 0 1 0 14 16H2"/><path d="M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/></svg>
-                                    </button>
-                                    <span class="laser-fire-label" id="laser-air-label" data-i18n="laserAirAssistOn">Aire asistido</span>
-                                </div>
-                                <div class="laser-fire-power" id="laser-power-group-laser">
-                                    <label for="laser-fire-power-input" data-i18n="laserFirePower">Potencia</label>
-                                    <input type="number" id="laser-fire-power-input" min="0" max="100" step="1" value="10">
-                                    <div class="laser-power-presets" id="laser-power-presets">
-                                        <button type="button" class="laser-step-btn" data-power="25">25</button>
-                                        <button type="button" class="laser-step-btn" data-power="50">50</button>
-                                        <button type="button" class="laser-step-btn" data-power="100">100</button>
-                                    </div>
-                                </div>
-                                <div class="laser-fire-group laser-fire-group-cnc" id="laser-spindle-group-cnc" hidden>
-                                    <button type="button" class="laser-fire-btn laser-spindle-btn" id="laser-spindle-btn" title="Doble clic para encender">
-                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                                    </button>
-                                    <span class="laser-fire-label" id="laser-spindle-label" data-i18n="cncSpindleOn">Encender husillo</span>
-                                </div>
-                                <div class="laser-fire-power laser-fire-power-cnc" id="laser-power-group-cnc" hidden>
-                                    <label for="laser-spindle-rpm-input" data-i18n="cncSpindleSpeed">Velocidad (RPM)</label>
-                                    <input type="number" id="laser-spindle-rpm-input" min="0" max="24000" step="100" value="10000">
-                                    <div class="laser-power-presets" id="laser-spindle-presets">
-                                        <button type="button" class="laser-step-btn" data-rpm="5000">5k</button>
-                                        <button type="button" class="laser-step-btn" data-rpm="12000">12k</button>
-                                        <button type="button" class="laser-step-btn" data-rpm="24000">24k</button>
-                                    </div>
-                                </div>
+                            <div class="laser-jog-quadrant laser-jog-quadrant-job">
                                 <div class="laser-job-toolbar" id="laser-job-controls-panel">
                                     <button type="button" class="btn-file-action" id="laser-pause-btn-panel" hidden>
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
@@ -694,36 +747,38 @@
                                         <span data-i18n="laserCancel">Cancelar</span>
                                     </button>
                                 </div>
+                                <div class="laser-job-info-row" id="laser-job-info-row" hidden>
+                                    <div class="laser-job-thumb" id="laser-job-thumb"></div>
+                                    <div class="laser-job-info-meta">
+                                        <strong class="laser-job-info-filename" id="laser-job-info-filename">—</strong>
+                                        <div class="laser-job-info-times">
+                                            <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span data-i18n="laserJobElapsed">Tiempo transcurrido</span> <strong id="laser-job-elapsed">—</strong></span>
+                                            <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span data-i18n="laserJobRemaining">Tiempo restante</span> <strong id="laser-job-remaining">—</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="laser-job-progress" id="laser-job-progress-panel" hidden>
                                     <div class="laser-job-progress-bar">
                                         <div class="laser-job-progress-fill" id="laser-job-progress-fill-panel"></div>
                                     </div>
-                                    <span id="laser-job-progress-text-panel">0 / 0</span>
+                                    <span id="laser-job-progress-text-panel">0%</span>
                                 </div>
-                            </div>
-                            <div class="laser-jog-side">
-                                <div class="laser-bed-map-viewport" id="laser-bed-map-viewport">
-                                    <div class="laser-bed-map" id="laser-bed-map">
-                                        <svg class="laser-bed-map-trace" id="laser-bed-map-trace" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                            <polyline id="laser-bed-map-trace-line" points="" fill="none" vector-effect="non-scaling-stroke"/>
-                                        </svg>
-                                        <span class="laser-bed-map-dims" id="laser-bed-map-dims"></span>
-                                        <span class="laser-bed-map-hover-coords" id="laser-bed-map-hover-coords" hidden></span>
-                                        <div class="laser-bed-map-dot" id="laser-bed-map-dot" hidden></div>
-                                        <span class="laser-bed-map-empty" id="laser-bed-map-empty" data-i18n="laserBedMapEmpty">Sin medidas configuradas</span>
+                                <div class="laser-job-stats-row" id="laser-job-stats-row" hidden>
+                                    <div class="laser-job-stat">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                                        <span data-i18n="laserJobLinesProcessed">Líneas procesadas</span>
+                                        <strong id="laser-job-lines">0 / 0</strong>
                                     </div>
-                                </div>
-                                <div class="laser-bed-map-zoom-controls">
-                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-out" title="Alejar">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                    </button>
-                                    <span class="laser-bed-map-zoom-label" id="laser-bed-map-zoom-label">100%</span>
-                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-in" title="Acercar">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                    </button>
-                                    <button type="button" class="laser-bed-map-zoom-btn" id="laser-bed-map-zoom-reset" title="Restablecer zoom">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                                    </button>
+                                    <div class="laser-job-stat">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                                        <span data-i18n="laserFeedSpeedShort">Velocidad</span>
+                                        <strong id="laser-job-speed">—</strong>
+                                    </div>
+                                    <div class="laser-job-stat">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                                        <span data-i18n="laserPowerShort">Potencia</span>
+                                        <strong id="laser-job-power">—</strong>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -734,11 +789,7 @@
                                 <span data-i18n="laserUnlock">Desbloquear ($X)</span>
                             </button>
                         </div>
-                        <div class="laser-metrics">
-                            <div>
-                                <span data-i18n="laserPosition">Posición</span>
-                                <strong id="laser-position">X0.00 Y0.00 Z0.00</strong>
-                            </div>
+                        <div class="laser-metrics laser-metrics-single">
                             <div>
                                 <span data-i18n="laserFeedSpeed">Avance / Potencia</span>
                                 <strong id="laser-feed-speed">— / —</strong>
@@ -769,6 +820,384 @@
                     </div>
                     </div>
 
+                </main>
+            </section>
+
+            <section id="cnc-section" class="view-section" style="display: none;">
+                <main class="main-content cnc-main">
+                    <div class="cnc-topbar">
+                        <div class="cnc-topbar-brand">
+                            <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
+                                <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(245,158,11,0.12)" stroke="var(--orange)" stroke-width="2"/>
+                                <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" fill="none"/>
+                            </svg>
+                            <span>NOPAL CNC</span>
+                            <span class="cnc-state-pill" id="cnc-state-pill">IDLE</span>
+                        </div>
+                        <div class="cnc-topbar-selectors">
+                            <label class="cnc-topbar-field">
+                                <span data-i18n="cncTopbarMachine">MÁQUINA</span>
+                                <select id="cnc-host-select"></select>
+                            </label>
+                            <label class="cnc-topbar-field cnc-advanced-only">
+                                <span data-i18n="cncTopbarProfile">PERFIL ACTIVO</span>
+                                <select id="cnc-profile-select"></select>
+                            </label>
+                            <label class="cnc-topbar-field cnc-advanced-only">
+                                <span data-i18n="cncTopbarCoords">COORDENADAS</span>
+                                <select id="cnc-wcs-select">
+                                    <option value="G54">G54</option>
+                                    <option value="G55">G55</option>
+                                    <option value="G56">G56</option>
+                                    <option value="G57">G57</option>
+                                    <option value="G58">G58</option>
+                                    <option value="G59">G59</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="cnc-topbar-icons">
+                            <button type="button" class="theme-option-icon-btn" id="cnc-refresh-btn" title="Actualizar">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            </button>
+                            <button type="button" class="theme-option-icon-btn cnc-topbar-settings-btn" id="cnc-settings-btn" title="Configuración">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            </button>
+                            <div class="cnc-topbar-avatar" title="NOPAL">NP</div>
+                        </div>
+                    </div>
+
+                    <div class="cnc-main-layout">
+                    <div class="cnc-left-col">
+                        <div class="cnc-card" id="cnc-status-card">
+                            <div class="cnc-card-header">
+                                <span class="cnc-card-title" data-i18n="cncStatusTitle">ESTADO</span>
+                                <div class="cnc-card-header-actions">
+                                    <button type="button" class="btn-file-action" id="cnc-unlock-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                                        <span data-i18n="laserUnlockShort">Desbloquear</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action btn-file-action-danger" id="cnc-reset-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                        <span data-i18n="cncReset">Reset</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <table class="cnc-position-table">
+                                <thead>
+                                    <tr><th></th><th data-i18n="cncWork">WORK</th><th data-i18n="cncMachine">MACHINE</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><th>X</th><td id="cnc-pos-work-x">0.000</td><td id="cnc-pos-machine-x">0.000</td></tr>
+                                    <tr><th>Y</th><td id="cnc-pos-work-y">0.000</td><td id="cnc-pos-machine-y">0.000</td></tr>
+                                    <tr><th>Z</th><td id="cnc-pos-work-z">0.000</td><td id="cnc-pos-machine-z">0.000</td></tr>
+                                </tbody>
+                            </table>
+                            <div class="cnc-feed-spindle-row">
+                                <div><span data-i18n="cncFeed">FEED</span> <strong id="cnc-feed-value">0</strong> mm/min</div>
+                                <div class="cnc-router-only"><span data-i18n="cncSpindleLabel">SPINDLE</span> <strong id="cnc-rpm-value">0</strong> rpm</div>
+                            </div>
+                            <div class="cnc-pin-row cnc-advanced-only" id="cnc-pin-row">
+                                <span class="cnc-pin-pill" data-pin="X">Lim X</span>
+                                <span class="cnc-pin-pill" data-pin="Y">Lim Y</span>
+                                <span class="cnc-pin-pill" data-pin="Z">Lim Z</span>
+                                <span class="cnc-pin-pill" data-pin="P">Probe</span>
+                                <span class="cnc-pin-pill" data-pin="D">Door</span>
+                                <span class="cnc-pin-pill" data-pin="A">Lim A</span>
+                            </div>
+                        </div>
+
+                        <div class="cnc-card" id="cnc-job-card">
+                            <div class="cnc-card-header">
+                                <span class="cnc-card-title" data-i18n="cncJobTitle">TRABAJO</span>
+                                <div class="cnc-card-header-actions">
+                                    <button type="button" class="btn-file-action" id="cnc-wizard-open-btn" data-i18n-title="cncWizardOpenTitle" title="Guía para dibujar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4V2m0 4l1.5-1.5M15 4l-1.5-1.5M4 15H2m4 0l-1.5 1.5M6 15l-1.5-1.5"/><path d="m19 5-14 14"/></svg>
+                                        <span data-i18n="cncWizardOpen">Guía para dibujar</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="cnc-job-file-row">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                <div>
+                                    <strong id="cnc-job-filename">—</strong>
+                                    <span data-i18n="cncJobTypeGcode">G-code</span>
+                                </div>
+                            </div>
+                            <div class="laser-queue-list cnc-queue-list" id="cnc-queue-list"></div>
+                            <div class="cnc-job-progress-row">
+                                <span id="cnc-job-elapsed">00:00</span>
+                                <div class="laser-job-progress-bar"><div class="laser-job-progress-fill" id="cnc-job-progress-fill"></div></div>
+                                <span id="cnc-job-percent">0%</span>
+                            </div>
+                            <div class="cnc-job-buttons-row">
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-run-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                    <span data-i18n="cncRun">Correr</span>
+                                </button>
+                                <button type="button" class="btn-file-action" id="cnc-pause-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                    <span data-i18n="laserPause">Pausar</span>
+                                </button>
+                                <button type="button" class="btn-file-action" id="cnc-park-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                                    <span data-i18n="cncPark">Estacionar</span>
+                                </button>
+                            </div>
+                            <div class="cnc-job-buttons-row">
+                                <button type="button" class="btn-file-action cnc-router-only" id="cnc-probe-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 7l-5-5-5 5"/></svg>
+                                    <span data-i18n="cncProbe">Probe</span>
+                                </button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="0.5">Z +0.5</button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="0.1">Z +0.1</button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="-0.1">Z -0.1</button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="-0.5">Z -0.5</button>
+                            </div>
+                            <div class="cnc-override-block cnc-advanced-only">
+                                <span class="cnc-override-label" data-i18n="cncFeedOverride">Feed Override</span>
+                                <div class="cnc-override-row" data-override="feed">
+                                    <button type="button" class="laser-step-btn" data-ov="-10">-10%</button>
+                                    <button type="button" class="laser-step-btn" data-ov="-1">-1%</button>
+                                    <span class="cnc-override-value" id="cnc-feed-override-value">100%</span>
+                                    <button type="button" class="laser-step-btn" data-ov="1">+1%</button>
+                                    <button type="button" class="laser-step-btn" data-ov="10">+10%</button>
+                                </div>
+                            </div>
+                            <div class="cnc-zero-row">
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-zero-xy-btn" data-i18n="cncZeroXY">Cero aquí (XY)</button>
+                                <button type="button" class="btn-file-action btn-file-action-danger" id="cnc-zero-z-btn" data-i18n="cncZeroZ">Z=0 aquí</button>
+                            </div>
+                            <div class="cnc-shift-row cnc-advanced-only">
+                                <span class="cnc-override-label" data-i18n="cncOriginShift">Origen de Shift</span>
+                                <div class="cnc-shift-inputs">
+                                    <label>X <input type="number" id="cnc-shift-x" step="0.1" value="0"></label>
+                                    <label>Y <input type="number" id="cnc-shift-y" step="0.1" value="0"></label>
+                                    <button type="button" class="btn-file-action" id="cnc-shift-apply-btn" data-i18n="cncApply">Aplicar</button>
+                                    <label class="cnc-shift-auto"><input type="checkbox" id="cnc-shift-auto"> <span data-i18n="cncAuto">Auto</span></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="cnc-card cnc-router-only" id="cnc-spindle-card">
+                            <div class="cnc-card-header">
+                                <span class="cnc-card-title" data-i18n="cncSpindleTitle">HUSILLO</span>
+                            </div>
+                            <div class="cnc-spindle-cw-row">
+                                <button type="button" class="cnc-spindle-mode-btn" data-spindle-mode="cw">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>
+                                    CW
+                                </button>
+                                <button type="button" class="cnc-spindle-mode-btn active" data-spindle-mode="off" data-i18n="cncOff">Off</button>
+                                <button type="button" class="cnc-spindle-mode-btn cnc-advanced-only" data-spindle-mode="ccw">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
+                                    CCW
+                                </button>
+                            </div>
+                            <div class="cnc-rpm-row">
+                                <input type="number" id="cnc-rpm-input" min="0" max="24000" step="100" value="10000">
+                                <span>rpm</span>
+                            </div>
+                            <div class="cnc-rpm-presets cnc-advanced-only">
+                                <button type="button" class="laser-step-btn" data-rpm="12000">12k</button>
+                                <button type="button" class="laser-step-btn" data-rpm="16000">16k</button>
+                                <button type="button" class="laser-step-btn" data-rpm="20000">20k</button>
+                                <button type="button" class="laser-step-btn" data-rpm="24000">24k</button>
+                            </div>
+                            <div class="cnc-override-block cnc-advanced-only">
+                                <span class="cnc-override-label" data-i18n="cncOverride">Override</span>
+                                <div class="cnc-override-row" data-override="spindle">
+                                    <button type="button" class="laser-step-btn" data-ov="-10">-10%</button>
+                                    <button type="button" class="laser-step-btn" data-ov="-1">-1%</button>
+                                    <span class="cnc-override-value" id="cnc-spindle-override-value">100%</span>
+                                    <button type="button" class="laser-step-btn" data-ov="1">+1%</button>
+                                    <button type="button" class="laser-step-btn" data-ov="10">+10%</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="cnc-card cnc-jog-card" id="cnc-jog-card">
+                            <div class="cnc-card-header">
+                                <span class="cnc-card-title" data-i18n="cncJogTitle">JOG</span>
+                            </div>
+                            <div class="cnc-feed-mode-row">
+                                <span data-i18n="cncFeedMode">Modo Feed</span>
+                                <div class="cnc-feed-mode-group" id="cnc-feed-mode-group">
+                                    <button type="button" class="laser-step-btn" data-feed-mode="slow" data-i18n="cncSlow">Lento</button>
+                                    <button type="button" class="laser-step-btn active" data-feed-mode="normal" data-i18n="cncNormal">Normal</button>
+                                    <button type="button" class="laser-step-btn" data-feed-mode="fast" data-i18n="cncFast">Rápido</button>
+                                </div>
+                            </div>
+                            <div class="cnc-jog-steps" id="cnc-jog-steps">
+                                <button type="button" class="laser-step-btn" data-step="0.1">0.1</button>
+                                <button type="button" class="laser-step-btn" data-step="1">1</button>
+                                <button type="button" class="laser-step-btn active" data-step="10">10</button>
+                                <button type="button" class="laser-step-btn" data-step="50">50</button>
+                                <button type="button" class="laser-step-btn" data-step="100">100</button>
+                            </div>
+                            <div class="cnc-jog-pad-row">
+                                <div class="laser-jog-pad" id="cnc-jog-pad">
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-nw" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="17" x2="7" y2="7"/><polyline points="7 15 7 7 15 7"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-yplus" data-axis="Y" data-dir="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-ne" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="9 7 17 7 17 15"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-xminus" data-axis="X" data-dir="-1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-home" id="cnc-home-btn" title="Home ($H)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-xplus" data-axis="X" data-dir="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-sw" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="15 17 7 17 7 9"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-yminus" data-axis="Y" data-dir="-1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></button>
+                                    <button type="button" class="laser-jog-btn laser-jog-slot-se" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="7" x2="17" y2="17"/><polyline points="9 17 17 17 17 9"/></svg></button>
+                                </div>
+                                <div class="cnc-jog-z-col">
+                                    <button type="button" class="laser-jog-btn laser-jog-z-btn" data-axis="Z" data-dir="1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+                                    <span class="laser-jog-z-label">Z</span>
+                                    <button type="button" class="laser-jog-btn laser-jog-z-btn" data-axis="Z" data-dir="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></button>
+                                    <div class="cnc-jog-steps-z" id="cnc-jog-steps-z">
+                                        <button type="button" class="laser-step-btn" data-step-z="0.1">0.1</button>
+                                        <button type="button" class="laser-step-btn" data-step-z="0.5">0.5</button>
+                                        <button type="button" class="laser-step-btn active" data-step-z="1">1</button>
+                                        <button type="button" class="laser-step-btn" data-step-z="2">2</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="cnc-stop-btn" id="cnc-stop-btn" title="Stop">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                            </button>
+                            <div class="cnc-rapid-row cnc-advanced-only">
+                                <span data-i18n="cncRapid">Rápido</span>
+                                <div class="cnc-rapid-group" id="cnc-rapid-group">
+                                    <button type="button" class="laser-step-btn" data-rapid="25">25%</button>
+                                    <button type="button" class="laser-step-btn" data-rapid="50">50%</button>
+                                    <button type="button" class="laser-step-btn" data-rapid="75">75%</button>
+                                    <button type="button" class="laser-step-btn active" data-rapid="100">100%</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cnc-right-col">
+                        <div class="cnc-card cnc-viewer-card" id="cnc-viewer-card">
+                            <div class="cnc-viewer-tabs" id="cnc-viewer-tabs" role="tablist">
+                                <button type="button" class="cnc-viewer-tab active" data-viewer-tab="visor" role="tab" aria-selected="true" data-i18n="cncViewerTabVisor">VISOR</button>
+                                <button type="button" class="cnc-viewer-tab" data-viewer-tab="3d" role="tab" aria-selected="false" data-i18n="cncViewerTab3d">3D VIEW</button>
+                                <button type="button" class="cnc-viewer-tab" data-viewer-tab="sim" role="tab" aria-selected="false" data-i18n="cncViewerTabSim">SIMULATION</button>
+                            </div>
+                            <div class="cnc-viewer-panels" id="cnc-viewer-panels">
+                                <div class="cnc-viewer-panel active" id="cnc-viewer-panel-visor" data-viewer-panel="visor">
+                                    <div class="cnc-visor-canvas-wrap" id="cnc-visor-canvas-wrap">
+                                        <div class="cnc-visor-canvas" id="cnc-visor-canvas"></div>
+                                        <div class="cnc-visor-origin-marker" id="cnc-visor-origin-marker" hidden>
+                                            <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                                                <circle cx="9" cy="25" r="3" fill="#3b82f6"/>
+                                                <line x1="9" y1="25" x2="9" y2="9" stroke="#22c55e" stroke-width="2"/>
+                                                <polyline points="5 13 9 9 13 13" stroke="#22c55e" stroke-width="2" fill="none"/>
+                                                <line x1="9" y1="25" x2="25" y2="25" stroke="#ef4444" stroke-width="2"/>
+                                                <polyline points="21 21 25 25 21 29" stroke="#ef4444" stroke-width="2" fill="none"/>
+                                            </svg>
+                                        </div>
+                                        <div class="cnc-visor-coords" id="cnc-visor-coords" hidden>
+                                            <span>X <strong id="cnc-visor-coord-x">0.000</strong></span>
+                                            <span>Y <strong id="cnc-visor-coord-y">0.000</strong></span>
+                                            <span>Z <strong id="cnc-visor-coord-z">0.000</strong></span>
+                                        </div>
+                                        <div class="cnc-visor-nav-col" id="cnc-visor-nav-col" hidden>
+                                            <button type="button" class="theme-option-icon-btn" data-visor-action="fit" data-i18n-title="cncVisorFit" title="Ajustar al área">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                                            </button>
+                                            <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-in" data-i18n-title="cncVisorZoomIn" title="Acercar">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                            </button>
+                                            <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-out" data-i18n-title="cncVisorZoomOut" title="Alejar">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                            </button>
+                                            <button type="button" class="theme-option-icon-btn" data-visor-action="fullscreen" data-i18n-title="cncVisorFullscreen" title="Pantalla completa">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11 0h3a2 2 0 0 0 2-2v-3"/></svg>
+                                            </button>
+                                        </div>
+                                        <div class="cnc-visor-legend card-collapsible collapsed" id="cnc-visor-legend" hidden>
+                                            <div class="card-header-std">
+                                                <span class="card-header-std-title" data-i18n="cncVisorLegendTitle">COLORES DE CARACTERÍSTICAS</span>
+                                                <button type="button" class="card-collapse-toggle collapsed">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                                </button>
+                                            </div>
+                                            <ul class="cnc-visor-legend-list">
+                                                <li><span class="cnc-visor-swatch cnc-visor-swatch-rapid"></span><span data-i18n="cncVisorLegendRapid">Rápido (G0)</span></li>
+                                                <li><span class="cnc-visor-swatch cnc-visor-swatch-cut"></span><span data-i18n="cncVisorLegendCut">Corte (G1/G2/G3)</span></li>
+                                                <li><span class="cnc-visor-swatch cnc-visor-swatch-selected"></span><span data-i18n="cncVisorLegendSelected">Seleccionado</span></li>
+                                            </ul>
+                                        </div>
+                                        <div class="cnc-visor-empty-state" id="cnc-visor-empty-state" data-i18n="cncVisorEmptyState">Seleccioná un archivo en ARCHIVOS para previsualizarlo</div>
+                                    </div>
+                                </div>
+                                <div class="cnc-viewer-panel" id="cnc-viewer-panel-3d" data-viewer-panel="3d">
+                                    <div class="cnc-viewer-soon">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>
+                                        <strong data-i18n="cncViewerSoonTitle">Próximamente</strong>
+                                        <p data-i18n="cncViewer3dSoonBody">Vista 3D con relieve real de profundidades de la trayectoria — en desarrollo.</p>
+                                    </div>
+                                </div>
+                                <div class="cnc-viewer-panel" id="cnc-viewer-panel-sim" data-viewer-panel="sim">
+                                    <div class="cnc-viewer-soon">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                        <strong data-i18n="cncViewerSoonTitle">Próximamente</strong>
+                                        <p data-i18n="cncViewerSimSoonBody">Simulación de mecanizado con reproducción animada — en desarrollo.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="cnc-card cnc-files-card" id="cnc-files-card">
+                            <div class="cnc-card-header">
+                                <span class="cnc-card-title" data-i18n="cncFilesTitle">ARCHIVOS</span>
+                                <div class="cnc-card-header-actions">
+                                    <button type="button" class="btn-file-action" id="cnc-files-add-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                        <span data-i18n="cncFilesAdd">Agregar</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action" id="cnc-files-upload-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        <span data-i18n="cncFilesUpload">Subir</span>
+                                    </button>
+                                    <input type="file" id="cnc-files-upload-input" accept=".nc,.tap,.cnc,.gcode,.gc,.gco" hidden>
+                                    <button type="button" class="theme-option-icon-btn" id="cnc-files-refresh-btn" title="Actualizar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="text" id="cnc-files-search" class="cnc-files-search" data-i18n-placeholder="cncFilesFilter" placeholder="Filtrar archivos...">
+                            <div class="cnc-files-table-wrap" id="cnc-files-table-wrap">
+                                <table class="models-table cnc-files-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="cncColName">NOMBRE</th>
+                                            <th data-i18n="columnSize">TAMAÑO</th>
+                                            <th data-i18n="cncColUploaded">SUBIDO</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cnc-files-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+
+                    <div class="cnc-footer-bar">
+                        <span class="cnc-footer-dot" id="cnc-footer-dot"></span>
+                        <span id="cnc-footer-connected" data-i18n="online">CONECTADO</span>
+                        <span class="cnc-footer-sep">·</span>
+                        <span id="cnc-footer-firmware">—</span>
+                        <span class="cnc-footer-sep">·</span>
+                        <span id="cnc-footer-port">—</span>
+                        <span class="cnc-footer-sep cnc-advanced-only">·</span>
+                        <span class="cnc-advanced-only"><span data-i18n="cncBuffer">Buffer</span>: <span id="cnc-footer-buffer">—</span></span>
+                        <span class="cnc-footer-spacer"></span>
+                        <span data-i18n="cncJobElapsedShort">Tiempo de trabajo</span> <strong id="cnc-footer-elapsed">00:00:00</strong>
+                        <span data-i18n="laserJobRemaining">Tiempo restante</span> <strong id="cnc-footer-remaining">—</strong>
+                        <button type="button" class="btn-file-action btn-file-action-danger cnc-footer-stop-btn" id="cnc-footer-stop-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            <span data-i18n="cncStopJob">Detener trabajo</span>
+                        </button>
+                    </div>
                 </main>
             </section>
 
@@ -860,6 +1289,14 @@
                                     <button type="button" class="option-switch-btn" data-value="95">95%</button>
                                     <button type="button" class="option-switch-btn" data-value="90">90%</button>
                                     <button type="button" class="option-switch-btn" data-value="85">85%</button>
+                                </div>
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-field-label" data-i18n="cncModeLabel">Modo del panel CNC</label>
+                                <p class="settings-field-hint" data-i18n="cncModeHint">Simple muestra solo lo esencial; Avanzado agrega overrides, coordenadas de trabajo, pines y perfiles.</p>
+                                <div class="option-switch" id="settings-cnc-mode-switch">
+                                    <button type="button" class="option-switch-btn" data-value="simple" data-i18n="cncModeSimple">Simple</button>
+                                    <button type="button" class="option-switch-btn" data-value="advanced" data-i18n="cncModeAdvanced">Avanzado</button>
                                 </div>
                             </div>
                             <div class="settings-field settings-field-switch">
@@ -1096,8 +1533,18 @@
                                     <button type="button" class="theme-option-icon-btn" id="wifi-devices-scan-btn" title="Escanear red">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                                     </button>
+                                    <button type="button" class="theme-option-icon-btn" id="wifi-devices-scan-ip-toggle-btn" data-i18n-title="laserScanByIp" title="Buscar por IP">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                    </button>
                                 </div>
-                                <p data-i18n="laserWifiDevicesDescription">Controladoras láser (ESP3D/GRBL) detectadas en la red local.</p>
+                                <div class="wifi-scan-ip-row" id="wifi-scan-ip-row" hidden>
+                                    <input type="text" id="wifi-scan-ip-input" data-i18n-placeholder="laserScanByIpPlaceholder" placeholder="192.168.0.63" autocomplete="off">
+                                    <button type="button" class="btn-file-action" id="wifi-scan-ip-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                        <span data-i18n="searchAction">Buscar</span>
+                                    </button>
+                                </div>
+                                <p data-i18n="laserWifiDevicesDescription">Controladoras láser (ESP3D/GRBL/FluidNC) detectadas en la red local.</p>
                                 <div class="usb-ports-list" id="wifi-devices-list"></div>
                             </div>
 
@@ -1373,7 +1820,7 @@
                 </div>
                 <div class="laser-gamepad-header-text">
                     <h2 data-i18n="laserGamepadMapTitle">Mapeo de control</h2>
-                    <p data-i18n="laserGamepadMapHint">Presiona "Asignar" y luego el botón físico en tu control para vincularlo. La acción se ejecuta solo mientras estás en la sección Láser.</p>
+                    <p data-i18n="laserGamepadMapHint">Presiona "Asignar" y luego el botón físico en tu control para vincularlo. La acción se ejecuta según la sección activa (Láser o CNC).</p>
                 </div>
                 <button type="button" class="laser-gamepad-select" id="laser-gamepad-select">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15" cy="13" r="1"/><circle cx="18" cy="11" r="1"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
@@ -1436,7 +1883,7 @@
                                 <span class="lgc-btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span>
                                 <span class="lgc-btn-label" data-i18n="laserGamepadConsoleOrigin">ORIGEN</span>
                             </div>
-                            <div class="lgc-btn" data-console-action="laserToggle">
+                            <div class="lgc-btn" data-console-action="toggleTool">
                                 <span class="lgc-btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="4.2" y1="4.2" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.8" y2="19.8"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/><line x1="4.2" y1="19.8" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.8" y2="4.2"/></svg></span>
                                 <span class="lgc-btn-label" data-i18n="laserGamepadConsoleLaser">LASER</span>
                             </div>
@@ -1454,6 +1901,16 @@
                                 <div class="lgc-dpad-btn lgc-dpad-right" data-console-action="jogRight"></div>
                                 <div class="lgc-dpad-center">
                                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                                </div>
+                            </div>
+                            <div class="lgc-dpad-z-col">
+                                <div class="lgc-btn lgc-btn-unassignable" data-console-action="jogZUp">
+                                    <span class="lgc-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></span>
+                                    <span class="lgc-btn-label">Z+</span>
+                                </div>
+                                <div class="lgc-btn lgc-btn-unassignable" data-console-action="jogZDown">
+                                    <span class="lgc-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
+                                    <span class="lgc-btn-label">Z-</span>
                                 </div>
                             </div>
                         </div>
@@ -1989,6 +2446,14 @@
                     </div>
                 </div>
 
+                <div class="usb-classify-name-field" id="usb-classify-profile-row" hidden>
+                    <label data-i18n="usbClassifyProfileLabel">Tipo de máquina CNC</label>
+                    <div class="option-switch" id="usb-classify-profile-switch">
+                        <button type="button" class="option-switch-btn active" data-value="router" data-i18n="cncProfileRouter">Router / Fresadora</button>
+                        <button type="button" class="option-switch-btn" data-value="plotter" data-i18n="cncProfilePlotter">Plotter (lápiz/marcador)</button>
+                    </div>
+                </div>
+
                 <div class="usb-classify-illustration usb-classify-illustration-machine">
                     <svg viewBox="0 0 220 110" width="100%" height="100" fill="none" stroke="#22C55E" stroke-width="1.4">
                         <rect x="20" y="20" width="180" height="55" rx="4"/>
@@ -2039,6 +2504,13 @@
                     <input type="number" id="device-rename-height" step="0.1">
                 </div>
             </div>
+            <div class="usb-classify-name-field" id="device-rename-profile-row" hidden>
+                <label data-i18n="usbClassifyProfileLabel">Tipo de máquina CNC</label>
+                <div class="option-switch" id="device-rename-profile-switch">
+                    <button type="button" class="option-switch-btn active" data-value="router" data-i18n="cncProfileRouter">Router / Fresadora</button>
+                    <button type="button" class="option-switch-btn" data-value="plotter" data-i18n="cncProfilePlotter">Plotter (lápiz/marcador)</button>
+                </div>
+            </div>
             <div class="usb-classify-name-actions">
                 <button type="button" class="btn-file-action btn-file-action-accent" id="device-rename-confirm-btn">
                     <span data-i18n="confirmAction">Confirmar</span>
@@ -2046,6 +2518,98 @@
                 <button type="button" class="btn-file-action usb-classify-cancel-btn" id="device-rename-cancel-btn">
                     <span data-i18n="cancelAction">Cancelar</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Asistente guiado CNC: 4 pasos dentro de un mismo modal, mismo
+         mecanismo de pasos-dentro-de-un-modal que #usb-classify-modal. -->
+    <div id="cnc-wizard-modal" class="modal">
+        <div class="modal-backdrop" id="cnc-wizard-backdrop"></div>
+        <div class="modal-content cnc-wizard-modal-content">
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4V2m0 4l1.5-1.5M15 4l-1.5-1.5M4 15H2m4 0l-1.5 1.5M6 15l-1.5-1.5"/><path d="m19 5-14 14"/></svg>
+            </div>
+            <h2 data-i18n="cncWizardTitle">Guía para dibujar</h2>
+            <div class="cnc-wizard-steps-indicator">
+                <span class="cnc-wizard-step-dot active" data-step-dot="1"></span>
+                <span class="cnc-wizard-step-dot" data-step-dot="2"></span>
+                <span class="cnc-wizard-step-dot" data-step-dot="3"></span>
+                <span class="cnc-wizard-step-dot" data-step-dot="4"></span>
+            </div>
+
+            <div id="cnc-wizard-step-1" class="cnc-wizard-step">
+                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep1Title">1. Elegí un diseño</span></p>
+                <input type="text" id="cnc-wizard-file-search" class="usb-classify-input-icon-wrap" data-i18n-placeholder="cncFilesFilter" placeholder="Buscar archivo...">
+                <div class="cnc-wizard-file-list" id="cnc-wizard-file-list"></div>
+            </div>
+
+            <div id="cnc-wizard-step-2" class="cnc-wizard-step" hidden>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep2Title">2. Posicioná el origen</span></p>
+                <p class="cnc-wizard-step-hint" data-i18n="cncWizardStep2Hint">Movete con las flechas hasta donde querés que empiece el dibujo, después apretá "Cero aquí".</p>
+                <div class="cnc-wizard-unlock-row">
+                    <span class="cnc-state-pill" id="cnc-wizard-state-pill">—</span>
+                    <button type="button" class="btn-file-action" id="cnc-wizard-unlock-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                        <span data-i18n="laserUnlockShort">Desbloquear</span>
+                    </button>
+                </div>
+                <div class="cnc-jog-steps" id="cnc-wizard-jog-steps">
+                    <button type="button" class="laser-step-btn" data-step="0.1">0.1</button>
+                    <button type="button" class="laser-step-btn" data-step="1">1</button>
+                    <button type="button" class="laser-step-btn active" data-step="10">10</button>
+                    <button type="button" class="laser-step-btn" data-step="50">50</button>
+                    <button type="button" class="laser-step-btn" data-step="100">100</button>
+                </div>
+                <div class="cnc-jog-pad-row">
+                    <div class="laser-jog-pad" id="cnc-wizard-jog-pad">
+                        <button type="button" class="laser-jog-btn laser-jog-slot-nw" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="17" x2="7" y2="7"/><polyline points="7 15 7 7 15 7"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-yplus" data-axis="Y" data-dir="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-ne" data-axis="Y" data-dir="1" data-axis2="X" data-dir2="1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="9 7 17 7 17 15"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-xminus" data-axis="X" data-dir="-1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-home" id="cnc-wizard-home-btn" title="Home ($H)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-xplus" data-axis="X" data-dir="1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-sw" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="15 17 7 17 7 9"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-yminus" data-axis="Y" data-dir="-1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></button>
+                        <button type="button" class="laser-jog-btn laser-jog-slot-se" data-axis="Y" data-dir="-1" data-axis2="X" data-dir2="1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="7" x2="17" y2="17"/><polyline points="9 17 17 17 17 9"/></svg></button>
+                    </div>
+                    <div class="cnc-jog-z-col">
+                        <button type="button" class="laser-jog-btn laser-jog-z-btn" data-axis="Z" data-dir="1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+                        <span class="laser-jog-z-label">Z</span>
+                        <button type="button" class="laser-jog-btn laser-jog-z-btn" data-axis="Z" data-dir="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></button>
+                        <div class="cnc-jog-steps-z" id="cnc-wizard-jog-steps-z">
+                            <button type="button" class="laser-step-btn" data-step-z="0.1">0.1</button>
+                            <button type="button" class="laser-step-btn" data-step-z="0.5">0.5</button>
+                            <button type="button" class="laser-step-btn active" data-step-z="1">1</button>
+                            <button type="button" class="laser-step-btn" data-step-z="2">2</button>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn-file-action btn-file-action-accent cnc-wizard-zero-btn" id="cnc-wizard-zero-xy-btn" data-i18n="cncZeroXY">Cero aquí (XY)</button>
+            </div>
+
+            <div id="cnc-wizard-step-3" class="cnc-wizard-step" hidden>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep3Title">3. Confirmá que entra</span></p>
+                <div class="cnc-wizard-fit-outer" id="cnc-wizard-fit-outer">
+                    <div class="cnc-wizard-fit-inner" id="cnc-wizard-fit-inner"></div>
+                </div>
+                <p class="cnc-wizard-fit-text" id="cnc-wizard-fit-text"></p>
+                <label class="cnc-wizard-fit-ack" id="cnc-wizard-fit-ack-row" hidden>
+                    <input type="checkbox" id="cnc-wizard-fit-ack">
+                    <span data-i18n="cncWizardFitAck">Entiendo que el diseño excede el área configurada, continuar igual</span>
+                </label>
+            </div>
+
+            <div id="cnc-wizard-step-4" class="cnc-wizard-step" hidden>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep4Title">4. Todo listo</span></p>
+                <p class="cnc-wizard-step-hint" id="cnc-wizard-summary"></p>
+            </div>
+
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action" id="cnc-wizard-back-btn" data-i18n="cncWizardBack" hidden>Atrás</button>
+                <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-wizard-next-btn" data-i18n="cncWizardNext" disabled>Siguiente</button>
+                <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-wizard-run-btn" data-i18n="cncWizardStart" hidden>Empezar</button>
+                <button type="button" class="btn-file-action usb-classify-cancel-btn" id="cnc-wizard-cancel-btn" data-i18n="cancelAction">Cancelar</button>
             </div>
         </div>
     </div>
@@ -2147,6 +2711,6 @@
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
     <script src="/static/js/translations.js"></script>
-    <script src="/static/js/app.js?v=142"></script>
+    <script src="/static/js/app.js?v=154"></script>
 </body>
 </html>

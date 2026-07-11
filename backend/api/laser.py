@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from backend.services.laser_service import (
     get_status,
+    get_parser_state,
     get_board_info,
     start_job,
     get_job_status,
@@ -25,6 +26,7 @@ from backend.services.laser_service import (
     get_active_host,
     set_active_host,
     scan_network,
+    probe_single_host,
     list_usb_laser_ports,
     ensure_listener_ready,
     get_registered_lasers,
@@ -64,6 +66,23 @@ async def laser_scan_endpoint():
     """Escanea la red local en busca de otras placas láser (ESP3D) disponibles."""
     devices = await scan_network()
     return {"devices": devices}
+
+
+@router.get("/api/laser/scan-ip")
+async def laser_scan_ip_endpoint(ip: str):
+    """Prueba una IP puntual en vez de barrer toda la subred — para placas
+    fuera del rango detectado automáticamente (otra subred, modo Punto de
+    Acceso propio, etc.)."""
+    # Solo host[:puerto] — cualquier "/", "#" o "?" que se haya colado del
+    # campo de texto (ej. pegar una URL completa) rompe la petición HTTP más
+    # adelante de forma silenciosa (el fragmento nunca llega al servidor).
+    clean_ip = ip.strip().split("/")[0].split("#")[0].split("?")[0]
+    if not clean_ip:
+        raise HTTPException(status_code=400, detail="IP inválida")
+    device = await probe_single_host(clean_ip)
+    if not device:
+        raise HTTPException(status_code=404, detail="No se encontró una placa en esa IP")
+    return device
 
 
 @router.get("/api/laser/usb-ports")
@@ -111,9 +130,10 @@ async def laser_registry_add_endpoint(
     work_area_height: Optional[float] = Form(None),
     home_corner: Optional[str] = Form(None),
     kind: str = Form("laser"),
+    machine_profile: Optional[str] = Form(None),
 ):
     """Registra una placa (red o USB) como láser o CNC disponible en NOPAL."""
-    entry = register_laser(host, name, transport, work_area_width, work_area_height, home_corner, kind)
+    entry = register_laser(host, name, transport, work_area_width, work_area_height, home_corner, kind, machine_profile)
     return entry
 
 
@@ -133,6 +153,16 @@ async def laser_status_endpoint(host: Optional[str] = None):
     if status is None:
         return {"connected": False, "host": resolved_host}
     return {"connected": True, "host": resolved_host, **status}
+
+
+@router.get("/api/laser/parser-state")
+async def laser_parser_state_endpoint(host: Optional[str] = None):
+    """Sistema de coordenadas activo (G54/G55/...) vía '$G'."""
+    resolved_host = host or get_active_host()
+    state = await get_parser_state(host=resolved_host)
+    if state is None:
+        raise HTTPException(status_code=502, detail="No se pudo leer el estado del parser")
+    return {"host": resolved_host, **state}
 
 
 @router.get("/api/laser/info")
