@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -17,6 +18,38 @@ def get_app_version() -> str:
 
 def get_section_root(section: str) -> str:
     return GCODE_ROOT if section == "gcode" else MODELS_ROOT
+
+
+def is_git_update_available(timeout: int = 6) -> bool:
+    """Chequeo liviano de si el remoto tiene commits nuevos — usado por las
+    notificaciones. No repite la lógica completa de /api/system/version (que
+    además informa ahead/pending_commits para esa pantalla), acá solo
+    interesa el booleano, así que es una función aparte y no una que ese
+    endpoint reutilice."""
+    try:
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+        branch = branch_result.stdout.strip() or "main"
+
+        fetch_result = subprocess.run(
+            ["git", "fetch", "--quiet", "origin", branch],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+        if fetch_result.returncode != 0:
+            return False
+
+        counts_result = subprocess.run(
+            ["git", "rev-list", "--left-right", "--count", f"HEAD...origin/{branch}"],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+        parts = counts_result.stdout.split()
+        if len(parts) == 2:
+            return int(parts[1]) > 0
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return False
 
 
 def safe_section_path(section: str, relative_path: str = "") -> str:

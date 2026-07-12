@@ -5,9 +5,11 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Form, HTTPException
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi.responses import FileResponse, Response
 
+from backend.auth_deps import require_auth
+from backend.services.thumbnail_service import get_or_create_gcode_thumbnail
 from backend.utils import UPLOAD_FOLDER, get_section_root, safe_section_path
 
 router = APIRouter()
@@ -111,7 +113,7 @@ def _build_file_entry(filepath: str, url_rel_dir: str, filename: str) -> dict:
 
 
 @router.get("/api/models/thumbnail")
-async def get_model_thumbnail(path: str, section: str = "model"):
+async def get_model_thumbnail(path: str, section: str = "model", user: dict = Depends(require_auth)):
     """Miniatura PNG incrustada por el slicer en el propio G-code (thumbnail
     begin/end). 404 si el archivo no trae ninguna incrustada."""
     filepath = safe_section_path(section, path)
@@ -125,8 +127,30 @@ async def get_model_thumbnail(path: str, section: str = "model"):
     return Response(content=png_bytes, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
+@router.get("/api/gcode/thumbnail")
+def get_gcode_thumbnail(path: str, kind: str = "cnc", user: dict = Depends(require_auth)):
+    """Miniatura 2D generada por NOPAL a partir de la trayectoria real del
+    G-code (para la galería de archivos CNC/láser) — a diferencia de
+    /api/models/thumbnail (que solo extrae miniaturas ya incrustadas por un
+    slicer), esta SIEMPRE devuelve una imagen: el trazo real si el archivo
+    tiene movimientos válidos, o un PNG de fondo liso si no. Nunca 404,
+    nunca una imagen rota.
+
+    Sin `async` a propósito: un G-code de grabado raster puede tener
+    cientos de miles de líneas y parsearlo tarda varios segundos (una sola
+    vez, después queda cacheado) — si el endpoint fuera async, esos
+    segundos bloquean el event loop entero de FastAPI, cortando de paso el
+    polling de impresoras y los WS de láser/CNC que están corriendo en
+    vivo. Al ser un `def` normal, Starlette lo corre en su threadpool."""
+    try:
+        cache_path = get_or_create_gcode_thumbnail("gcode", path, kind)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return FileResponse(cache_path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
 @router.get("/api/models")
-async def get_models():
+async def get_models(user: dict = Depends(require_auth)):
     """Listado plano y recursivo de todos los archivos (usado por estadísticas)."""
     base = Path(UPLOAD_FOLDER)
     files = []
@@ -154,7 +178,7 @@ def _count_files_recursive(dir_path: str, extensions: set) -> int:
 
 
 @router.get("/api/browse")
-async def browse_folder(path: str = "", type: str = "model"):
+async def browse_folder(path: str = "", type: str = "model", user: dict = Depends(require_auth)):
     """Contenido (carpetas + archivos) de una carpeta dentro de la sección indicada."""
     section = _section_for_type(type)
     section_prefix = "gcode" if section == "gcode" else "models"
@@ -198,7 +222,7 @@ async def browse_folder(path: str = "", type: str = "model"):
 
 
 @router.post("/api/folders")
-async def create_folder(path: str = Form(""), name: str = Form(...), type: str = Form("model")):
+async def create_folder(path: str = Form(""), name: str = Form(...), type: str = Form("model"), user: dict = Depends(require_auth)):
     """Crea una subcarpeta dentro de la sección indicada."""
     section = _section_for_type(type)
     clean_name = name.strip()
@@ -220,7 +244,7 @@ async def create_folder(path: str = Form(""), name: str = Form(...), type: str =
 
 
 @router.patch("/api/folders")
-async def rename_folder(path: str = Form(...), new_name: str = Form(...), type: str = Form("model")):
+async def rename_folder(path: str = Form(...), new_name: str = Form(...), type: str = Form("model"), user: dict = Depends(require_auth)):
     """Renombra una subcarpeta existente."""
     section = _section_for_type(type)
     clean_name = new_name.strip()
@@ -246,7 +270,7 @@ async def rename_folder(path: str = Form(...), new_name: str = Form(...), type: 
 
 
 @router.delete("/api/folders")
-async def delete_folder(path: str, type: str = "model"):
+async def delete_folder(path: str, type: str = "model", user: dict = Depends(require_auth)):
     """Elimina una subcarpeta (y su contenido) de la sección indicada."""
     if not path:
         raise HTTPException(status_code=400, detail="No se puede eliminar la carpeta raíz")
@@ -263,7 +287,7 @@ async def delete_folder(path: str, type: str = "model"):
 
 
 @router.patch("/api/files")
-async def rename_file(path: str = Form(...), new_name: str = Form(...), type: str = Form("model")):
+async def rename_file(path: str = Form(...), new_name: str = Form(...), type: str = Form("model"), user: dict = Depends(require_auth)):
     """Renombra un archivo existente (conserva la extensión)."""
     section = _section_for_type(type)
     extensions = GCODE_EXTENSIONS if section == "gcode" else (MODEL_EXTENSIONS | GCODE_EXTENSIONS)
@@ -298,7 +322,7 @@ async def rename_file(path: str = Form(...), new_name: str = Form(...), type: st
 
 
 @router.delete("/api/files")
-async def delete_file(path: str, type: str = "model"):
+async def delete_file(path: str, type: str = "model", user: dict = Depends(require_auth)):
     """Elimina un archivo de la sección indicada."""
     section = _section_for_type(type)
     target_path = safe_section_path(section, path)
@@ -312,7 +336,7 @@ async def delete_file(path: str, type: str = "model"):
 
 
 @router.post("/api/files/move")
-async def move_file(path: str = Form(...), destination: str = Form(""), type: str = Form("model")):
+async def move_file(path: str = Form(...), destination: str = Form(""), type: str = Form("model"), user: dict = Depends(require_auth)):
     """Mueve un archivo a otra carpeta dentro de la misma sección."""
     section = _section_for_type(type)
 

@@ -7,3 +7,4 @@ pillow==12.2.0
 requests==2.34.2
 websockets==16.0
 pyserial==3.5
+itsdangerous==2.2.0

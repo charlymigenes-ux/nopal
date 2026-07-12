@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import json
+import logging
 import os
 import re
 import socket
@@ -12,6 +13,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 import websockets
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_LASER_HOST = "192.168.0.61"
 HTTP_TIMEOUT = 4
@@ -62,6 +65,49 @@ def _save_registry(entries: List[Dict[str, Any]]):
 
 def get_registered_lasers() -> List[Dict[str, Any]]:
     return _load_registry()
+
+
+def _registry_entry_online(entry: Dict[str, Any], network_probe_results: Dict[str, bool]) -> bool:
+    host = entry.get("host", "")
+    if _is_usb_host(host):
+        return os.path.exists(_usb_device(host))
+    return network_probe_results.get(host, False)
+
+
+def get_registered_lasers_with_status(timeout: float = 1.0) -> List[Dict[str, Any]]:
+    """Registro completo (red y USB), online o no, con un campo "online"
+    agregado por entrada — pensado para una pantalla de "todos los
+    dispositivos" en Configuración, separada del listado plano que ya
+    consumen varias pantallas (`get_registered_lasers`/`/api/laser/registry`)
+    para no sumarle una probada de red a esos llamados frecuentes.
+
+    USB: existe el /dev/ttyUSBx ahora mismo (no confirma que el firmware
+    responda, solo que el puerto sigue ahí — igual que hace list_usb_laser_ports).
+    Red: probe puntual por host registrado (no un barrido de subred como
+    /api/laser/scan)."""
+    entries = _load_registry()
+    network_hosts = [e["host"] for e in entries if not _is_usb_host(e.get("host", ""))]
+
+    probe_results: Dict[str, bool] = {}
+    if network_hosts:
+        with ThreadPoolExecutor(max_workers=min(len(network_hosts), 20)) as executor:
+            for host, reachable in executor.map(
+                lambda h: (h, _probe_host(h, timeout) is not None), network_hosts
+            ):
+                probe_results[host] = reachable
+
+    return [
+        {**entry, "online": _registry_entry_online(entry, probe_results)}
+        for entry in entries
+    ]
+
+
+async def get_registered_lasers_status() -> List[Dict[str, Any]]:
+    """Versión async de get_registered_lasers_with_status (en un hilo aparte,
+    mismo criterio que scan_network) — el probeo de red no debe bloquear el
+    event loop de FastAPI mientras espera los timeouts."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_registered_lasers_with_status)
 
 
 # ── Historial de trabajos láser (persistido) ──
@@ -155,6 +201,7 @@ def register_laser(
 
     entries.append(entry)
     _save_registry(entries)
+    logger.info(f"Dispositivo registrado: {host} ({name}, {entry['kind']}, perfil={entry['machine_profile']})")
     return entry
 
 
@@ -164,6 +211,7 @@ def unregister_laser(host: str) -> bool:
     changed = len(filtered) != len(entries)
     if changed:
         _save_registry(filtered)
+        logger.info(f"Dispositivo eliminado: {host}")
     return changed
 
 
@@ -233,7 +281,10 @@ def _probe_host(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
             "hostname": info.get("Hostname", ""),
             "firmware": info.get("Firmware") or info.get("FW version", ""),
         }
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        # DEBUG y no WARNING: un escaneo de red sondea hasta 254 IPs y que la
+        # mayoría no responda es el caso normal, no un problema real.
+        logger.debug(f"Sondeo de {ip} sin respuesta: {e}")
         return None
 
 
@@ -335,8 +386,10 @@ def _send_serial_command(host: str, command: str) -> bool:
     try:
         payload = command if command in REALTIME_SERIAL_COMMANDS else command + "\n"
         ser.write(payload.encode("utf-8"))
+        logger.debug(f"[{host}] TX (serie): {command!r}")
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[{host}] Fallo al escribir por serie '{command!r}': {e}")
         return False
 
 
@@ -353,8 +406,12 @@ def send_raw_command(host: str, command: str) -> bool:
             timeout=HTTP_TIMEOUT,
         )
         response.raise_for_status()
+        # DEBUG porque '?' se manda varias veces por segundo entre todos los
+        # dispositivos activos — sería puro ruido a INFO.
+        logger.debug(f"[{host}] TX: {command!r}")
         return True
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] Fallo al enviar '{command!r}': {e}")
         return False
 
 
@@ -432,6 +489,21 @@ def parse_status_line(line: str) -> Optional[Dict[str, Any]]:
     if "WCS" in fields:
         result["wcs"] = fields["WCS"]
 
+    if "A" in fields:
+        # Estado de accesorios de GRBL: S/C = spindle CW/CCW (láser encendido
+        # vía M3/M4), F/M = flood/mist (M8/M9 / M7). GRBL no tiene un comando
+        # dedicado para "aire" — en la gran mayoría de estos láseres la bomba
+        # de asistencia de aire está cableada al relé de flood (M8), así que
+        # "flood" es en la práctica el aire asistido, aunque el nombre viene
+        # del protocolo de GRBL, no es una lectura directa de "aire".
+        accessory = fields["A"]
+        result["accessories"] = {
+            "spindle_cw": "S" in accessory,
+            "spindle_ccw": "C" in accessory,
+            "flood": "F" in accessory,
+            "mist": "M" in accessory,
+        }
+
     return result
 
 
@@ -508,7 +580,8 @@ def sd_create_folder(host: str, path: str, name: str) -> bool:
             timeout=HTTP_TIMEOUT,
         )
         return response.ok
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] Operación SD (crear carpeta) falló: {e}")
         return False
 
 
@@ -521,7 +594,8 @@ def sd_delete_entry(host: str, path: str, name: str, is_dir: bool) -> bool:
             timeout=HTTP_TIMEOUT,
         )
         return response.ok
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] Operación SD (borrar) falló: {e}")
         return False
 
 
@@ -537,7 +611,8 @@ def sd_upload_file(host: str, path: str, filename: str, file_bytes: bytes) -> bo
             timeout=120,
         )
         return response.ok
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] Operación SD (subir {filename}) falló: {e}")
         return False
 
 
@@ -576,6 +651,9 @@ def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
     _main_loop = loop
 
 
+_ws_was_connected: Dict[str, bool] = {}
+
+
 async def _ws_listener_loop(host: str):
     # ESP3D clásico sirve su websocket en un puerto propio (81); FluidNC (que
     # reutiliza la WebUI de ESP3D) no abre ese puerto — su websocket vive en
@@ -586,10 +664,20 @@ async def _ws_listener_loop(host: str):
     buffer = _console_buffers.setdefault(host, deque(maxlen=300))
     ready_event = _listener_ready_events.setdefault(host, asyncio.Event())
     while True:
+        if _ws_was_connected.get(host):
+            # Si llegamos acá con el flag en True es porque la conexión que
+            # estaba activa recién se cayó — se loguea UNA vez la transición,
+            # no en cada reintento de 3s mientras sigue caído (mismo error
+            # de "machacar" que se acaba de arreglar en el polling del
+            # dashboard, esta vez aplicado al log en vez de a la red).
+            logger.warning(f"[{host}] WS desconectado, reintentando...")
+            _ws_was_connected[host] = False
         for uri in candidate_uris:
             try:
                 async with websockets.connect(uri, open_timeout=HTTP_TIMEOUT) as ws:
                     ready_event.set()
+                    logger.info(f"[{host}] WS conectado ({uri})")
+                    _ws_was_connected[host] = True
                     async for message in ws:
                         if isinstance(message, bytes):
                             message = message.decode("utf-8", errors="ignore")
@@ -599,11 +687,17 @@ async def _ws_listener_loop(host: str):
                             text = line.strip()
                             if not text:
                                 continue
-                            buffer.append({"message": text, "time": time.time()})
+                            # Mismo criterio que en el lector serie: los
+                            # reportes de status alimentan widgets, no la
+                            # consola visible (ver comentario en
+                            # _serial_reader_loop).
+                            if not STATUS_RE.search(text):
+                                buffer.append({"message": text, "time": time.time()})
                             for queue in list(_subscribers.get(host, [])):
                                 queue.put_nowait(text)
                 break  # el candidato conectó (aunque se haya caído después); no probar el siguiente
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[{host}] WS candidato {uri} falló: {e}")
                 continue
         ready_event.clear()
         await asyncio.sleep(3)
@@ -617,6 +711,9 @@ def _ensure_ws_listener(host: str):
         _listener_tasks[host] = asyncio.create_task(_ws_listener_loop(host))
 
 
+_serial_open_failed_logged: Dict[str, bool] = {}
+
+
 def _serial_reader_loop(host: str, device: str, baud: int, loop: asyncio.AbstractEventLoop):
     import serial
 
@@ -626,7 +723,17 @@ def _serial_reader_loop(host: str, device: str, baud: int, loop: asyncio.Abstrac
     try:
         ser = serial.Serial(device, baud, timeout=0.5)
         _serial_connections[host] = ser
-    except Exception:
+        logger.info(f"[{host}] Puerto serie {device} abierto")
+        _serial_open_failed_logged[host] = False
+    except Exception as e:
+        # Se llama a ensure_listener() en cada poll de estado de un
+        # dispositivo registrado — si el puerto USB no está conectado, cada
+        # intento genera un hilo nuevo que falla al abrir y muere al toque,
+        # así que sin este flag el mismo WARNING se repetiría en cada ciclo
+        # de poll (mismo criterio ya aplicado al listener WS).
+        if not _serial_open_failed_logged.get(host):
+            logger.warning(f"[{host}] No se pudo abrir {device}: {e}")
+            _serial_open_failed_logged[host] = True
         return
 
     # La mayoría de los adaptadores USB-serie (incluido CH340) reinician la
@@ -641,14 +748,23 @@ def _serial_reader_loop(host: str, device: str, baud: int, loop: asyncio.Abstrac
     while not stop_flag.is_set():
         try:
             raw = ser.readline()
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[{host}] Puerto serie cerrado/desconectado: {e}")
             break
         if not raw:
             continue
         text = raw.decode("utf-8", errors="ignore").strip()
         if not text:
             continue
-        buffer.append({"message": text, "time": time.time()})
+        # Los reportes de status ("<Run|MPos:...|FS:...>") llegan varias
+        # veces por segundo mientras algo los pida (polling de posición,
+        # jog en vivo) — son datos para los widgets (posición/estado/feed/
+        # overrides), no mensajes de consola; imprimirlos línea por línea
+        # inunda el log visible sin agregar nada legible para el usuario.
+        # Igual se reenvían a las colas de correlación (get_status() y
+        # afines los esperan ahí), solo no quedan en el buffer visible.
+        if not STATUS_RE.search(text):
+            buffer.append({"message": text, "time": time.time()})
         for queue in list(_subscribers.get(host, [])):
             loop.call_soon_threadsafe(queue.put_nowait, text)
 
@@ -943,9 +1059,14 @@ async def _run_job(job: LaserJob):
 
         job.state = "completed"
     except Exception as e:
+        logger.exception(f"[{job.host}] Excepción no controlada en el trabajo")
         job.state = "error"
         job.error_message = str(e)
     finally:
+        if job.state == "completed":
+            logger.info(f"[{job.host}] Trabajo completado ({job.current}/{job.total} líneas)")
+        elif job.state == "error":
+            logger.warning(f"[{job.host}] Trabajo terminó con error: {job.error_message}")
         _unsubscribe(job.host, queue)
         record_laser_job_history(job)
 
@@ -961,6 +1082,7 @@ async def _run_sd_job(job: LaserJob):
     if not sent:
         job.state = "error"
         job.error_message = "No se pudo iniciar el trabajo desde la SD"
+        logger.warning(f"[{job.host}] Trabajo (SD) terminó con error: {job.error_message}")
         record_laser_job_history(job)
         return
 
@@ -1009,21 +1131,34 @@ async def _run_sd_job(job: LaserJob):
 
             await asyncio.sleep(2)
     except Exception as e:
+        logger.exception(f"[{job.host}] Excepción no controlada en el trabajo (SD)")
         job.state = "error"
         job.error_message = str(e)
     finally:
+        if job.state == "completed":
+            logger.info(f"[{job.host}] Trabajo completado (SD): {job.filename}")
+        elif job.state == "error":
+            logger.warning(f"[{job.host}] Trabajo (SD) terminó con error: {job.error_message}")
         record_laser_job_history(job)
 
 
 def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:
-    """Inicia streaming línea por línea (WiFi/USB) — para placas sin SD."""
+    """Inicia streaming línea por línea (WiFi/USB) — para placas sin SD.
+
+    No detecta si ya hay un trabajo EXTERNO en curso (ej. mandado por
+    LightBurn directo por Bluetooth) — solo mira _jobs, que nunca se entera
+    de esos. Si arranca uno propio encima, los dos streams de G-code se
+    intercalan en el mismo parser de GRBL. Bug preexistente, fuera de
+    alcance por ahora — ver get_job_status para el lado de solo-lectura."""
     existing = _jobs.get(host)
     if existing is not None and existing.state in ("running", "paused"):
+        logger.warning(f"[{host}] No se pudo iniciar '{filename}': ya hay un trabajo en curso")
         raise RuntimeError("Ya hay un trabajo en curso en este láser")
 
     lines = gcode_text.splitlines()
     job = LaserJob(host, lines, filename, source="stream")
     _jobs[host] = job
+    logger.info(f"[{host}] Trabajo iniciado: {filename or '(stream)'} ({len(lines)} líneas)")
     asyncio.create_task(_run_job(job))
     return job.to_dict()
 
@@ -1032,47 +1167,147 @@ def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:
     """Inicia un trabajo ya subido a la SD, corriéndolo localmente en la placa."""
     existing = _jobs.get(host)
     if existing is not None and existing.state in ("running", "paused"):
+        logger.warning(f"[{host}] No se pudo iniciar '{sd_filename}' (SD): ya hay un trabajo en curso")
         raise RuntimeError("Ya hay un trabajo en curso en este láser")
 
     job = LaserJob(host, [], sd_filename, source="sd")
     _jobs[host] = job
+    logger.info(f"[{host}] Trabajo iniciado (SD): {sd_filename}")
     asyncio.create_task(_run_sd_job(job))
     return job.to_dict()
 
 
-def get_job_status(host: str) -> Dict[str, Any]:
+def _external_job_state(grbl_state: Optional[str]) -> Optional[str]:
+    """Traduce el estado crudo de GRBL a 'running'/'paused' para un trabajo
+    que NOPAL no inició (ej. mandado directo por LightBurn vía Bluetooth/USB
+    en paralelo) — None si la placa no está corriendo nada."""
+    state = (grbl_state or "").lower()
+    if state == "run":
+        return "running"
+    if state in ("hold", "door"):
+        return "paused"
+    return None
+
+
+async def get_job_status(host: str) -> Dict[str, Any]:
+    """Estado del trabajo — el propio si NOPAL lo inició Y sigue activo, o si
+    no, el estado crudo de la placa reinterpretado como un trabajo "externo"
+    (LightBurn u otro cliente hablándole por otra vía — Bluetooth, otro
+    puerto, etc. — mientras NOPAL solo observa vía su propia conexión). No
+    hay forma de saber el nombre de archivo, el G-code o el progreso real de
+    un trabajo externo — GRBL no expone esa metadata, así que quedan vacíos
+    a propósito, nunca inventados.
+
+    Un job propio en estado terminal (error/completed/cancelled) NO cuenta
+    como activo acá — sigue guardado en _jobs solo como último resultado
+    conocido, y si no se cae a revisar el estado externo, un trabajo externo
+    que arranca después en el mismo host queda invisible detrás del
+    resultado viejo (confirmado en vivo: pasó exactamente esto probando)."""
     job = _jobs.get(host)
-    if job is None:
-        return {"filename": "", "source": "", "state": "idle", "current": 0, "total": 0, "error": None}
-    return job.to_dict()
+    if job is not None and job.state in ("running", "paused"):
+        return job.to_dict()
+
+    status = await get_status(host, timeout=1.5)
+    external_state = _external_job_state(status.get("state") if status else None)
+    if external_state is not None:
+        return {
+            "filename": "",
+            "source": "external",
+            "state": external_state,
+            "current": 0,
+            "total": 0,
+            "error": None,
+        }
+    return {"filename": "", "source": "", "state": "idle", "current": 0, "total": 0, "error": None}
 
 
-def pause_job(host: str) -> bool:
+def get_active_job_hosts() -> List[Dict[str, Any]]:
+    """Hosts con un trabajo propio (iniciado por NOPAL) actualmente en curso
+    (running/paused) — solo mira el estado ya en memoria de _jobs, sin volver
+    a probar la placa, para que sea barato llamarlo seguido desde el
+    frontend. Pensado para no perder de vista un corte mientras se navega a
+    otro láser en la interfaz (que antes solo mostraba el estado del host
+    seleccionado en pantalla, no el que realmente tiene el trabajo activo).
+    No detecta trabajos externos (ej. mandados por LightBurn) — mismo límite
+    que el resto de este módulo, ver get_job_status."""
+    return [
+        {**job.to_dict(), "host": host}
+        for host, job in _jobs.items()
+        if job.state in ("running", "paused")
+    ]
+
+
+def get_laser_jobs_with_errors() -> List[Dict[str, Any]]:
+    """Trabajos propios con estado "error" — para el badge de notificaciones.
+    A propósito una función aparte de get_active_job_hosts (que solo mira
+    running/paused y ya alimenta la UI de "trabajo activo" en el frontend):
+    ensanchar ese filtro para incluir error cambiaría ese comportamiento
+    existente sin que venga a cuento acá."""
+    return [
+        {**job.to_dict(), "host": host}
+        for host, job in _jobs.items()
+        if job.state == "error"
+    ]
+
+
+async def pause_job(host: str) -> bool:
     job = _jobs.get(host)
     if job and job.state == "running":
         job.pause_requested = True
         job.state = "paused"
         send_raw_command(job.host, "!")
+        logger.info(f"[{host}] Trabajo pausado")
         return True
+    if job is None or job.state not in ("running", "paused"):
+        # Sin trabajo propio activo (no hay job, o quedó uno viejo ya
+        # terminado/con error): puede ser un trabajo externo (LightBurn u
+        # otro cliente). Revalidar contra la placa antes de mandar '!' a
+        # ciegas — el último poll puede estar desactualizado.
+        status = await get_status(host, timeout=1.5)
+        if _external_job_state(status.get("state") if status else None) == "running":
+            send_raw_command(host, "!")
+            logger.info(f"[{host}] Pausa enviada a un trabajo externo")
+            return True
     return False
 
 
-def resume_job(host: str) -> bool:
+async def resume_job(host: str) -> bool:
     job = _jobs.get(host)
     if job and job.state == "paused":
         job.pause_requested = False
         job.state = "running"
         send_raw_command(job.host, "~")
+        logger.info(f"[{host}] Trabajo reanudado")
         return True
+    if job is None or job.state not in ("running", "paused"):
+        status = await get_status(host, timeout=1.5)
+        if _external_job_state(status.get("state") if status else None) == "paused":
+            send_raw_command(host, "~")
+            logger.info(f"[{host}] Reanudación enviada a un trabajo externo")
+            return True
     return False
 
 
-def cancel_job(host: str) -> bool:
+async def cancel_job(host: str) -> bool:
     job = _jobs.get(host)
     if job and job.state in ("running", "paused"):
         job.cancel_requested = True
         job.pause_requested = False
+        logger.info(f"[{host}] Cancelación de trabajo solicitada")
         return True
+    if job is None or job.state not in ("running", "paused"):
+        # No hay loop propio (_run_job/_run_sd_job) que note un
+        # cancel_requested para un trabajo externo, así que acá el reset
+        # (\x18) se manda directo en vez de solo marcar una bandera.
+        status = await get_status(host, timeout=1.5)
+        if _external_job_state(status.get("state") if status else None) is not None:
+            send_raw_command(host, "\x18")
+            logger.warning(
+                f"[{host}] Reset enviado a un trabajo externo — quien lo esté "
+                "transmitiendo (ej. LightBurn) no se entera y va a seguir "
+                "pensando que el trabajo sigue en curso"
+            )
+            return True
     return False
 
 

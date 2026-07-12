@@ -2,14 +2,16 @@ import asyncio
 import os
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from backend.auth_deps import require_auth, require_role
 from backend.services.laser_service import (
     get_status,
     get_parser_state,
     get_board_info,
     start_job,
     get_job_status,
+    get_active_job_hosts,
     pause_job,
     resume_job,
     cancel_job,
@@ -30,6 +32,7 @@ from backend.services.laser_service import (
     list_usb_laser_ports,
     ensure_listener_ready,
     get_registered_lasers,
+    get_registered_lasers_status,
     register_laser,
     unregister_laser,
     sd_list_files,
@@ -46,13 +49,13 @@ router = APIRouter()
 
 
 @router.get("/api/laser/host")
-async def laser_host_endpoint():
+async def laser_host_endpoint(user: dict = Depends(require_auth)):
     """Host activo del láser (el que usan todas las operaciones por defecto)."""
     return {"host": get_active_host()}
 
 
 @router.post("/api/laser/host")
-async def laser_set_host_endpoint(host: str = Form(...)):
+async def laser_set_host_endpoint(host: str = Form(...), user: dict = Depends(require_auth)):
     """Cambia el host activo del láser (ej. tras elegirlo de la lista de escaneo)."""
     clean_host = host.strip()
     if not clean_host:
@@ -62,14 +65,14 @@ async def laser_set_host_endpoint(host: str = Form(...)):
 
 
 @router.get("/api/laser/scan")
-async def laser_scan_endpoint():
+async def laser_scan_endpoint(user: dict = Depends(require_auth)):
     """Escanea la red local en busca de otras placas láser (ESP3D) disponibles."""
     devices = await scan_network()
     return {"devices": devices}
 
 
 @router.get("/api/laser/scan-ip")
-async def laser_scan_ip_endpoint(ip: str):
+async def laser_scan_ip_endpoint(ip: str, user: dict = Depends(require_auth)):
     """Prueba una IP puntual en vez de barrer toda la subred — para placas
     fuera del rango detectado automáticamente (otra subred, modo Punto de
     Acceso propio, etc.)."""
@@ -86,13 +89,13 @@ async def laser_scan_ip_endpoint(ip: str):
 
 
 @router.get("/api/laser/usb-ports")
-async def laser_usb_ports_endpoint():
+async def laser_usb_ports_endpoint(user: dict = Depends(require_auth)):
     """Puertos serie USB conectados que coinciden con chips de controladoras láser."""
     return {"ports": list_usb_laser_ports()}
 
 
 @router.post("/api/laser/usb-ports/test")
-async def laser_usb_test_endpoint(device: str = Form(...)):
+async def laser_usb_test_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
     """Prueba si el puerto USB indicado responde al protocolo GRBL (envía '?')."""
     host = f"usb:{device}"
     status = await get_status(host=host, timeout=3.0)
@@ -102,19 +105,30 @@ async def laser_usb_test_endpoint(device: str = Form(...)):
 
 
 @router.get("/api/laser/registry")
-async def laser_registry_list_endpoint():
+async def laser_registry_list_endpoint(user: dict = Depends(require_auth)):
     """Placas láser registradas en NOPAL (red y USB)."""
     return {"lasers": get_registered_lasers()}
 
 
+@router.get("/api/laser/registry/status")
+async def laser_registry_status_endpoint(user: dict = Depends(require_auth)):
+    """Igual que /api/laser/registry pero con un campo "online" agregado por
+    placa (USB: existe el puerto ahora; red: probe puntual a ese host) — para
+    una pantalla de "todos los dispositivos" que los liste sin importar si
+    están conectados. Deliberadamente un endpoint aparte: /api/laser/registry
+    lo llaman varias pantallas seguido y no deben pagar el costo de una
+    probada de red en cada una."""
+    return {"lasers": await get_registered_lasers_status()}
+
+
 @router.get("/api/laser/history")
-async def laser_history_endpoint(limit: int = 50):
+async def laser_history_endpoint(limit: int = 50, user: dict = Depends(require_auth)):
     """Historial de trabajos láser (completados, cancelados o con error), más recientes primero."""
     return {"jobs": get_laser_history(limit)}
 
 
 @router.post("/api/laser/history/snapshot")
-async def laser_history_snapshot_endpoint(host: str = Form(...), snapshot: str = Form(...)):
+async def laser_history_snapshot_endpoint(host: str = Form(...), snapshot: str = Form(...), user: dict = Depends(require_auth)):
     """Adjunta la captura del grill (figura trazada) al trabajo más reciente de ese host."""
     if not attach_laser_history_snapshot(host, snapshot):
         raise HTTPException(status_code=404, detail="No hay historial para ese host")
@@ -131,6 +145,7 @@ async def laser_registry_add_endpoint(
     home_corner: Optional[str] = Form(None),
     kind: str = Form("laser"),
     machine_profile: Optional[str] = Form(None),
+    user: dict = Depends(require_role("admin")),
 ):
     """Registra una placa (red o USB) como láser o CNC disponible en NOPAL."""
     entry = register_laser(host, name, transport, work_area_width, work_area_height, home_corner, kind, machine_profile)
@@ -138,7 +153,7 @@ async def laser_registry_add_endpoint(
 
 
 @router.post("/api/laser/registry/remove")
-async def laser_registry_remove_endpoint(host: str = Form(...)):
+async def laser_registry_remove_endpoint(host: str = Form(...), user: dict = Depends(require_role("admin"))):
     """Quita una placa registrada."""
     if not unregister_laser(host):
         raise HTTPException(status_code=404, detail="No encontrado en el registro")
@@ -146,7 +161,7 @@ async def laser_registry_remove_endpoint(host: str = Form(...)):
 
 
 @router.get("/api/laser/status")
-async def laser_status_endpoint(host: Optional[str] = None):
+async def laser_status_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
     """Estado en vivo del láser (posición, estado GRBL) vía websocket."""
     resolved_host = host or get_active_host()
     status = await get_status(host=resolved_host)
@@ -156,7 +171,7 @@ async def laser_status_endpoint(host: Optional[str] = None):
 
 
 @router.get("/api/laser/parser-state")
-async def laser_parser_state_endpoint(host: Optional[str] = None):
+async def laser_parser_state_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
     """Sistema de coordenadas activo (G54/G55/...) vía '$G'."""
     resolved_host = host or get_active_host()
     state = await get_parser_state(host=resolved_host)
@@ -166,7 +181,7 @@ async def laser_parser_state_endpoint(host: Optional[str] = None):
 
 
 @router.get("/api/laser/info")
-async def laser_info_endpoint(host: Optional[str] = None):
+async def laser_info_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
     """Información estática de la placa controladora (chip, firmware, red)."""
     info = get_board_info(host=host or get_active_host())
     if not info:
@@ -175,7 +190,7 @@ async def laser_info_endpoint(host: Optional[str] = None):
 
 
 @router.post("/api/laser/command")
-async def laser_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None)):
+async def laser_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Envía un comando GRBL suelto (jog, $H, $X, etc.)."""
     target = host or get_active_host()
     await ensure_listener_ready(target)
@@ -186,7 +201,7 @@ async def laser_command_endpoint(command: str = Form(...), host: Optional[str] =
 
 
 @router.post("/api/laser/job/start")
-async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = Form(None)):
+async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Inicia el envío de un archivo G-code (de la biblioteca) al láser."""
     file_path = safe_section_path("gcode", path)
     if not os.path.isfile(file_path):
@@ -204,33 +219,41 @@ async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = 
 
 
 @router.get("/api/laser/job/status")
-async def laser_job_status_endpoint(host: Optional[str] = None):
-    return get_job_status(host or get_active_host())
+async def laser_job_status_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
+    return await get_job_status(host or get_active_host())
+
+
+@router.get("/api/laser/jobs/active")
+async def laser_active_jobs_endpoint(user: dict = Depends(require_auth)):
+    """Todos los hosts con un trabajo propio en curso ahora mismo — para que
+    el frontend no pierda de vista un corte activo aunque el usuario esté
+    viendo otro láser/CNC en la interfaz."""
+    return {"jobs": get_active_job_hosts()}
 
 
 @router.post("/api/laser/job/pause")
-async def laser_job_pause_endpoint(host: Optional[str] = Form(None)):
-    if not pause_job(host or get_active_host()):
+async def laser_job_pause_endpoint(host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
+    if not await pause_job(host or get_active_host()):
         raise HTTPException(status_code=409, detail="No hay un trabajo en curso para pausar")
     return {"success": True}
 
 
 @router.post("/api/laser/job/resume")
-async def laser_job_resume_endpoint(host: Optional[str] = Form(None)):
-    if not resume_job(host or get_active_host()):
+async def laser_job_resume_endpoint(host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
+    if not await resume_job(host or get_active_host()):
         raise HTTPException(status_code=409, detail="No hay un trabajo pausado para reanudar")
     return {"success": True}
 
 
 @router.post("/api/laser/job/cancel")
-async def laser_job_cancel_endpoint(host: Optional[str] = Form(None)):
-    if not cancel_job(host or get_active_host()):
+async def laser_job_cancel_endpoint(host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
+    if not await cancel_job(host or get_active_host()):
         raise HTTPException(status_code=409, detail="No hay un trabajo en curso para cancelar")
     return {"success": True}
 
 
 @router.get("/api/laser/console")
-async def laser_console_endpoint(host: Optional[str] = None, count: int = 100):
+async def laser_console_endpoint(host: Optional[str] = None, count: int = 100, user: dict = Depends(require_auth)):
     """Últimos mensajes transmitidos por el láser (consola en vivo)."""
     target = host or get_active_host()
     ensure_listener(target)
@@ -238,7 +261,7 @@ async def laser_console_endpoint(host: Optional[str] = None, count: int = 100):
 
 
 @router.post("/api/laser/console")
-async def laser_console_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None)):
+async def laser_console_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Envía un comando desde la consola del láser."""
     success = await send_console_command(host or get_active_host(), command)
     if not success:
@@ -247,14 +270,14 @@ async def laser_console_command_endpoint(command: str = Form(...), host: Optiona
 
 
 @router.get("/api/laser/settings")
-async def laser_settings_endpoint(host: Optional[str] = None):
+async def laser_settings_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
     """Parámetros $$ actuales de la placa GRBL."""
     settings = await get_grbl_settings(host=host or get_active_host())
     return {"settings": settings}
 
 
 @router.post("/api/laser/settings")
-async def laser_settings_update_endpoint(key: str = Form(...), value: str = Form(...), host: Optional[str] = Form(None)):
+async def laser_settings_update_endpoint(key: str = Form(...), value: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Actualiza un parámetro $$ individual."""
     result = await set_grbl_setting(host or get_active_host(), key, value)
     if not result.get("success"):
@@ -263,13 +286,13 @@ async def laser_settings_update_endpoint(key: str = Form(...), value: str = Form
 
 
 @router.get("/api/laser/queue")
-async def laser_queue_list_endpoint():
+async def laser_queue_list_endpoint(user: dict = Depends(require_auth)):
     """Trabajos en espera para enviarse al láser."""
     return {"queue": get_queue()}
 
 
 @router.post("/api/laser/queue/add")
-async def laser_queue_add_endpoint(path: str = Form(...)):
+async def laser_queue_add_endpoint(path: str = Form(...), user: dict = Depends(require_auth)):
     """Agrega un archivo G-code de la biblioteca a la cola del láser."""
     file_path = safe_section_path("gcode", path)
     if not os.path.isfile(file_path):
@@ -279,7 +302,7 @@ async def laser_queue_add_endpoint(path: str = Form(...)):
 
 
 @router.post("/api/laser/queue/remove")
-async def laser_queue_remove_endpoint(id: int = Form(...)):
+async def laser_queue_remove_endpoint(id: int = Form(...), user: dict = Depends(require_auth)):
     """Quita un trabajo de la cola sin enviarlo."""
     if not remove_from_queue(id):
         raise HTTPException(status_code=404, detail="Elemento no encontrado en la cola")
@@ -287,7 +310,7 @@ async def laser_queue_remove_endpoint(id: int = Form(...)):
 
 
 @router.get("/api/laser/sd/available")
-async def laser_sd_available_endpoint(host: Optional[str] = None):
+async def laser_sd_available_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
     """Indica si la placa activa tiene una tarjeta SD navegable."""
     target = host or get_active_host()
     loop = asyncio.get_event_loop()
@@ -296,7 +319,7 @@ async def laser_sd_available_endpoint(host: Optional[str] = None):
 
 
 @router.post("/api/laser/queue/start")
-async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = Form(None)):
+async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Saca un trabajo de la cola y lo transmite línea por línea al láser.
 
     Nota: la ejecución directa desde SD ($F=archivo) se probó contra el
@@ -307,7 +330,7 @@ async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = 
     """
     target = host or get_active_host()
 
-    current = get_job_status(target)
+    current = await get_job_status(target)
     if current.get("state") in ("running", "paused"):
         raise HTTPException(status_code=409, detail="Ya hay un trabajo en curso en este láser")
 
@@ -330,7 +353,7 @@ async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = 
 
 
 @router.get("/api/laser/sd/files")
-async def laser_sd_files_endpoint(path: str = "/", host: Optional[str] = None):
+async def laser_sd_files_endpoint(path: str = "/", host: Optional[str] = None, user: dict = Depends(require_auth)):
     """Lista archivos/carpetas de la tarjeta SD insertada en la placa (ESP3D)."""
     target = host or get_active_host()
     loop = asyncio.get_event_loop()
@@ -342,6 +365,7 @@ async def laser_sd_run_endpoint(
     path: str = Form(""),
     name: str = Form(...),
     host: Optional[str] = Form(None),
+    user: dict = Depends(require_auth),
 ):
     """Corre directamente un archivo que ya está en la SD, sin volver a subirlo.
 
@@ -362,7 +386,7 @@ async def laser_sd_run_endpoint(
 
 
 @router.post("/api/laser/sd/folder")
-async def laser_sd_folder_endpoint(path: str = Form(""), name: str = Form(...), host: Optional[str] = Form(None)):
+async def laser_sd_folder_endpoint(path: str = Form(""), name: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Crea una carpeta en la tarjeta SD."""
     target = host or get_active_host()
     loop = asyncio.get_event_loop()
@@ -378,6 +402,7 @@ async def laser_sd_delete_endpoint(
     name: str = Form(...),
     is_dir: bool = Form(False),
     host: Optional[str] = Form(None),
+    user: dict = Depends(require_auth),
 ):
     """Elimina un archivo o carpeta de la tarjeta SD."""
     target = host or get_active_host()
@@ -393,6 +418,7 @@ async def laser_sd_upload_endpoint(
     path: str = Form(""),
     host: Optional[str] = Form(None),
     file: UploadFile = File(...),
+    user: dict = Depends(require_auth),
 ):
     """Sube un archivo (desde tu computadora) directo a la tarjeta SD de la placa."""
     target = host or get_active_host()
@@ -409,6 +435,7 @@ async def laser_sd_upload_from_library_endpoint(
     gcode_path: str = Form(...),
     sd_path: str = Form(""),
     host: Optional[str] = Form(None),
+    user: dict = Depends(require_auth),
 ):
     """Envía un archivo ya subido a la biblioteca de G-code de NOPAL directo a la SD de la placa."""
     file_path = safe_section_path("gcode", gcode_path)

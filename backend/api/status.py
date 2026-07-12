@@ -1,13 +1,16 @@
 import json
+import logging
 import os
 import shutil
 import subprocess
 from typing import Optional
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException
 
+from backend.auth_deps import require_auth, require_role
 from backend.services.klipper_service import get_system_stats, get_temperature_snapshot, set_heater_target, get_toolhead_status
 from backend.utils import get_app_version
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 TEMP_PRESETS_PATH = "temperature_presets.json"
@@ -51,7 +54,7 @@ async def status():
 
 
 @router.get("/api/storage")
-async def get_storage():
+async def get_storage(user: dict = Depends(require_auth)):
     """Get disk storage information"""
     upload_folder = "uploads"
 
@@ -83,6 +86,7 @@ async def get_system_stats_endpoint(port: Optional[int] = None):
     try:
         return get_system_stats(port=port)
     except Exception as e:
+        logger.exception(f"Error al leer estadísticas del sistema (puerto {port})")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -92,11 +96,15 @@ async def get_temperatures_endpoint(port: int):
     try:
         return get_temperature_snapshot(port=port)
     except Exception as e:
+        logger.exception(f"Error al leer temperaturas (puerto {port})")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/system/temperature-target")
-async def set_temperature_target_endpoint(port: int = Form(...), heater: str = Form(...), target: float = Form(...)):
+async def set_temperature_target_endpoint(
+    port: int = Form(...), heater: str = Form(...), target: float = Form(...),
+    user: dict = Depends(require_role("admin")),
+):
     """Actualiza la temperatura objetivo de un heater (extruder, heater_bed, etc.)."""
     success = set_heater_target(port=port, heater=heater, target=target)
     if not success:
@@ -105,22 +113,23 @@ async def set_temperature_target_endpoint(port: int = Form(...), heater: str = F
 
 
 @router.get("/api/system/toolhead")
-async def get_toolhead_endpoint(port: int):
+async def get_toolhead_endpoint(port: int, user: dict = Depends(require_auth)):
     """Posición actual del cabezal, ejes homeados, factor de velocidad y offset Z."""
     try:
         return get_toolhead_status(port=port)
     except Exception as e:
+        logger.exception(f"Error al leer el cabezal (puerto {port})")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/system/temperature-presets")
-async def get_temperature_presets_endpoint():
+async def get_temperature_presets_endpoint(user: dict = Depends(require_auth)):
     """Temperaturas preestablecidas (globales) por heater, usadas por el botón PREESTAB."""
     return _load_temperature_presets()
 
 
 @router.post("/api/system/temperature-presets")
-async def set_temperature_presets_endpoint(presets: str = Form(...)):
+async def set_temperature_presets_endpoint(presets: str = Form(...), user: dict = Depends(require_role("admin"))):
     """Guarda las temperaturas preestablecidas por heater (JSON: {heater: target})."""
     try:
         parsed = json.loads(presets)
@@ -133,7 +142,7 @@ async def set_temperature_presets_endpoint(presets: str = Form(...)):
 
 
 @router.get("/api/system/version")
-async def get_version_endpoint():
+async def get_version_endpoint(user: dict = Depends(require_auth)):
     """Versión actual (commit de git) y si hay una actualización disponible en el remoto."""
     local_sha = _run_git(["rev-parse", "--short", "HEAD"])
     commit_date = _run_git(["log", "-1", "--format=%cI"])
@@ -170,7 +179,7 @@ async def get_version_endpoint():
 
 
 @router.post("/api/system/update")
-async def update_app_endpoint():
+async def update_app_endpoint(user: dict = Depends(require_role("admin"))):
     """Aplica `git pull --ff-only` para traer la última versión del repositorio."""
     branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"]) or "main"
 

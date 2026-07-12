@@ -1,5 +1,239 @@
+// ── Autenticación + barra superior global ──
+// Va primero en el archivo a propósito: envuelve window.fetch ANTES de que
+// corran las llamadas de init de más abajo (loadModels(), loadPrinters(),
+// etc.) — si esto estuviera al final del archivo, esas llamadas iniciales
+// ya se habrían disparado con el fetch original y un 401 en la primera
+// carga pasaría desapercibido (dashboard visible, resto roto en silencio).
+
+let currentAuthUser = null;
+
+const ORIGINAL_FETCH = window.fetch.bind(window);
+window.fetch = async function authAwareFetch(input, init) {
+    const response = await ORIGINAL_FETCH(input, init);
+    if (response.status === 401) {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        if (url.startsWith('/api/') && !url.startsWith('/api/auth/')) {
+            showLoginOverlay();
+        }
+    }
+    return response;
+};
+
+function showLoginOverlay() {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.hidden = false;
+    document.getElementById('login-mode-setup')?.setAttribute('hidden', '');
+    document.getElementById('login-mode-login')?.removeAttribute('hidden');
+}
+
+function showSetupOverlay() {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.hidden = false;
+    document.getElementById('login-mode-login')?.setAttribute('hidden', '');
+    document.getElementById('login-mode-setup')?.removeAttribute('hidden');
+}
+
+function hideLoginOverlay() {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.hidden = true;
+}
+
+function updateTopbarUser(user) {
+    const nameEl = document.getElementById('topbar-user-name');
+    const avatarEl = document.getElementById('topbar-user-avatar');
+    const roleEl = document.getElementById('topbar-user-role');
+    if (nameEl) nameEl.textContent = user.username;
+    if (avatarEl) avatarEl.textContent = (user.username || '?').slice(0, 1);
+    if (roleEl) roleEl.textContent = user.role === 'admin' ? t('roleAdmin') : t('roleOperator');
+}
+
+async function checkAuth() {
+    try {
+        const setupResponse = await ORIGINAL_FETCH('/api/auth/setup-required');
+        if (setupResponse.ok) {
+            const setupData = await setupResponse.json();
+            if (setupData.required) {
+                showSetupOverlay();
+                return null;
+            }
+        }
+    } catch (error) {
+        console.error(error);
+    }
+
+    try {
+        const response = await ORIGINAL_FETCH('/api/auth/me');
+        if (!response.ok) {
+            showLoginOverlay();
+            return null;
+        }
+        const user = await response.json();
+        currentAuthUser = user;
+        hideLoginOverlay();
+        updateTopbarUser(user);
+        return user;
+    } catch (error) {
+        console.error(error);
+        return null;
+    }
+}
+
+document.getElementById('login-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('login-username-input')?.value.trim() || '';
+    const password = document.getElementById('login-password-input')?.value || '';
+    const errorEl = document.getElementById('login-error');
+    const submitBtn = document.getElementById('login-submit-btn');
+    if (errorEl) errorEl.hidden = true;
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
+        const response = await ORIGINAL_FETCH('/api/auth/login', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('loginError'));
+        }
+        window.location.reload();
+    } catch (error) {
+        if (errorEl) {
+            errorEl.textContent = error.message || t('loginError');
+            errorEl.hidden = false;
+        }
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+});
+
+document.getElementById('setup-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('setup-username-input')?.value.trim() || '';
+    const password = document.getElementById('setup-password-input')?.value || '';
+    const confirmPassword = document.getElementById('setup-password-confirm-input')?.value || '';
+    const errorEl = document.getElementById('setup-error');
+    const submitBtn = document.getElementById('setup-submit-btn');
+    if (errorEl) errorEl.hidden = true;
+
+    if (password !== confirmPassword) {
+        if (errorEl) {
+            errorEl.textContent = t('setupPasswordMismatch');
+            errorEl.hidden = false;
+        }
+        return;
+    }
+
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
+        const response = await ORIGINAL_FETCH('/api/auth/setup', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('setupError'));
+        }
+        window.location.reload();
+    } catch (error) {
+        if (errorEl) {
+            errorEl.textContent = error.message || t('setupError');
+            errorEl.hidden = false;
+        }
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+});
+
+document.getElementById('topbar-logout-btn')?.addEventListener('click', async () => {
+    try {
+        await ORIGINAL_FETCH('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+        console.error(error);
+    }
+    window.location.reload();
+});
+
+function closeAllTopbarDropdowns() {
+    document.querySelectorAll('.topbar-menu-panel').forEach(panel => { panel.hidden = true; });
+}
+
+document.addEventListener('click', closeAllTopbarDropdowns);
+
+function wireTopbarDropdown(btnId, panelId) {
+    const btn = document.getElementById(btnId);
+    const panel = document.getElementById(panelId);
+    if (!btn || !panel) return;
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasOpen = !panel.hidden;
+        closeAllTopbarDropdowns();
+        panel.hidden = wasOpen;
+    });
+    panel.addEventListener('click', (e) => e.stopPropagation());
+}
+
+wireTopbarDropdown('topbar-notif-btn', 'topbar-notif-panel');
+wireTopbarDropdown('topbar-lang-btn', 'topbar-lang-panel');
+wireTopbarDropdown('topbar-user-btn', 'topbar-user-panel');
+
+function updateTopbarLangLabel() {
+    const el = document.getElementById('topbar-lang-current');
+    if (el) el.textContent = (typeof currentLanguage !== 'undefined' ? currentLanguage : 'es').toUpperCase();
+}
+
+document.querySelectorAll('#topbar-lang-panel .lang-switch-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        updateTopbarLangLabel();
+        closeAllTopbarDropdowns();
+    });
+});
+
+function renderTopbarNotifications(data) {
+    const badge = document.getElementById('topbar-notif-badge');
+    const list = document.getElementById('topbar-notif-list');
+    if (!badge || !list) return;
+    const count = data.count || 0;
+    if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : String(count);
+        badge.hidden = false;
+    } else {
+        badge.hidden = true;
+    }
+    const items = data.items || [];
+    if (!items.length) {
+        list.innerHTML = `<div class="topbar-notif-empty">${escapeHtml(t('notificationsEmpty'))}</div>`;
+        return;
+    }
+    list.innerHTML = items.map(item => `
+        <div class="topbar-notif-item severity-${escapeHtml(item.severity || 'info')}">
+            <span class="topbar-notif-item-dot"></span>
+            <span>${escapeHtml(item.message)}</span>
+        </div>
+    `).join('');
+}
+
+async function loadTopbarNotifications() {
+    if (!currentAuthUser) return;
+    try {
+        const response = await fetch('/api/notifications');
+        if (!response.ok) return;
+        renderTopbarNotifications(await response.json());
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+checkAuth().then(user => {
+    updateTopbarLangLabel();
+    if (user) loadTopbarNotifications();
+});
+setInterval(() => { if (currentAuthUser) loadTopbarNotifications(); }, 10000);
+
 const modelsGrid = document.getElementById('models');
 const printersGrid = document.getElementById('printers-grid');
+const lasersGrid = document.getElementById('lasers-grid');
+const cncGrid = document.getElementById('cnc-grid');
+const machinesColumns = document.getElementById('machines-columns');
 const printQueue = document.getElementById('print-queue');
 const totalModelsEl = document.getElementById('total-models');
 const gcodeReadyEl = document.getElementById('gcode-ready');
@@ -41,6 +275,8 @@ function isSidebarCollapsed() {
 function applySidebarCollapsed(collapsed) {
     const shell = document.querySelector('.app-shell');
     if (shell) shell.classList.toggle('sidebar-collapsed', collapsed);
+    const topbarLeft = document.querySelector('.global-topbar-left');
+    if (topbarLeft) topbarLeft.classList.toggle('sidebar-collapsed', collapsed);
 }
 
 applySidebarCollapsed(isSidebarCollapsed());
@@ -1360,7 +1596,7 @@ function renderGcodeTable(filterQuery = '') {
             <tr class="${isSelected ? 'selected' : ''}" data-model-id="${model.id}">
                 <td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${model.id}" ${checked}></td>
                 <td class="model-name">
-                    <svg class="orange-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
+                    <img class="cnc-files-thumb" loading="lazy" alt="" src="/api/gcode/thumbnail?path=${encodeURIComponent(stripSectionPrefix(model.id, 'gcode'))}&kind=printer">
                     <strong>${model.name}</strong>
                 </td>
                 <td><span class="tag-pill">MDF</span></td>
@@ -1432,7 +1668,22 @@ async function selectGcodePreview(model, rerender = true) {
     }
 
     if (gcodePreviewScene) {
-        renderGcodePreview(gcodePreviewScene, fileUrl);
+        gcodePreviewScene.innerHTML = '';
+        const relPath = stripSectionPrefix(model.id, 'gcode');
+        const img = document.createElement('img');
+        img.alt = '';
+        img.loading = 'lazy';
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'contain';
+        // Miniatura PNG pre-generada (y cacheada en disco) del trazo 2D del
+        // G-code — antes esto caía directo al render 3D en vivo (lento,
+        // recalculaba la trayectoria completa cada vez que se seleccionaba
+        // un archivo). El endpoint genera la PNG una sola vez y la reusa
+        // mientras el archivo fuente no cambie (ver get_or_create_gcode_thumbnail).
+        img.onerror = () => renderGcodePreview(gcodePreviewScene, fileUrl);
+        img.src = `/api/gcode/thumbnail?path=${encodeURIComponent(relPath)}&kind=printer`;
+        gcodePreviewScene.appendChild(img);
     }
 
     if (rerender) {
@@ -2164,6 +2415,8 @@ if (tempPresetsCancelBtn) tempPresetsCancelBtn.addEventListener('click', closeTe
 const tempPresetsBackdrop = document.getElementById('temp-presets-modal-backdrop');
 if (tempPresetsBackdrop) tempPresetsBackdrop.addEventListener('click', closeTempPresetsModal);
 
+document.getElementById('temp-presets-modal-close')?.addEventListener('click', closeTempPresetsModal);
+
 const tempPresetsSaveBtn = document.getElementById('temp-presets-save-btn');
 if (tempPresetsSaveBtn) {
     tempPresetsSaveBtn.addEventListener('click', async () => {
@@ -2608,10 +2861,40 @@ function renderPrinterQueueCard(port, data) {
     const container = document.getElementById('printer-modal-queue');
     if (!container) return;
     const jobs = data?.queued_jobs || [];
-    if (!jobs.length) {
-        container.innerHTML = '';
-        return;
-    }
+    const printer = (allPrinters || []).find(p => p.port === port);
+    const job = printer?.job;
+    const hasActiveJob = job && (job.state === 'printing' || job.state === 'paused');
+    const isEmpty = !hasActiveJob && !jobs.length;
+
+    const activeJobHtml = hasActiveJob ? `
+        <div class="printer-send-file-card printer-queue-active-card">
+            <div class="printer-send-file-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span data-i18n="fileTypeGcode">GCODE</span>
+            </div>
+            <div class="printer-send-file-meta">
+                <div class="printer-send-file-name" title="${escapeHtml(job.filename || '')}">${escapeHtml(job.filename || '—')}</div>
+                <div class="printer-send-file-details">${[
+                    job.file_size_mb != null ? `${job.file_size_mb} MB` : null,
+                    job.current_layer != null && job.total_layer != null ? `${t('activePrintLayers')} ${job.current_layer}/${job.total_layer}` : null,
+                    job.modified_at ? formatDate(job.modified_at) : null,
+                ].filter(Boolean).join(' · ')}</div>
+            </div>
+            <div class="printer-send-file-thumb">${job.thumbnail_url ? `<img src="${job.thumbnail_url}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}</div>
+        </div>
+        <div class="printer-queue-active-progress">
+            <div class="printer-queue-active-progress-bar">
+                <div class="printer-queue-active-progress-fill" style="width:${job.progress || 0}%"></div>
+            </div>
+            <span class="printer-queue-active-progress-pct">${job.progress || 0}%</span>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" id="printer-queue-cancel-active-btn" title="${t('activePrintCancel')}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    ` : '';
+
+    const totalFiles = (hasActiveJob ? 1 : 0) + jobs.length;
+    const totalTime = hasActiveJob && job.estimated_remaining != null ? formatSecondsShort(job.estimated_remaining) : '—';
 
     container.innerHTML = `
         <div class="temp-card printer-queue-card">
@@ -2625,16 +2908,30 @@ function renderPrinterQueueCard(port, data) {
                 ` : ''}
             </div>
             <div class="temp-card-body">
+                ${isEmpty ? `<div class="empty-state-small">${t('noActivePrints')}</div>` : `
+                ${activeJobHtml}
                 <div class="printer-queue-list">
                     ${jobs.map(job => `
                         <div class="printer-queue-item">
-                            <span class="printer-queue-item-name">${escapeHtml(printerQueueJobLabel(job))}</span>
+                            <span class="printer-queue-item-drag">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+                            </span>
+                            <div class="printer-queue-item-info">
+                                <span class="printer-queue-item-name">${escapeHtml(printerQueueJobLabel(job))}</span>
+                                <span class="printer-queue-item-state">${t('printerQueueWaiting')}</span>
+                            </div>
                             <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" data-job-id="${escapeHtml(job.job_id || '')}" title="${t('laserQueueRemove')}">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                         </div>
                     `).join('')}
                 </div>
+                <div class="printer-queue-summary">
+                    <div><span>${t('printerQueueTotalFiles')}</span><strong>${t('printerQueueFilesCount').replace('{count}', totalFiles)}</strong></div>
+                    <div><span>${t('printerQueueTotalTime')}</span><strong>${totalTime}</strong></div>
+                    <div><span>${t('printerQueueTotalFilament')}</span><strong>—</strong></div>
+                </div>
+                `}
             </div>
         </div>
     `;
@@ -2657,6 +2954,13 @@ function renderPrinterQueueCard(port, data) {
         } catch (error) {
             console.error(error);
         }
+    });
+
+    document.getElementById('printer-queue-cancel-active-btn')?.addEventListener('click', async () => {
+        const confirmed = await appConfirm(t('activePrintCancelConfirm'), t('activePrintStop'), 'danger');
+        if (!confirmed) return;
+        await fetch(`/api/printers/${port}/cancel`, { method: 'POST' });
+        loadPrinterQueue(port);
     });
 }
 
@@ -2765,9 +3069,9 @@ async function loadPrinters() {
         renderPrintQueue();
     } catch (error) {
         console.error(error);
-        if (printersGrid) {
-            printersGrid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
-        }
+        [printersGrid, lasersGrid, cncGrid].forEach(grid => {
+            if (grid) grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
+        });
     }
 }
 
@@ -2871,8 +3175,8 @@ function laserDashboardCardHtml(entry) {
         <div class="printer-card ${typeClass} laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
             <div class="printer-card-top">
                 <div>
-                    <h3 class="printer-name">${typeLabel}</h3>
-                    ${hostLabel ? `<p class="printer-name-sub">${escapeHtml(hostLabel)}</p>` : ''}
+                    <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
+                    ${hostLabel ? `<p class="printer-name-sub">${typeLabel}</p>` : ''}
                 </div>
                 <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
@@ -2992,7 +3296,9 @@ function notifyUser(title, body, tone = 'warning') {
 function updatePrintersViewMode(mode) {
     printersViewMode = mode;
     localStorage.setItem('printersViewMode', mode);
-    if (printersGrid) printersGrid.classList.toggle('list-view', mode === 'list');
+    [printersGrid, lasersGrid, cncGrid].forEach(grid => {
+        if (grid) grid.classList.toggle('list-view', mode === 'list');
+    });
     const gridBtn = document.getElementById('view-grid-printers');
     const listBtn = document.getElementById('view-list-printers');
     if (gridBtn) gridBtn.classList.toggle('btn-view-toggle-active', mode === 'grid');
@@ -3070,7 +3376,9 @@ function checkLaserConnectionTransitions(laserEntries) {
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
-    printersGrid.classList.toggle('list-view', printersViewMode === 'list');
+    [printersGrid, lasersGrid, cncGrid].forEach(grid => {
+        if (grid) grid.classList.toggle('list-view', printersViewMode === 'list');
+    });
     const showOffline = isShowOfflineMachinesEnabled();
     const printers = printersInput || [];
     checkPrinterJobTransitions(printers);
@@ -3126,8 +3434,8 @@ function renderPrinters(printersInput) {
             <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}" data-port="${printer.port}">
                 <div class="printer-card-top">
                     <div>
-                        <h3 class="printer-name">${t('printerType3D')}</h3>
-                        <p class="printer-name-sub">${escapeHtml(printerName)}</p>
+                        <h3 class="printer-name">${escapeHtml(printerName)}</h3>
+                        <p class="printer-name-sub">${t('printerType3D')}</p>
                     </div>
                     <div class="printer-status-icon ${normalizedStatus}" title="${statusText}">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -3179,7 +3487,7 @@ function renderPrinters(printersInput) {
         return { isOnline, sortPriority: getPrinterSortPriority(printer), html };
     });
 
-    const laserEntries = dashboardLaserEntries.map(entry => {
+    const laserOnlyEntries = dashboardLaserEntries.filter(entry => (entry.kind || 'laser') !== 'cnc').map(entry => {
         const isOnline = getLaserVisualState(entry.status) !== 'offline';
         return {
             isOnline,
@@ -3188,15 +3496,31 @@ function renderPrinters(printersInput) {
         };
     });
 
-    let combined = [...printerEntries, ...laserEntries];
-    if (!showOffline) combined = combined.filter(entry => entry.isOnline);
-    combined.sort((a, b) => a.sortPriority - b.sortPriority);
+    const cncEntries = dashboardLaserEntries.filter(entry => entry.kind === 'cnc').map(entry => {
+        const isOnline = getLaserVisualState(entry.status) !== 'offline';
+        return {
+            isOnline,
+            sortPriority: laserDashboardSortPriority(entry.status),
+            html: laserDashboardCardHtml(entry),
+        };
+    });
 
-    printersGrid.innerHTML = combined.length
-        ? combined.map(entry => entry.html).join('')
-        : `<div class="empty-state">${t('noPrintersFound')}</div>`;
+    const renderColumn = (grid, entries, emptyKey) => {
+        if (!grid) return;
+        let filtered = showOffline ? entries : entries.filter(entry => entry.isOnline);
+        filtered = [...filtered].sort((a, b) => a.sortPriority - b.sortPriority);
+        grid.innerHTML = filtered.length
+            ? filtered.map(entry => entry.html).join('')
+            : `<div class="empty-state">${t(emptyKey)}</div>`;
+    };
 
-    printersGrid.querySelectorAll('.printer-card[data-port]').forEach(card => {
+    renderColumn(printersGrid, printerEntries, 'noPrintersFound');
+    renderColumn(lasersGrid, laserOnlyEntries, 'noLasersFound');
+    renderColumn(cncGrid, cncEntries, 'noCncFound');
+
+    const columnsRoot = machinesColumns || printersGrid;
+
+    columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         card.addEventListener('click', () => {
             const port = Number(card.dataset.port);
             const printer = allPrinters.find(p => p.port === port);
@@ -3204,7 +3528,7 @@ function renderPrinters(printersInput) {
         });
     });
 
-    printersGrid.querySelectorAll('.printer-card[data-laser-host]').forEach(card => {
+    columnsRoot.querySelectorAll('.printer-card[data-laser-host]').forEach(card => {
         card.addEventListener('click', async () => {
             const host = card.dataset.laserHost;
             try {
@@ -3218,7 +3542,7 @@ function renderPrinters(printersInput) {
         });
     });
 
-    printersGrid.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
+    columnsRoot.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
         btn.addEventListener('click', async (event) => {
             event.stopPropagation();
             const port = btn.dataset.port;
@@ -3321,44 +3645,56 @@ function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDon
 
     btn.addEventListener('click', () => input.click());
 
-    input.addEventListener('change', () => {
-        const file = input.files[0];
-        if (!file) return;
+    function uploadOneFile(file) {
+        return new Promise(resolve => {
+            const row = renderUploadingRow(tableContainerId, file.name);
+            const progressFill = row ? row.querySelector('.upload-progress-fill') : null;
 
-        const row = renderUploadingRow(tableContainerId, file.name);
-        const progressFill = row ? row.querySelector('.upload-progress-fill') : null;
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', getPath());
+            formData.append('type', type);
 
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('path', getPath());
-        formData.append('type', type);
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/upload');
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/upload');
+            xhr.upload.addEventListener('progress', event => {
+                if (event.lengthComputable && progressFill) {
+                    progressFill.style.width = `${Math.round((event.loaded / event.total) * 100)}%`;
+                }
+            });
 
-        xhr.upload.addEventListener('progress', event => {
-            if (event.lengthComputable && progressFill) {
-                progressFill.style.width = `${Math.round((event.loaded / event.total) * 100)}%`;
-            }
-        });
+            xhr.addEventListener('load', () => {
+                if (!(xhr.status >= 200 && xhr.status < 300)) {
+                    if (row) row.remove();
+                    appAlert(`No se pudo subir "${file.name}".`, '', 'danger');
+                }
+                resolve();
+            });
 
-        xhr.addEventListener('load', () => {
-            input.value = '';
-            if (xhr.status >= 200 && xhr.status < 300) {
-                loadModels();
-                onDone();
-            } else {
+            xhr.addEventListener('error', () => {
                 if (row) row.remove();
-                appAlert('No se pudo subir el archivo.', '', 'danger');
-            }
-        });
+                appAlert(`No se pudo subir "${file.name}".`, '', 'danger');
+                resolve();
+            });
 
-        xhr.addEventListener('error', () => {
-            if (row) row.remove();
-            appAlert('No se pudo subir el archivo.', '', 'danger');
+            xhr.send(formData);
         });
+    }
 
-        xhr.send(formData);
+    input.addEventListener('change', async () => {
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+
+        // Uno por vez (no en paralelo) para que la barra de progreso de cada
+        // fila tenga sentido y no se sature el endpoint con varias subidas
+        // grandes a la vez.
+        for (const file of files) {
+            await uploadOneFile(file);
+        }
+        input.value = '';
+        loadModels();
+        onDone();
     });
 }
 
@@ -4406,6 +4742,221 @@ async function refreshUsbPorts() {
     }
 }
 
+async function loadRegistryDevices() {
+    const container = document.getElementById('registry-devices-list');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/laser/registry/status');
+        const data = await response.json();
+        renderRegistryDevices(data.lasers || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderRegistryDevices(devices) {
+    const container = document.getElementById('registry-devices-list');
+    if (!container) return;
+    if (!devices.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('registryDevicesEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = devices.map(device => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(device.name || device.host)}</strong>
+                <span>${escapeHtml(device.host)}</span>
+            </div>
+            <span class="device-status-pill ${device.online ? 'online' : 'offline'}">${device.online ? t('online') : t('offline')}</span>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger registry-device-remove-btn" data-host="${escapeHtml(device.host)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.registry-device-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const host = btn.dataset.host;
+            if (!(await appConfirm(t('usbUnlinkConfirm'), t('usbPortUnlink')))) return;
+            try {
+                const body = new URLSearchParams();
+                body.set('host', host);
+                await fetch('/api/laser/registry/remove', { method: 'POST', body });
+                loadRegistryDevices();
+                refreshUsbPorts();
+            } catch (error) {
+                console.error(error);
+            }
+        });
+    });
+}
+
+document.getElementById('registry-devices-refresh-btn')?.addEventListener('click', loadRegistryDevices);
+document.getElementById('usb-ports-refresh-btn')?.addEventListener('click', refreshUsbPorts);
+
+// ── Accesorios IoT (extractor/ventilador/bomba/compresor) ──
+
+const ACCESSORY_KIND_ICONS = {
+    extractor: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2"/><path d="M12.59 19.41A2 2 0 1 0 14 16H2"/><path d="M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/></svg>',
+    fan: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a3 3 0 1 0 0-6c0 2 1 4 3 6z"/><path d="M12 12a3 3 0 1 0 0 6c0-2-1-4-3-6z"/><path d="M12 12a3 3 0 1 0 6 0c-2 0-4 1-6 3z"/><path d="M12 12a3 3 0 1 0-6 0c2 0 4-1 6-3z"/></svg>',
+    pump: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
+    compressor: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="14" height="10" rx="1"/><path d="M17 12h4"/><path d="M17 16h4"/><circle cx="8" cy="14" r="2"/></svg>',
+    other: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>',
+};
+
+const accessoryDriverSwitch = createOptionSwitch('accessory-driver-switch', value => {
+    document.getElementById('accessory-config-relay').hidden = value !== 'http_relay';
+    document.getElementById('accessory-config-ha').hidden = value !== 'home_assistant';
+});
+
+async function loadAccessories() {
+    const container = document.getElementById('accessories-list');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/accessories/status');
+        const data = await response.json();
+        renderAccessories(data.accessories || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderAccessories(accessories) {
+    const container = document.getElementById('accessories-list');
+    if (!container) return;
+    if (!accessories.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('accessoriesEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = accessories.map(acc => {
+        const statusClass = acc.on === true ? 'on' : acc.on === false ? 'off' : 'unknown';
+        const statusLabel = acc.on === true ? t('accessoryOn') : acc.on === false ? t('accessoryOff') : t('accessoryUnknown');
+        const driverLabel = acc.driver === 'home_assistant' ? t('accessoryDriverHa') : t('accessoryDriverRelay');
+        return `
+        <div class="accessory-item">
+            <span class="accessory-item-icon">${ACCESSORY_KIND_ICONS[acc.kind] || ACCESSORY_KIND_ICONS.other}</span>
+            <div class="accessory-item-info">
+                <span class="accessory-item-name">${escapeHtml(acc.name)}</span>
+                <span class="accessory-item-meta">${escapeHtml(driverLabel)}</span>
+            </div>
+            <div class="accessory-item-actions">
+                <span class="device-status-pill ${statusClass}">${statusLabel}</span>
+                <button type="button" class="accessory-power-btn ${acc.on ? 'is-on' : ''}" data-id="${escapeHtml(acc.id)}" data-on="${acc.on ? 'true' : 'false'}" title="${acc.on ? t('accessoryTurnOff') : t('accessoryTurnOn')}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                </button>
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger accessory-remove-btn" data-id="${escapeHtml(acc.id)}" title="${t('accessoryRemove')}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.accessory-power-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            const nextOn = btn.dataset.on !== 'true';
+            btn.disabled = true;
+            try {
+                const body = new URLSearchParams();
+                body.set('id', id);
+                body.set('on', nextOn ? 'true' : 'false');
+                const response = await fetch('/api/accessories/power', { method: 'POST', body });
+                if (!response.ok) throw new Error('power toggle failed');
+            } catch (error) {
+                console.error(error);
+            } finally {
+                loadAccessories();
+            }
+        });
+    });
+
+    container.querySelectorAll('.accessory-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            if (!(await appConfirm(t('accessoryRemoveConfirm'), t('accessoryRemove'), 'danger'))) return;
+            try {
+                const body = new URLSearchParams();
+                body.set('id', id);
+                await fetch('/api/accessories/remove', { method: 'POST', body });
+            } catch (error) {
+                console.error(error);
+            } finally {
+                loadAccessories();
+            }
+        });
+    });
+}
+
+function openAccessoryModal() {
+    document.getElementById('accessory-name-input').value = '';
+    document.getElementById('accessory-kind-select').value = 'extractor';
+    document.getElementById('accessory-relay-on-url').value = '';
+    document.getElementById('accessory-relay-off-url').value = '';
+    document.getElementById('accessory-relay-status-url').value = '';
+    document.getElementById('accessory-relay-status-text').value = '';
+    document.getElementById('accessory-ha-base-url').value = '';
+    document.getElementById('accessory-ha-token').value = '';
+    document.getElementById('accessory-ha-entity-id').value = '';
+    accessoryDriverSwitch.setValue('http_relay');
+    document.getElementById('accessory-config-relay').hidden = false;
+    document.getElementById('accessory-config-ha').hidden = true;
+    document.getElementById('accessory-modal')?.classList.add('active');
+}
+
+function closeAccessoryModal() {
+    document.getElementById('accessory-modal')?.classList.remove('active');
+}
+
+document.getElementById('accessory-add-btn')?.addEventListener('click', openAccessoryModal);
+document.getElementById('accessory-modal-close')?.addEventListener('click', closeAccessoryModal);
+document.getElementById('accessory-modal-backdrop')?.addEventListener('click', closeAccessoryModal);
+document.getElementById('accessory-cancel-btn')?.addEventListener('click', closeAccessoryModal);
+
+document.getElementById('accessory-save-btn')?.addEventListener('click', async () => {
+    const name = document.getElementById('accessory-name-input').value.trim();
+    if (!name) return;
+    const kind = document.getElementById('accessory-kind-select').value;
+    const driver = accessoryDriverSwitch.getValue() || 'http_relay';
+
+    let config = {};
+    if (driver === 'home_assistant') {
+        config = {
+            base_url: document.getElementById('accessory-ha-base-url').value.trim(),
+            token: document.getElementById('accessory-ha-token').value.trim(),
+            entity_id: document.getElementById('accessory-ha-entity-id').value.trim(),
+        };
+    } else {
+        config = {
+            on_url: document.getElementById('accessory-relay-on-url').value.trim(),
+            off_url: document.getElementById('accessory-relay-off-url').value.trim(),
+        };
+        const statusUrl = document.getElementById('accessory-relay-status-url').value.trim();
+        const statusText = document.getElementById('accessory-relay-status-text').value.trim();
+        if (statusUrl) config.status_url = statusUrl;
+        if (statusText) config.status_on_text = statusText;
+    }
+
+    try {
+        const body = new URLSearchParams();
+        body.set('name', name);
+        body.set('kind', kind);
+        body.set('driver', driver);
+        body.set('config', JSON.stringify(config));
+        const response = await fetch('/api/accessories', { method: 'POST', body });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            showToast(err.detail || t('accessorySaveError'));
+            return;
+        }
+        closeAccessoryModal();
+        loadAccessories();
+    } catch (error) {
+        console.error(error);
+        showToast(t('accessorySaveError'));
+    }
+});
+
 let usbClassifyTarget = null;
 
 function showUsbClassifyStep(step) {
@@ -4777,6 +5328,8 @@ if (deviceRenameCancelBtn) deviceRenameCancelBtn.addEventListener('click', close
 const deviceRenameBackdrop = document.getElementById('device-rename-backdrop');
 if (deviceRenameBackdrop) deviceRenameBackdrop.addEventListener('click', closeDeviceRenameModal);
 
+document.getElementById('device-rename-modal-close')?.addEventListener('click', closeDeviceRenameModal);
+
 const deviceRenameInput = document.getElementById('device-rename-input');
 if (deviceRenameInput) {
     deviceRenameInput.addEventListener('keydown', event => {
@@ -4796,6 +5349,7 @@ function renderLaserStatus(data) {
     const pill = document.getElementById('laser-state-pill');
     const position = document.getElementById('laser-position');
     const feedSpeed = document.getElementById('laser-feed-speed');
+    const overrides = document.getElementById('laser-overrides');
     const illustrationWrap = document.getElementById('laser-illustration-wrap');
     const illustration = document.getElementById('laser-illustration');
     if (!dot || !text) return;
@@ -4810,6 +5364,7 @@ function renderLaserStatus(data) {
         if (pill) pill.textContent = '';
         if (position) position.textContent = '—';
         if (feedSpeed) feedSpeed.textContent = '—';
+        if (overrides) overrides.textContent = '— / — / —';
         return;
     }
 
@@ -4822,6 +5377,14 @@ function renderLaserStatus(data) {
     if (position) position.textContent = `X${data.x.toFixed(2)} Y${data.y.toFixed(2)} Z${data.z.toFixed(2)}`;
     const powerPercent = Math.round((data.speed / LASER_POWER_S_MAX) * 100);
     if (feedSpeed) feedSpeed.textContent = `${data.feed} / ${powerPercent}%`;
+    if (overrides) {
+        // GRBL no manda "Ov" en cada reporte de status (solo cada ~10
+        // reportes) — si todavía no llegó ninguno esta sesión, mostrar "—"
+        // en vez de 0%, que se leería como "override puesto a cero".
+        overrides.textContent = data.overrides
+            ? `${data.overrides.feed}% / ${data.overrides.rapid}% / ${data.overrides.spindle}%`
+            : '— / — / —';
+    }
     const jobSpeedEl = document.getElementById('laser-job-speed');
     if (jobSpeedEl) jobSpeedEl.textContent = `${data.feed} mm/min`;
     const jobPowerEl = document.getElementById('laser-job-power');
@@ -4846,6 +5409,29 @@ const laserJobHostTerminalSince = new Map();
 const laserJobHostStartTime = new Map();
 const LASER_JOB_TERMINAL_DISMISS_MS = 8000;
 let laserJobIsActive = false;
+let laserJobThumbFilename = null;
+
+// Igual que "Vista previa del modelo" en Gestión de Archivos: intenta la
+// miniatura real incrustada por el slicer, y si el archivo no la trae, cae
+// al render 3D de la trayectoria — en vez de una foto en vivo del trazo
+// todavía a medio dibujar en el grill (que se ve como una mancha vacía al
+// arrancar el trabajo).
+async function loadLaserJobFileThumb(container, filename) {
+    try {
+        const response = await fetch('/api/models');
+        const models = await response.json();
+        const match = models.find(m => m.id.startsWith('gcode/') && m.id.split('/').pop() === filename);
+        if (!match) {
+            container.innerHTML = '';
+            return;
+        }
+        const relPath = stripSectionPrefix(match.id, 'gcode');
+        const fileUrl = `/uploads/gcode/${relPath.split('/').map(encodeURIComponent).join('/')}`;
+        loadRealGcodeThumbnail(container, relPath, 'gcode', fileUrl);
+    } catch (error) {
+        console.error(error);
+    }
+}
 
 function formatLaserJobDuration(ms) {
     if (!Number.isFinite(ms) || ms < 0) return '—';
@@ -4857,7 +5443,7 @@ function formatLaserJobDuration(ms) {
     return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
 }
 
-function renderLaserJob(job) {
+function renderLaserJob(job, jobHost) {
     const pauseBtns = [document.getElementById('laser-pause-btn'), document.getElementById('laser-pause-btn-panel')];
     const resumeBtns = [document.getElementById('laser-resume-btn'), document.getElementById('laser-resume-btn-panel')];
     const cancelBtns = [document.getElementById('laser-cancel-btn'), document.getElementById('laser-cancel-btn-panel')];
@@ -4877,7 +5463,7 @@ function renderLaserJob(job) {
     // un láser que ya tenía un error viejo no debe reaparecer la alerta;
     // solo se avisa si la transición a error ocurrió mientras ya se estaba
     // viendo ese mismo láser en esta sesión.
-    const host = document.getElementById('laser-host-select')?.value || '';
+    const host = jobHost || document.getElementById('laser-host-select')?.value || '';
     const previousStateForHost = laserJobHostLastState.get(host);
     if (state === 'error' && previousStateForHost && previousStateForHost !== 'error') {
         appAlert(job?.error || t('laserJobErrorGeneric'), t('laserJobErrorTitle'), 'danger');
@@ -4952,10 +5538,12 @@ function renderLaserJob(job) {
         }
 
         const thumbEl = document.getElementById('laser-job-thumb');
-        if (thumbEl) {
-            const snapshot = captureLaserBedMapSnapshot();
-            thumbEl.innerHTML = snapshot ? `<img src="${snapshot}" alt="">` : '';
+        if (thumbEl && job?.filename && job.filename !== laserJobThumbFilename) {
+            laserJobThumbFilename = job.filename;
+            loadLaserJobFileThumb(thumbEl, job.filename);
         }
+    } else {
+        laserJobThumbFilename = null;
     }
 
     document.querySelectorAll('.laser-jog-btn, .laser-step-btn, #laser-unlock-btn, #laser-fire-btn, #laser-fire-power-input, #laser-air-btn').forEach(el => {
@@ -4965,6 +5553,22 @@ function renderLaserJob(job) {
 
 async function refreshLaserJob() {
     try {
+        // Antes esto solo consultaba el host seleccionado en pantalla, así
+        // que un corte en curso "desaparecía" de la ficha en cuanto el
+        // usuario miraba otro láser/CNC en la interfaz. Ahora se pregunta
+        // primero si CUALQUIER host registrado tiene un trabajo propio
+        // activo (running/paused) y, si lo hay, se muestra ese — sin
+        // importar cuál esté seleccionado — para no perderlo de vista al
+        // navegar. Si no hay ninguno activo, se sigue mostrando el estado
+        // (idle/terminado) del host seleccionado, como antes.
+        const activeResponse = await fetch('/api/laser/jobs/active');
+        const activeData = await activeResponse.json();
+        const activeJob = (activeData.jobs || [])[0];
+        if (activeJob) {
+            renderLaserJob(activeJob, activeJob.host);
+            return;
+        }
+
         const response = await fetch('/api/laser/job/status');
         const data = await response.json();
         renderLaserJob(data);
@@ -5013,6 +5617,7 @@ function renderLaserQueue(queue) {
     }
     container.innerHTML = queue.map(item => `
         <div class="laser-queue-item" data-id="${item.id}" data-path="${escapeHtml(item.path)}">
+            <div class="laser-queue-item-thumb" id="laser-queue-thumb-${item.id}"></div>
             <span class="laser-queue-item-name">${escapeHtml(item.filename)}</span>
             <div class="laser-queue-item-actions">
                 <button type="button" class="theme-option-icon-btn" data-action="play" title="${t('laserQueuePlay')}">
@@ -5028,6 +5633,11 @@ function renderLaserQueue(queue) {
     container.querySelectorAll('.laser-queue-item').forEach(row => {
         const id = parseInt(row.dataset.id, 10);
         const itemPath = row.dataset.path;
+        const thumbEl = document.getElementById(`laser-queue-thumb-${id}`);
+        if (thumbEl && itemPath) {
+            const fileUrl = `/uploads/gcode/${itemPath.split('/').map(encodeURIComponent).join('/')}`;
+            loadRealGcodeThumbnail(thumbEl, itemPath, 'gcode', fileUrl);
+        }
         row.querySelectorAll('button[data-action]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 if (btn.dataset.action === 'play') {
@@ -5677,6 +6287,22 @@ function pollLaserGamepad() {
 
             if (laserGamepadLearnTarget || !activeKind || !actionId) return;
 
+            // Con la ficha de confirmación previa a imprimir abierta ("Enmarcar /
+            // Iniciar / Cancelar"), el control debe operar ESA ficha en vez de
+            // disparar las acciones normales del panel láser (que todavía
+            // corren por detrás mientras el modal espera respuesta).
+            const startConfirmModal = document.getElementById('laser-start-confirm-modal');
+            if (startConfirmModal?.classList.contains('active')) {
+                if (isPressed && !wasPressed) {
+                    const btnId = actionId === 'frame' ? 'laser-start-confirm-frame-btn'
+                        : actionId === 'resume' ? 'laser-start-confirm-start-btn'
+                        : actionId === 'cancel' ? 'laser-start-confirm-cancel-btn'
+                        : null;
+                    if (btnId) document.getElementById(btnId)?.click();
+                }
+                return;
+            }
+
             if (actionId.startsWith('jog')) {
                 if (isPressed && now - laserGamepadLastJogAt > 160) {
                     runLaserGamepadAction(actionId, activeKind);
@@ -5796,17 +6422,18 @@ async function loadLaserHostSelector() {
     try {
         const [hostResponse, registryResponse] = await Promise.all([
             fetch('/api/laser/host'),
-            fetch('/api/laser/registry'),
+            fetch('/api/laser/registry/status'),
         ]);
         const hostData = await hostResponse.json();
         const registryData = await registryResponse.json();
-        const registryHosts = new Set((registryData.lasers || []).map(entry => entry.host));
+        const registryEntries = registryData.lasers || [];
+        const registryHosts = new Set(registryEntries.map(entry => entry.host));
 
         // Descarta restos de escaneos anteriores que ya no están registrados,
         // para que el selector no acumule dispositivos fantasma indefinidamente.
         laserHostOptions = laserHostOptions.filter(device => registryHosts.has(device.host) || device.host === hostData.host);
 
-        (registryData.lasers || []).forEach(entry => {
+        registryEntries.forEach(entry => {
             const existing = laserHostOptions.find(device => device.host === entry.host);
             if (existing) {
                 existing.hostname = entry.name;
@@ -5814,6 +6441,7 @@ async function loadLaserHostSelector() {
                 existing.workArea = entry.work_area || null;
                 existing.homeCorner = entry.home_corner || null;
                 existing.machineProfile = entry.machine_profile || 'router';
+                existing.online = entry.online;
             } else {
                 laserHostOptions.push({
                     host: entry.host,
@@ -5822,9 +6450,15 @@ async function loadLaserHostSelector() {
                     workArea: entry.work_area || null,
                     homeCorner: entry.home_corner || null,
                     machineProfile: entry.machine_profile || 'router',
+                    online: entry.online,
                 });
             }
         });
+
+        // El selector de conexión solo debe ofrecer placas realmente
+        // conectadas ahora mismo — "Todos los dispositivos" en Configuración
+        // ya cubre ver/quitar las que están sin conexión.
+        laserHostOptions = laserHostOptions.filter(device => device.online !== false);
 
         renderLaserHostOptions(hostData.host);
     } catch (error) {
@@ -5894,7 +6528,9 @@ function renderLaserConsoleLog(messages) {
 
 async function refreshLaserConsole() {
     try {
-        const response = await fetch('/api/laser/console?count=150');
+        const host = document.getElementById('laser-host-select')?.value;
+        const url = `/api/laser/console?count=150${host ? `&host=${encodeURIComponent(host)}` : ''}`;
+        const response = await fetch(url);
         const data = await response.json();
         renderLaserConsoleLog(data.messages || []);
     } catch (error) {
@@ -5903,6 +6539,10 @@ async function refreshLaserConsole() {
 }
 
 const laserConsoleForm = document.getElementById('laser-console-form');
+const laserConsoleHistory = [];
+let laserConsoleHistoryIndex = -1;
+let laserConsoleHistoryDraft = '';
+
 if (laserConsoleForm) {
     laserConsoleForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -5910,8 +6550,34 @@ if (laserConsoleForm) {
         const command = input?.value.trim();
         if (!command) return;
         input.value = '';
-        await sendLaserRawCommand(command);
+        if (laserConsoleHistory[laserConsoleHistory.length - 1] !== command) {
+            laserConsoleHistory.push(command);
+        }
+        laserConsoleHistoryIndex = -1;
+        laserConsoleHistoryDraft = '';
+        const host = document.getElementById('laser-host-select')?.value;
+        await sendLaserRawCommand(command, host);
         refreshLaserConsole();
+    });
+
+    const laserConsoleInputEl = document.getElementById('laser-console-input');
+    laserConsoleInputEl?.addEventListener('keydown', (event) => {
+        if (!laserConsoleHistory.length) return;
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (laserConsoleHistoryIndex === -1) laserConsoleHistoryDraft = laserConsoleInputEl.value;
+            laserConsoleHistoryIndex = Math.min(laserConsoleHistoryIndex + 1, laserConsoleHistory.length - 1);
+            laserConsoleInputEl.value = laserConsoleHistory[laserConsoleHistory.length - 1 - laserConsoleHistoryIndex];
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (laserConsoleHistoryIndex <= 0) {
+                laserConsoleHistoryIndex = -1;
+                laserConsoleInputEl.value = laserConsoleHistoryDraft;
+            } else {
+                laserConsoleHistoryIndex -= 1;
+                laserConsoleInputEl.value = laserConsoleHistory[laserConsoleHistory.length - 1 - laserConsoleHistoryIndex];
+            }
+        }
     });
 }
 
@@ -6494,10 +7160,11 @@ async function handleLaserCancel() {
     if (btn) btn.addEventListener('click', handleLaserCancel);
 });
 
-async function sendLaserRawCommand(command) {
+async function sendLaserRawCommand(command, host) {
     try {
         const formData = new FormData();
         formData.append('command', command);
+        if (host) formData.append('host', host);
         const response = await fetch('/api/laser/command', { method: 'POST', body: formData });
         if (!response.ok) throw new Error('No se pudo enviar el comando');
         return true;
@@ -6750,7 +7417,8 @@ function renderCncQueue(queue) {
         return;
     }
     container.innerHTML = queue.map(item => `
-        <div class="laser-queue-item" data-id="${item.id}">
+        <div class="laser-queue-item" data-id="${item.id}" data-path="${escapeHtml(item.path || '')}">
+            <div class="laser-queue-item-thumb" id="cnc-queue-thumb-${item.id}"></div>
             <span class="laser-queue-item-name">${escapeHtml(item.filename)}</span>
             <div class="laser-queue-item-actions">
                 <button type="button" class="theme-option-icon-btn" data-action="play" title="${t('laserQueuePlay')}">
@@ -6765,6 +7433,12 @@ function renderCncQueue(queue) {
 
     container.querySelectorAll('.laser-queue-item').forEach(row => {
         const id = parseInt(row.dataset.id, 10);
+        const itemPath = row.dataset.path;
+        const thumbEl = document.getElementById(`cnc-queue-thumb-${id}`);
+        if (thumbEl && itemPath) {
+            const fileUrl = `/uploads/gcode/${itemPath.split('/').map(encodeURIComponent).join('/')}`;
+            loadRealGcodeThumbnail(thumbEl, itemPath, 'gcode', fileUrl);
+        }
         row.querySelectorAll('button[data-action]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 if (btn.dataset.action === 'play') {
@@ -7756,7 +8430,10 @@ async function renderCncFilesTable() {
         }
         tbody.innerHTML = filtered.map(file => `
             <tr class="cnc-files-row" data-file-url="${escapeHtml(file.file_url)}" data-file-name="${escapeHtml(file.name)}">
-                <td>${escapeHtml(file.name)}</td>
+                <td class="model-name">
+                    <img class="cnc-files-thumb" loading="lazy" alt="" src="/api/gcode/thumbnail?path=${encodeURIComponent(stripSectionPrefix(file.id, 'gcode'))}&kind=cnc">
+                    ${escapeHtml(file.name)}
+                </td>
                 <td>${formatSize(file.size)}</td>
                 <td>${formatDate(file.modified)}</td>
                 <td>
@@ -8045,13 +8722,19 @@ function switchSection(sectionName) {
     if (sectionName === 'settings') {
         loadUpdatesStatus();
         refreshUsbPorts();
-        loadWifiDevices();
+        loadRegistryDevices();
         renderSidebarOrderList();
         renderLaserMarkerSettings();
         renderGamepadBadge();
+        loadUsersSettings();
+    } else {
+        stopSystemLogPolling();
     }
     if (sectionName === 'help') {
         loadHelpVersion();
+    }
+    if (sectionName === 'pricing') {
+        loadPricingSection();
     }
 }
 
@@ -8340,6 +9023,63 @@ const settingsUiScaleSwitch = createOptionSwitch('settings-ui-scale-switch', () 
 const settingsCncModeSwitch = createOptionSwitch('settings-cnc-mode-switch', () => saveSettings());
 const usbClassifyProfileSwitch = createOptionSwitch('usb-classify-profile-switch', null);
 const deviceRenameProfileSwitch = createOptionSwitch('device-rename-profile-switch', null);
+const systemLogLevelSwitch = createOptionSwitch('system-log-level-switch', () => renderSystemLogs());
+
+// ── Visor de logs del sistema (Configuración) ──
+let systemLogPollInterval = null;
+
+async function renderSystemLogs() {
+    const viewer = document.getElementById('system-log-viewer');
+    if (!viewer) return;
+    const level = systemLogLevelSwitch.getValue();
+    const query = level && level !== 'all' ? `&level=${encodeURIComponent(level)}` : '';
+    try {
+        const response = await fetch(`/api/logs?lines=500${query}`);
+        const data = await response.json();
+        viewer.innerHTML = (data.lines || []).map(line => {
+            let levelClass = '';
+            if (/\bERROR\b/.test(line)) levelClass = 'console-line-level-error';
+            else if (/\bWARNING\b/.test(line)) levelClass = 'console-line-level-warning';
+            return `<div class="console-line ${levelClass}"><span class="console-line-message">${escapeHtml(line)}</span></div>`;
+        }).join('');
+        viewer.scrollTop = viewer.scrollHeight;
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+document.getElementById('system-log-refresh-btn')?.addEventListener('click', renderSystemLogs);
+
+function startSystemLogPolling() {
+    renderSystemLogs();
+    stopSystemLogPolling();
+    // Un log no necesita el ritmo de 600ms/4s usado en otros lados — 15s
+    // alcanza de sobra para un panel de diagnóstico que se refresca a pedido.
+    systemLogPollInterval = setInterval(renderSystemLogs, 15000);
+}
+
+function stopSystemLogPolling() {
+    if (systemLogPollInterval) { clearInterval(systemLogPollInterval); systemLogPollInterval = null; }
+}
+
+const systemLogsModal = document.getElementById('system-logs-modal');
+const systemLogsModalBackdrop = document.getElementById('system-logs-modal-backdrop');
+const systemLogsModalClose = document.getElementById('system-logs-modal-close');
+const systemLogOpenBtn = document.getElementById('system-log-open-btn');
+
+function openSystemLogsModal() {
+    if (systemLogsModal) systemLogsModal.classList.add('active');
+    startSystemLogPolling();
+}
+
+function closeSystemLogsModal() {
+    if (systemLogsModal) systemLogsModal.classList.remove('active');
+    stopSystemLogPolling();
+}
+
+if (systemLogOpenBtn) systemLogOpenBtn.addEventListener('click', openSystemLogsModal);
+if (systemLogsModalBackdrop) systemLogsModalBackdrop.addEventListener('click', closeSystemLogsModal);
+if (systemLogsModalClose) systemLogsModalClose.addEventListener('click', closeSystemLogsModal);
 
 function applyUiScale(scale) {
     document.documentElement.style.fontSize = `${scale}%`;
@@ -8968,9 +9708,840 @@ loadLaserHistory();
 loadTopbarServerStats();
 refreshDashboardLaserCard();
 refreshUsbPorts();
+loadAccessories();
 
 // Refresh printers every 5 seconds
 setInterval(loadPrinters, 5000);
 setInterval(loadTopbarServerStats, 10000);
-setInterval(refreshDashboardLaserCard, 4000);
+setInterval(loadAccessories, 10000);
+// Antes cada 4s — con 6 dispositivos registrados en paralelo, cada uno
+// pudiendo tardar hasta ~8s en darse por vencido si está apagado/desconectado
+// (5s de ensure_listener_ready + 3s de espera de respuesta en get_status),
+// los ciclos se apilaban entre sí y competían por la única conexión que cada
+// placa GRBL soporta — eso era la causa real de "se desconecta seguido y la
+// página queda lenta". 20s conserva el aviso de conexión/desconexión
+// (checkLaserConnectionTransitions) sin la contención constante.
+setInterval(refreshDashboardLaserCard, 20000);
 setInterval(refreshUsbPorts, 8000);
+
+// ── Cotizador ──
+
+const PRICING_JOB_TYPE_MAP = {
+    printer: { section: 'model', machineKind: 'printer', materialKind: 'filament' },
+    laser_cut: { section: 'gcode', machineKind: 'laser', materialKind: null },
+    laser_engrave: { section: 'gcode', machineKind: 'laser', materialKind: null },
+    cnc: { section: 'gcode', machineKind: 'cnc', materialKind: null },
+};
+
+const PRICING_JOB_TYPE_LABEL_KEYS = {
+    printer: 'pricingJobTypePrinter',
+    laser_cut: 'pricingJobTypeLaserCut',
+    laser_engrave: 'pricingJobTypeLaserEngrave',
+    cnc: 'pricingJobTypeCnc',
+};
+
+let pricingJobType = 'printer';
+let pricingBrowsePath = '';
+let pricingBrowseData = { folders: [], files: [] };
+let pricingSelectedFile = null;
+let pricingMachines = [];
+let pricingMaterials = [];
+let pricingExtraCosts = [];
+let pricingLastQuoteResult = null;
+let pricingLastSavedQuoteId = null;
+let pricingQuoteRequestTimer = null;
+let pricingQuoteDate = null;
+let pricingWired = false;
+
+function pricingSection() {
+    return PRICING_JOB_TYPE_MAP[pricingJobType].section;
+}
+
+function pricingJobTypeLabel(type) {
+    const key = PRICING_JOB_TYPE_LABEL_KEYS[type];
+    return key ? t(key) : '—';
+}
+
+function _formatMinutes(totalMinutes) {
+    const m = Math.round(totalMinutes);
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return h ? `${h}h ${mm}m` : `${mm}m`;
+}
+
+function ensurePricingValidUntilDefault() {
+    const input = document.getElementById('pricing-valid-until-input');
+    if (input && !input.value) {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        input.value = d.toISOString().slice(0, 10);
+    }
+}
+
+async function loadPricingSection() {
+    wirePricingSection();
+    await loadPricingCatalogs();
+    await loadPricingFileBrowser(pricingBrowsePath);
+    renderPricingExtraCosts();
+    loadPricingQuotesHistory();
+    ensurePricingValidUntilDefault();
+    updatePricingBreadcrumbState();
+    schedulePricingQuoteRefresh();
+}
+
+function wirePricingSection() {
+    if (pricingWired) return;
+    pricingWired = true;
+
+    document.querySelectorAll('#pricing-job-type-switch .option-switch-btn').forEach(btn => {
+        btn.addEventListener('click', () => setPricingJobType(btn.dataset.value));
+    });
+    document.querySelectorAll('#pricing-detail-level-switch .option-switch-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#pricing-detail-level-switch .option-switch-btn').forEach(b => b.classList.toggle('active', b === btn));
+        });
+    });
+
+    document.getElementById('pricing-machine-select')?.addEventListener('change', () => {
+        pricingLastSavedQuoteId = null;
+        schedulePricingQuoteRefresh();
+    });
+    document.getElementById('pricing-material-select')?.addEventListener('change', () => {
+        pricingLastSavedQuoteId = null;
+        schedulePricingQuoteRefresh();
+    });
+    document.getElementById('pricing-color-select')?.addEventListener('change', () => { pricingLastSavedQuoteId = null; });
+
+    const qtyInput = document.getElementById('pricing-quantity-input');
+    qtyInput?.addEventListener('input', () => {
+        pricingLastSavedQuoteId = null;
+        schedulePricingQuoteRefresh();
+    });
+    document.getElementById('pricing-qty-minus')?.addEventListener('click', () => {
+        if (!qtyInput) return;
+        qtyInput.value = Math.max(1, (parseInt(qtyInput.value, 10) || 1) - 1);
+        qtyInput.dispatchEvent(new Event('input'));
+    });
+    document.getElementById('pricing-qty-plus')?.addEventListener('click', () => {
+        if (!qtyInput) return;
+        qtyInput.value = (parseInt(qtyInput.value, 10) || 1) + 1;
+        qtyInput.dispatchEvent(new Event('input'));
+    });
+
+    document.getElementById('pricing-currency-select')?.addEventListener('change', () => renderPricingCostSummary(pricingLastQuoteResult));
+    document.getElementById('pricing-exchange-rate-input')?.addEventListener('input', () => renderPricingCostSummary(pricingLastQuoteResult));
+
+    document.getElementById('pricing-add-extra-cost-btn')?.addEventListener('click', addPricingExtraCostRow);
+    document.getElementById('pricing-replace-file-btn')?.addEventListener('click', showPricingFileBrowserAgain);
+    document.getElementById('pricing-new-quote-btn')?.addEventListener('click', resetPricingWizard);
+    document.getElementById('pricing-discard-btn')?.addEventListener('click', resetPricingWizard);
+    document.getElementById('pricing-copy-id-btn')?.addEventListener('click', copyPricingQuoteId);
+
+    document.getElementById('pricing-save-btn')?.addEventListener('click', savePricingQuote);
+    document.getElementById('pricing-print-btn')?.addEventListener('click', () => openPricingPrintPreview());
+    document.getElementById('pricing-send-btn')?.addEventListener('click', () => sendPricingQuoteAction());
+
+    wireTopbarDropdown('pricing-header-menu-btn', 'pricing-header-menu-panel');
+}
+
+function updatePricingBreadcrumbState() {
+    const step1 = document.getElementById('pricing-breadcrumb-step-1');
+    const step2 = document.getElementById('pricing-breadcrumb-step-2');
+    const step3 = document.getElementById('pricing-breadcrumb-step-3');
+    const sub1 = document.getElementById('pricing-breadcrumb-sub-1');
+    if (!step1 || !step2 || !step3) return;
+
+    const hasFile = !!pricingSelectedFile;
+    const hasQuote = !!pricingLastQuoteResult;
+
+    if (sub1) sub1.textContent = hasFile ? t('pricingStep1SubDone') : t('pricingStep1SubEmpty');
+    step1.classList.toggle('done', hasFile);
+    step1.classList.toggle('active', !hasFile);
+    step2.classList.toggle('done', hasQuote);
+    step2.classList.toggle('active', hasFile && !hasQuote);
+    step3.classList.toggle('active', hasQuote);
+}
+
+function setPricingJobType(type) {
+    if (!PRICING_JOB_TYPE_MAP[type] || pricingJobType === type) return;
+    pricingJobType = type;
+    pricingBrowsePath = '';
+    pricingSelectedFile = null;
+    pricingLastQuoteResult = null;
+    pricingLastSavedQuoteId = null;
+    document.getElementById('pricing-selected-file-block').hidden = true;
+    document.getElementById('pricing-file-empty').hidden = false;
+    document.getElementById('pricing-file-info-card').hidden = true;
+    document.querySelectorAll('#pricing-job-type-switch .option-switch-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value === type);
+    });
+    renderPricingMaterialSelect();
+    renderPricingMachineSelect();
+    loadPricingFileBrowser('');
+    renderPricingCostSummary(null);
+    renderPricingDetectedParams(null);
+    renderPricingFileInfo(null);
+    updatePricingBreadcrumbState();
+}
+
+function showPricingFileBrowserAgain() {
+    pricingSelectedFile = null;
+    document.getElementById('pricing-selected-file-block').hidden = true;
+    document.getElementById('pricing-file-empty').hidden = false;
+    renderPricingFileBrowser();
+    updatePricingBreadcrumbState();
+}
+
+function resetPricingWizard() {
+    pricingSelectedFile = null;
+    pricingLastQuoteResult = null;
+    pricingLastSavedQuoteId = null;
+    pricingExtraCosts = [];
+    pricingQuoteDate = null;
+    document.getElementById('pricing-file-empty').hidden = false;
+    document.getElementById('pricing-selected-file-block').hidden = true;
+    document.getElementById('pricing-file-info-card').hidden = true;
+    const qtyInput = document.getElementById('pricing-quantity-input');
+    if (qtyInput) qtyInput.value = 1;
+    const notesInput = document.getElementById('pricing-notes-input');
+    if (notesInput) notesInput.value = '';
+    const validUntilInput = document.getElementById('pricing-valid-until-input');
+    if (validUntilInput) validUntilInput.value = '';
+    ensurePricingValidUntilDefault();
+    renderPricingFileBrowser();
+    renderPricingExtraCosts();
+    renderPricingCostSummary(null);
+    renderPricingDetectedParams(null);
+    renderPricingFileInfo(null);
+    renderPricingAdditionalInfo(null);
+    updatePricingBreadcrumbState();
+    closeAllTopbarDropdowns();
+}
+
+function copyPricingQuoteId() {
+    if (!pricingLastSavedQuoteId) return;
+    navigator.clipboard?.writeText(pricingLastSavedQuoteId)
+        .then(() => showToast(t('pricingIdCopied')))
+        .catch(() => {});
+}
+
+async function loadPricingCatalogs() {
+    try {
+        const [materialsRes, machinesRes] = await Promise.all([
+            fetch('/api/pricing/materials'),
+            fetch('/api/pricing/machines'),
+        ]);
+        pricingMaterials = materialsRes.ok ? (await materialsRes.json()).materials : [];
+        pricingMachines = machinesRes.ok ? (await machinesRes.json()).machines : [];
+    } catch (error) {
+        console.error(error);
+        pricingMaterials = [];
+        pricingMachines = [];
+    }
+    renderPricingMaterialSelect();
+    renderPricingMachineSelect();
+}
+
+function renderPricingMaterialSelect() {
+    const select = document.getElementById('pricing-material-select');
+    if (!select) return;
+    const wantKind = PRICING_JOB_TYPE_MAP[pricingJobType].materialKind;
+    const relevant = pricingMaterials.filter(m => wantKind ? m.kind === wantKind : m.kind !== 'filament');
+    const prevValue = select.value;
+    select.innerHTML = relevant.length
+        ? relevant.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('')
+        : `<option value="">${escapeHtml(t('pricingNoMaterials'))}</option>`;
+    if (relevant.some(m => m.id === prevValue)) select.value = prevValue;
+}
+
+function renderPricingMachineSelect() {
+    const select = document.getElementById('pricing-machine-select');
+    if (!select) return;
+    const wantKind = PRICING_JOB_TYPE_MAP[pricingJobType].machineKind;
+    const relevant = pricingMachines.filter(m => m.kind === wantKind);
+    const prevValue = select.value;
+    select.innerHTML = `<option value="">${escapeHtml(t('pricingNoMachine'))}</option>` +
+        relevant.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('');
+    if (relevant.some(m => m.id === prevValue)) select.value = prevValue;
+}
+
+async function loadPricingFileBrowser(path) {
+    pricingBrowsePath = path;
+    const container = document.getElementById('pricing-file-browser');
+    if (container) container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('pricingLoading'))}</div>`;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&type=${encodeURIComponent(pricingSection())}`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        pricingBrowseData = await response.json();
+    } catch (error) {
+        console.error(error);
+        pricingBrowseData = { folders: [], files: [] };
+    }
+    renderPricingBreadcrumb();
+    renderPricingFileBrowser();
+}
+
+function renderPricingBreadcrumb() {
+    const container = document.getElementById('pricing-file-breadcrumb');
+    if (!container) return;
+    const rootLabel = pricingSection() === 'model' ? t('navPrinting3d') : t('pricingLaserCnc');
+    const parts = pricingBrowsePath ? pricingBrowsePath.split('/') : [];
+    let accPath = '';
+    const crumbs = [`<button type="button" data-path="">${escapeHtml(rootLabel)}</button>`];
+    parts.forEach(part => {
+        accPath = accPath ? `${accPath}/${part}` : part;
+        crumbs.push('<span>/</span>');
+        crumbs.push(`<button type="button" data-path="${escapeHtml(accPath)}">${escapeHtml(part)}</button>`);
+    });
+    container.innerHTML = crumbs.join(' ');
+    container.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => loadPricingFileBrowser(btn.dataset.path));
+    });
+}
+
+function renderPricingFileBrowser() {
+    const container = document.getElementById('pricing-file-browser');
+    if (!container) return;
+    const folders = pricingBrowseData.folders || [];
+    const files = pricingBrowseData.files || [];
+    if (!folders.length && !files.length) {
+        container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noFilesFound'))}</div>`;
+        return;
+    }
+
+    const folderRows = folders.map(folder => `
+        <button type="button" class="pricing-file-row folder" data-path="${escapeHtml(folder.path)}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>${escapeHtml(folder.name)}</span>
+            <span class="pricing-file-row-meta">${folder.file_count}</span>
+        </button>
+    `);
+    const fileRows = files.map(file => `
+        <button type="button" class="pricing-file-row${pricingSelectedFile && pricingSelectedFile.id === file.id ? ' selected' : ''}" data-id="${escapeHtml(file.id)}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>${escapeHtml(file.name)}</span>
+            <span class="pricing-file-row-meta">${escapeHtml(formatSize(file.size))}</span>
+        </button>
+    `);
+
+    container.innerHTML = folderRows.join('') + fileRows.join('');
+    container.querySelectorAll('.pricing-file-row.folder').forEach(btn => {
+        btn.addEventListener('click', () => loadPricingFileBrowser(btn.dataset.path));
+    });
+    container.querySelectorAll('.pricing-file-row:not(.folder)').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const file = files.find(f => f.id === btn.dataset.id);
+            if (file) selectPricingFile(file);
+        });
+    });
+}
+
+function selectPricingFile(file) {
+    pricingSelectedFile = file;
+    pricingLastQuoteResult = null;
+    pricingLastSavedQuoteId = null;
+
+    const emptyBox = document.getElementById('pricing-file-empty');
+    if (emptyBox) emptyBox.hidden = true;
+    const block = document.getElementById('pricing-selected-file-block');
+    if (block) block.hidden = false;
+    const nameEl = document.getElementById('pricing-selected-file-name');
+    if (nameEl) nameEl.textContent = file.name;
+    const subEl = document.getElementById('pricing-selected-file-sub');
+    if (subEl) subEl.textContent = `${(file.extension || '').replace('.', '').toUpperCase()} · ${formatSize(file.size)}`;
+
+    const thumb = document.getElementById('pricing-selected-file-thumb');
+    if (thumb) {
+        const relPath = stripSectionPrefix(file.id, pricingSection());
+        loadRealGcodeThumbnail(thumb, relPath, pricingSection(), file.file_url);
+    }
+
+    updatePricingBreadcrumbState();
+    schedulePricingQuoteRefresh();
+}
+
+function addPricingExtraCostRow() {
+    pricingExtraCosts.push({ label: '', amount: 0, category: 'consumable' });
+    renderPricingExtraCosts();
+    schedulePricingQuoteRefresh();
+}
+
+function removePricingExtraCostRow(index) {
+    pricingExtraCosts.splice(index, 1);
+    renderPricingExtraCosts();
+    schedulePricingQuoteRefresh();
+}
+
+function renderPricingExtraCosts() {
+    const container = document.getElementById('pricing-extra-costs-list');
+    if (!container) return;
+    if (!pricingExtraCosts.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = pricingExtraCosts.map((cost, index) => `
+        <div class="pricing-extra-cost-row" data-index="${index}">
+            <input type="text" class="pricing-extra-cost-label" placeholder="${escapeHtml(t('pricingCostLabelPlaceholder'))}" value="${escapeHtml(cost.label)}">
+            <input type="number" class="pricing-extra-cost-amount" min="0" step="0.01" value="${cost.amount}">
+            <select class="pricing-extra-cost-category">
+                <option value="consumable"${cost.category === 'consumable' ? ' selected' : ''}>${escapeHtml(t('pricingCategoryConsumable'))}</option>
+                <option value="additional"${cost.category === 'additional' ? ' selected' : ''}>${escapeHtml(t('pricingCategoryAdditional'))}</option>
+            </select>
+            <button type="button" class="pricing-extra-cost-remove-btn" title="${escapeHtml(t('pricingRemoveCost'))}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.pricing-extra-cost-row').forEach(row => {
+        const index = parseInt(row.dataset.index, 10);
+        row.querySelector('.pricing-extra-cost-label').addEventListener('input', (e) => {
+            pricingExtraCosts[index].label = e.target.value;
+            pricingLastSavedQuoteId = null;
+            schedulePricingQuoteRefresh();
+        });
+        row.querySelector('.pricing-extra-cost-amount').addEventListener('input', (e) => {
+            pricingExtraCosts[index].amount = parseFloat(e.target.value) || 0;
+            pricingLastSavedQuoteId = null;
+            schedulePricingQuoteRefresh();
+        });
+        row.querySelector('.pricing-extra-cost-category').addEventListener('change', (e) => {
+            pricingExtraCosts[index].category = e.target.value;
+            pricingLastSavedQuoteId = null;
+            schedulePricingQuoteRefresh();
+        });
+        row.querySelector('.pricing-extra-cost-remove-btn').addEventListener('click', () => removePricingExtraCostRow(index));
+    });
+}
+
+function schedulePricingQuoteRefresh() {
+    clearTimeout(pricingQuoteRequestTimer);
+    pricingQuoteRequestTimer = setTimeout(refreshPricingQuote, 400);
+}
+
+async function refreshPricingQuote() {
+    if (!pricingSelectedFile) {
+        renderPricingCostSummary(null);
+        renderPricingFileInfo(null);
+        renderPricingAdditionalInfo(null);
+        return;
+    }
+    const materialSelect = document.getElementById('pricing-material-select');
+    const materialId = materialSelect ? materialSelect.value : '';
+    if (!materialId) {
+        renderPricingCostSummary(null);
+        return;
+    }
+    const machineId = document.getElementById('pricing-machine-select')?.value || '';
+    const quantity = parseFloat(document.getElementById('pricing-quantity-input')?.value) || 1;
+    const relPath = stripSectionPrefix(pricingSelectedFile.id, pricingSection());
+    const validExtraCosts = pricingExtraCosts.filter(c => c.label && c.amount);
+
+    const formData = new FormData();
+    formData.append('path', relPath);
+    formData.append('section', pricingSection());
+    formData.append('material_id', materialId);
+    formData.append('quantity', quantity);
+    if (machineId) formData.append('machine_id', machineId);
+    formData.append('extra_costs', JSON.stringify(validExtraCosts));
+
+    try {
+        const response = await fetch('/api/pricing/quote', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo calcular la cotización.');
+        }
+        const result = await response.json();
+        pricingLastQuoteResult = result;
+        pricingLastSavedQuoteId = null;
+        pricingQuoteDate = new Date();
+        renderPricingCostSummary(result);
+        renderPricingDetectedParams(result.extracted);
+        renderPricingFileInfo(result);
+        renderPricingAdditionalInfo(result);
+        updatePricingBreadcrumbState();
+    } catch (error) {
+        console.error(error);
+        pricingLastQuoteResult = null;
+        renderPricingCostSummary(null, error.message);
+        updatePricingBreadcrumbState();
+    }
+}
+
+function renderPricingCostSummary(result, errorMessage) {
+    const linesContainer = document.getElementById('pricing-cost-lines');
+    const subtotalRow = document.getElementById('pricing-cost-subtotal-row');
+    const marginRow = document.getElementById('pricing-cost-margin-row');
+    const totalRow = document.getElementById('pricing-cost-total-row');
+    const printBtn = document.getElementById('pricing-print-btn');
+    const saveBtn = document.getElementById('pricing-save-btn');
+    const sendBtn = document.getElementById('pricing-send-btn');
+    if (!linesContainer) return;
+
+    if (!result) {
+        linesContainer.innerHTML = `<div class="empty-state-small">${errorMessage ? escapeHtml(errorMessage) : escapeHtml(t('pricingSummaryEmpty'))}</div>`;
+        if (subtotalRow) subtotalRow.hidden = true;
+        if (marginRow) marginRow.hidden = true;
+        if (totalRow) totalRow.hidden = true;
+        if (saveBtn) saveBtn.disabled = true;
+        if (printBtn) printBtn.disabled = true;
+        if (sendBtn) sendBtn.disabled = true;
+        return;
+    }
+
+    // El selector de moneda/tipo de cambio es solo de presentación: multiplica
+    // lo que ya calculó el backend para mostrarlo en otra moneda, pero NUNCA
+    // se manda al guardar — la cotización persistida siempre queda en la
+    // moneda base (result.costs.currency), para no inventar una tasa de
+    // conversión que nadie confirmó.
+    const baseCurrency = result.costs.currency;
+    const displayCurrency = document.getElementById('pricing-currency-select')?.value || baseCurrency;
+    const rate = parseFloat(document.getElementById('pricing-exchange-rate-input')?.value) || 1;
+    const fmt = (amount) => `${displayCurrency} ${(amount * rate).toFixed(2)}`;
+
+    linesContainer.innerHTML = result.cost_lines.map((line, index) => `
+        <div class="pricing-cost-line">
+            <span class="pricing-cost-line-icon icon-${line.key}">${index + 1}</span>
+            <span class="pricing-cost-line-body">
+                <span>
+                    <span class="pricing-cost-line-label">${escapeHtml(line.label)}</span>
+                    ${line.detail ? `<span class="pricing-cost-line-detail">${escapeHtml(line.detail)}</span>` : ''}
+                </span>
+                <span class="pricing-cost-line-amount${line.missing ? ' missing' : ''}">${line.missing ? '—' : fmt(line.amount)}</span>
+            </span>
+        </div>
+    `).join('');
+
+    const subtotalAmountEl = document.getElementById('pricing-cost-subtotal-amount');
+    if (subtotalAmountEl) subtotalAmountEl.textContent = fmt(result.costs.subtotal);
+    const marginPillEl = document.getElementById('pricing-margin-pill');
+    if (marginPillEl) marginPillEl.textContent = result.costs.margin_percentage != null ? `${result.costs.margin_percentage}%` : '';
+    const marginAmountEl = document.getElementById('pricing-cost-margin-amount');
+    if (marginAmountEl) marginAmountEl.textContent = fmt(result.costs.margin_cost);
+    const totalAmountEl = document.getElementById('pricing-cost-total-amount');
+    if (totalAmountEl) totalAmountEl.textContent = `${fmt(result.costs.total)}${result.costs.total_is_partial ? ' *' : ''}`;
+
+    if (subtotalRow) subtotalRow.hidden = false;
+    if (marginRow) marginRow.hidden = false;
+    if (totalRow) totalRow.hidden = false;
+    if (saveBtn) saveBtn.disabled = false;
+    if (printBtn) printBtn.disabled = !pricingLastSavedQuoteId;
+    if (sendBtn) sendBtn.disabled = !pricingLastSavedQuoteId;
+}
+
+function renderPricingDetectedParams(extracted) {
+    const card = document.getElementById('pricing-detected-card');
+    const grid = document.getElementById('pricing-detected-grid');
+    if (!card || !grid) return;
+    if (!extracted || !extracted.slicer_settings) {
+        card.hidden = true;
+        return;
+    }
+    const s = extracted.slicer_settings;
+    const items = [
+        [t('pricingNozzleTemp'), s.nozzle_temp_c != null ? `${s.nozzle_temp_c} °C` : null],
+        [t('pricingBedTemp'), s.bed_temp_c != null ? `${s.bed_temp_c} °C` : null],
+        [t('pricingSpeed'), s.print_speed_mm_s != null ? `${s.print_speed_mm_s} mm/s` : null],
+        [t('pricingInfill'), s.infill_percent != null ? `${s.infill_percent}%` : null],
+        [t('pricingSupports'), s.supports == null ? null : (s.supports ? t('pricingYes') : t('pricingNo'))],
+        [t('pricingAdhesion'), s.adhesion || null],
+    ];
+    grid.innerHTML = items.map(([label, value]) => `
+        <div class="pricing-detected-item">
+            <span class="label">${escapeHtml(label)}</span>
+            <span class="value${value == null ? ' missing' : ''}">${value == null ? '—' : escapeHtml(String(value))}</span>
+        </div>
+    `).join('');
+    card.hidden = false;
+}
+
+function renderPricingFileInfo(result) {
+    const card = document.getElementById('pricing-file-info-card');
+    const list = document.getElementById('pricing-file-info-list');
+    if (!card || !list) return;
+    if (!result) {
+        card.hidden = true;
+        return;
+    }
+    const e = result.extracted;
+    const rows = [[t('pricingInfoJobType'), pricingJobTypeLabel(pricingJobType), 'pill']];
+    if (e.estimated_time_minutes != null) rows.push([t('pricingInfoTime'), _formatMinutes(e.estimated_time_minutes)]);
+    if (e.filament_g != null) rows.push([t('pricingInfoWeight'), `${e.filament_g.toFixed(2)} g`]);
+    if (e.cut_length_mm != null) rows.push([t('pricingInfoCutLength'), `${(e.cut_length_mm / 1000).toFixed(2)} m`]);
+    if (e.bounding_box_area_m2 != null) rows.push([t('pricingInfoArea'), `${e.bounding_box_area_m2.toFixed(3)} m²`]);
+
+    list.innerHTML = rows.map(([label, value, kind]) => `
+        <div class="pricing-info-row">
+            <span>${escapeHtml(label)}</span>
+            ${kind === 'pill' ? `<span class="device-status-pill on">${escapeHtml(value)}</span>` : `<strong>${escapeHtml(value)}</strong>`}
+        </div>
+    `).join('');
+    card.hidden = false;
+}
+
+function renderPricingAdditionalInfo(result) {
+    const totalTimeEl = document.getElementById('pricing-info-total-time');
+    const dateEl = document.getElementById('pricing-info-quote-date');
+    const idEl = document.getElementById('pricing-info-quote-id');
+    const copyBtn = document.getElementById('pricing-copy-id-btn');
+
+    if (totalTimeEl) totalTimeEl.textContent = result && result.total_time_minutes != null ? _formatMinutes(result.total_time_minutes) : '—';
+    if (dateEl) dateEl.textContent = pricingQuoteDate ? pricingQuoteDate.toLocaleString() : '—';
+    if (idEl) idEl.textContent = pricingLastSavedQuoteId || '—';
+    if (copyBtn) copyBtn.hidden = !pricingLastSavedQuoteId;
+}
+
+async function savePricingQuote() {
+    if (!pricingLastQuoteResult) return;
+    const saveBtn = document.getElementById('pricing-save-btn');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        const detailLevel = document.querySelector('#pricing-detail-level-switch .option-switch-btn.active')?.dataset.value || 'standard';
+        const quotePayload = {
+            ...pricingLastQuoteResult,
+            job_type: pricingJobType,
+            color: document.getElementById('pricing-color-select')?.value || null,
+            detail_level: detailLevel,
+            valid_until: document.getElementById('pricing-valid-until-input')?.value || null,
+            notes: document.getElementById('pricing-notes-input')?.value.trim() || null,
+        };
+        const formData = new FormData();
+        formData.append('quote', JSON.stringify(quotePayload));
+        const response = await fetch('/api/pricing/quotes', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(t('pricingSaveError'));
+        const saved = await response.json();
+        pricingLastSavedQuoteId = saved.id;
+        showToast(`${t('pricingQuoteSaved')}: ${saved.id}`);
+        document.getElementById('pricing-print-btn').disabled = false;
+        document.getElementById('pricing-send-btn').disabled = false;
+        renderPricingAdditionalInfo(pricingLastQuoteResult);
+        loadPricingQuotesHistory();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('pricingSaveError'), '', 'danger');
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+function openPricingPrintPreview(quoteId) {
+    const id = quoteId || pricingLastSavedQuoteId;
+    if (!id) return;
+    window.open(`/cotizador/print/${encodeURIComponent(id)}`, '_blank');
+}
+
+async function sendPricingQuoteAction(quoteId) {
+    const id = quoteId || pricingLastSavedQuoteId;
+    if (!id) return;
+    try {
+        const formData = new FormData();
+        formData.append('status', 'sent');
+        const response = await fetch(`/api/pricing/quotes/${encodeURIComponent(id)}/status`, { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(t('pricingSendError'));
+        showToast(t('pricingQuoteSent'));
+        loadPricingQuotesHistory();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('pricingSendError'), '', 'danger');
+    }
+}
+
+async function loadPricingQuotesHistory() {
+    try {
+        const response = await fetch('/api/pricing/quotes');
+        if (!response.ok) throw new Error('No se pudo cargar el historial');
+        const data = await response.json();
+        renderPricingQuotesTable(data.quotes || []);
+    } catch (error) {
+        console.error(error);
+        renderPricingQuotesTable([]);
+    }
+}
+
+function renderPricingQuotesTable(quotes) {
+    const tbody = document.getElementById('pricing-quotes-tbody');
+    if (!tbody) return;
+    if (!quotes.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-state">${escapeHtml(t('pricingNoQuotes'))}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = quotes.map(quote => {
+        const date = quote.created_at ? new Date(quote.created_at * 1000).toLocaleString() : '—';
+        const total = quote.costs ? `${quote.costs.currency} ${quote.costs.total.toFixed(2)}` : '—';
+        const status = quote.status || 'draft';
+        const statusKey = `pricingStatus_${status}`;
+        const statusLabel = t(statusKey) !== statusKey ? t(statusKey) : status;
+        const jobTypeLabel = quote.job_type ? pricingJobTypeLabel(quote.job_type) : '—';
+        return `
+            <tr>
+                <td>${escapeHtml(quote.id)}</td>
+                <td class="pricing-quote-file-cell">
+                    <span class="pricing-quote-file-name">${escapeHtml(quote.file?.name || '—')}</span>
+                    <span class="pricing-quote-material-name">${escapeHtml(quote.material?.name || '')}</span>
+                </td>
+                <td>${escapeHtml(jobTypeLabel)}</td>
+                <td>${escapeHtml(total)}</td>
+                <td>${escapeHtml(date)}</td>
+                <td><span class="device-status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></td>
+                <td class="pricing-quote-row-actions">
+                    <button type="button" class="pricing-quote-print-btn" data-id="${escapeHtml(quote.id)}" title="${escapeHtml(t('pricingPrintPreview'))}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.querySelectorAll('.pricing-quote-print-btn').forEach(btn => {
+        btn.addEventListener('click', () => openPricingPrintPreview(btn.dataset.id));
+    });
+}
+
+// ── Configuración > Usuarios ──
+
+async function loadUsersSettings() {
+    const card = document.getElementById('users-settings-card');
+    if (!card) return;
+    if (!currentAuthUser || currentAuthUser.role !== 'admin') {
+        card.hidden = true;
+        return;
+    }
+    card.hidden = false;
+    try {
+        const response = await fetch('/api/auth/users');
+        if (!response.ok) throw new Error('No se pudo cargar la lista de usuarios');
+        const data = await response.json();
+        renderUsersList(data.users || []);
+    } catch (error) {
+        console.error(error);
+        renderUsersList([]);
+    }
+}
+
+function renderUsersList(users) {
+    const container = document.getElementById('users-list');
+    if (!container) return;
+    if (!users.length) {
+        container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('usersEmpty'))}</div>`;
+        return;
+    }
+
+    container.innerHTML = users.map(user => `
+        <div class="usb-port-item" data-id="${escapeHtml(user.id)}">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(user.username)}</strong>
+                <span>${user.created_at ? new Date(user.created_at * 1000).toLocaleDateString() : ''}</span>
+            </div>
+            <select class="user-item-role-select" data-id="${escapeHtml(user.id)}">
+                <option value="operador"${user.role === 'operador' ? ' selected' : ''}>${escapeHtml(t('usersRoleOperator'))}</option>
+                <option value="admin"${user.role === 'admin' ? ' selected' : ''}>${escapeHtml(t('usersRoleAdmin'))}</option>
+            </select>
+            <button type="button" class="theme-option-icon-btn user-reset-password-btn" data-id="${escapeHtml(user.id)}" title="${escapeHtml(t('usersResetPassword'))}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger user-remove-btn" data-id="${escapeHtml(user.id)}" title="${escapeHtml(t('usersRemove'))}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.user-item-role-select').forEach(select => {
+        select.addEventListener('change', async () => {
+            try {
+                const formData = new FormData();
+                formData.append('user_id', select.dataset.id);
+                formData.append('role', select.value);
+                const response = await fetch('/api/auth/users/update', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error();
+                showToast(t('usersUpdated'));
+            } catch (error) {
+                console.error(error);
+                appAlert(t('usersUpdateError'), '', 'danger');
+                loadUsersSettings();
+            }
+        });
+    });
+
+    container.querySelectorAll('.user-reset-password-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const newPassword = prompt(t('usersResetPasswordPrompt'));
+            if (!newPassword) return;
+            try {
+                const formData = new FormData();
+                formData.append('user_id', btn.dataset.id);
+                formData.append('new_password', newPassword);
+                const response = await fetch('/api/auth/users/update', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error();
+                showToast(t('usersPasswordReset'));
+            } catch (error) {
+                console.error(error);
+                appAlert(t('usersUpdateError'), '', 'danger');
+            }
+        });
+    });
+
+    container.querySelectorAll('.user-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!(await appConfirm(t('usersRemoveConfirm'), t('usersRemove')))) return;
+            try {
+                const formData = new FormData();
+                formData.append('user_id', btn.dataset.id);
+                const response = await fetch('/api/auth/users/remove', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.detail || t('usersUpdateError'));
+                }
+                loadUsersSettings();
+            } catch (error) {
+                console.error(error);
+                appAlert(error.message || t('usersUpdateError'), '', 'danger');
+            }
+        });
+    });
+}
+
+document.getElementById('user-add-btn')?.addEventListener('click', async () => {
+    const usernameInput = document.getElementById('user-add-username-input');
+    const passwordInput = document.getElementById('user-add-password-input');
+    const username = usernameInput?.value.trim() || '';
+    const password = passwordInput?.value || '';
+    const role = document.querySelector('#user-add-role-switch .option-switch-btn.active')?.dataset.value || 'operador';
+    const errorEl = document.getElementById('user-add-error');
+    if (errorEl) errorEl.hidden = true;
+    if (!username || !password) {
+        if (errorEl) {
+            errorEl.textContent = t('usersAddMissingFields');
+            errorEl.hidden = false;
+        }
+        return;
+    }
+    try {
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
+        formData.append('role', role);
+        const response = await fetch('/api/auth/users', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('usersAddError'));
+        }
+        if (usernameInput) usernameInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        showToast(t('usersAdded'));
+        loadUsersSettings();
+    } catch (error) {
+        console.error(error);
+        if (errorEl) {
+            errorEl.textContent = error.message || t('usersAddError');
+            errorEl.hidden = false;
+        }
+    }
+});
+
+document.querySelectorAll('#user-add-role-switch .option-switch-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#user-add-role-switch .option-switch-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+});

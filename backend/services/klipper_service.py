@@ -81,11 +81,17 @@ def normalize_printer_payload(
     filament_type = None
     estimated_time = None
     thumbnail_url = None
+    file_size_mb = None
+    modified_at = None
     if client and host and filename and job_state in ("printing", "paused"):
         metadata = client.get_file_metadata(filename) or {}
         layer_height = metadata.get("layer_height")
         filament_type = metadata.get("filament_type")
         estimated_time = metadata.get("estimated_time")
+        if metadata.get("size") is not None:
+            file_size_mb = round(metadata["size"] / (1024 * 1024), 2)
+        if metadata.get("modified") is not None:
+            modified_at = metadata["modified"]
         thumbnails = metadata.get("thumbnails") or []
         if thumbnails:
             largest = max(thumbnails, key=lambda thumb: thumb.get("width", 0))
@@ -127,6 +133,8 @@ def normalize_printer_payload(
             "filament_type": filament_type,
             "estimated_time": estimated_time,
             "thumbnail_url": thumbnail_url,
+            "file_size_mb": file_size_mb,
+            "modified_at": modified_at,
         },
         "path": printer_info.get("config_file") or printer_info.get("log_file") or f"/printer/{port}",
     }
@@ -321,6 +329,9 @@ class MoonrakerClient:
             return False
 
 
+_moonraker_ports_seen: set = set()
+
+
 def find_moonraker_instances() -> List[Dict[str, Any]]:
     """
     Busca instancias activas de Moonraker.
@@ -329,6 +340,7 @@ def find_moonraker_instances() -> List[Dict[str, Any]]:
     """
 
     printers = []
+    ports_found = set()
 
     for port in range(7125, 7128):
 
@@ -347,8 +359,19 @@ def find_moonraker_instances() -> List[Dict[str, Any]]:
             "name": str(real_name),
             "port": port
         })
+        ports_found.add(port)
 
-        logger.info(f"Moonraker encontrado en puerto {port}")
+        # Esta función se llama cada 5s desde el poll del dashboard — loguear
+        # "encontrado" en cada ciclo, para cada instancia, inunda el archivo
+        # sin aportar nada nuevo. Solo se avisa la primera vez que aparece.
+        if port not in _moonraker_ports_seen:
+            logger.info(f"Moonraker encontrado en puerto {port}")
+
+    for port in _moonraker_ports_seen - ports_found:
+        logger.warning(f"Moonraker en puerto {port} dejó de responder")
+
+    _moonraker_ports_seen.clear()
+    _moonraker_ports_seen.update(ports_found)
 
     return printers
 

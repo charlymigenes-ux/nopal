@@ -10,10 +10,16 @@ uploads/
 previews/
 backups/
 database/
+logs/
 laser_registry.json
 laser_history.json
 temperature_presets.json
 scheduled_prints.json
+pricing_config.json
+quotes_registry.json
+accessory_registry.json
+auth_users.json
+.session_secret
 
 # Entorno / configuración local
 .env
