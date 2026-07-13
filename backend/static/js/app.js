@@ -4910,7 +4910,10 @@ function renderRegistryDevices(devices) {
                 <span>${escapeHtml(device.host)}</span>
             </div>
             <span class="usb-port-firmware-badge">${escapeHtml(deviceFirmwareBadgeLabel(device.firmware))}</span>
-            <span class="device-status-pill ${device.online ? 'online' : 'offline'}">${device.online ? t('online') : t('offline')}</span>
+            ${device.conflict
+                ? `<span class="device-status-pill conflict" title="${escapeHtml(device.conflict)}">${escapeHtml(t('deviceConflict'))}</span>`
+                : `<span class="device-status-pill ${device.online ? 'online' : 'offline'}">${device.online ? t('online') : t('offline')}</span>`
+            }
             <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger registry-device-remove-btn" data-host="${escapeHtml(device.host)}" title="${escapeHtml(t('usbPortUnlink'))}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -9019,7 +9022,10 @@ function renderMarlinRegistryList(printers) {
                 <strong>${escapeHtml(printer.name || printer.device)}</strong>
                 <span>${escapeHtml(printer.device)} · ${printer.baud || 115200} bps</span>
             </div>
-            <span class="device-status-pill ${printer.online ? 'online' : 'offline'}">${printer.online ? t('online') : t('offline')}</span>
+            ${printer.conflict
+                ? `<span class="device-status-pill conflict" title="${escapeHtml(printer.conflict)}">${escapeHtml(t('deviceConflict'))}</span>`
+                : `<span class="device-status-pill ${printer.online ? 'online' : 'offline'}">${printer.online ? t('online') : t('offline')}</span>`
+            }
             <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger marlin-printer-remove-btn" data-device="${escapeHtml(printer.device)}" title="${escapeHtml(t('usbPortUnlink'))}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -9077,6 +9083,14 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
     if (!device || !name) return;
     closeMarlinRegisterModal();
     try {
+        const testFormData = new FormData();
+        testFormData.append('device', device);
+        const testResponse = await fetch('/api/marlin-printers/usb-ports/test', { method: 'POST', body: testFormData });
+        if (!testResponse.ok) {
+            const data = await testResponse.json().catch(() => ({}));
+            throw new Error(data.detail || t('usbTestFailed'));
+        }
+
         const formData = new FormData();
         formData.append('device', device);
         formData.append('name', name);
@@ -9085,6 +9099,7 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
         showToast(`${name}: ${t('marlinPrinterRegisterSuccess')}`);
     } catch (error) {
         console.error(error);
+        showToast(error.message || t('usbScanFailed'), 'error');
     } finally {
         loadMarlinPrintersSettingsCard();
         refreshMarlinPrintersGrid();
@@ -9780,6 +9795,11 @@ function switchSection(sectionName) {
     }
     if (sectionName === 'pricing') {
         loadPricingSection();
+    }
+    if (sectionName === 'marlin') {
+        loadMarlinSection();
+    } else {
+        stopMarlinPrintersPolling();
     }
 }
 

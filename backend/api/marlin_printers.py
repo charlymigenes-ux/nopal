@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from backend.auth_deps import require_auth, require_role
 from backend.services.marlin_printer_service import (
     list_usb_marlin_ports,
+    probe_marlin,
     get_registered_printers,
     get_registered_printers_with_status,
     register_printer,
@@ -46,6 +47,14 @@ async def marlin_printers_registry_status_endpoint(user: dict = Depends(require_
     return {"printers": get_registered_printers_with_status()}
 
 
+@router.post("/api/marlin-printers/usb-ports/test")
+async def marlin_usb_test_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+    """Prueba si el puerto USB indicado responde al protocolo Marlin (M105)."""
+    if not await probe_marlin(device):
+        raise HTTPException(status_code=502, detail="No se detectó respuesta Marlin en este puerto")
+    return {"connected": True, "device": device}
+
+
 @router.post("/api/marlin-printers/registry")
 async def marlin_printers_registry_add_endpoint(
     device: str = Form(...),
@@ -53,8 +62,12 @@ async def marlin_printers_registry_add_endpoint(
     baud: int = Form(115200),
     user: dict = Depends(require_role("admin")),
 ):
-    """Registra una impresora Marlin conectada por USB."""
-    return register_printer(device, name, baud)
+    """Registra una impresora Marlin conectada por USB. El handshake es
+    obligatorio server-side (no solo confiar en que el frontend haya
+    llamado a /usb-ports/test antes) — así el registro sigue siendo
+    seguro incluso si algo llama a este endpoint directo."""
+    verified_marlin = await probe_marlin(device, baud)
+    return register_printer(device, name, baud, verified_marlin)
 
 
 @router.post("/api/marlin-printers/registry/remove")

@@ -46,16 +46,121 @@ def get_registered_printers() -> List[Dict[str, Any]]:
     return _load_registry()
 
 
+def _probe_marlin_sync(device: str, baud: int = 115200, timeout: float = 3.0) -> bool:
+    """Handshake liviano y autocontenido, análogo a
+    laser_service._probe_grbl_sync: abre su propia conexión (no la
+    persistente de ensure_listener), manda M105 y confirma que la respuesta
+    trae temperaturas con el formato de Marlin — sin dejar hilos ni puertos
+    abiertos colgados si el resultado es negativo."""
+    try:
+        import serial
+    except ImportError:
+        return False
+    try:
+        ser = serial.Serial(device, baud, timeout=0.5)
+    except Exception:
+        return False
+    try:
+        time.sleep(2)  # Marlin también resetea al abrir el puerto (DTR)
+        try:
+            ser.reset_input_buffer()
+            ser.write(b"M105\n")
+        except Exception:
+            return False
+        end_time = time.monotonic() + timeout
+        while time.monotonic() < end_time:
+            try:
+                raw = ser.readline()
+            except Exception:
+                return False
+            if not raw:
+                continue
+            text = raw.decode("utf-8", errors="ignore").strip()
+            if marlin_driver.TEMP_RE.search(text):
+                return True
+        return False
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+
+async def probe_marlin(device: str, baud: int = 115200, timeout: float = 3.0) -> bool:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _probe_marlin_sync, device, baud, timeout)
+
+
+def _reconcile_usb_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Mismo patrón que laser_service._reconcile_usb_entries: autocorrige el
+    `device` de cada impresora usando su ubicación física USB (estable) como
+    ancla, confirmando con un handshake Marlin real antes de adoptar una
+    ruta nueva. Si no confirma, marca 'conflict' en vez de tocar la ruta."""
+    from backend.services.laser_service import _resolve_usb_location, _location_for_device
+
+    changed = False
+    result: List[Dict[str, Any]] = []
+
+    for entry in entries:
+        stored_device = entry.get("device", "")
+        location = entry.get("location")
+
+        if not location:
+            if os.path.exists(stored_device):
+                found_location = _location_for_device(stored_device)
+                if found_location:
+                    entry = {**entry, "location": found_location}
+                    changed = True
+            result.append(entry)
+            continue
+
+        if entry.get("conflict"):
+            resolved = _resolve_usb_location(location)
+            if resolved == stored_device:
+                entry = {**entry, "conflict": None}
+                changed = True
+            result.append(entry)
+            continue
+
+        resolved_device = _resolve_usb_location(location)
+        if resolved_device is None or resolved_device == stored_device:
+            result.append(entry)
+            continue
+
+        if _probe_marlin_sync(resolved_device, baud=entry.get("baud") or 115200):
+            entry = {**entry, "device": resolved_device, "conflict": None}
+            changed = True
+            logger.info(f"Puerto USB renumerado, autocorregido: {stored_device} -> {resolved_device}")
+        else:
+            entry = {**entry, "conflict": "Puerto reasignado a otra placa — revisar cableado"}
+            changed = True
+            logger.warning(f"[{stored_device}] Conflicto: '{location}' ya no responde como Marlin (ahora en {resolved_device})")
+        result.append(entry)
+
+    if changed:
+        _save_registry(result)
+    return result
+
+
 def get_registered_printers_with_status() -> List[Dict[str, Any]]:
-    """Mismo criterio que laser_service para hosts USB: solo confirma que el
-    puerto /dev/ttyUSBx sigue existiendo, no que el firmware responda."""
+    """Mismo criterio que laser_service para hosts USB: confirma que el
+    puerto /dev/ttyUSBx sigue existiendo, y que la reconciliación (ver
+    _reconcile_usb_entries) no la haya marcado en conflicto."""
+    entries = _reconcile_usb_entries(_load_registry())
     return [
-        {**entry, "online": os.path.exists(entry.get("device", ""))}
-        for entry in _load_registry()
+        {**entry, "online": not entry.get("conflict") and os.path.exists(entry.get("device", ""))}
+        for entry in entries
     ]
 
 
-def register_printer(device: str, name: str, baud: int = 115200) -> Dict[str, Any]:
+def register_printer(
+    device: str,
+    name: str,
+    baud: int = 115200,
+    verified_marlin: Optional[bool] = None,
+) -> Dict[str, Any]:
+    from backend.services.laser_service import _location_for_device
+
     entries = [e for e in _load_registry() if e.get("device") != device]
     existing = next((e for e in _load_registry() if e.get("device") == device), None)
     entry = {
@@ -63,6 +168,10 @@ def register_printer(device: str, name: str, baud: int = 115200) -> Dict[str, An
         "name": name,
         "baud": baud,
         "registered_at": existing.get("registered_at") if existing else time.time(),
+        "location": _location_for_device(device),
+        "verified_marlin": verified_marlin if verified_marlin is not None else (
+            existing.get("verified_marlin") if existing else False
+        ),
     }
     entries.append(entry)
     _save_registry(entries)
@@ -93,14 +202,27 @@ def list_usb_marlin_ports() -> List[Dict[str, Any]]:
     ofertado en los dos flujos de alta."""
     from backend.services.laser_service import list_usb_laser_ports, get_registered_lasers
 
-    claimed_lasers = {
-        e["host"][len("usb:"):] for e in get_registered_lasers()
-        if e.get("host", "").startswith("usb:")
+    laser_entries = [
+        e for e in get_registered_lasers() if e.get("host", "").startswith("usb:")
+    ]
+    claimed_laser_locations = {e["location"] for e in laser_entries if e.get("location")}
+    claimed_laser_devices = {
+        e["host"][len("usb:"):] for e in laser_entries if not e.get("location")
     }
-    claimed_printers = {e.get("device") for e in _load_registry()}
+
+    printer_entries = _load_registry()
+    claimed_printer_locations = {e["location"] for e in printer_entries if e.get("location")}
+    claimed_printer_devices = {
+        e.get("device") for e in printer_entries if not e.get("location") and e.get("device")
+    }
+
+    claimed_locations = claimed_laser_locations | claimed_printer_locations
+    claimed_devices = claimed_laser_devices | claimed_printer_devices
+
     return [
         port for port in list_usb_laser_ports()
-        if port["device"] not in claimed_lasers and port["device"] not in claimed_printers
+        if port["device"] not in claimed_devices
+        and not (port.get("location") and port["location"] in claimed_locations)
     ]
 
 
@@ -225,7 +347,18 @@ def get_console_buffer(device: str, count: int = 100) -> List[Dict[str, Any]]:
     return messages[-count:]
 
 
+def _is_conflicted(device: str) -> bool:
+    entry = next((e for e in _load_registry() if e.get("device") == device), None)
+    return bool((entry or {}).get("conflict"))
+
+
 def _send_raw(device: str, command: str) -> bool:
+    if _is_conflicted(device):
+        # La reconciliación (_reconcile_usb_entries) no pudo confirmar que
+        # ahí sigue la misma impresora que se registró — no se le manda nada
+        # hasta que el usuario re-vincule a mano desde Configuración.
+        logger.warning(f"[{device}] Comando bloqueado: dispositivo en conflicto, requiere re-vincular")
+        return False
     ser = _serial_connections.get(device)
     if ser is None:
         ensure_listener(device)

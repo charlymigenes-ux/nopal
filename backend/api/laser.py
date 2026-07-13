@@ -30,6 +30,7 @@ from backend.services.laser_service import (
     scan_network,
     probe_single_host,
     list_usb_laser_ports,
+    probe_grbl,
     ensure_listener_ready,
     get_registered_lasers,
     get_registered_lasers_status,
@@ -152,7 +153,13 @@ async def laser_registry_add_endpoint(
     user: dict = Depends(require_role("admin")),
 ):
     """Registra una placa (red o USB) como láser o CNC disponible en NOPAL."""
-    entry = register_laser(host, name, transport, work_area_width, work_area_height, home_corner, kind, machine_profile, firmware)
+    verified_grbl = None
+    if host.startswith("usb:"):
+        verified_grbl = await probe_grbl(host[len("usb:"):])
+    entry = register_laser(
+        host, name, transport, work_area_width, work_area_height, home_corner,
+        kind, machine_profile, firmware, verified_grbl,
+    )
     return entry
 
 

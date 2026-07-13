@@ -13,6 +13,7 @@ database/
 logs/
 laser_registry.json
 laser_history.json
+marlin_printer_registry.json
 temperature_presets.json
 scheduled_prints.json
 pricing_config.json

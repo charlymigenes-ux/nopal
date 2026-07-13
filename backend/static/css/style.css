@@ -7952,6 +7952,11 @@ body.green .laser-start-confirm-copies input {
     color: var(--text-muted);
 }
 
+.device-status-pill.conflict {
+    background: rgba(245, 158, 11, 0.16);
+    color: #f59e0b;
+}
+
 /* ── Accesorios IoT (dashboard) ── */
 
 .accessories-list {

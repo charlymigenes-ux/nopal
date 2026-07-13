@@ -70,10 +70,82 @@ def get_registered_lasers() -> List[Dict[str, Any]]:
 
 
 def _registry_entry_online(entry: Dict[str, Any], network_probe_results: Dict[str, bool]) -> bool:
+    if entry.get("conflict"):
+        # Hay algo respondiendo en ese puerto, pero la reconciliación no
+        # pudo confirmar que sigue siendo la misma placa — se reporta
+        # offline a propósito para que no se le manden comandos a ciegas.
+        return False
     host = entry.get("host", "")
     if _is_usb_host(host):
         return os.path.exists(_usb_device(host))
     return network_probe_results.get(host, False)
+
+
+def _reconcile_usb_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Autocorrige la ruta /dev/ttyUSBx de las entradas USB cuando el kernel
+    la renumeró, usando la ubicación física del puerto (estable) como ancla
+    — pero solo tras confirmar con un handshake GRBL real que ahí sigue
+    respondiendo el mismo tipo de placa. Si no confirma, no toca el host
+    (para no mandarle comandos a otra máquina) y marca 'conflict'.
+
+    Deliberadamente NO reintenta el handshake en cada poll mientras una
+    entrada sigue en conflicto — eso implicaría abrir/cerrar el puerto (y
+    resetear vía DTR) la placa que ahora ocupa ese lugar cada ~5s, lo que
+    podría interrumpirle un trabajo en curso. Mientras esté en conflicto,
+    solo se revisa (sin tocar el puerto) si la ubicación volvió a resolver
+    a la ruta que ya tenía guardada, para limpiar el conflicto solo."""
+    changed = False
+    result: List[Dict[str, Any]] = []
+
+    for entry in entries:
+        host = entry.get("host", "")
+        if not _is_usb_host(host):
+            result.append(entry)
+            continue
+
+        location = entry.get("location")
+        stored_device = _usb_device(host)
+
+        if not location:
+            # Entrada de antes de este cambio: backfillear la ubicación si
+            # el puerto guardado sigue existiendo, sin exigir un handshake
+            # retroactivo sobre algo que ya venía funcionando.
+            if os.path.exists(stored_device):
+                found_location = _location_for_device(stored_device)
+                if found_location:
+                    entry = {**entry, "location": found_location}
+                    changed = True
+            result.append(entry)
+            continue
+
+        if entry.get("conflict"):
+            resolved = _resolve_usb_location(location)
+            if resolved == stored_device:
+                entry = {**entry, "conflict": None}
+                changed = True
+            result.append(entry)
+            continue
+
+        resolved_device = _resolve_usb_location(location)
+        if resolved_device is None or resolved_device == stored_device:
+            result.append(entry)
+            continue
+
+        # La ubicación física resolvió a una ruta distinta de la guardada
+        # (renumeración) — confirmar con un handshake antes de adoptarla.
+        if _probe_grbl_sync(resolved_device):
+            entry = {**entry, "host": f"usb:{resolved_device}", "conflict": None}
+            changed = True
+            logger.info(f"Puerto USB renumerado, autocorregido: {host} -> usb:{resolved_device}")
+        else:
+            entry = {**entry, "conflict": "Puerto reasignado a otra placa — revisar cableado"}
+            changed = True
+            logger.warning(f"[{host}] Conflicto: '{location}' ya no responde como GRBL (ahora en {resolved_device})")
+        result.append(entry)
+
+    if changed:
+        _save_registry(result)
+    return result
 
 
 def get_registered_lasers_with_status(timeout: float = 1.0) -> List[Dict[str, Any]]:
@@ -87,7 +159,7 @@ def get_registered_lasers_with_status(timeout: float = 1.0) -> List[Dict[str, An
     responda, solo que el puerto sigue ahí — igual que hace list_usb_laser_ports).
     Red: probe puntual por host registrado (no un barrido de subred como
     /api/laser/scan)."""
-    entries = _load_registry()
+    entries = _reconcile_usb_entries(_load_registry())
     network_hosts = [e["host"] for e in entries if not _is_usb_host(e.get("host", ""))]
 
     probe_results: Dict[str, bool] = {}
@@ -178,6 +250,7 @@ def register_laser(
     kind: str = "laser",
     machine_profile: Optional[str] = None,
     firmware: Optional[str] = None,
+    verified_grbl: Optional[bool] = None,
 ) -> Dict[str, Any]:
     entries = [e for e in _load_registry() if e.get("host") != host]
     existing = next((e for e in _load_registry() if e.get("host") == host), None)
@@ -188,6 +261,20 @@ def register_laser(
         "kind": kind or "laser",
         "registered_at": existing.get("registered_at") if existing else time.time(),
     }
+
+    # Ancla estable para hosts USB: la ubicación física del puerto (topología
+    # de bus/hub), no la ruta /dev/ttyUSBx que el kernel puede renumerar. Se
+    # recalcula en cada alta/edición porque es barato (solo lee sysfs, sin
+    # abrir el puerto) y así una placa reconectada en otro puerto físico
+    # queda con su ubicación actualizada al re-registrarla a mano.
+    if _is_usb_host(host):
+        entry["location"] = _location_for_device(_usb_device(host))
+        # No resetear a False si esta llamada no vino acompañada de un
+        # handshake (ej. solo se está renombrando la placa) — mismo criterio
+        # que machine_profile/firmware más abajo.
+        entry["verified_grbl"] = verified_grbl if verified_grbl is not None else (
+            existing.get("verified_grbl") if existing else False
+        )
     if work_area_width is not None and work_area_height is not None:
         entry["work_area"] = {"width": work_area_width, "height": work_area_height}
     if home_corner:
@@ -347,11 +434,97 @@ KNOWN_USB_CHIPS = [
 ]
 
 
+def _resolve_usb_location(location: str) -> Optional[str]:
+    """Dada una ubicación física de puerto USB (topología de bus/hub/puerto,
+    ej. '6-2' — estable mientras no se cambie el cable de puerto), devuelve
+    el /dev/ttyUSBx que ocupa esa ubicación ahora mismo, o None si no hay
+    nada conectado ahí. Escaneo SIN el filtro de chips conocidos ni la
+    exclusión de reclamados de list_usb_laser_ports(): una placa ya
+    registrada está, por definición, excluida de esa lista, así que no sirve
+    para resolver la ubicación de algo que ya está dado de alta."""
+    try:
+        from serial.tools import list_ports
+    except ImportError:
+        return None
+    for port in list_ports.comports():
+        if port.location and port.location == location:
+            return port.device
+    return None
+
+
+def _location_for_device(device: str) -> Optional[str]:
+    """Inversa de _resolve_usb_location: dado un /dev/ttyUSBx, la ubicación
+    física del puerto donde está conectado ahora, si sigue conectado."""
+    try:
+        from serial.tools import list_ports
+    except ImportError:
+        return None
+    for port in list_ports.comports():
+        if port.device == device:
+            return port.location
+    return None
+
+
+def _probe_grbl_sync(device: str, baud: int = 115200, timeout: float = 2.5) -> bool:
+    """Handshake liviano y autocontenido: abre el puerto, manda '?' y confirma
+    que responde con una línea de estado GRBL. A propósito NO usa
+    ensure_listener/_serial_connections (la conexión persistente compartida
+    por host) — este probe se dispara también durante la reconciliación
+    periódica para placas que todavía no se sabe si corresponde adoptar, y
+    adoptar until confirmado dejaría hilos/puertos abiertos colgados si el
+    resultado termina siendo negativo. Abre y cierra su propia conexión."""
+    try:
+        import serial
+    except ImportError:
+        return False
+    try:
+        ser = serial.Serial(device, baud, timeout=0.5)
+    except Exception:
+        return False
+    try:
+        # Mismo margen que _serial_reader_loop: CH340 resetea la placa al
+        # abrir el puerto (toggle de DTR) — mandar el '?' de inmediato puede
+        # perderse mientras la placa sigue arrancando.
+        time.sleep(2)
+        try:
+            ser.reset_input_buffer()
+            ser.write(b"?")
+        except Exception:
+            return False
+        end_time = time.monotonic() + timeout
+        while time.monotonic() < end_time:
+            try:
+                raw = ser.readline()
+            except Exception:
+                return False
+            if not raw:
+                continue
+            text = raw.decode("utf-8", errors="ignore").strip()
+            if _parse_grbl_status_line(text):
+                return True
+        return False
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+
+async def probe_grbl(device: str, timeout: float = 2.5) -> bool:
+    """Versión async de _probe_grbl_sync (en un hilo aparte, no debe bloquear
+    el event loop mientras espera el margen de arranque + timeout)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _probe_grbl_sync, device, 115200, timeout)
+
+
 def list_usb_laser_ports() -> List[Dict[str, Any]]:
     """Lista los puertos serie USB conectados que coinciden con chips
     típicos de controladoras láser (CH340, CP2102, ESP32), excluyendo los
     puertos que ya están configurados como MCU de alguna impresora Klipper
-    local."""
+    local o ya registrados como impresora Marlin en NOPAL (mismo criterio
+    simétrico que list_usb_marlin_ports aplica del lado de láser, para que
+    un mismo puerto físico no se ofrezca como candidato en las dos listas
+    de alta a la vez)."""
     try:
         from serial.tools import list_ports
     except ImportError:
@@ -362,6 +535,14 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
         claimed = set(get_claimed_serial_devices())
     except Exception:
         claimed = set()
+
+    try:
+        from backend.services.marlin_printer_service import get_registered_printers
+        marlin_entries = get_registered_printers()
+    except Exception:
+        marlin_entries = []
+    claimed_marlin_locations = {e["location"] for e in marlin_entries if e.get("location")}
+    claimed_marlin_devices = {e["device"] for e in marlin_entries if not e.get("location") and e.get("device")}
 
     results = []
     for port in list_ports.comports():
@@ -380,6 +561,11 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
         if claimed and os.path.realpath(port.device) in claimed:
             continue
 
+        if port.location and port.location in claimed_marlin_locations:
+            continue
+        if port.device in claimed_marlin_devices:
+            continue
+
         vid_pid = f"{port.vid:04X}:{port.pid:04X}" if port.pid is not None else f"{port.vid:04X}"
         results.append({
             "device": port.device,
@@ -387,6 +573,7 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
             "manufacturer": port.manufacturer or "",
             "chip": chip_label,
             "vid_pid": vid_pid,
+            "location": port.location,
         })
 
     return results
@@ -399,7 +586,18 @@ def _command_url(host: str) -> str:
 REALTIME_SERIAL_COMMANDS = {"?", "!", "~", "\x18"} | {chr(b) for b in range(0x90, 0x9F)}
 
 
+def _is_conflicted(host: str) -> bool:
+    entry = next((e for e in _load_registry() if e.get("host") == host), None)
+    return bool((entry or {}).get("conflict"))
+
+
 def _send_serial_command(host: str, command: str) -> bool:
+    if _is_conflicted(host):
+        # La reconciliación (_reconcile_usb_entries) no pudo confirmar que
+        # ahí sigue la misma placa que se registró — no se le manda nada
+        # hasta que el usuario re-vincule a mano desde Configuración.
+        logger.warning(f"[{host}] Comando bloqueado: dispositivo en conflicto, requiere re-vincular")
+        return False
     ser = _serial_connections.get(host)
     if ser is None:
         ensure_listener(host)
