@@ -65,7 +65,22 @@
             color: var(--muted);
             margin: 0 0 10px;
         }
+        .job-block {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+        }
+        .job-thumb {
+            width: 110px;
+            height: 110px;
+            flex-shrink: 0;
+            object-fit: contain;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0b1512;
+        }
         .info-grid {
+            flex: 1;
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 16px;
@@ -112,18 +127,23 @@
 
     <section>
         <h2 class="section-title">Trabajo cotizado</h2>
-        <div class="info-grid">
-            <div class="info-item">
-                <div class="label">Archivo</div>
-                <div class="value">{{ quote.file.name if quote.file else "—" }}</div>
-            </div>
-            <div class="info-item">
-                <div class="label">Material</div>
-                <div class="value">{{ quote.material.name if quote.material else "—" }}</div>
-            </div>
-            <div class="info-item">
-                <div class="label">Máquina</div>
-                <div class="value">{{ quote.machine.name if quote.machine else "—" }}</div>
+        <div class="job-block">
+            {% if thumbnail_url %}
+            <img class="job-thumb" src="{{ thumbnail_url }}" alt="" onerror="this.style.display='none'">
+            {% endif %}
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="label">Archivo</div>
+                    <div class="value">{{ quote.file.name if quote.file else "—" }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">Material</div>
+                    <div class="value">{{ quote.material.name if quote.material else "—" }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">Máquina</div>
+                    <div class="value">{{ quote.machine.name if quote.machine else "—" }}</div>
+                </div>
             </div>
         </div>
     </section>

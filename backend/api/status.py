@@ -45,7 +45,7 @@ def _run_git(args, timeout: int = 6) -> Optional[str]:
 
 
 @router.get("/api/status")
-async def status():
+async def status(user: dict = Depends(require_auth)):
     return {
         "status": "online",
         "version": "0.1",
@@ -81,7 +81,7 @@ async def get_storage(user: dict = Depends(require_auth)):
 
 
 @router.get("/api/system/stats")
-async def get_system_stats_endpoint(port: Optional[int] = None):
+async def get_system_stats_endpoint(port: Optional[int] = None, user: dict = Depends(require_auth)):
     """Estadísticas de hardware (MCU + host) de la impresora indicada."""
     try:
         return get_system_stats(port=port)
@@ -91,7 +91,7 @@ async def get_system_stats_endpoint(port: Optional[int] = None):
 
 
 @router.get("/api/system/temperatures")
-async def get_temperatures_endpoint(port: int):
+async def get_temperatures_endpoint(port: int, user: dict = Depends(require_auth)):
     """Temperaturas actuales/objetivo e historial de la impresora indicada."""
     try:
         return get_temperature_snapshot(port=port)

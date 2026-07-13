@@ -42,6 +42,9 @@ from backend.services.laser_service import (
     has_sd_card,
     get_laser_history,
     attach_laser_history_snapshot,
+    jog,
+    home,
+    get_host_firmware,
 )
 from backend.utils import safe_section_path
 
@@ -145,10 +148,11 @@ async def laser_registry_add_endpoint(
     home_corner: Optional[str] = Form(None),
     kind: str = Form("laser"),
     machine_profile: Optional[str] = Form(None),
+    firmware: Optional[str] = Form(None),
     user: dict = Depends(require_role("admin")),
 ):
     """Registra una placa (red o USB) como láser o CNC disponible en NOPAL."""
-    entry = register_laser(host, name, transport, work_area_width, work_area_height, home_corner, kind, machine_profile)
+    entry = register_laser(host, name, transport, work_area_width, work_area_height, home_corner, kind, machine_profile, firmware)
     return entry
 
 
@@ -167,7 +171,7 @@ async def laser_status_endpoint(host: Optional[str] = None, user: dict = Depends
     status = await get_status(host=resolved_host)
     if status is None:
         return {"connected": False, "host": resolved_host}
-    return {"connected": True, "host": resolved_host, **status}
+    return {"connected": True, "host": resolved_host, "firmware": get_host_firmware(resolved_host), **status}
 
 
 @router.get("/api/laser/parser-state")
@@ -197,6 +201,36 @@ async def laser_command_endpoint(command: str = Form(...), host: Optional[str] =
     success = send_raw_command(target, command)
     if not success:
         raise HTTPException(status_code=502, detail="No se pudo enviar el comando")
+    return {"success": True}
+
+
+@router.post("/api/laser/jog")
+async def laser_jog_endpoint(
+    axis: str = Form(...),
+    distance: float = Form(...),
+    feed: float = Form(...),
+    host: Optional[str] = Form(None),
+    user: dict = Depends(require_auth),
+):
+    """Mueve un eje en relativo. La secuencia real (jog GRBL vs. G91/G1/G90
+    de Marlin) se arma en el backend según el firmware registrado para ese
+    host, para que el frontend no tenga que saber qué protocolo habla la placa."""
+    target = host or get_active_host()
+    if not await jog(target, axis, distance, feed):
+        raise HTTPException(status_code=502, detail="No se pudo mover el eje")
+    return {"success": True}
+
+
+@router.post("/api/laser/home")
+async def laser_home_endpoint(
+    axes: Optional[str] = Form(None),
+    host: Optional[str] = Form(None),
+    user: dict = Depends(require_auth),
+):
+    """Inicia el ciclo de home ($H en GRBL, G28 en Marlin)."""
+    target = host or get_active_host()
+    if not await home(target, axes):
+        raise HTTPException(status_code=502, detail="No se pudo iniciar el home")
     return {"success": True}
 
 

@@ -3,6 +3,7 @@ import math
 import os
 import re
 import time
+import urllib.parse
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -20,6 +21,15 @@ QUOTES_REGISTRY_PATH = "quotes_registry.json"
 GCODE_EXTENSIONS = {".gcode", ".gc", ".gco", ".nc", ".tap", ".cnc"}
 
 DEFAULT_MACHINE_WATTS = {"printer": 250, "laser": 150, "cnc": 800}
+
+# El Cotizador no vuelve a laminar el archivo — usa el tiempo real que ya
+# trae el G-code. "Nivel de detalle" (elegido a pedido del usuario: es el
+# acabado de la impresión 3D en sí, no un ajuste de margen) se traduce acá
+# a un multiplicador sobre ese tiempo real, que de ahí en más ya arrastra
+# electricidad y uso de máquina (ambas se calculan a partir de las horas) —
+# ningún otro costo cambia. Solo aplica a impresión 3D (material "filament"),
+# por eso se pidió específicamente.
+DETAIL_LEVEL_TIME_MULTIPLIERS = {"economic": 0.7, "standard": 1.0, "high": 1.5}
 
 
 def _new_id() -> str:
@@ -457,19 +467,39 @@ def estimate_print_gcode_quantities(filepath: str) -> Dict[str, Any]:
 
     time_seconds = _extract_time_seconds_from_text(text)
 
+    # Mismo parser modal que ya usa el láser/CNC (analyze_gcode_geometry) —
+    # el G-code de impresora también trae movimientos X/Y reales, así que el
+    # ancho/alto real del objeto sale gratis del mismo bounding box, sin
+    # inventar nada. No cubre un STL/3MF sin laminar (ahí no hay G-code que
+    # parsear todavía).
+    geometry = analyze_gcode_geometry(filepath, max_lines=None)
+    width_mm, height_mm = _bounding_box_dims(geometry["points"])
+
     if result is None:
         return {
             "filament_grams_direct": None,
             "filament_length_mm": None,
             "filament_source": None,
             "estimated_seconds": time_seconds,
+            "width_mm": width_mm,
+            "height_mm": height_mm,
         }
     return {
         "filament_grams_direct": result["grams"],
         "filament_length_mm": result["length_mm"],
         "filament_source": result["source"],
         "estimated_seconds": time_seconds,
+        "width_mm": width_mm,
+        "height_mm": height_mm,
     }
+
+
+def _bounding_box_dims(points: list) -> tuple:
+    if len(points) < 2:
+        return None, None
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return max(xs) - min(xs), max(ys) - min(ys)
 
 
 def estimate_laser_cnc_quantities(filepath: str) -> Dict[str, Any]:
@@ -478,19 +508,16 @@ def estimate_laser_cnc_quantities(filepath: str) -> Dict[str, Any]:
     galería, donde una imagen aproximada es aceptable."""
     geometry = analyze_gcode_geometry(filepath, max_lines=None)
     points = geometry["points"]
-    area_m2 = None
-    if len(points) >= 2:
-        xs = [p[0] for p in points]
-        ys = [p[1] for p in points]
-        width_mm = max(xs) - min(xs)
-        height_mm = max(ys) - min(ys)
-        area_m2 = (width_mm * height_mm) / 1_000_000
+    width_mm, height_mm = _bounding_box_dims(points)
+    area_m2 = (width_mm * height_mm) / 1_000_000 if width_mm is not None else None
 
     return {
         "cut_length_mm": geometry["cut_length_mm"],
         "travel_length_mm": geometry["travel_length_mm"],
         "estimated_seconds": geometry["estimated_seconds"],
         "bounding_box_area_m2": area_m2,
+        "width_mm": width_mm,
+        "height_mm": height_mm,
         "truncated": geometry["truncated"],
     }
 
@@ -556,6 +583,8 @@ def compute_quote(
         "cut_length_mm": None,
         "travel_length_mm": None,
         "bounding_box_area_m2": None,
+        "width_mm": None,
+        "height_mm": None,
         "estimated_time_minutes": None,
         "time_source": None,
         "slicer_settings": None,
@@ -574,9 +603,18 @@ def compute_quote(
                     material.get("density_g_cm3", 1.24),
                 )
             extracted["filament_g"] = grams
+            extracted["width_mm"] = cached.get("width_mm")
+            extracted["height_mm"] = cached.get("height_mm")
             if cached["estimated_seconds"] is not None:
-                extracted["estimated_time_minutes"] = cached["estimated_seconds"] / 60
+                detail_level = overrides.get("detail_level", "standard")
+                time_multiplier = DETAIL_LEVEL_TIME_MULTIPLIERS.get(detail_level, 1.0)
+                extracted["estimated_time_minutes"] = (cached["estimated_seconds"] / 60) * time_multiplier
                 extracted["time_source"] = "metadata"
+                if time_multiplier != 1.0:
+                    warnings.append(
+                        f"Tiempo ajustado x{time_multiplier:g} por nivel de detalle "
+                        f"({'económico' if time_multiplier < 1 else 'alta calidad'})."
+                    )
             if grams is None:
                 warnings.append("No se encontró metadata de filamento del slicer ni datos de extrusión (eje E) en el archivo.")
             extracted["slicer_settings"] = _get_or_extract(source_path, section, rel_path, extract_slicer_settings)
@@ -586,6 +624,8 @@ def compute_quote(
             extracted["cut_length_mm"] = cached["cut_length_mm"]
             extracted["travel_length_mm"] = cached["travel_length_mm"]
             extracted["bounding_box_area_m2"] = cached["bounding_box_area_m2"]
+            extracted["width_mm"] = cached.get("width_mm")
+            extracted["height_mm"] = cached.get("height_mm")
             if cached["estimated_seconds"] is not None:
                 extracted["estimated_time_minutes"] = cached["estimated_seconds"] / 60
                 extracted["time_source"] = "feed_rate"
@@ -809,3 +849,40 @@ def update_quote_status(quote_id: str, status: str) -> Optional[Dict[str, Any]]:
     entry["status"] = status
     _save_quotes_registry(entries)
     return entry
+
+
+def build_whatsapp_message(quote: Dict[str, Any], print_url: str) -> str:
+    """Texto por default para reenviar una cotización por WhatsApp — solo
+    una propuesta inicial. El frontend la muestra en un campo editable antes
+    de armar el link final (ver build_whatsapp_link), así el usuario puede
+    personalizarla por completo (o borrarla y escribir la suya) antes de
+    enviar."""
+    costs = quote.get("costs") or {}
+    total = costs.get("total")
+    currency = costs.get("currency", "")
+    client_name = (quote.get("client_name") or "").strip()
+    valid_until = quote.get("valid_until")
+
+    lines = [
+        f"Hola {client_name}!" if client_name else "Hola!",
+        f"Aquí tienes tu cotización {quote.get('id', '')}.",
+        f"Total: ${total:,.2f} {currency}".strip() if total is not None else "Total: —",
+    ]
+    if valid_until:
+        lines.append(f"Vigente hasta: {valid_until}")
+    lines.append(f"Puedes verla completa aquí: {print_url}")
+
+    return "\n".join(lines)
+
+
+def build_whatsapp_link(quote: Dict[str, Any], message: str) -> str:
+    """Arma la URL wa.me (click-to-chat) con `message` ya prellenado — no
+    envía nada por sí sola, abre WhatsApp con el texto listo y el usuario
+    aprieta 'Enviar' del lado de WhatsApp. `client_phone` es un campo
+    opcional del quote (mismo patrón pass-through que notes/valid_until en
+    save_quote); si no está guardado no hay a quién mandarle el link."""
+    digits = re.sub(r"\D", "", quote.get("client_phone") or "")
+    if not digits:
+        raise ValueError("La cotización no tiene teléfono de cliente guardado")
+
+    return f"https://wa.me/{digits}?text={urllib.parse.quote(message)}"

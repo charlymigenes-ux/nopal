@@ -1,12 +1,25 @@
 from fastapi import Depends, HTTPException, Request
 
+from backend.services.auth_service import get_user_by_id
+
 
 def require_auth(request: Request) -> dict:
     """Cualquier usuario logueado (admin u operador)."""
-    user = request.session.get("user")
-    if not user:
+    session_user = request.session.get("user")
+    if not session_user:
         raise HTTPException(status_code=401, detail="No autenticado")
-    return user
+    # El rol guardado en la cookie puede quedar obsoleto si otro
+    # administrador degrada o elimina la cuenta. Se consulta el registro
+    # actual en cada solicitud para aplicar el cambio inmediatamente.
+    stored_user = get_user_by_id(session_user.get("user_id", ""))
+    if stored_user is None:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="Sesión inválida")
+    return {
+        "user_id": stored_user["id"],
+        "username": stored_user["username"],
+        "role": stored_user["role"],
+    }
 
 
 def require_role(role: str):

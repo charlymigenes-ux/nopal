@@ -178,7 +178,9 @@ NOPAL está pensado para funcionar de entrada en un entorno Klipper/GRBL local y
 * Los láseres GRBL se encuentran escaneando la red local (placas de red) y los puertos serie del sistema (placas USB), y luego se registran desde la interfaz.
 * Las preferencias de interfaz (tema, idioma, tamaño) se guardan por navegador.
 
-Si planeas exponer NOPAL más allá de tu red local, ponlo detrás de un proxy inverso como **Nginx** o **Caddy** y agrega autenticación en esa capa — NOPAL todavía no trae autenticación propia (ver [Roadmap](#roadmap)).
+NOPAL incluye autenticación multiusuario con roles de administrador y operador. En el primer arranque solicita crear la cuenta administradora; las sesiones y credenciales se almacenan localmente en el servidor.
+
+Si planeas exponer NOPAL más allá de tu red local, colócalo detrás de un proxy inverso como **Nginx** o **Caddy**, habilita HTTPS y limita el acceso de red. La autenticación integrada no reemplaza TLS ni un firewall.
 
 ---
 
@@ -261,7 +263,6 @@ Posibles áreas futuras para NOPAL:
 
 * metadatos más ricos para la biblioteca de modelos — tags, colecciones y filtros de búsqueda
 * mejores analíticas e historial de trabajos de impresión/láser
-* autenticación y control de acceso multiusuario
 * integración con almacenamiento externo
 * identificar el comando correcto de ejecución desde SD para más variantes de firmware GRBL/estilo DLC32 (correr directo desde la SD, en vez de streaming)
 

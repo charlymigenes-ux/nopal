@@ -1,4 +1,6 @@
-from typing import Optional
+import time
+from collections import defaultdict, deque
+from typing import Deque, Dict, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
@@ -14,6 +16,22 @@ from backend.services.auth_service import (
 )
 
 router = APIRouter()
+
+LOGIN_WINDOW_SECONDS = 300
+LOGIN_MAX_FAILURES = 5
+_login_failures: Dict[str, Deque[float]] = defaultdict(deque)
+
+
+def _login_key(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _recent_failures(request: Request) -> Deque[float]:
+    failures = _login_failures[_login_key(request)]
+    cutoff = time.monotonic() - LOGIN_WINDOW_SECONDS
+    while failures and failures[0] < cutoff:
+        failures.popleft()
+    return failures
 
 
 @router.get("/api/auth/setup-required")
@@ -38,9 +56,14 @@ async def setup_endpoint(request: Request, username: str = Form(...), password: 
 
 @router.post("/api/auth/login")
 async def login_endpoint(request: Request, username: str = Form(...), password: str = Form(...)):
+    failures = _recent_failures(request)
+    if len(failures) >= LOGIN_MAX_FAILURES:
+        raise HTTPException(status_code=429, detail="Demasiados intentos; vuelve a intentarlo en unos minutos")
     user = verify_password(username, password)
     if user is None:
+        failures.append(time.monotonic())
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+    _login_failures.pop(_login_key(request), None)
     request.session["user"] = {"user_id": user["id"], "username": user["username"], "role": user["role"]}
     return {"username": user["username"], "role": user["role"]}
 

@@ -27,7 +27,7 @@ router = APIRouter()
 
 
 @router.get("/api/printers")
-async def get_printers():
+async def get_printers(user: dict = Depends(require_auth)):
     """Obtener lista de impresoras detectadas"""
     try:
         printers = find_moonraker_instances()
@@ -43,7 +43,7 @@ async def get_printers():
 
 
 @router.get("/api/printers/status")
-async def get_all_status(request: Request):
+async def get_all_status(request: Request, user: dict = Depends(require_auth)):
     """Obtener estado de todas las impresoras"""
     try:
         printers = get_all_printers_status(host=request.url.hostname)

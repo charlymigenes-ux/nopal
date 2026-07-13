@@ -8,17 +8,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=238">
+    <link rel="stylesheet" href="/static/css/style.css?v=248">
 </head>
 <body>
-    <header class="global-topbar">
-        <div class="global-topbar-left">
-            <img class="brand-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
-            <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Contraer/expandir menú">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-        </div>
-        <div class="global-topbar-right">
+    <div class="app-shell">
+        <header class="global-topbar">
+            <div class="global-topbar-right">
             <div class="topbar-notif-wrap" id="topbar-notif-wrap">
                 <button type="button" class="topbar-icon-btn" id="topbar-notif-btn" aria-label="Notificaciones" data-i18n-title="notificationsTitle" title="Notificaciones">
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -53,47 +48,98 @@
                     </button>
                 </div>
             </div>
-        </div>
-    </header>
-    <div class="app-shell">
+            </div>
+        </header>
         <aside class="sidebar">
+            <div class="brand">
+                <img class="brand-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Contraer/expandir menú">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+            </div>
+
             <nav class="nav-list">
                 <button class="nav-item active" data-section="dashboard" data-i18n-title="navHome" title="Inicio">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span data-i18n="navHome">Inicio</span>
                 </button>
-                <button class="nav-item nav-item-group-start" data-section="models" data-i18n-title="navPrinting3d" title="Impresión 3D">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                    <span data-i18n="navPrinting3d">Impresión 3D</span>
-                </button>
-                <button class="nav-item" data-section="laser" data-i18n-title="laser" title="Láser">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
-                    <span data-i18n="laser">Láser</span>
-                </button>
-                <button class="nav-item" data-section="cnc" data-i18n-title="cnc" title="CNC">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"/><path d="M12 6c0-2-2-3-2-3M12 8c0-2 2-3 2-3"/><path d="M8 12h8l-2 10h-4z"/></svg>
-                    <span data-i18n="cnc">CNC</span>
-                </button>
-                <button class="nav-item nav-item-group-start" data-section="gcode" data-i18n-title="navFiles" title="Archivos">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span data-i18n="navFiles">Archivos</span>
-                </button>
-                <button class="nav-item" data-section="queue" data-i18n-title="printQueue" title="Historial de trabajos">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                    <span data-i18n="printQueue">Historial de trabajos</span>
-                </button>
-                <button class="nav-item nav-item-group-start" data-section="console" data-i18n-title="navSystemConsole" title="Consola del sistema">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                    <span data-i18n="navSystemConsole">Consola del sistema</span>
-                </button>
-                <button class="nav-item nav-item-group-start" data-section="pricing" data-i18n-title="pricingTitle" title="Cotizador">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    <span data-i18n="pricingTitle">Cotizador</span>
-                </button>
-                <button class="nav-item" data-section="settings" data-i18n-title="settings" title="Configuración">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    <span data-i18n="settings">Configuración</span>
-                </button>
+
+                <div class="nav-category" data-group="devices">
+                    <button type="button" class="nav-category-header" data-category-toggle>
+                        <span data-i18n="navGroupDevices">Dispositivos</span>
+                        <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="nav-category-items">
+                        <button class="nav-item" data-section="models" data-i18n-title="navPrinting3d" title="Impresión 3D">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                            <span data-i18n="navPrinting3d">Impresión 3D</span>
+                        </button>
+                        <button class="nav-item" data-section="laser" data-i18n-title="laser" title="Láser">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                            <span data-i18n="laser">Láser</span>
+                        </button>
+                        <button class="nav-item" data-section="cnc" data-i18n-title="cnc" title="CNC">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"/><path d="M12 6c0-2-2-3-2-3M12 8c0-2 2-3 2-3"/><path d="M8 12h8l-2 10h-4z"/></svg>
+                            <span data-i18n="cnc">CNC</span>
+                        </button>
+                        <button class="nav-item" data-section="marlin" data-i18n-title="navMarlinPrinters" title="Impresoras Marlin">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M12 22V12"/><path d="m3.5 6.5 8.5 5.5 8.5-5.5"/></svg>
+                            <span data-i18n="navMarlinPrinters">Impresoras Marlin</span>
+                        </button>
+                        <button type="button" class="nav-item nav-item-placeholder" disabled data-i18n-title="navCamerasSoonTitle" title="Cámaras (Próximamente)">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                            <span data-i18n="navCameras">Cámaras</span>
+                            <span class="nav-item-soon-badge" data-i18n="navComingSoonBadge">Pronto</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="nav-category" data-group="library">
+                    <button type="button" class="nav-category-header" data-category-toggle>
+                        <span data-i18n="navGroupLibrary">Biblioteca</span>
+                        <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="nav-category-items">
+                        <button class="nav-item" data-section="gcode" data-i18n-title="navFiles" title="Archivos">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span data-i18n="navFiles">Archivos</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="nav-category" data-group="jobs">
+                    <button type="button" class="nav-category-header" data-category-toggle>
+                        <span data-i18n="navGroupJobs">Trabajos</span>
+                        <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="nav-category-items">
+                        <button class="nav-item" data-section="queue" data-i18n-title="printQueue" title="Historial de trabajos">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            <span data-i18n="printQueue">Historial de trabajos</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="nav-category" data-group="tools">
+                    <button type="button" class="nav-category-header" data-category-toggle>
+                        <span data-i18n="navGroupTools">Herramientas</span>
+                        <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="nav-category-items">
+                        <button class="nav-item" data-section="console" data-i18n-title="navSystemConsole" title="Consola del sistema">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                            <span data-i18n="navSystemConsole">Consola del sistema</span>
+                        </button>
+                        <button class="nav-item" data-section="pricing" data-i18n-title="pricingTitle" title="Cotizador">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            <span data-i18n="pricingTitle">Cotizador</span>
+                        </button>
+                        <button class="nav-item" data-section="settings" data-i18n-title="settings" title="Configuración">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            <span data-i18n="settings">Configuración</span>
+                        </button>
+                    </div>
+                </div>
             </nav>
 
             <div class="sidebar-logo-gap">
@@ -163,12 +209,12 @@
 
                 <section class="printers-section">
                     <div class="section-title">
-                        <h2 data-i18n="printerList">Printer List</h2>
+                        <h2 data-i18n="devicesTitle">Dispositivos</h2>
                         <div class="view-controls">
-                            <button class="btn-view-toggle btn-view-toggle-active" id="view-grid-printers" title="Grid view" data-view="grid">
+                            <button class="btn-view-toggle" id="view-grid-printers" title="Grid view" data-view="grid">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                             </button>
-                            <button class="btn-view-toggle" id="view-list-printers" title="List view" data-view="list">
+                            <button class="btn-view-toggle btn-view-toggle-active" id="view-list-printers" title="List view" data-view="list">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                             </button>
                             <button class="btn-view-toggle" id="toggle-offline-machines-btn" title="Ver máquinas sin conexión">
@@ -747,7 +793,7 @@
                                         </button>
                                     </div>
                                     <div class="laser-jog-actions">
-                                        <button type="button" class="btn-file-action" id="laser-unlock-btn">
+                                        <button type="button" class="btn-file-action grbl-only" id="laser-unlock-btn">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
                                             <span data-i18n="laserUnlock">Desbloquear ($X)</span>
                                         </button>
@@ -912,7 +958,7 @@
                                 <span data-i18n="cncTopbarProfile">PERFIL ACTIVO</span>
                                 <select id="cnc-profile-select"></select>
                             </label>
-                            <label class="cnc-topbar-field cnc-advanced-only">
+                            <label class="cnc-topbar-field cnc-advanced-only grbl-only">
                                 <span data-i18n="cncTopbarCoords">COORDENADAS</span>
                                 <select id="cnc-wcs-select">
                                     <option value="G54">G54</option>
@@ -941,7 +987,7 @@
                             <div class="cnc-card-header">
                                 <span class="cnc-card-title" data-i18n="cncStatusTitle">ESTADO</span>
                                 <div class="cnc-card-header-actions">
-                                    <button type="button" class="btn-file-action" id="cnc-unlock-btn">
+                                    <button type="button" class="btn-file-action grbl-only" id="cnc-unlock-btn">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
                                         <span data-i18n="laserUnlockShort">Desbloquear</span>
                                     </button>
@@ -965,7 +1011,11 @@
                                 <div><span data-i18n="cncFeed">FEED</span> <strong id="cnc-feed-value">0</strong> mm/min</div>
                                 <div class="cnc-router-only"><span data-i18n="cncSpindleLabel">SPINDLE</span> <strong id="cnc-rpm-value">0</strong> rpm</div>
                             </div>
-                            <div class="cnc-pin-row cnc-advanced-only" id="cnc-pin-row">
+                            <div class="cnc-feed-spindle-row cnc-marlin-only" id="cnc-marlin-temps-row" hidden>
+                                <div><span data-i18n="extruderTemp">Extrusor</span> <strong id="cnc-extruder-temp">—</strong></div>
+                                <div><span data-i18n="bedTemp">Cama</span> <strong id="cnc-bed-temp">—</strong></div>
+                            </div>
+                            <div class="cnc-pin-row cnc-advanced-only grbl-only" id="cnc-pin-row">
                                 <span class="cnc-pin-pill" data-pin="X">Lim X</span>
                                 <span class="cnc-pin-pill" data-pin="Y">Lim Y</span>
                                 <span class="cnc-pin-pill" data-pin="Z">Lim Z</span>
@@ -1022,7 +1072,7 @@
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.1">Z -0.1</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.5">Z -0.5</button>
                             </div>
-                            <div class="cnc-override-block cnc-advanced-only">
+                            <div class="cnc-override-block cnc-advanced-only grbl-only">
                                 <span class="cnc-override-label" data-i18n="cncFeedOverride">Feed Override</span>
                                 <div class="cnc-override-row" data-override="feed">
                                     <button type="button" class="laser-step-btn" data-ov="-10">-10%</button>
@@ -1072,7 +1122,7 @@
                                 <button type="button" class="laser-step-btn" data-rpm="20000">20k</button>
                                 <button type="button" class="laser-step-btn" data-rpm="24000">24k</button>
                             </div>
-                            <div class="cnc-override-block cnc-advanced-only">
+                            <div class="cnc-override-block cnc-advanced-only grbl-only">
                                 <span class="cnc-override-label" data-i18n="cncOverride">Override</span>
                                 <div class="cnc-override-row" data-override="spindle">
                                     <button type="button" class="laser-step-btn" data-ov="-10">-10%</button>
@@ -1270,6 +1320,30 @@
                 </main>
             </section>
 
+            <section id="marlin-section" class="view-section" style="display: none;">
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="navMarlinPrinters">Impresoras Marlin</h1>
+                        <p data-i18n="marlinPrintersPageDescription">Controla impresoras Marlin standalone: movimiento manual, temperaturas, consola e impresión.</p>
+                    </section>
+                    <section class="printers-section">
+                        <div class="section-title">
+                            <h2 data-i18n="devicesTitle">Dispositivos</h2>
+                            <div class="view-controls">
+                                <button class="btn-view-toggle" id="marlin-printers-refresh-btn" title="Actualizar">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                </button>
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="marlin-printers-add-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    <span data-i18n="marlinPrinterAddAction">Agregar impresora</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="marlin-printers-grid" class="printers-grid"></div>
+                    </section>
+                </main>
+            </section>
+
             <section id="queue-section" class="view-section" style="display: none;">
                 <main class="main-content history-split-main">
                     <div class="history-split-topbar">
@@ -1326,15 +1400,15 @@
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                                 <span data-i18n="pricingNewQuote">Nueva cotización</span>
                             </button>
-                            <button type="button" class="btn-file-action-accent" id="pricing-save-btn" disabled>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                                <span data-i18n="pricingSaveQuote">Guardar cotización</span>
-                            </button>
                             <div class="topbar-notif-wrap" id="pricing-header-menu-wrap">
                                 <button type="button" class="topbar-icon-btn" id="pricing-header-menu-btn" aria-label="Más opciones">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
                                 </button>
                                 <div class="topbar-menu-panel" id="pricing-header-menu-panel" hidden>
+                                    <button type="button" class="topbar-menu-item" id="pricing-manage-catalogs-btn">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                        <span data-i18n="pricingManageCatalogs">Gestionar catálogos</span>
+                                    </button>
                                     <button type="button" class="topbar-menu-item topbar-menu-item-danger" id="pricing-discard-btn">
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                         <span data-i18n="pricingDiscardDraft">Descartar borrador</span>
@@ -1459,6 +1533,7 @@
                                     <button type="button" class="option-switch-btn active" data-value="standard" data-i18n="pricingDetailStandard">Estándar</button>
                                     <button type="button" class="option-switch-btn" data-value="high" data-i18n="pricingDetailHigh">Alta calidad</button>
                                 </div>
+                                <p class="pricing-file-empty-hint" data-i18n="pricingDetailLevelHint">Ajusta el tiempo estimado de impresión 3D (y con eso energía y uso de máquina) — no aplica a láser/CNC.</p>
                                 <div class="pricing-field pricing-field-wide">
                                     <label data-i18n="pricingNotes">Notas</label>
                                     <textarea id="pricing-notes-input" rows="2" data-i18n-placeholder="pricingNotesPlaceholder" placeholder="Notas internas o para el cliente..."></textarea>
@@ -1472,14 +1547,23 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="pricing-card" id="pricing-detected-card" hidden>
-                                <div class="card-header-std">
-                                    <span class="card-header-std-icon">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                    </span>
-                                    <span class="card-header-std-title" data-i18n="pricingDetectedParams">Parámetros detectados</span>
-                                </div>
-                                <div class="pricing-detected-grid" id="pricing-detected-grid"></div>
+                            <div class="pricing-card pricing-actions-card">
+                                <button type="button" class="btn-file-action-accent" id="pricing-save-btn" disabled>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                    <span data-i18n="pricingSaveQuote">Guardar cotización</span>
+                                </button>
+                                <button type="button" class="btn-file-action-decision" id="pricing-print-btn" disabled title="Guardá la cotización primero" data-i18n-title="pricingSaveFirstHint">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                    <span data-i18n="pricingPrintPreview">Vista previa PDF</span>
+                                </button>
+                                <button type="button" class="btn-file-action" id="pricing-send-btn" disabled title="Guardá la cotización primero" data-i18n-title="pricingSaveFirstHint">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                    <span data-i18n="pricingSendQuote">Enviar cotización</span>
+                                </button>
+                                <button type="button" class="btn-file-action" id="pricing-whatsapp-btn" disabled title="Guardá la cotización primero" data-i18n-title="pricingSaveFirstHint">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                                    <span data-i18n="pricingSendWhatsapp">Enviar por WhatsApp</span>
+                                </button>
                             </div>
                         </div>
 
@@ -1533,6 +1617,14 @@
                                         <strong id="pricing-info-quote-date">—</strong>
                                     </div>
                                     <div class="pricing-info-row">
+                                        <span data-i18n="pricingClientName">Nombre del cliente</span>
+                                        <input type="text" id="pricing-client-name-input" class="pricing-info-inline-input" autocomplete="off" data-i18n-placeholder="pricingClientNamePlaceholder" placeholder="Opcional">
+                                    </div>
+                                    <div class="pricing-info-row">
+                                        <span data-i18n="pricingClientPhone">Teléfono del cliente</span>
+                                        <input type="tel" id="pricing-client-phone-input" class="pricing-info-inline-input" autocomplete="off" data-i18n-placeholder="pricingClientPhonePlaceholder" placeholder="+52 55 1234 5678">
+                                    </div>
+                                    <div class="pricing-info-row">
                                         <span data-i18n="pricingValidUntil">Válido hasta</span>
                                         <input type="date" id="pricing-valid-until-input" class="pricing-info-inline-input">
                                     </div>
@@ -1546,17 +1638,6 @@
                                         </span>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div class="pricing-summary-actions">
-                                <button type="button" class="btn-file-action-decision" id="pricing-print-btn" disabled>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                                    <span data-i18n="pricingPrintPreview">Vista previa PDF</span>
-                                </button>
-                                <button type="button" class="btn-file-action-accent" id="pricing-send-btn" disabled>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                                    <span data-i18n="pricingSendQuote">Enviar cotización</span>
-                                </button>
                             </div>
                         </aside>
                     </div>
@@ -1690,42 +1771,14 @@
                                     <span class="switch-label" data-i18n="enabled">Enabled</span>
                                 </label>
                             </div>
-                            <div class="settings-field settings-uiux-field">
-                                <label class="settings-field-label" data-i18n="uiUxSection">UI/UX</label>
-                                <p class="settings-field-hint" data-i18n="sidebarOrderDescription">Organiza el orden de los accesos del menú lateral.</p>
-                                <div class="sidebar-order-list" id="sidebar-order-list"></div>
-                                <div class="settings-uiux-subfield">
-                                    <span class="settings-field-label" data-i18n="laserMarkerLabel">Marcador de posición del láser</span>
-                                    <p class="settings-field-hint" data-i18n="laserMarkerDescription">Elige la forma y el color del marcador en el mapa de cama.</p>
-                                    <div class="laser-marker-settings-row">
-                                        <div class="laser-marker-controls">
-                                            <div class="laser-marker-shape-options" id="laser-marker-shape-options">
-                                                <button type="button" class="laser-marker-shape-btn" data-shape="dot" data-i18n="laserMarkerDot">Punto</button>
-                                                <button type="button" class="laser-marker-shape-btn" data-shape="cross" data-i18n="laserMarkerCross">Cruz</button>
-                                            </div>
-                                            <div class="laser-marker-color-options" id="laser-marker-color-options">
-                                                <button type="button" class="laser-marker-color-btn" data-color="#22c55e" style="background:#22c55e"></button>
-                                                <button type="button" class="laser-marker-color-btn" data-color="#f59e0b" style="background:#f59e0b"></button>
-                                                <button type="button" class="laser-marker-color-btn" data-color="#3b82f6" style="background:#3b82f6"></button>
-                                                <button type="button" class="laser-marker-color-btn" data-color="#ef4444" style="background:#ef4444"></button>
-                                                <button type="button" class="laser-marker-color-btn" data-color="#a855f7" style="background:#a855f7"></button>
-                                            </div>
-                                        </div>
-                                        <div class="laser-marker-preview" id="laser-marker-preview">
-                                            <div class="laser-marker-preview-dot" id="laser-marker-preview-dot"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                         <div class="settings-right-col">
-                        <div class="settings-row-pair">
-                            <div class="settings-card theme-config-card card-collapsible">
+                        <div class="settings-card theme-config-card card-collapsible">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 6 6 0 0 0 0-12 4 4 0 0 1 0-8z"/></svg>
                                 </span>
-                                <h2 class="card-header-std-title" data-i18n="theme">Theme</h2>
+                                <h2 class="card-header-std-title" data-i18n="appearanceSettingsTitle">Apariencia y UI/UX</h2>
                                 <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                                 </button>
@@ -1815,8 +1868,36 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="settings-field settings-uiux-field">
+                                <label class="settings-field-label" data-i18n="uiUxSection">UI/UX</label>
+                                <p class="settings-field-hint" data-i18n="sidebarOrderDescription">Organiza el orden de los accesos del menú lateral.</p>
+                                <div class="sidebar-order-list" id="sidebar-order-list"></div>
+                                <div class="settings-uiux-subfield">
+                                    <span class="settings-field-label" data-i18n="laserMarkerLabel">Marcador de posición del láser</span>
+                                    <p class="settings-field-hint" data-i18n="laserMarkerDescription">Elige la forma y el color del marcador en el mapa de cama.</p>
+                                    <div class="laser-marker-settings-row">
+                                        <div class="laser-marker-controls">
+                                            <div class="laser-marker-shape-options" id="laser-marker-shape-options">
+                                                <button type="button" class="laser-marker-shape-btn" data-shape="dot" data-i18n="laserMarkerDot">Punto</button>
+                                                <button type="button" class="laser-marker-shape-btn" data-shape="cross" data-i18n="laserMarkerCross">Cruz</button>
+                                            </div>
+                                            <div class="laser-marker-color-options" id="laser-marker-color-options">
+                                                <button type="button" class="laser-marker-color-btn" data-color="#22c55e" style="background:#22c55e"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#f59e0b" style="background:#f59e0b"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#3b82f6" style="background:#3b82f6"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#ef4444" style="background:#ef4444"></button>
+                                                <button type="button" class="laser-marker-color-btn" data-color="#a855f7" style="background:#a855f7"></button>
+                                            </div>
+                                        </div>
+                                        <div class="laser-marker-preview" id="laser-marker-preview">
+                                            <div class="laser-marker-preview-dot" id="laser-marker-preview-dot"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-row-pair">
+                            <div class="settings-card card-collapsible">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
@@ -1865,6 +1946,7 @@
                                 </button>
                             </div>
                         </div>
+                    </div>
                         <div class="settings-card card-collapsible" id="users-settings-card" hidden>
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
@@ -1902,7 +1984,6 @@
                                 </button>
                             </div>
                         </div>
-                    </div>
                         <div class="settings-card card-collapsible usb-ports-settings-card">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
@@ -1979,6 +2060,21 @@
                                 </div>
                                 <p data-i18n="registryDevicesDescription">Todas las placas registradas alguna vez en NOPAL (USB y red), con su estado actual — incluye las que ya no están conectadas.</p>
                                 <div class="usb-ports-list" id="registry-devices-list"></div>
+                            </div>
+                            <div class="devices-subcard">
+                                <div class="devices-subcard-header">
+                                    <span class="card-header-std-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M12 22V12"/><path d="m3.5 6.5 8.5 5.5 8.5-5.5"/></svg>
+                                    </span>
+                                    <h3 data-i18n="navMarlinPrinters">Impresoras Marlin</h3>
+                                    <button type="button" class="theme-option-icon-btn" id="marlin-printers-discover-btn" title="Actualizar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
+                                <p data-i18n="marlinPrintersDescription">Impresoras 3D con firmware Marlin puro conectadas por USB directo, sin Klipper/Moonraker.</p>
+                                <div class="usb-ports-list" id="marlin-discover-list"></div>
+                                <p class="devices-subcard-sublabel" data-i18n="marlinPrintersRegisteredHeader">Impresoras registradas</p>
+                                <div class="usb-ports-list" id="marlin-printers-registry-list"></div>
                             </div>
                         </div>
                         </div>
@@ -2244,6 +2340,37 @@
                 </div>
                 <div class="printer-modal-column">
                     <div id="printer-modal-queue"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Marlin Printer Detail Modal (impresora 3D standalone, USB directo) -->
+    <div id="marlin-printer-modal" class="modal">
+        <div class="modal-backdrop" id="marlin-printer-modal-backdrop"></div>
+        <div class="modal-content printer-modal-content" id="marlin-printer-modal-content">
+            <button class="modal-close" id="marlin-printer-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="printer-modal-topbar">
+                <div class="printer-modal-topbar-info">
+                    <h2 id="marlin-printer-modal-name">—</h2>
+                    <div class="printer-status-line" id="marlin-printer-modal-status-line">
+                        <span class="printer-status-dot" id="marlin-printer-modal-status-dot"></span>
+                        <span id="marlin-printer-modal-status-text">—</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body printer-modal-body">
+                <div class="printer-modal-column">
+                    <div id="marlin-printer-modal-toolhead"></div>
+                </div>
+                <div class="printer-modal-column">
+                    <div id="marlin-printer-modal-temperatures"></div>
+                </div>
+                <div class="printer-modal-column">
+                    <div id="marlin-printer-modal-print"></div>
+                    <div id="marlin-printer-modal-console"></div>
                 </div>
             </div>
         </div>
@@ -2960,6 +3087,14 @@
                     </div>
                 </div>
 
+                <div class="usb-classify-name-field" id="usb-classify-firmware-row">
+                    <label data-i18n="usbClassifyFirmwareLabel">Firmware</label>
+                    <div class="option-switch" id="usb-classify-firmware-switch">
+                        <button type="button" class="option-switch-btn active" data-value="fluidnc" data-i18n="usbClassifyFirmwareFluidnc">FluidNC / GRBL</button>
+                        <button type="button" class="option-switch-btn" data-value="marlin" data-i18n="usbClassifyFirmwareMarlin">Marlin</button>
+                    </div>
+                </div>
+
                 <div class="usb-classify-illustration usb-classify-illustration-machine">
                     <svg viewBox="0 0 220 110" width="100%" height="100" fill="none" stroke="#22C55E" stroke-width="1.4">
                         <rect x="20" y="20" width="180" height="55" rx="4"/>
@@ -3022,11 +3157,54 @@
                     <button type="button" class="option-switch-btn" data-value="plotter" data-i18n="cncProfilePlotter">Plotter (lápiz/marcador)</button>
                 </div>
             </div>
+            <div class="usb-classify-name-field" id="device-rename-firmware-row">
+                <label data-i18n="usbClassifyFirmwareLabel">Firmware</label>
+                <div class="option-switch" id="device-rename-firmware-switch">
+                    <button type="button" class="option-switch-btn active" data-value="fluidnc" data-i18n="usbClassifyFirmwareFluidnc">FluidNC / GRBL</button>
+                    <button type="button" class="option-switch-btn" data-value="marlin" data-i18n="usbClassifyFirmwareMarlin">Marlin</button>
+                </div>
+            </div>
             <div class="usb-classify-name-actions">
                 <button type="button" class="btn-file-action" id="device-rename-confirm-btn">
                     <span data-i18n="confirmAction">Confirmar</span>
                 </button>
                 <button type="button" class="btn-file-action btn-file-action-danger" id="device-rename-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alta de una impresora Marlin standalone (USB, nombre + baudrate) -->
+    <div id="marlin-printer-register-modal" class="modal">
+        <div class="modal-backdrop" id="marlin-printer-register-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="marlin-printer-register-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M12 22V12"/><path d="m3.5 6.5 8.5 5.5 8.5-5.5"/></svg>
+            </div>
+            <h2 data-i18n="marlinPrinterRegisterTitle">Agregar impresora Marlin</h2>
+            <p class="laser-card-subtitle" id="marlin-printer-register-device-label"></p>
+            <div class="usb-classify-name-field">
+                <label for="marlin-printer-register-name" data-i18n="usbRegisterNameLabel">Nombre del dispositivo</label>
+                <input type="text" id="marlin-printer-register-name" autocomplete="off">
+            </div>
+            <div class="usb-classify-name-field">
+                <label for="marlin-printer-register-baud" data-i18n="marlinPrinterBaudLabel">Velocidad (baudrate)</label>
+                <select id="marlin-printer-register-baud">
+                    <option value="250000">250000</option>
+                    <option value="115200" selected>115200</option>
+                    <option value="57600">57600</option>
+                    <option value="9600">9600</option>
+                </select>
+            </div>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action" id="marlin-printer-register-confirm-btn">
+                    <span data-i18n="confirmAction">Confirmar</span>
+                </button>
+                <button type="button" class="btn-file-action btn-file-action-danger" id="marlin-printer-register-cancel-btn">
                     <span data-i18n="cancelAction">Cancelar</span>
                 </button>
             </div>
@@ -3106,6 +3284,191 @@
                     <span data-i18n="accessoryAddAction">Agregar</span>
                 </button>
                 <button type="button" class="btn-file-action btn-file-action-danger" id="accessory-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Catálogos del Cotizador: materiales, máquinas y ajustes globales de costo. -->
+    <div id="pricing-catalogs-modal" class="modal">
+        <div class="modal-backdrop" id="pricing-catalogs-modal-backdrop"></div>
+        <div class="modal-content pricing-catalogs-modal-content">
+            <button class="modal-close" id="pricing-catalogs-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <h2 data-i18n="pricingCatalogsModalTitle">Catálogos y ajustes de costos</h2>
+
+            <div class="option-switch" id="pricing-catalogs-tab-switch">
+                <button type="button" class="option-switch-btn active" data-value="materials" data-i18n="pricingCatalogsTabMaterials">Materiales</button>
+                <button type="button" class="option-switch-btn" data-value="machines" data-i18n="pricingCatalogsTabMachines">Máquinas</button>
+                <button type="button" class="option-switch-btn" data-value="settings" data-i18n="pricingCatalogsTabSettings">Ajustes</button>
+            </div>
+
+            <!-- Pestaña: Materiales -->
+            <div id="pricing-catalogs-tab-materials" class="pricing-catalogs-tab">
+                <div class="usb-ports-list" id="pricing-materials-catalog-list"></div>
+                <div class="usb-classify-name-field">
+                    <label data-i18n="pricingMaterialNameLabel">Nombre</label>
+                    <input type="text" id="material-add-name-input" autocomplete="off">
+                </div>
+                <div class="usb-classify-name-field">
+                    <label data-i18n="pricingMaterialKindLabel">Tipo</label>
+                    <div class="option-switch" id="material-add-kind-switch">
+                        <button type="button" class="option-switch-btn active" data-value="filament" data-i18n="pricingMaterialKindFilament">Filamento</button>
+                        <button type="button" class="option-switch-btn" data-value="sheet" data-i18n="pricingMaterialKindSheet">Lámina</button>
+                        <button type="button" class="option-switch-btn" data-value="consumable" data-i18n="pricingMaterialKindConsumable">Consumible</button>
+                    </div>
+                </div>
+                <div class="usb-classify-scan-grid">
+                    <div class="usb-classify-name-field">
+                        <label data-i18n="pricingMaterialUnitCostLabel">Costo unitario</label>
+                        <input type="number" step="any" min="0" id="material-add-unit-cost-input">
+                    </div>
+                    <div class="usb-classify-name-field">
+                        <label data-i18n="pricingMaterialUnitLabel">Unidad</label>
+                        <select id="material-add-unit-select"></select>
+                    </div>
+                </div>
+                <div id="material-add-extra-filament" class="usb-classify-scan-grid">
+                    <div class="usb-classify-name-field">
+                        <label data-i18n="pricingMaterialDensityLabel">Densidad (g/cm³)</label>
+                        <input type="number" step="any" min="0" id="material-add-density-input" value="1.24">
+                    </div>
+                    <div class="usb-classify-name-field">
+                        <label data-i18n="pricingMaterialDiameterLabel">Diámetro (mm)</label>
+                        <input type="number" step="any" min="0" id="material-add-diameter-input" value="1.75">
+                    </div>
+                </div>
+                <div id="material-add-extra-sheet" class="usb-classify-name-field" hidden>
+                    <label data-i18n="pricingMaterialThicknessLabel">Espesor (mm) — solo referencia</label>
+                    <input type="number" step="any" min="0" id="material-add-thickness-input">
+                </div>
+                <div class="login-error" id="material-add-error" hidden></div>
+                <div class="usb-classify-name-actions">
+                    <button type="button" class="btn-file-action" id="material-add-btn">
+                        <span data-i18n="pricingMaterialAddAction">Agregar material</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-danger" id="material-add-cancel-edit-btn" hidden>
+                        <span data-i18n="pricingCancelEdit">Cancelar edición</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pestaña: Máquinas -->
+            <div id="pricing-catalogs-tab-machines" class="pricing-catalogs-tab" hidden>
+                <div class="usb-ports-list" id="pricing-machines-catalog-list"></div>
+                <div class="usb-classify-name-field">
+                    <label data-i18n="pricingMachineImportLabel">Importar nombre desde dispositivo registrado (opcional)</label>
+                    <select id="machine-import-device-select"></select>
+                </div>
+                <div class="usb-classify-name-field">
+                    <label data-i18n="pricingMachineNameLabel">Nombre</label>
+                    <input type="text" id="machine-add-name-input" autocomplete="off">
+                </div>
+                <div class="usb-classify-name-field">
+                    <label data-i18n="pricingMachineKindLabel">Tipo</label>
+                    <div class="option-switch" id="machine-add-kind-switch">
+                        <button type="button" class="option-switch-btn active" data-value="printer" data-i18n="pricingMachineKindPrinter">Impresora</button>
+                        <button type="button" class="option-switch-btn" data-value="laser" data-i18n="pricingMachineKindLaser">Láser</button>
+                        <button type="button" class="option-switch-btn" data-value="cnc" data-i18n="pricingMachineKindCnc">CNC</button>
+                    </div>
+                </div>
+                <div class="usb-classify-scan-grid">
+                    <div class="usb-classify-name-field">
+                        <label data-i18n="pricingMachineWattsLabel">Potencia (W)</label>
+                        <input type="number" step="any" min="0" id="machine-add-watts-input">
+                    </div>
+                    <div class="usb-classify-name-field">
+                        <label data-i18n="pricingMachineRateLabel">Tarifa ($/hora)</label>
+                        <input type="number" step="any" min="0" id="machine-add-rate-input">
+                    </div>
+                </div>
+                <div class="login-error" id="machine-add-error" hidden></div>
+                <div class="usb-classify-name-actions">
+                    <button type="button" class="btn-file-action" id="machine-add-btn">
+                        <span data-i18n="pricingMachineAddAction">Agregar máquina</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-danger" id="machine-add-cancel-edit-btn" hidden>
+                        <span data-i18n="pricingCancelEdit">Cancelar edición</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pestaña: Ajustes globales -->
+            <div id="pricing-catalogs-tab-settings" class="pricing-catalogs-tab" hidden>
+                <div class="pricing-form-grid">
+                    <div class="pricing-field">
+                        <label data-i18n="pricingSettingsCurrencyLabel">Moneda por defecto</label>
+                        <select id="settings-currency-select">
+                            <option value="MXN">MXN ($)</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="EUR">EUR (€)</option>
+                        </select>
+                    </div>
+                    <div class="pricing-field">
+                        <label data-i18n="pricingSettingsPriceKwhLabel">Precio kWh</label>
+                        <input type="number" step="any" min="0" id="settings-price-kwh-input">
+                    </div>
+                    <div class="pricing-field">
+                        <label data-i18n="pricingSettingsLaborRateLabel">Tarifa mano de obra ($/hora)</label>
+                        <input type="number" step="any" min="0" id="settings-labor-rate-input">
+                    </div>
+                    <div class="pricing-field">
+                        <label data-i18n="pricingSettingsPrepMinutesLabel">Minutos de preparación por defecto</label>
+                        <input type="number" step="any" min="0" id="settings-prep-minutes-input">
+                    </div>
+                </div>
+                <div class="usb-classify-name-field">
+                    <label data-i18n="pricingSettingsMarginModeLabel">Modo de margen</label>
+                    <div class="option-switch" id="settings-margin-mode-switch">
+                        <button type="button" class="option-switch-btn active" data-value="percentage" data-i18n="pricingSettingsMarginModePercentage">Porcentaje</button>
+                        <button type="button" class="option-switch-btn" data-value="flat_amount" data-i18n="pricingSettingsMarginModeFlat">Monto fijo</button>
+                    </div>
+                </div>
+                <div class="pricing-form-grid">
+                    <div class="pricing-field" id="settings-margin-percentage-field">
+                        <label data-i18n="pricingSettingsMarginPercentageLabel">Margen (%)</label>
+                        <input type="number" step="any" min="0" id="settings-margin-percentage-input">
+                    </div>
+                    <div class="pricing-field" id="settings-margin-flat-field" hidden>
+                        <label data-i18n="pricingSettingsMarginFlatLabel">Margen (monto fijo)</label>
+                        <input type="number" step="any" min="0" id="settings-margin-flat-input">
+                    </div>
+                </div>
+                <div class="login-error" id="settings-save-error" hidden></div>
+                <button type="button" class="btn-file-action" id="settings-save-btn-catalogs">
+                    <span data-i18n="pricingSettingsSaveAction">Guardar ajustes</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enviar cotización por WhatsApp: previsualiza el mensaje default del
+         backend en un textarea editable antes de abrir el link wa.me. -->
+    <div id="pricing-whatsapp-modal" class="modal">
+        <div class="modal-backdrop" id="pricing-whatsapp-modal-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="pricing-whatsapp-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            </div>
+            <h2 data-i18n="pricingWhatsappModalTitle">Enviar cotización por WhatsApp</h2>
+            <p data-i18n="pricingWhatsappModalHint">Revisá o editá el mensaje antes de abrir WhatsApp.</p>
+            <div class="usb-classify-name-field">
+                <label for="pricing-whatsapp-message-input" data-i18n="pricingWhatsappMessageLabel">Mensaje</label>
+                <textarea id="pricing-whatsapp-message-input" rows="7"></textarea>
+            </div>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action" id="pricing-whatsapp-confirm-btn">
+                    <span data-i18n="pricingWhatsappSendAction">Enviar</span>
+                </button>
+                <button type="button" class="btn-file-action btn-file-action-danger" id="pricing-whatsapp-cancel-btn">
                     <span data-i18n="cancelAction">Cancelar</span>
                 </button>
             </div>
@@ -3303,7 +3666,7 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=7"></script>
-    <script src="/static/js/app.js?v=180"></script>
+    <script src="/static/js/translations.js?v=11"></script>
+    <script src="/static/js/app.js?v=188"></script>
 </body>
 </html>

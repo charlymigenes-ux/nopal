@@ -265,7 +265,7 @@ let currentMesh = null;
 let currentAnimationFrame = null;
 let selectedModelId = null;
 let currentViewMode = localStorage.getItem('viewMode') || 'grid';
-let printersViewMode = localStorage.getItem('printersViewMode') || 'grid';
+let printersViewMode = localStorage.getItem('printersViewMode') || 'list';
 const gcodePreviewCache = new Map();
 
 function isSidebarCollapsed() {
@@ -275,8 +275,6 @@ function isSidebarCollapsed() {
 function applySidebarCollapsed(collapsed) {
     const shell = document.querySelector('.app-shell');
     if (shell) shell.classList.toggle('sidebar-collapsed', collapsed);
-    const topbarLeft = document.querySelector('.global-topbar-left');
-    if (topbarLeft) topbarLeft.classList.toggle('sidebar-collapsed', collapsed);
 }
 
 applySidebarCollapsed(isSidebarCollapsed());
@@ -839,6 +837,87 @@ async function renderGcodeThumbnail(thumb, fileUrl) {
     // Vista plana (en planta): el corte/grabado láser es esencialmente 2D (plano XY),
     // así que una cámara ortográfica de arriba hacia abajo muestra el trazo real sin
     // distorsión de perspectiva.
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, 1);
+    const viewSize = maxDim * 1.15;
+    const camera = new THREE.OrthographicCamera(-viewSize / 2, viewSize / 2, viewSize / 2, -viewSize / 2, 0.1, maxDim * 10 + 100);
+    camera.position.set(0, 0, maxDim * 5 + 50);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(0, 0, 0);
+
+    const resize = () => {
+        const width = thumb.clientWidth || 120;
+        const height = thumb.clientHeight || 120;
+        renderer.setSize(width, height);
+        const aspect = width / height || 1;
+        const halfHeight = viewSize / 2;
+        const halfWidth = halfHeight * aspect;
+        camera.left = -halfWidth;
+        camera.right = halfWidth;
+        camera.top = halfHeight;
+        camera.bottom = -halfHeight;
+        camera.updateProjectionMatrix();
+    };
+    resize();
+    renderer.render(scene, camera);
+}
+
+// Miniatura de CNC en el Cotizador: NO reusa renderGcodeThumbnail/
+// parseGcodePath — ese parser filtra segmentos por "potencia de láser" (S
+// como on/off), y en G-code de CNC el S es RPM de husillo, siempre positivo
+// y case casi nunca en cero, así que casi todo el corte real se descartaba
+// (quedaba un trazo minúsculo, la mayoría del archivo en blanco). Reusa
+// parseCncToolpath, el mismo parser ya usado en el visor CNC de verdad, que
+// entiende G0/G1/G2/G3 sin ese supuesto.
+async function renderCncGcodeThumbnail(thumb, fileUrl) {
+    if (!thumb || !window.THREE || typeof window.THREE.Scene !== 'function') return;
+    thumb.innerHTML = '';
+
+    let text;
+    try {
+        const response = await fetch(fileUrl);
+        text = await response.text();
+    } catch (error) {
+        console.error(error);
+        thumb.innerHTML = `<div class="thumb-placeholder">G-code</div>`;
+        return;
+    }
+
+    const toolpath = parseCncToolpath(text);
+    if (!toolpath.cutPaths.length && !toolpath.rapidSegments.length) {
+        thumb.innerHTML = `<div class="thumb-placeholder">G-code</div>`;
+        return;
+    }
+
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    thumb.appendChild(renderer.domElement);
+
+    const light = new THREE.DirectionalLight(0xffffff, 0.9);
+    light.position.set(5, 5, 5);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x888888, 1));
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    if (toolpath.rapidSegments.length) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(toolpath.rapidSegments);
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+        group.add(new THREE.LineSegments(geometry, material));
+    }
+    toolpath.cutPaths.forEach(path => {
+        const geometry = new THREE.BufferGeometry().setFromPoints(path.points);
+        const material = new THREE.LineBasicMaterial({ color: 0xf59e0b });
+        group.add(new THREE.Line(geometry, material));
+    });
+
+    const box = new THREE.Box3().setFromObject(group);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    group.position.sub(center);
+
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, 1);
     const viewSize = maxDim * 1.15;
@@ -3166,7 +3245,8 @@ function laserDashboardCardHtml(entry) {
     const statusText = isOnline ? t('online') : t('offline');
     const stateLabel = isOnline ? (status.state || t('idle')) : t('laserOffline');
     const position = isOnline ? `X${status.x.toFixed(1)} Y${status.y.toFixed(1)} Z${status.z.toFixed(1)}` : '—';
-    const feedSpeed = isOnline ? `${status.feed} / ${status.speed}` : '—';
+    // Marlin no reporta feed/velocidad realtime (feed/speed llegan null).
+    const feedSpeed = isOnline && status.feed != null && status.speed != null ? `${status.feed} / ${status.speed}` : '—';
     const hostLabel = laserHostLabel(host);
     const typeLabel = kind === 'cnc' ? t('cnc') : t('laser');
     const typeClass = kind === 'cnc' ? 'printer-card-type-cnc' : 'printer-card-type-laser';
@@ -3437,10 +3517,20 @@ function renderPrinters(printersInput) {
                         <h3 class="printer-name">${escapeHtml(printerName)}</h3>
                         <p class="printer-name-sub">${t('printerType3D')}</p>
                     </div>
-                    <div class="printer-status-icon ${normalizedStatus}" title="${statusText}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
-                        </svg>
+                    <div class="printer-quick-actions">
+                        ${visualState === 'idle' ? `
+                            <button type="button" class="printer-quick-action-btn" data-quick-action="cool" data-port="${printer.port}" title="${t('tempCool')}">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                            </button>
+                            <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent" data-quick-action="preheat" data-port="${printer.port}" title="${t('tempPreset')}">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z"/><path d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z"/></svg>
+                            </button>
+                        ` : ''}
+                        <div class="printer-status-icon ${normalizedStatus}" title="${statusText}">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </div>
                     </div>
                 </div>
 
@@ -3472,13 +3562,6 @@ function renderPrinters(printersInput) {
                             <span>${jobRemainingMinutes != null ? formatEstimatedTime(jobRemainingMinutes) : '—'}</span>
                         </div>
                         <div class="temp-progress"><div class="temp-progress-fill" style="width: ${jobProgress}%"></div></div>
-                    </div>
-                ` : ''}
-
-                ${visualState === 'idle' ? `
-                    <div class="printer-quick-actions">
-                        <button type="button" class="printer-quick-action-btn" data-quick-action="cool" data-port="${printer.port}">${t('tempCool')}</button>
-                        <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent" data-quick-action="preheat" data-port="${printer.port}">${t('tempPreset')}</button>
                     </div>
                 ` : ''}
             </div>
@@ -4520,15 +4603,25 @@ function showToast(message, tone = 'success') {
 // ── Detección de controladoras láser por USB ──
 let knownUsbPorts = null;
 let registeredLaserMap = new Map();
+// Firmware por host ('fluidnc'/'marlin') — aparte de registeredLaserMap
+// (host -> nombre) para no romper los muchos lugares que ya esperan un
+// string ahí; solo se usa para pintar el badge de firmware en las listas.
+let registeredLaserFirmwareMap = new Map();
 
 async function refreshRegisteredLasers() {
     try {
         const response = await fetch('/api/laser/registry');
         const data = await response.json();
-        registeredLaserMap = new Map((data.lasers || []).map(entry => [entry.host, entry.name]));
+        const lasers = data.lasers || [];
+        registeredLaserMap = new Map(lasers.map(entry => [entry.host, entry.name]));
+        registeredLaserFirmwareMap = new Map(lasers.map(entry => [entry.host, entry.firmware || 'fluidnc']));
     } catch (error) {
         console.error(error);
     }
+}
+
+function deviceFirmwareBadgeLabel(firmware) {
+    return firmware === 'marlin' ? t('usbClassifyFirmwareMarlin') : t('usbClassifyFirmwareFluidnc');
 }
 
 function renderUsbPorts(ports, newDevices) {
@@ -4541,9 +4634,13 @@ function renderUsbPorts(ports, newDevices) {
     container.innerHTML = ports.map(port => {
         const host = `usb:${port.device}`;
         const registeredName = registeredLaserMap.get(host);
+        const firmwareBadge = registeredName
+            ? `<span class="usb-port-firmware-badge">${escapeHtml(deviceFirmwareBadgeLabel(registeredLaserFirmwareMap.get(host)))}</span>`
+            : '';
         const actionHtml = registeredName
             ? `<div class="usb-port-registered">
                     <span class="usb-port-registered-badge">${escapeHtml(registeredName)}</span>
+                    ${firmwareBadge}
                     <button type="button" class="theme-option-icon-btn usb-port-rename-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(registeredName)}" title="${escapeHtml(t('usbPortRename'))}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     </button>
@@ -4684,9 +4781,13 @@ function renderWifiDevices(devices) {
     }
     container.innerHTML = devices.map(device => {
         const registeredName = registeredLaserMap.get(device.host);
+        const firmwareBadge = registeredName
+            ? `<span class="usb-port-firmware-badge">${escapeHtml(deviceFirmwareBadgeLabel(registeredLaserFirmwareMap.get(device.host)))}</span>`
+            : '';
         const actionHtml = registeredName
             ? `<div class="usb-port-registered">
                     <span class="usb-port-registered-badge">${escapeHtml(registeredName)}</span>
+                    ${firmwareBadge}
                     <button type="button" class="theme-option-icon-btn usb-port-rename-btn" data-host="${escapeHtml(device.host)}" data-name="${escapeHtml(registeredName)}" title="${escapeHtml(t('usbPortRename'))}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     </button>
@@ -4767,6 +4868,7 @@ function renderRegistryDevices(devices) {
                 <strong>${escapeHtml(device.name || device.host)}</strong>
                 <span>${escapeHtml(device.host)}</span>
             </div>
+            <span class="usb-port-firmware-badge">${escapeHtml(deviceFirmwareBadgeLabel(device.firmware))}</span>
             <span class="device-status-pill ${device.online ? 'online' : 'offline'}">${device.online ? t('online') : t('offline')}</span>
             <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger registry-device-remove-btn" data-host="${escapeHtml(device.host)}" title="${escapeHtml(t('usbPortUnlink'))}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -5032,6 +5134,7 @@ async function runUsbClassifyScan() {
     if (scanGrid) scanGrid.hidden = true;
     if (profileRow) profileRow.hidden = target.kind !== 'cnc';
     if (usbClassifyProfileSwitch) usbClassifyProfileSwitch.setValue('router');
+    if (usbClassifyFirmwareSwitch) usbClassifyFirmwareSwitch.setValue('fluidnc');
     if (scanStatus) scanStatus.hidden = false;
     if (confirmBtn) confirmBtn.disabled = true;
     showUsbClassifyStep('name');
@@ -5108,6 +5211,9 @@ async function handleUsbClassifyNameConfirm() {
         if (homeCorner) registerData.append('home_corner', homeCorner);
         if (target.kind === 'cnc' && usbClassifyProfileSwitch) {
             registerData.append('machine_profile', usbClassifyProfileSwitch.getValue() || 'router');
+        }
+        if (usbClassifyFirmwareSwitch) {
+            registerData.append('firmware', usbClassifyFirmwareSwitch.getValue() || 'fluidnc');
         }
         await fetch('/api/laser/registry', { method: 'POST', body: registerData });
 
@@ -5263,6 +5369,7 @@ async function openDeviceRenameModal(host, currentName) {
         }
         if (profileRow) profileRow.hidden = !(entry && entry.kind === 'cnc');
         deviceRenameProfileSwitch.setValue((entry && entry.machine_profile) || 'router');
+        deviceRenameFirmwareSwitch.setValue((entry && entry.firmware) || 'fluidnc');
     } catch (error) {
         console.error(error);
     }
@@ -5300,6 +5407,7 @@ async function handleDeviceRenameConfirm() {
         if (existing && existing.kind === 'cnc') {
             formData.append('machine_profile', deviceRenameProfileSwitch.getValue() || 'router');
         }
+        formData.append('firmware', deviceRenameFirmwareSwitch.getValue() || 'fluidnc');
 
         await fetch('/api/laser/registry', { method: 'POST', body: formData });
         refreshUsbPorts();
@@ -5370,13 +5478,17 @@ function renderLaserStatus(data) {
 
     dot.classList.add('online');
     text.textContent = t('laserOnline');
+    document.body.setAttribute('data-machine-firmware', data.firmware || 'fluidnc');
     if (pill) {
         pill.textContent = data.state || '';
         pill.className = `laser-state-pill state-${(data.state || '').toLowerCase()}`;
     }
     if (position) position.textContent = `X${data.x.toFixed(2)} Y${data.y.toFixed(2)} Z${data.z.toFixed(2)}`;
-    const powerPercent = Math.round((data.speed / LASER_POWER_S_MAX) * 100);
-    if (feedSpeed) feedSpeed.textContent = `${data.feed} / ${powerPercent}%`;
+    // Marlin no reporta feed/velocidad realtime (feed/speed llegan null) —
+    // se muestra "—" en vez de "null" mientras no haya nada que mostrar.
+    const hasFeedSpeed = data.feed != null && data.speed != null;
+    const powerPercent = hasFeedSpeed ? Math.round((data.speed / LASER_POWER_S_MAX) * 100) : null;
+    if (feedSpeed) feedSpeed.textContent = hasFeedSpeed ? `${data.feed} / ${powerPercent}%` : '—';
     if (overrides) {
         // GRBL no manda "Ov" en cada reporte de status (solo cada ~10
         // reportes) — si todavía no llegó ninguno esta sesión, mostrar "—"
@@ -5386,9 +5498,9 @@ function renderLaserStatus(data) {
             : '— / — / —';
     }
     const jobSpeedEl = document.getElementById('laser-job-speed');
-    if (jobSpeedEl) jobSpeedEl.textContent = `${data.feed} mm/min`;
+    if (jobSpeedEl) jobSpeedEl.textContent = hasFeedSpeed ? `${data.feed} mm/min` : '—';
     const jobPowerEl = document.getElementById('laser-job-power');
-    if (jobPowerEl) jobPowerEl.textContent = `${powerPercent}%`;
+    if (jobPowerEl) jobPowerEl.textContent = hasFeedSpeed ? `${powerPercent}%` : '—';
     updateLaserBedMapPosition(data.x, data.y, (data.state || '').toLowerCase() === 'run');
 }
 
@@ -6045,6 +6157,36 @@ function fitLaserBedMapToTrace() {
     });
 }
 
+// Zoom fijo (no follow) al tamaño real del archivo apenas arranca el
+// trabajo, usando el bounding box en mm calculado por parseGcodeBoundingBox
+// (no el trazo ya recorrido, que recién arrancando está vacío).
+function zoomLaserBedMapToBounds(bbox) {
+    if (!bbox || !laserBedMapWorkArea) return;
+    const minPX = Math.min(100, Math.max(0, (bbox.minX / laserBedMapWorkArea.width) * 100));
+    const maxPX = Math.min(100, Math.max(0, (bbox.maxX / laserBedMapWorkArea.width) * 100));
+    const minPY = Math.min(100, Math.max(0, (bbox.minY / laserBedMapWorkArea.height) * 100));
+    const maxPY = Math.min(100, Math.max(0, (bbox.maxY / laserBedMapWorkArea.height) * 100));
+
+    const spanXPercent = Math.max(4, maxPX - minPX);
+    const spanYPercent = Math.max(4, maxPY - minPY);
+    const zoomX = 100 / spanXPercent;
+    const zoomY = 100 / spanYPercent;
+    laserBedMapZoom = Math.min(LASER_BED_MAP_ZOOM_MAX, Math.max(LASER_BED_MAP_ZOOM_MIN, Math.min(zoomX, zoomY) * 0.75));
+    applyLaserBedMapZoom();
+
+    const viewport = document.getElementById('laser-bed-map-viewport');
+    const mapEl = document.getElementById('laser-bed-map');
+    if (!viewport || !mapEl) return;
+    requestAnimationFrame(() => {
+        const centerPX = (minPX + maxPX) / 2;
+        // Mismo origen abajo-izquierda que fitLaserBedMapToTrace — el SVG/scroll
+        // usan Y invertido (arriba = 0), por eso 1 - centerPY/100.
+        const centerPY = (minPY + maxPY) / 2;
+        viewport.scrollLeft = (centerPX / 100) * mapEl.offsetWidth - viewport.clientWidth / 2;
+        viewport.scrollTop = (1 - centerPY / 100) * mapEl.offsetHeight - viewport.clientHeight / 2;
+    });
+}
+
 let laserBedMapFollowInterval = null;
 
 // Al activarse, cada 10s vuelve a llamar fitLaserBedMapToTrace() para seguir
@@ -6169,7 +6311,7 @@ async function gamepadJog(axis, dir, activeKind) {
     if (!inCnc && laserJobIsActive) return;
     const step = inCnc ? (axis === 'Z' ? cncJogStepZ : cncJogStep) : laserJogStep;
     const feed = inCnc ? (CNC_JOG_FEED_BY_MODE[cncJogFeedMode] || CNC_JOG_FEED_BY_MODE.normal) : LASER_JOG_FEED;
-    await sendLaserRawCommand(`$J=G91 G21 ${axis}${(step * dir).toFixed(3)} F${feed}`);
+    await sendLaserJog(axis, step * dir, feed);
     if (inCnc) refreshCncStatus(); else refreshLaserStatus();
 }
 
@@ -6557,7 +6699,10 @@ if (laserConsoleForm) {
         laserConsoleHistoryDraft = '';
         const host = document.getElementById('laser-host-select')?.value;
         await sendLaserRawCommand(command, host);
-        refreshLaserConsole();
+        // Ráfaga de refrescos cortos en vez de esperar el poll de 2.5s — cubre
+        // tanto respuestas rápidas como el resto de una respuesta larga tipo
+        // $$ que la placa tarda unos cientos de ms en terminar de transmitir.
+        [150, 400, 900, 1800].forEach(delay => setTimeout(refreshLaserConsole, delay));
     });
 
     const laserConsoleInputEl = document.getElementById('laser-console-input');
@@ -6622,11 +6767,16 @@ function grblSettingDescription(key) {
     return GRBL_SETTING_DESCRIPTIONS[key] || t('laserSettingsUnknownParam');
 }
 
-function renderLaserSettings(settings) {
+function renderLaserSettings(settings, firmware) {
     const container = document.getElementById('laser-settings-grid');
     if (!container) return;
     if (!settings || !settings.length) {
-        container.innerHTML = `<div class="empty-state-small">${t('laserOffline')}</div>`;
+        // Marlin no tiene parámetros $$ (GET /api/laser/settings devuelve
+        // settings:[] a propósito para esos hosts) — mensaje distinto del de
+        // "sin conexión" para no confundir a alguien con una placa Marlin
+        // conectada y online que simplemente no tiene nada que listar acá.
+        const message = firmware === 'marlin' ? t('cncSettingsNotAvailableMarlin') : t('laserOffline');
+        container.innerHTML = `<div class="empty-state-small">${message}</div>`;
         return;
     }
     container.innerHTML = settings.map(setting => `
@@ -6670,10 +6820,14 @@ function renderLaserSettings(settings) {
 
 async function loadLaserSettings() {
     try {
-        const response = await fetch('/api/laser/settings');
-        if (!response.ok) throw new Error('No se pudo cargar la configuración');
-        const data = await response.json();
-        renderLaserSettings(data.settings || []);
+        const [settingsResponse, statusResponse] = await Promise.all([
+            fetch('/api/laser/settings'),
+            fetch('/api/laser/status'),
+        ]);
+        if (!settingsResponse.ok) throw new Error('No se pudo cargar la configuración');
+        const data = await settingsResponse.json();
+        const statusData = statusResponse.ok ? await statusResponse.json() : {};
+        renderLaserSettings(data.settings || [], statusData.firmware);
     } catch (error) {
         console.error(error);
         renderLaserSettings([]);
@@ -7174,41 +7328,89 @@ async function sendLaserRawCommand(command, host) {
     }
 }
 
+// Mueve UN eje en relativo — el backend arma la secuencia real ($J=... GRBL
+// o G91/G1/G90 Marlin) según el firmware registrado para `host`, así el
+// frontend deja de construir G-code de jog a mano (ver services/laser_service.py::jog).
+async function sendLaserJog(axis, distance, feed, host) {
+    try {
+        const formData = new FormData();
+        formData.append('axis', axis);
+        formData.append('distance', distance);
+        formData.append('feed', feed);
+        if (host) formData.append('host', host);
+        const response = await fetch('/api/laser/jog', { method: 'POST', body: formData });
+        return response.ok;
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+}
+
+// El D-pad tiene botones diagonales que antes movían dos ejes en un solo
+// comando $J combinado — /api/laser/jog solo acepta un eje + una distancia
+// por pedido, así que un jog diagonal es dos llamadas en paralelo (una por
+// eje) en vez de una sola.
+async function sendLaserJogMoves(moves, feed, host) {
+    await Promise.all(moves.map(({ axis, distance }) => sendLaserJog(axis, distance, feed, host)));
+}
+
+async function sendLaserHome(host, axes) {
+    try {
+        const formData = new FormData();
+        if (host) formData.append('host', host);
+        if (axes) formData.append('axes', axes);
+        const response = await fetch('/api/laser/home', { method: 'POST', body: formData });
+        return response.ok;
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+}
+
 function parseGcodeBoundingBox(text) {
     const lines = text.split(/\r?\n/);
     let x = 0, y = 0;
     let absolute = true;
+    let motionCode = null; // último G0/G1 visto — modal, sigue vigente en líneas que no lo repiten
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    const parseValue = token => parseFloat(token.slice(1));
 
     for (const raw of lines) {
         const line = raw.replace(/;.*$/, '').replace(/\(.*?\)/g, '').trim();
         if (!line) continue;
-        const parts = line.split(/\s+/);
-        const code = parts[0].toUpperCase();
+        // Software real (ej. LightBurn) no siempre separa cada parámetro con
+        // espacio — una línea típica es "G1 X0.442Y0.442F1500S0" sin espacios
+        // entre X/Y/F/S. Tokenizar por límite de letra (no por espacio en
+        // blanco) es la única forma de no perder los parámetros pegados.
+        const tokens = line.toUpperCase().match(/[A-Z][+-]?[0-9]*\.?[0-9]+/g);
+        if (!tokens) continue;
 
-        if (code === 'G90') { absolute = true; continue; }
-        if (code === 'G91') { absolute = false; continue; }
-        if (code === 'G92') {
-            for (let i = 1; i < parts.length; i++) {
-                const token = parts[i].toUpperCase();
-                if (token.startsWith('X')) x = parseValue(token);
-                if (token.startsWith('Y')) y = parseValue(token);
+        let hasX = false, hasY = false, nx = x, ny = y;
+        for (const token of tokens) {
+            const letter = token[0];
+            const value = parseFloat(token.slice(1));
+            if (Number.isNaN(value)) continue;
+            if (letter === 'G') {
+                if (value === 90) absolute = true;
+                else if (value === 91) absolute = false;
+                else if (value === 92) motionCode = 'G92';
+                else if (value === 0 || value === 1) motionCode = `G${value}`;
+            } else if (letter === 'X') {
+                nx = absolute ? value : x + value;
+                hasX = true;
+            } else if (letter === 'Y') {
+                ny = absolute ? value : y + value;
+                hasY = true;
             }
+        }
+
+        if (motionCode === 'G92') {
+            if (hasX) x = nx;
+            if (hasY) y = ny;
             continue;
         }
-        if (!['G0', 'G1', 'G00', 'G01'].includes(code)) continue;
+        if (motionCode !== 'G0' && motionCode !== 'G1') continue;
+        if (!hasX && !hasY) continue;
 
-        let nx = x, ny = y;
-        for (let i = 1; i < parts.length; i++) {
-            const token = parts[i].toUpperCase();
-            if (token.length < 2) continue;
-            const letter = token[0];
-            const value = parseValue(token);
-            if (Number.isNaN(value)) continue;
-            if (letter === 'X') nx = absolute ? value : x + value;
-            if (letter === 'Y') ny = absolute ? value : y + value;
-        }
         x = nx; y = ny;
         minX = Math.min(minX, x); maxX = Math.max(maxX, x);
         minY = Math.min(minY, y); maxY = Math.max(maxY, y);
@@ -7250,7 +7452,9 @@ function confirmLaserJobStart(gcodeText, options = {}) {
         const copiesInput = document.getElementById('laser-start-confirm-copies-input');
 
         if (!modal || !cancelBtn || !frameBtn || !startBtn) {
-            resolve({ confirmed: window.confirm(t('laserStartConfirm')), copies: 1 });
+            const confirmed = window.confirm(t('laserStartConfirm'));
+            if (confirmed && gcodeText) zoomLaserBedMapToBounds(parseGcodeBoundingBox(gcodeText));
+            resolve({ confirmed, copies: 1 });
             return;
         }
 
@@ -7268,7 +7472,10 @@ function confirmLaserJobStart(gcodeText, options = {}) {
             resolve({ confirmed: result, copies });
         };
         const onCancel = () => cleanup(false);
-        const onStart = () => cleanup(true);
+        const onStart = () => {
+            if (gcodeText) zoomLaserBedMapToBounds(parseGcodeBoundingBox(gcodeText));
+            cleanup(true);
+        };
         const onFrame = async () => {
             const label = frameBtn.querySelector('span');
             const originalLabel = label ? label.textContent : '';
@@ -7316,12 +7523,12 @@ document.querySelectorAll('.laser-jog-btn[data-axis]').forEach(btn => {
         // 10-100mm (los pasos de XY) es fácil de usar mal y estrellar la fresa.
         const step = inCnc ? (axis === 'Z' ? cncJogStepZ : cncJogStep) : laserJogStep;
         const feed = inCnc ? (CNC_JOG_FEED_BY_MODE[cncJogFeedMode] || CNC_JOG_FEED_BY_MODE.normal) : LASER_JOG_FEED;
-        let move = `${axis}${(step * dir).toFixed(3)}`;
+        const moves = [{ axis, distance: step * dir }];
         if (btn.dataset.axis2 && btn.dataset.dir2) {
             const dir2 = parseInt(btn.dataset.dir2, 10);
-            move += `${btn.dataset.axis2}${(step * dir2).toFixed(3)}`;
+            moves.push({ axis: btn.dataset.axis2, distance: step * dir2 });
         }
-        await sendLaserRawCommand(`$J=G91 G21 ${move} F${feed}`);
+        await sendLaserJogMoves(moves, feed);
         if (inCnc) { refreshCncStatus(); } else { refreshLaserStatus(); }
     });
 });
@@ -7903,6 +8110,14 @@ async function refreshCncStatus() {
         if (dot) dot.classList.add('online');
         if (connectedText) connectedText.textContent = t('online');
 
+        // Firmware de la placa activa — controla qué tan "GRBL" se ve el panel
+        // (ver regla body[data-machine-firmware="marlin"] .grbl-only en style.css).
+        document.body.setAttribute('data-machine-firmware', data.firmware || 'fluidnc');
+        const firmwareFooterEl = document.getElementById('cnc-footer-firmware');
+        if (firmwareFooterEl) firmwareFooterEl.textContent = deviceFirmwareBadgeLabel(data.firmware);
+        const portFooterEl = document.getElementById('cnc-footer-port');
+        if (portFooterEl) portFooterEl.textContent = laserHostLabel(data.host || host || '') || '—';
+
         const state = (data.state || 'Idle');
         statePills.forEach(el => {
             el.textContent = state.toUpperCase();
@@ -7921,9 +8136,31 @@ async function refreshCncStatus() {
         setPos('z', data.z || 0);
 
         const feedEl = document.getElementById('cnc-feed-value');
-        if (feedEl) feedEl.textContent = Math.round(data.feed || 0);
+        if (feedEl) feedEl.textContent = data.feed != null ? Math.round(data.feed) : '—';
         const rpmEl = document.getElementById('cnc-rpm-value');
-        if (rpmEl) rpmEl.textContent = Math.round(data.speed || 0);
+        if (rpmEl) rpmEl.textContent = data.speed != null ? Math.round(data.speed) : '—';
+
+        // Caso híbrido: placa Marlin con hotend/cama propios (ej. un router
+        // con calefactor auxiliar) — el status trae extruder/heater_bed
+        // aparte, solo cuando aplica (ver /api/laser/status en el backend).
+        const marlinTempsRow = document.getElementById('cnc-marlin-temps-row');
+        if (marlinTempsRow) {
+            const hasExtruder = !!data.extruder;
+            const hasBed = !!data.heater_bed;
+            marlinTempsRow.hidden = !(hasExtruder || hasBed);
+            const extruderEl = document.getElementById('cnc-extruder-temp');
+            if (extruderEl) {
+                extruderEl.textContent = hasExtruder
+                    ? `${data.extruder.current.toFixed(1)}° / ${data.extruder.target.toFixed(1)}°`
+                    : '—';
+            }
+            const bedEl = document.getElementById('cnc-bed-temp');
+            if (bedEl) {
+                bedEl.textContent = hasBed
+                    ? `${data.heater_bed.current.toFixed(1)}° / ${data.heater_bed.target.toFixed(1)}°`
+                    : '—';
+            }
+        }
 
         const pins = data.pins || '';
         ['X', 'Y', 'Z', 'P', 'D', 'A'].forEach(key => setCncPinActive(key, pins.includes(key)));
@@ -7952,6 +8189,12 @@ async function refreshCncParserState() {
         const data = await response.json();
         const wcsSelect = document.getElementById('cnc-wcs-select');
         if (wcsSelect && data.wcs) wcsSelect.value = data.wcs;
+        // Marlin no tiene sistemas de coordenadas G54-G59 — parser-state
+        // devuelve supported:false en vez de tirar error para esos hosts.
+        // Se oculta el selector directo acá además de por CSS (.grbl-only),
+        // por si el firmware del host todavía no llegó por refreshCncStatus.
+        const wcsField = wcsSelect?.closest('.cnc-topbar-field');
+        if (wcsField) wcsField.hidden = data.supported === false;
     } catch (error) {
         console.error(error);
     }
@@ -8033,7 +8276,7 @@ document.getElementById('cnc-park-btn')?.addEventListener('click', async () => {
         console.error(error);
     }
     // Se aleja un poco de la pieza en Z al estacionar, además de pausar.
-    await sendLaserRawCommand('$J=G91 G21 Z10 F500');
+    await sendLaserJog('Z', 10, 500);
     refreshCncStatus();
     refreshCncJobFooter();
 });
@@ -8046,7 +8289,7 @@ document.getElementById('cnc-probe-btn')?.addEventListener('click', async () => 
 document.querySelectorAll('[data-z-nudge]').forEach(btn => {
     btn.addEventListener('click', async () => {
         const amount = parseFloat(btn.dataset.zNudge);
-        await sendLaserRawCommand(`$J=G91 G21 Z${amount.toFixed(3)} F500`);
+        await sendLaserJog('Z', amount, 500);
         refreshCncStatus();
     });
 });
@@ -8529,7 +8772,7 @@ if (laserHomeBtn) {
         if (isLaserHomeConfirmEnabled()) {
             if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
         }
-        await sendLaserRawCommand('$H');
+        await sendLaserHome();
         clearLaserBedMapTrace();
         refreshLaserStatus();
     });
@@ -8541,7 +8784,7 @@ if (cncHomeBtn) {
         if (isLaserHomeConfirmEnabled()) {
             if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
         }
-        await sendLaserRawCommand('$H');
+        await sendLaserHome();
         refreshCncStatus();
     });
 }
@@ -8668,6 +8911,763 @@ document.addEventListener('click', (event) => {
     card.classList.toggle('collapsed');
     toggle.classList.toggle('collapsed', card.classList.contains('collapsed'));
 });
+
+// ── Impresoras Marlin standalone (USB directo, sin Klipper/Moonraker) ──
+// Path paralelo al de impresoras Klipper y al de CNC/láser: acá no hay
+// Moonraker ni GRBL, solo un puerto serie hablando G-code Marlin puro (ver
+// backend/services/marlin_printer_service.py). El alta (descubrir puerto +
+// nombre/baudrate) vive en Configuración junto al resto de dispositivos; la
+// ficha operativa (jog/temperaturas/consola/impresión) es esta sección
+// dedicada ("Impresoras Marlin" en el menú) + un modal de detalle por
+// impresora, mismo patrón tarjeta->modal que usa Impresora 3D (Klipper).
+
+let marlinPrintersRegistryCache = [];
+
+async function loadMarlinPrintersSettingsCard() {
+    const discoverContainer = document.getElementById('marlin-discover-list');
+    const registryContainer = document.getElementById('marlin-printers-registry-list');
+    if (!discoverContainer && !registryContainer) return;
+    try {
+        const [portsResponse, registryResponse] = await Promise.all([
+            fetch('/api/marlin-printers/discover'),
+            fetch('/api/marlin-printers/registry/status'),
+        ]);
+        const portsData = await portsResponse.json();
+        const registryData = await registryResponse.json();
+        marlinPrintersRegistryCache = registryData.printers || [];
+        renderMarlinDiscoverList(portsData.ports || []);
+        renderMarlinRegistryList(marlinPrintersRegistryCache);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderMarlinDiscoverList(ports) {
+    const container = document.getElementById('marlin-discover-list');
+    if (!container) return;
+    if (!ports.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('marlinPrinterNoPorts')}</div>`;
+        return;
+    }
+    container.innerHTML = ports.map(port => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(port.device)}</strong>
+                <span>${escapeHtml(port.chip || '')}${port.description ? ' · ' + escapeHtml(port.description) : ''}</span>
+            </div>
+            <span class="usb-port-vidpid">${escapeHtml(port.vid_pid || '')}</span>
+            <button type="button" class="btn-file-action marlin-printer-discover-add-btn" data-device="${escapeHtml(port.device)}" data-chip="${escapeHtml(port.chip || '')}">${escapeHtml(t('usbPortAdd'))}</button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.marlin-printer-discover-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => openMarlinRegisterModal(btn.dataset.device, btn.dataset.chip));
+    });
+}
+
+function renderMarlinRegistryList(printers) {
+    const container = document.getElementById('marlin-printers-registry-list');
+    if (!container) return;
+    if (!printers.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('marlinPrinterNoPrinters')}</div>`;
+        return;
+    }
+    container.innerHTML = printers.map(printer => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(printer.name || printer.device)}</strong>
+                <span>${escapeHtml(printer.device)} · ${printer.baud || 115200} bps</span>
+            </div>
+            <span class="device-status-pill ${printer.online ? 'online' : 'offline'}">${printer.online ? t('online') : t('offline')}</span>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger marlin-printer-remove-btn" data-device="${escapeHtml(printer.device)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.marlin-printer-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const device = btn.dataset.device;
+            if (!(await appConfirm(t('marlinPrinterRemoveConfirm'), t('usbPortUnlink'), 'danger'))) return;
+            try {
+                const formData = new FormData();
+                formData.append('device', device);
+                await fetch('/api/marlin-printers/registry/remove', { method: 'POST', body: formData });
+            } catch (error) {
+                console.error(error);
+            } finally {
+                loadMarlinPrintersSettingsCard();
+                refreshMarlinPrintersGrid();
+            }
+        });
+    });
+}
+
+document.getElementById('marlin-printers-discover-btn')?.addEventListener('click', loadMarlinPrintersSettingsCard);
+
+let marlinRegisterTarget = null;
+
+function openMarlinRegisterModal(device, chip) {
+    marlinRegisterTarget = device;
+    const label = document.getElementById('marlin-printer-register-device-label');
+    if (label) label.textContent = chip ? `${chip} · ${device}` : device;
+    const nameInput = document.getElementById('marlin-printer-register-name');
+    if (nameInput) nameInput.value = chip && chip !== 'CH340' && chip !== 'CH340K' ? chip : 'Impresora Marlin';
+    const baudSelect = document.getElementById('marlin-printer-register-baud');
+    if (baudSelect) baudSelect.value = '115200';
+    document.getElementById('marlin-printer-register-modal')?.classList.add('active');
+    if (nameInput) { nameInput.focus(); nameInput.select(); }
+}
+
+function closeMarlinRegisterModal() {
+    document.getElementById('marlin-printer-register-modal')?.classList.remove('active');
+    marlinRegisterTarget = null;
+}
+
+document.getElementById('marlin-printer-register-close')?.addEventListener('click', closeMarlinRegisterModal);
+document.getElementById('marlin-printer-register-backdrop')?.addEventListener('click', closeMarlinRegisterModal);
+document.getElementById('marlin-printer-register-cancel-btn')?.addEventListener('click', closeMarlinRegisterModal);
+
+document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener('click', async () => {
+    const device = marlinRegisterTarget;
+    const nameInput = document.getElementById('marlin-printer-register-name');
+    const baudSelect = document.getElementById('marlin-printer-register-baud');
+    const name = nameInput ? nameInput.value.trim() : '';
+    if (!device || !name) return;
+    closeMarlinRegisterModal();
+    try {
+        const formData = new FormData();
+        formData.append('device', device);
+        formData.append('name', name);
+        formData.append('baud', baudSelect ? baudSelect.value : '115200');
+        await fetch('/api/marlin-printers/registry', { method: 'POST', body: formData });
+        showToast(`${name}: ${t('marlinPrinterRegisterSuccess')}`);
+    } catch (error) {
+        console.error(error);
+    } finally {
+        loadMarlinPrintersSettingsCard();
+        refreshMarlinPrintersGrid();
+    }
+});
+
+// ── Ficha operativa: grid de tarjetas + modal de detalle por impresora ──
+
+let marlinGridPollInterval = null;
+
+function getMarlinPrinterVisualState(status) {
+    if (!status || !status.connected) return 'offline';
+    const state = (status.state || 'idle').toLowerCase();
+    if (state === 'printing') return 'printing';
+    if (state === 'paused') return 'paused';
+    return 'idle';
+}
+
+function marlinPrinterCardHtml(printer, status) {
+    const visualState = getMarlinPrinterVisualState(status);
+    const isOnline = visualState !== 'offline';
+    const statusText = isOnline ? t('online') : t('offline');
+    const stateLabel = isOnline ? t(visualState) : t('offline');
+    const name = printer.name || printer.device;
+
+    let extruderTemp = '--';
+    let bedTemp = '--';
+    if (status?.extruder && typeof status.extruder.current === 'number') extruderTemp = Math.round(status.extruder.current * 10) / 10;
+    if (status?.heater_bed && typeof status.heater_bed.current === 'number') bedTemp = Math.round(status.heater_bed.current * 10) / 10;
+
+    return `
+        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
+            <div class="printer-card-top">
+                <div>
+                    <h3 class="printer-name">${escapeHtml(name)}</h3>
+                    <p class="printer-name-sub">Marlin</p>
+                </div>
+                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                </div>
+            </div>
+
+            <div class="printer-status-line ${visualState}">
+                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
+            </div>
+
+            <div class="printer-illustration printer-illustration-${visualState}">
+                ${printerIllustrationImg(visualState)}
+            </div>
+
+            ${isOnline ? `
+                <div class="printer-temps">
+                    <div class="temp-item">
+                        <div class="temp-label">${t('bedTemp')}</div>
+                        <div class="temp-value">${bedTemp}<span class="temp-unit">°C</span></div>
+                    </div>
+                    <div class="temp-item">
+                        <div class="temp-label">${t('extruderTemp')}</div>
+                        <div class="temp-value">${extruderTemp}<span class="temp-unit">°C</span></div>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function refreshMarlinPrintersGrid() {
+    const grid = document.getElementById('marlin-printers-grid');
+    if (!grid) return;
+    try {
+        const response = await fetch('/api/marlin-printers/registry/status');
+        const data = await response.json();
+        const printers = data.printers || [];
+        marlinPrintersRegistryCache = printers;
+        if (!printers.length) {
+            grid.innerHTML = `<div class="empty-state">${t('marlinPrinterNoPrinters')}</div>`;
+            return;
+        }
+        const entries = await Promise.all(printers.map(async printer => {
+            try {
+                const statusResponse = await fetch(`/api/marlin-printers/status?device=${encodeURIComponent(printer.device)}`);
+                const status = await statusResponse.json();
+                return { printer, status };
+            } catch (error) {
+                return { printer, status: { connected: false } };
+            }
+        }));
+        grid.innerHTML = entries.map(({ printer, status }) => marlinPrinterCardHtml(printer, status)).join('');
+        grid.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
+            card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
+        });
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function loadMarlinSection() {
+    await loadMarlinPrintersSettingsCard();
+    refreshMarlinPrintersGrid();
+    stopMarlinPrintersPolling();
+    marlinGridPollInterval = setInterval(refreshMarlinPrintersGrid, 3000);
+}
+
+function stopMarlinPrintersPolling() {
+    if (marlinGridPollInterval) { clearInterval(marlinGridPollInterval); marlinGridPollInterval = null; }
+}
+
+document.getElementById('marlin-printers-refresh-btn')?.addEventListener('click', refreshMarlinPrintersGrid);
+
+// El alta (descubrir puerto + nombre/baudrate) vive en Configuración, junto
+// al resto de dispositivos (misma lógica que "Todos los dispositivos" para
+// láser/CNC) — este botón lleva ahí en vez de duplicar el flujo de alta acá.
+document.getElementById('marlin-printers-add-btn')?.addEventListener('click', () => {
+    switchSection('settings');
+    showToast(t('marlinPrinterAddGoSettingsHint'));
+    setTimeout(() => {
+        document.getElementById('marlin-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+});
+
+async function sendMarlinPrinterJog(device, axis, distance, feed) {
+    try {
+        const formData = new FormData();
+        formData.append('device', device);
+        formData.append('axis', axis);
+        formData.append('distance', distance);
+        formData.append('feed', feed);
+        const response = await fetch('/api/marlin-printers/jog', { method: 'POST', body: formData });
+        return response.ok;
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+}
+
+async function sendMarlinPrinterHome(device, axes) {
+    try {
+        const formData = new FormData();
+        formData.append('device', device);
+        if (axes) formData.append('axes', axes);
+        const response = await fetch('/api/marlin-printers/home', { method: 'POST', body: formData });
+        return response.ok;
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+}
+
+let marlinModalDevice = null;
+let marlinModalFastInterval = null;
+let marlinModalSlowInterval = null;
+let marlinToolheadJogStep = 10;
+
+function closeMarlinPrinterModal() {
+    document.getElementById('marlin-printer-modal')?.classList.remove('active');
+    if (marlinModalFastInterval) { clearInterval(marlinModalFastInterval); marlinModalFastInterval = null; }
+    if (marlinModalSlowInterval) { clearInterval(marlinModalSlowInterval); marlinModalSlowInterval = null; }
+    marlinModalDevice = null;
+}
+
+document.getElementById('marlin-printer-modal-close')?.addEventListener('click', closeMarlinPrinterModal);
+document.getElementById('marlin-printer-modal-backdrop')?.addEventListener('click', closeMarlinPrinterModal);
+
+async function openMarlinPrinterModal(device) {
+    marlinModalDevice = device;
+    const entry = marlinPrintersRegistryCache.find(p => p.device === device);
+    const nameEl = document.getElementById('marlin-printer-modal-name');
+    if (nameEl) nameEl.textContent = (entry && entry.name) || device;
+    document.getElementById('marlin-printer-modal')?.classList.add('active');
+
+    await renderMarlinPrintCardShell(device);
+
+    const consoleContainer = document.getElementById('marlin-printer-modal-console');
+    if (consoleContainer) {
+        consoleContainer.innerHTML = `
+            <div class="temp-card">
+                <div class="temp-card-header">
+                    <div class="temp-card-header-left">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>
+                        <span>${t('console')}</span>
+                    </div>
+                </div>
+                <div class="temp-card-body">
+                    <div class="console-log" id="marlin-printer-console-log"></div>
+                    <form class="console-input-row" id="marlin-printer-console-form">
+                        <input type="text" id="marlin-printer-console-input" autocomplete="off" placeholder="${escapeHtml(t('consoleInputPlaceholder'))}">
+                        <button type="submit" class="btn-icon-dark" title="${escapeHtml(t('consoleInputPlaceholder'))}">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        `;
+        wireMarlinConsoleForm(device);
+    }
+
+    refreshMarlinModalStatus();
+    refreshMarlinModalTemperatures();
+    refreshMarlinConsole();
+    refreshMarlinPrintStatus();
+
+    if (marlinModalFastInterval) clearInterval(marlinModalFastInterval);
+    if (marlinModalSlowInterval) clearInterval(marlinModalSlowInterval);
+    marlinModalFastInterval = setInterval(refreshMarlinModalStatus, 1200);
+    marlinModalSlowInterval = setInterval(() => {
+        refreshMarlinModalTemperatures();
+        refreshMarlinConsole();
+        refreshMarlinPrintStatus();
+    }, 2500);
+}
+
+function renderMarlinToolheadCard(data, device) {
+    const container = document.getElementById('marlin-printer-modal-toolhead');
+    if (!container) return;
+    if (!data || !data.connected) {
+        container.innerHTML = `<div class="empty-state-small">${t('offline')}</div>`;
+        return;
+    }
+    const position = { x: data.x || 0, y: data.y || 0, z: data.z || 0 };
+
+    container.innerHTML = `
+        <div class="temp-card toolhead-card">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    <span>${t('toolhead')}</span>
+                </div>
+            </div>
+            <div class="temp-card-body">
+                <div class="toolhead-position-row">
+                    <div class="toolhead-position-field">
+                        <div class="toolhead-position-field-top"><span class="toolhead-position-letter">X</span></div>
+                        <div class="toolhead-position-box"><span class="toolhead-position-value">${position.x.toFixed(2)}</span></div>
+                    </div>
+                    <div class="toolhead-position-field">
+                        <div class="toolhead-position-field-top"><span class="toolhead-position-letter">Y</span></div>
+                        <div class="toolhead-position-box"><span class="toolhead-position-value">${position.y.toFixed(2)}</span></div>
+                    </div>
+                    <div class="toolhead-position-field">
+                        <div class="toolhead-position-field-top"><span class="toolhead-position-letter">Z</span></div>
+                        <div class="toolhead-position-box"><span class="toolhead-position-value">${position.z.toFixed(3)}</span></div>
+                    </div>
+                </div>
+
+                <div class="toolhead-jog-row">
+                    <button type="button" class="toolhead-jog-btn" data-axis="X" data-dir="-1" title="X-">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <div class="toolhead-jog-col">
+                        <button type="button" class="toolhead-jog-btn" data-axis="Y" data-dir="1" title="Y+">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button type="button" class="toolhead-jog-btn" data-axis="Y" data-dir="-1" title="Y-">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                    </div>
+                    <button type="button" class="toolhead-jog-btn" data-axis="X" data-dir="1" title="X+">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                    <div class="toolhead-jog-col">
+                        <button type="button" class="toolhead-jog-btn" data-axis="Z" data-dir="1" title="Z+">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button type="button" class="toolhead-jog-btn" data-axis="Z" data-dir="-1" title="Z-">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                    </div>
+                    <div class="toolhead-jog-actions">
+                        <button type="button" class="toolhead-home-all-btn" id="marlin-toolhead-home-all-btn" title="G28">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            <span>${t('homeAll')}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="toolhead-axis-home-row">
+                    <button type="button" id="marlin-toolhead-home-x-btn">X</button>
+                    <button type="button" id="marlin-toolhead-home-y-btn">Y</button>
+                    <button type="button" id="marlin-toolhead-home-z-btn">Z</button>
+                </div>
+
+                <div class="toolhead-steps-row" id="marlin-toolhead-jog-steps">
+                    <button type="button" class="toolhead-step-btn" data-step="1">1</button>
+                    <button type="button" class="toolhead-step-btn" data-step="10">10</button>
+                    <button type="button" class="toolhead-step-btn" data-step="25">25</button>
+                    <button type="button" class="toolhead-step-btn active" data-step="50">50</button>
+                    <button type="button" class="toolhead-step-btn" data-step="100">100</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    container.querySelectorAll('#marlin-toolhead-jog-steps .toolhead-step-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            marlinToolheadJogStep = parseFloat(btn.dataset.step);
+            container.querySelectorAll('#marlin-toolhead-jog-steps .toolhead-step-btn').forEach(b => b.classList.toggle('active', b === btn));
+        });
+        if (btn.classList.contains('active')) marlinToolheadJogStep = parseFloat(btn.dataset.step);
+    });
+
+    container.querySelectorAll('.toolhead-jog-btn[data-axis]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const axis = btn.dataset.axis;
+            const dir = parseInt(btn.dataset.dir, 10);
+            const distance = marlinToolheadJogStep * dir;
+            const feed = axis === 'Z' ? 600 : 3000;
+            await sendMarlinPrinterJog(device, axis, distance, feed);
+            refreshMarlinModalStatus();
+        });
+    });
+
+    const homeAllBtn = document.getElementById('marlin-toolhead-home-all-btn');
+    if (homeAllBtn) homeAllBtn.addEventListener('click', async () => {
+        await sendMarlinPrinterHome(device);
+        refreshMarlinModalStatus();
+    });
+
+    ['x', 'y', 'z'].forEach(axis => {
+        const btn = document.getElementById(`marlin-toolhead-home-${axis}-btn`);
+        if (btn) btn.addEventListener('click', async () => {
+            await sendMarlinPrinterHome(device, axis.toUpperCase());
+            refreshMarlinModalStatus();
+        });
+    });
+}
+
+async function refreshMarlinModalStatus() {
+    const device = marlinModalDevice;
+    if (!device) return;
+    try {
+        const response = await fetch(`/api/marlin-printers/status?device=${encodeURIComponent(device)}`);
+        const data = await response.json();
+        renderMarlinToolheadCard(data, device);
+        const statusDot = document.getElementById('marlin-printer-modal-status-dot');
+        const statusText = document.getElementById('marlin-printer-modal-status-text');
+        const visualState = getMarlinPrinterVisualState(data);
+        const isOnline = visualState !== 'offline';
+        if (statusDot) statusDot.className = `printer-status-dot ${visualState}`;
+        if (statusText) statusText.textContent = isOnline ? t(visualState) : t('offline');
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function refreshMarlinModalTemperatures() {
+    const device = marlinModalDevice;
+    if (!device) return;
+    const container = document.getElementById('marlin-printer-modal-temperatures');
+    if (container && container.contains(document.activeElement) && document.activeElement.classList.contains('temp-target-input')) {
+        return; // no pisar el valor mientras el usuario está escribiendo un target
+    }
+    try {
+        const response = await fetch(`/api/marlin-printers/temperatures?device=${encodeURIComponent(device)}`);
+        if (!response.ok) throw new Error('No se pudo cargar la temperatura');
+        const data = await response.json();
+        renderMarlinTemperaturesCard(data, device);
+    } catch (error) {
+        console.error(error);
+        if (container) container.innerHTML = '';
+    }
+}
+
+function renderMarlinTemperaturesCard(data, device) {
+    const container = document.getElementById('marlin-printer-modal-temperatures');
+    if (!container) return;
+    const sensors = data?.sensors || [];
+    if (!sensors.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const rows = sensors.map((sensor, index) => {
+        const color = TEMP_SERIES_COLORS[index % TEMP_SERIES_COLORS.length];
+        const stateLabel = (sensor.target || 0) > 0
+            ? '<span class="temp-state-arrow temp-state-arrow-up">▲</span>'
+            : '<span class="temp-state-arrow temp-state-arrow-down">▼</span>';
+        return `
+            <div class="temp-table-row">
+                <div class="temp-row-name">
+                    <span class="temp-row-icon" style="color:${color}">${temperatureRowIcon('heater')}</span>
+                    <span>${escapeHtml(sensor.label)}</span>
+                </div>
+                <div class="temp-row-state">${stateLabel}</div>
+                <div class="temp-row-current" style="${sensor.current != null ? `color:${heatColorForSensor(sensor.current, sensor.key)}` : ''}">${sensor.current != null ? sensor.current.toFixed(1) + '°C' : '—'}</div>
+                <div class="temp-row-target">
+                    <div class="temp-target-input-wrap">
+                        <input type="number" class="temp-target-input" data-heater="${escapeHtml(sensor.key)}" value="${sensor.target ?? 0}" step="1" min="0">
+                        <span class="temp-target-unit">°C</span>
+                    </div>
+                    <button type="button" class="theme-option-icon-btn marlin-temp-apply-btn" data-heater="${escapeHtml(sensor.key)}" title="${escapeHtml(t('cncApply'))}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="temp-card">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
+                    <span>${t('temperatures')}</span>
+                </div>
+            </div>
+            <div class="temp-card-body">
+                <div class="temp-table">
+                    <div class="temp-table-head">
+                        <div>${t('columnName')}</div>
+                        <div>${t('status')}</div>
+                        <div>${t('tempActual')}</div>
+                        <div>${t('tempTarget')}</div>
+                    </div>
+                    ${rows}
+                </div>
+            </div>
+        </div>
+    `;
+
+    container.querySelectorAll('.marlin-temp-apply-btn').forEach(btn => {
+        btn.addEventListener('click', () => applyMarlinTempTarget(device, btn.dataset.heater, container));
+    });
+    container.querySelectorAll('.temp-target-input').forEach(input => {
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applyMarlinTempTarget(device, input.dataset.heater, container);
+            }
+        });
+    });
+}
+
+async function applyMarlinTempTarget(device, heater, container) {
+    const input = container.querySelector(`.temp-target-input[data-heater="${heater}"]`);
+    const target = parseFloat(input?.value) || 0;
+    try {
+        const formData = new FormData();
+        formData.append('device', device);
+        formData.append('heater', heater);
+        formData.append('target', target);
+        await fetch('/api/marlin-printers/temperature-target', { method: 'POST', body: formData });
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderMarlinConsoleLog(messages) {
+    const logEl = document.getElementById('marlin-printer-console-log');
+    if (!logEl) return;
+    if (!messages || !messages.length) {
+        logEl.innerHTML = '';
+        return;
+    }
+    const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
+    logEl.innerHTML = messages.map(msg => {
+        const time = msg.time ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+        return `<div class="console-line"><span class="console-line-time">${time}</span><span class="console-line-message">${escapeHtml(msg.message || '')}</span></div>`;
+    }).join('');
+    if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function refreshMarlinConsole() {
+    const device = marlinModalDevice;
+    if (!device) return;
+    try {
+        const response = await fetch(`/api/marlin-printers/console?device=${encodeURIComponent(device)}&count=150`);
+        const data = await response.json();
+        renderMarlinConsoleLog(data.messages || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function wireMarlinConsoleForm(device) {
+    const form = document.getElementById('marlin-printer-console-form');
+    if (!form) return;
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.getElementById('marlin-printer-console-input');
+        const command = input?.value.trim();
+        if (!command) return;
+        input.value = '';
+        try {
+            const formData = new FormData();
+            formData.append('device', device);
+            formData.append('command', command);
+            await fetch('/api/marlin-printers/console', { method: 'POST', body: formData });
+        } catch (error) {
+            console.error(error);
+        }
+        [150, 400, 900, 1800].forEach(delay => setTimeout(refreshMarlinConsole, delay));
+    });
+}
+
+async function renderMarlinPrintCardShell(device) {
+    const container = document.getElementById('marlin-printer-modal-print');
+    if (!container) return;
+    let files = [];
+    try {
+        const response = await fetch('/api/browse?path=&type=gcode');
+        const data = await response.json();
+        files = data.files || [];
+    } catch (error) {
+        console.error(error);
+    }
+
+    const options = files.length
+        ? files.map(file => `<option value="${escapeHtml(stripSectionPrefix(file.id, 'gcode'))}">${escapeHtml(file.name)}</option>`).join('')
+        : `<option value="">${escapeHtml(t('noFilesFound'))}</option>`;
+
+    container.innerHTML = `
+        <div class="temp-card">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <span>${t('marlinPrinterPrintTitle')}</span>
+                </div>
+            </div>
+            <div class="temp-card-body">
+                <div class="cnc-job-file-row">
+                    <select id="marlin-print-file-select" class="settings-select">${options}</select>
+                </div>
+                <div class="cnc-job-progress-row">
+                    <span id="marlin-print-state-text">${escapeHtml(t('marlinPrinterNoActiveJob'))}</span>
+                    <div class="laser-job-progress-bar"><div class="laser-job-progress-fill" id="marlin-print-progress-fill"></div></div>
+                    <span id="marlin-print-percent">0%</span>
+                </div>
+                <div class="cnc-job-buttons-row">
+                    <button type="button" class="btn-file-action btn-file-action-accent" id="marlin-print-start-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        <span>${escapeHtml(t('laserStart'))}</span>
+                    </button>
+                    <button type="button" class="btn-file-action" id="marlin-print-pause-btn" hidden>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        <span>${escapeHtml(t('laserPause'))}</span>
+                    </button>
+                    <button type="button" class="btn-file-action" id="marlin-print-resume-btn" hidden>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        <span>${escapeHtml(t('laserResume'))}</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-danger" id="marlin-print-cancel-btn" hidden>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        <span>${escapeHtml(t('laserCancel'))}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('marlin-print-start-btn')?.addEventListener('click', async () => {
+        const select = document.getElementById('marlin-print-file-select');
+        const path = select?.value;
+        if (!path) return;
+        try {
+            const formData = new FormData();
+            formData.append('device', device);
+            formData.append('path', path);
+            const response = await fetch('/api/marlin-printers/print/start', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || 'No se pudo iniciar la impresión.');
+            }
+            showToast(t('cncJobStarted'));
+        } catch (error) {
+            console.error(error);
+            appAlert(error.message || 'No se pudo iniciar la impresión.', '', 'danger');
+        }
+        refreshMarlinPrintStatus();
+    });
+
+    document.getElementById('marlin-print-pause-btn')?.addEventListener('click', async () => {
+        const formData = new FormData();
+        formData.append('device', device);
+        await fetch('/api/marlin-printers/print/pause', { method: 'POST', body: formData });
+        refreshMarlinPrintStatus();
+    });
+    document.getElementById('marlin-print-resume-btn')?.addEventListener('click', async () => {
+        const formData = new FormData();
+        formData.append('device', device);
+        await fetch('/api/marlin-printers/print/resume', { method: 'POST', body: formData });
+        refreshMarlinPrintStatus();
+    });
+    document.getElementById('marlin-print-cancel-btn')?.addEventListener('click', async () => {
+        if (!(await appConfirm(t('laserCancel'), t('laserCancel'), 'danger'))) return;
+        const formData = new FormData();
+        formData.append('device', device);
+        await fetch('/api/marlin-printers/print/cancel', { method: 'POST', body: formData });
+        refreshMarlinPrintStatus();
+    });
+}
+
+async function refreshMarlinPrintStatus() {
+    const device = marlinModalDevice;
+    if (!device) return;
+    try {
+        const response = await fetch(`/api/marlin-printers/print/status?device=${encodeURIComponent(device)}`);
+        const job = await response.json();
+        const state = job?.state || 'idle';
+        const isActive = state === 'running' || state === 'paused';
+        const stateTextEl = document.getElementById('marlin-print-state-text');
+        if (stateTextEl) {
+            stateTextEl.textContent = isActive ? (job.filename || t('marlinPrinterNoActiveJob')) : t('marlinPrinterNoActiveJob');
+        }
+        const percent = job?.total ? Math.round((job.current / job.total) * 100) : 0;
+        const fillEl = document.getElementById('marlin-print-progress-fill');
+        if (fillEl) fillEl.style.width = `${percent}%`;
+        const percentEl = document.getElementById('marlin-print-percent');
+        if (percentEl) percentEl.textContent = `${percent}%`;
+
+        const startBtn = document.getElementById('marlin-print-start-btn');
+        const pauseBtn = document.getElementById('marlin-print-pause-btn');
+        const resumeBtn = document.getElementById('marlin-print-resume-btn');
+        const cancelBtn = document.getElementById('marlin-print-cancel-btn');
+        if (startBtn) startBtn.hidden = isActive;
+        if (pauseBtn) pauseBtn.hidden = state !== 'running';
+        if (resumeBtn) resumeBtn.hidden = state !== 'paused';
+        if (cancelBtn) cancelBtn.hidden = !isActive;
+
+        const select = document.getElementById('marlin-print-file-select');
+        if (select) select.disabled = isActive;
+    } catch (error) {
+        console.error(error);
+    }
+}
 
 // ── Navigation ──
 function switchSection(sectionName) {
@@ -9023,6 +10023,8 @@ const settingsUiScaleSwitch = createOptionSwitch('settings-ui-scale-switch', () 
 const settingsCncModeSwitch = createOptionSwitch('settings-cnc-mode-switch', () => saveSettings());
 const usbClassifyProfileSwitch = createOptionSwitch('usb-classify-profile-switch', null);
 const deviceRenameProfileSwitch = createOptionSwitch('device-rename-profile-switch', null);
+const usbClassifyFirmwareSwitch = createOptionSwitch('usb-classify-firmware-switch', null);
+const deviceRenameFirmwareSwitch = createOptionSwitch('device-rename-firmware-switch', null);
 const systemLogLevelSwitch = createOptionSwitch('system-log-level-switch', () => renderSystemLogs());
 
 // ── Visor de logs del sistema (Configuración) ──
@@ -9752,6 +10754,7 @@ let pricingLastSavedQuoteId = null;
 let pricingQuoteRequestTimer = null;
 let pricingQuoteDate = null;
 let pricingWired = false;
+let pricingWhatsappQuoteId = null;
 
 function pricingSection() {
     return PRICING_JOB_TYPE_MAP[pricingJobType].section;
@@ -9780,6 +10783,7 @@ function ensurePricingValidUntilDefault() {
 
 async function loadPricingSection() {
     wirePricingSection();
+    updatePricingJobTypeTheme();
     await loadPricingCatalogs();
     await loadPricingFileBrowser(pricingBrowsePath);
     renderPricingExtraCosts();
@@ -9799,6 +10803,8 @@ function wirePricingSection() {
     document.querySelectorAll('#pricing-detail-level-switch .option-switch-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('#pricing-detail-level-switch .option-switch-btn').forEach(b => b.classList.toggle('active', b === btn));
+            pricingLastSavedQuoteId = null;
+            schedulePricingQuoteRefresh();
         });
     });
 
@@ -9840,6 +10846,12 @@ function wirePricingSection() {
     document.getElementById('pricing-save-btn')?.addEventListener('click', savePricingQuote);
     document.getElementById('pricing-print-btn')?.addEventListener('click', () => openPricingPrintPreview());
     document.getElementById('pricing-send-btn')?.addEventListener('click', () => sendPricingQuoteAction());
+    document.getElementById('pricing-whatsapp-btn')?.addEventListener('click', () => openPricingWhatsappModal());
+
+    document.getElementById('pricing-whatsapp-confirm-btn')?.addEventListener('click', confirmPricingWhatsappSend);
+    document.getElementById('pricing-whatsapp-cancel-btn')?.addEventListener('click', closePricingWhatsappModal);
+    document.getElementById('pricing-whatsapp-modal-close')?.addEventListener('click', closePricingWhatsappModal);
+    document.getElementById('pricing-whatsapp-modal-backdrop')?.addEventListener('click', closePricingWhatsappModal);
 
     wireTopbarDropdown('pricing-header-menu-btn', 'pricing-header-menu-panel');
 }
@@ -9862,6 +10874,17 @@ function updatePricingBreadcrumbState() {
     step3.classList.toggle('active', hasQuote);
 }
 
+function updatePricingJobTypeTheme() {
+    const section = document.getElementById('pricing-section');
+    if (!section) return;
+    section.classList.remove('job-type-laser', 'job-type-cnc');
+    if (pricingJobType === 'laser_cut' || pricingJobType === 'laser_engrave') {
+        section.classList.add('job-type-laser');
+    } else if (pricingJobType === 'cnc') {
+        section.classList.add('job-type-cnc');
+    }
+}
+
 function setPricingJobType(type) {
     if (!PRICING_JOB_TYPE_MAP[type] || pricingJobType === type) return;
     pricingJobType = type;
@@ -9875,11 +10898,11 @@ function setPricingJobType(type) {
     document.querySelectorAll('#pricing-job-type-switch .option-switch-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.value === type);
     });
+    updatePricingJobTypeTheme();
     renderPricingMaterialSelect();
     renderPricingMachineSelect();
     loadPricingFileBrowser('');
     renderPricingCostSummary(null);
-    renderPricingDetectedParams(null);
     renderPricingFileInfo(null);
     updatePricingBreadcrumbState();
 }
@@ -9907,11 +10930,17 @@ function resetPricingWizard() {
     if (notesInput) notesInput.value = '';
     const validUntilInput = document.getElementById('pricing-valid-until-input');
     if (validUntilInput) validUntilInput.value = '';
+    const clientNameInput = document.getElementById('pricing-client-name-input');
+    if (clientNameInput) clientNameInput.value = '';
+    const clientPhoneInput = document.getElementById('pricing-client-phone-input');
+    if (clientPhoneInput) clientPhoneInput.value = '';
     ensurePricingValidUntilDefault();
+    document.querySelectorAll('#pricing-detail-level-switch .option-switch-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.value === 'standard');
+    });
     renderPricingFileBrowser();
     renderPricingExtraCosts();
     renderPricingCostSummary(null);
-    renderPricingDetectedParams(null);
     renderPricingFileInfo(null);
     renderPricingAdditionalInfo(null);
     updatePricingBreadcrumbState();
@@ -10052,8 +11081,23 @@ function selectPricingFile(file) {
 
     const thumb = document.getElementById('pricing-selected-file-thumb');
     if (thumb) {
-        const relPath = stripSectionPrefix(file.id, pricingSection());
-        loadRealGcodeThumbnail(thumb, relPath, pricingSection(), file.file_url);
+        if (isGcodeFile(file) && pricingJobType === 'cnc') {
+            // CNC usa su propio parser (ver comentario en
+            // renderCncGcodeThumbnail) — el genérico de abajo interpreta mal
+            // el S de RPM de husillo como si fuera potencia de láser.
+            renderCncGcodeThumbnail(thumb, file.file_url);
+        } else if (isGcodeFile(file)) {
+            const relPath = stripSectionPrefix(file.id, pricingSection());
+            loadRealGcodeThumbnail(thumb, relPath, pricingSection(), file.file_url);
+        } else {
+            // STL/3MF/OBJ sin laminar — el visor de trayectoria de G-code no
+            // sabe leer esto (antes lo intentaba igual y mostraba el texto
+            // de relleno "G-code" en un cuadro vacío). Mismo renderer 3D que
+            // ya usa la galería de Modelos para esta misma familia de
+            // archivos.
+            thumb.innerHTML = '';
+            renderStandardModelPreview(thumb, file.file_url);
+        }
     }
 
     updatePricingBreadcrumbState();
@@ -10137,6 +11181,7 @@ async function refreshPricingQuote() {
     const quantity = parseFloat(document.getElementById('pricing-quantity-input')?.value) || 1;
     const relPath = stripSectionPrefix(pricingSelectedFile.id, pricingSection());
     const validExtraCosts = pricingExtraCosts.filter(c => c.label && c.amount);
+    const detailLevel = document.querySelector('#pricing-detail-level-switch .option-switch-btn.active')?.dataset.value || 'standard';
 
     const formData = new FormData();
     formData.append('path', relPath);
@@ -10145,6 +11190,7 @@ async function refreshPricingQuote() {
     formData.append('quantity', quantity);
     if (machineId) formData.append('machine_id', machineId);
     formData.append('extra_costs', JSON.stringify(validExtraCosts));
+    formData.append('overrides', JSON.stringify({ detail_level: detailLevel }));
 
     try {
         const response = await fetch('/api/pricing/quote', { method: 'POST', body: formData });
@@ -10157,7 +11203,6 @@ async function refreshPricingQuote() {
         pricingLastSavedQuoteId = null;
         pricingQuoteDate = new Date();
         renderPricingCostSummary(result);
-        renderPricingDetectedParams(result.extracted);
         renderPricingFileInfo(result);
         renderPricingAdditionalInfo(result);
         updatePricingBreadcrumbState();
@@ -10174,9 +11219,7 @@ function renderPricingCostSummary(result, errorMessage) {
     const subtotalRow = document.getElementById('pricing-cost-subtotal-row');
     const marginRow = document.getElementById('pricing-cost-margin-row');
     const totalRow = document.getElementById('pricing-cost-total-row');
-    const printBtn = document.getElementById('pricing-print-btn');
     const saveBtn = document.getElementById('pricing-save-btn');
-    const sendBtn = document.getElementById('pricing-send-btn');
     if (!linesContainer) return;
 
     if (!result) {
@@ -10185,8 +11228,7 @@ function renderPricingCostSummary(result, errorMessage) {
         if (marginRow) marginRow.hidden = true;
         if (totalRow) totalRow.hidden = true;
         if (saveBtn) saveBtn.disabled = true;
-        if (printBtn) printBtn.disabled = true;
-        if (sendBtn) sendBtn.disabled = true;
+        updatePricingSaveGatedButtons();
         return;
     }
 
@@ -10226,42 +11268,33 @@ function renderPricingCostSummary(result, errorMessage) {
     if (marginRow) marginRow.hidden = false;
     if (totalRow) totalRow.hidden = false;
     if (saveBtn) saveBtn.disabled = false;
-    if (printBtn) printBtn.disabled = !pricingLastSavedQuoteId;
-    if (sendBtn) sendBtn.disabled = !pricingLastSavedQuoteId;
+    updatePricingSaveGatedButtons();
 }
 
-function renderPricingDetectedParams(extracted) {
-    const card = document.getElementById('pricing-detected-card');
-    const grid = document.getElementById('pricing-detected-grid');
-    if (!card || !grid) return;
-    if (!extracted || !extracted.slicer_settings) {
-        card.hidden = true;
-        return;
-    }
-    const s = extracted.slicer_settings;
-    const items = [
-        [t('pricingNozzleTemp'), s.nozzle_temp_c != null ? `${s.nozzle_temp_c} °C` : null],
-        [t('pricingBedTemp'), s.bed_temp_c != null ? `${s.bed_temp_c} °C` : null],
-        [t('pricingSpeed'), s.print_speed_mm_s != null ? `${s.print_speed_mm_s} mm/s` : null],
-        [t('pricingInfill'), s.infill_percent != null ? `${s.infill_percent}%` : null],
-        [t('pricingSupports'), s.supports == null ? null : (s.supports ? t('pricingYes') : t('pricingNo'))],
-        [t('pricingAdhesion'), s.adhesion || null],
-    ];
-    grid.innerHTML = items.map(([label, value]) => `
-        <div class="pricing-detected-item">
-            <span class="label">${escapeHtml(label)}</span>
-            <span class="value${value == null ? ' missing' : ''}">${value == null ? '—' : escapeHtml(String(value))}</span>
-        </div>
-    `).join('');
-    card.hidden = false;
+// Vista previa PDF / Enviar cotización solo tienen sentido sobre una
+// cotización YA GUARDADA (necesitan un id real para /cotizador/print/{id}
+// y /api/pricing/quotes/{id}/status) — se habilitan recién después de
+// "Guardar cotización", con un tooltip explicando por qué mientras tanto.
+function updatePricingSaveGatedButtons() {
+    const printBtn = document.getElementById('pricing-print-btn');
+    const sendBtn = document.getElementById('pricing-send-btn');
+    const whatsappBtn = document.getElementById('pricing-whatsapp-btn');
+    const enabled = !!pricingLastSavedQuoteId;
+    [printBtn, sendBtn, whatsappBtn].forEach(btn => {
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.title = enabled ? '' : t('pricingSaveFirstHint');
+    });
 }
 
 function renderPricingFileInfo(result) {
     const card = document.getElementById('pricing-file-info-card');
     const list = document.getElementById('pricing-file-info-list');
+    const dimsEl = document.getElementById('pricing-selected-file-dims');
     if (!card || !list) return;
     if (!result) {
         card.hidden = true;
+        if (dimsEl) dimsEl.hidden = true;
         return;
     }
     const e = result.extracted;
@@ -10278,6 +11311,20 @@ function renderPricingFileInfo(result) {
         </div>
     `).join('');
     card.hidden = false;
+
+    // Ancho/Alto: solo si el bounding box real vino de G-code parseado (no
+    // hay forma honesta de saberlo para un STL/3MF sin laminar todavía).
+    if (dimsEl) {
+        if (e.width_mm != null && e.height_mm != null) {
+            dimsEl.innerHTML = `
+                <span>${escapeHtml(t('pricingDimsWidth'))} <strong>${e.width_mm.toFixed(1)} mm</strong></span>
+                <span>${escapeHtml(t('pricingDimsHeight'))} <strong>${e.height_mm.toFixed(1)} mm</strong></span>
+            `;
+            dimsEl.hidden = false;
+        } else {
+            dimsEl.hidden = true;
+        }
+    }
 }
 
 function renderPricingAdditionalInfo(result) {
@@ -10305,6 +11352,8 @@ async function savePricingQuote() {
             detail_level: detailLevel,
             valid_until: document.getElementById('pricing-valid-until-input')?.value || null,
             notes: document.getElementById('pricing-notes-input')?.value.trim() || null,
+            client_name: document.getElementById('pricing-client-name-input')?.value.trim() || null,
+            client_phone: document.getElementById('pricing-client-phone-input')?.value.trim() || null,
         };
         const formData = new FormData();
         formData.append('quote', JSON.stringify(quotePayload));
@@ -10313,8 +11362,7 @@ async function savePricingQuote() {
         const saved = await response.json();
         pricingLastSavedQuoteId = saved.id;
         showToast(`${t('pricingQuoteSaved')}: ${saved.id}`);
-        document.getElementById('pricing-print-btn').disabled = false;
-        document.getElementById('pricing-send-btn').disabled = false;
+        updatePricingSaveGatedButtons();
         renderPricingAdditionalInfo(pricingLastQuoteResult);
         loadPricingQuotesHistory();
     } catch (error) {
@@ -10344,6 +11392,54 @@ async function sendPricingQuoteAction(quoteId) {
     } catch (error) {
         console.error(error);
         appAlert(error.message || t('pricingSendError'), '', 'danger');
+    }
+}
+
+async function openPricingWhatsappModal(quoteId) {
+    const id = quoteId || pricingLastSavedQuoteId;
+    if (!id) return;
+    try {
+        const response = await fetch(`/api/pricing/quotes/${encodeURIComponent(id)}/whatsapp-link`);
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('pricingWhatsappError'));
+        }
+        const data = await response.json();
+        pricingWhatsappQuoteId = id;
+        const textarea = document.getElementById('pricing-whatsapp-message-input');
+        if (textarea) textarea.value = data.message || '';
+        const modal = document.getElementById('pricing-whatsapp-modal');
+        if (modal) modal.classList.add('active');
+        if (textarea) textarea.focus();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('pricingWhatsappError'), '', 'danger');
+    }
+}
+
+function closePricingWhatsappModal() {
+    const modal = document.getElementById('pricing-whatsapp-modal');
+    if (modal) modal.classList.remove('active');
+    pricingWhatsappQuoteId = null;
+}
+
+async function confirmPricingWhatsappSend() {
+    const id = pricingWhatsappQuoteId;
+    if (!id) return;
+    const textarea = document.getElementById('pricing-whatsapp-message-input');
+    const message = textarea ? textarea.value : '';
+    try {
+        const response = await fetch(`/api/pricing/quotes/${encodeURIComponent(id)}/whatsapp-link?message=${encodeURIComponent(message)}`);
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('pricingWhatsappError'));
+        }
+        const data = await response.json();
+        closePricingWhatsappModal();
+        window.open(data.url, '_blank');
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('pricingWhatsappError'), '', 'danger');
     }
 }
 
@@ -10398,6 +11494,495 @@ function renderPricingQuotesTable(quotes) {
         btn.addEventListener('click', () => openPricingPrintPreview(btn.dataset.id));
     });
 }
+
+// ── Cotizador > Catálogos (materiales/máquinas/ajustes) ──
+
+let pricingMaterialEditingId = null;
+let pricingMachineEditingId = null;
+
+function openPricingCatalogsModal() {
+    switchPricingCatalogsTab('materials');
+    resetPricingMaterialForm();
+    resetPricingMachineForm();
+    loadPricingMaterialsCatalog();
+    loadPricingMachinesCatalog();
+    loadPricingMachineImportOptions();
+    loadPricingCatalogsSettingsForm();
+    document.getElementById('pricing-catalogs-modal')?.classList.add('active');
+}
+
+function closePricingCatalogsModal() {
+    document.getElementById('pricing-catalogs-modal')?.classList.remove('active');
+}
+
+function switchPricingCatalogsTab(tab) {
+    document.querySelectorAll('#pricing-catalogs-tab-switch .option-switch-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value === tab);
+    });
+    document.querySelectorAll('.pricing-catalogs-tab').forEach(panel => {
+        panel.hidden = panel.id !== `pricing-catalogs-tab-${tab}`;
+    });
+}
+
+document.getElementById('pricing-manage-catalogs-btn')?.addEventListener('click', () => {
+    closeAllTopbarDropdowns();
+    openPricingCatalogsModal();
+});
+document.getElementById('pricing-catalogs-modal-close')?.addEventListener('click', closePricingCatalogsModal);
+document.getElementById('pricing-catalogs-modal-backdrop')?.addEventListener('click', closePricingCatalogsModal);
+document.querySelectorAll('#pricing-catalogs-tab-switch .option-switch-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchPricingCatalogsTab(btn.dataset.value));
+});
+
+// ── Materiales ──
+
+function pricingMaterialKindLabel(kind) {
+    if (kind === 'filament') return t('pricingMaterialKindFilament');
+    if (kind === 'sheet') return t('pricingMaterialKindSheet');
+    return t('pricingMaterialKindConsumable');
+}
+
+function updatePricingMaterialUnitOptions(kind) {
+    const select = document.getElementById('material-add-unit-select');
+    if (!select) return;
+    const prevValue = select.value;
+    if (kind === 'filament') {
+        select.innerHTML = '<option value="kg">kg</option><option value="g">g</option>';
+        select.disabled = false;
+    } else if (kind === 'sheet') {
+        select.innerHTML = '<option value="m2">m2</option>';
+        select.disabled = true;
+    } else {
+        select.innerHTML = '<option value="pieza">pieza</option><option value="servicio">servicio</option><option value="unidad">unidad</option>';
+        select.disabled = false;
+    }
+    if (Array.from(select.options).some(o => o.value === prevValue)) select.value = prevValue;
+}
+
+const materialAddKindSwitch = createOptionSwitch('material-add-kind-switch', (kind) => {
+    updatePricingMaterialUnitOptions(kind);
+    const filamentExtra = document.getElementById('material-add-extra-filament');
+    const sheetExtra = document.getElementById('material-add-extra-sheet');
+    if (filamentExtra) filamentExtra.hidden = kind !== 'filament';
+    if (sheetExtra) sheetExtra.hidden = kind !== 'sheet';
+});
+materialAddKindSwitch.setValue('filament');
+updatePricingMaterialUnitOptions('filament');
+
+function resetPricingMaterialForm() {
+    pricingMaterialEditingId = null;
+    const nameInput = document.getElementById('material-add-name-input');
+    if (nameInput) nameInput.value = '';
+    const unitCostInput = document.getElementById('material-add-unit-cost-input');
+    if (unitCostInput) unitCostInput.value = '';
+    const densityInput = document.getElementById('material-add-density-input');
+    if (densityInput) densityInput.value = '1.24';
+    const diameterInput = document.getElementById('material-add-diameter-input');
+    if (diameterInput) diameterInput.value = '1.75';
+    const thicknessInput = document.getElementById('material-add-thickness-input');
+    if (thicknessInput) thicknessInput.value = '';
+    materialAddKindSwitch.setValue('filament');
+    updatePricingMaterialUnitOptions('filament');
+    const filamentExtra = document.getElementById('material-add-extra-filament');
+    if (filamentExtra) filamentExtra.hidden = false;
+    const sheetExtra = document.getElementById('material-add-extra-sheet');
+    if (sheetExtra) sheetExtra.hidden = true;
+    const errorEl = document.getElementById('material-add-error');
+    if (errorEl) errorEl.hidden = true;
+    const addBtn = document.getElementById('material-add-btn');
+    if (addBtn) addBtn.querySelector('span').textContent = t('pricingMaterialAddAction');
+    const cancelBtn = document.getElementById('material-add-cancel-edit-btn');
+    if (cancelBtn) cancelBtn.hidden = true;
+}
+
+function fillPricingMaterialForm(material) {
+    pricingMaterialEditingId = material.id;
+    document.getElementById('material-add-name-input').value = material.name;
+    materialAddKindSwitch.setValue(material.kind);
+    updatePricingMaterialUnitOptions(material.kind);
+    document.getElementById('material-add-extra-filament').hidden = material.kind !== 'filament';
+    document.getElementById('material-add-extra-sheet').hidden = material.kind !== 'sheet';
+    document.getElementById('material-add-unit-cost-input').value = material.unit_cost;
+    const unitSelect = document.getElementById('material-add-unit-select');
+    if (unitSelect && material.unit && Array.from(unitSelect.options).some(o => o.value === material.unit)) {
+        unitSelect.value = material.unit;
+    }
+    if (material.kind === 'filament') {
+        document.getElementById('material-add-density-input').value = material.density_g_cm3 ?? 1.24;
+        document.getElementById('material-add-diameter-input').value = material.diameter_mm ?? 1.75;
+    } else if (material.kind === 'sheet') {
+        document.getElementById('material-add-thickness-input').value = material.thickness_mm ?? '';
+    }
+    const addBtn = document.getElementById('material-add-btn');
+    if (addBtn) addBtn.querySelector('span').textContent = t('pricingMaterialSaveChangesAction');
+    const cancelBtn = document.getElementById('material-add-cancel-edit-btn');
+    if (cancelBtn) cancelBtn.hidden = false;
+}
+
+async function loadPricingMaterialsCatalog() {
+    try {
+        const response = await fetch('/api/pricing/materials');
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        renderPricingMaterialsCatalogList(data.materials || []);
+    } catch (error) {
+        console.error(error);
+        renderPricingMaterialsCatalogList([]);
+    }
+}
+
+function renderPricingMaterialsCatalogList(materials) {
+    const container = document.getElementById('pricing-materials-catalog-list');
+    if (!container) return;
+    if (!materials.length) {
+        container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('pricingMaterialCatalogEmpty'))}</div>`;
+        return;
+    }
+    container.innerHTML = materials.map(material => `
+        <div class="usb-port-item" data-id="${escapeHtml(material.id)}">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(material.name)}</strong>
+                <span>${escapeHtml(pricingMaterialKindLabel(material.kind))} · ${material.unit_cost}/${escapeHtml(material.unit || '')}</span>
+            </div>
+            <div class="pricing-catalog-item-actions">
+                <button type="button" class="theme-option-icon-btn material-edit-btn" data-id="${escapeHtml(material.id)}" title="${escapeHtml(t('pricingMaterialEditTitle'))}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger material-remove-btn" data-id="${escapeHtml(material.id)}" title="${escapeHtml(t('pricingMaterialRemove'))}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.material-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const material = materials.find(m => m.id === btn.dataset.id);
+            if (material) fillPricingMaterialForm(material);
+        });
+    });
+    container.querySelectorAll('.material-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => removePricingMaterialCatalogEntry(btn.dataset.id));
+    });
+}
+
+async function submitPricingMaterialForm() {
+    const name = document.getElementById('material-add-name-input')?.value.trim() || '';
+    const kind = materialAddKindSwitch.getValue() || 'filament';
+    const unitCost = parseFloat(document.getElementById('material-add-unit-cost-input')?.value);
+    const unit = document.getElementById('material-add-unit-select')?.value || '';
+    const errorEl = document.getElementById('material-add-error');
+    if (errorEl) errorEl.hidden = true;
+
+    if (!name || isNaN(unitCost)) {
+        if (errorEl) {
+            errorEl.textContent = t('pricingMaterialNameRequired');
+            errorEl.hidden = false;
+        }
+        return;
+    }
+
+    let config = {};
+    if (kind === 'filament') {
+        config = {
+            density_g_cm3: parseFloat(document.getElementById('material-add-density-input')?.value) || 1.24,
+            diameter_mm: parseFloat(document.getElementById('material-add-diameter-input')?.value) || 1.75,
+        };
+    } else if (kind === 'sheet') {
+        const thickness = parseFloat(document.getElementById('material-add-thickness-input')?.value);
+        if (!isNaN(thickness)) config = { thickness_mm: thickness };
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('kind', kind);
+        formData.append('unit_cost', unitCost);
+        formData.append('unit', unit);
+        formData.append('config', JSON.stringify(config));
+        if (pricingMaterialEditingId) formData.append('id', pricingMaterialEditingId);
+
+        const response = await fetch('/api/pricing/materials', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('pricingMaterialSaveError'));
+        }
+        showToast(t(pricingMaterialEditingId ? 'pricingMaterialUpdatedToast' : 'pricingMaterialAddedToast'));
+        resetPricingMaterialForm();
+        loadPricingMaterialsCatalog();
+        loadPricingCatalogs();
+    } catch (error) {
+        console.error(error);
+        if (errorEl) {
+            errorEl.textContent = error.message || t('pricingMaterialSaveError');
+            errorEl.hidden = false;
+        }
+    }
+}
+
+async function removePricingMaterialCatalogEntry(id) {
+    if (!(await appConfirm(t('pricingMaterialRemoveConfirm'), t('pricingMaterialRemove')))) return;
+    try {
+        const formData = new FormData();
+        formData.append('id', id);
+        const response = await fetch('/api/pricing/materials/remove', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error();
+        if (pricingMaterialEditingId === id) resetPricingMaterialForm();
+        loadPricingMaterialsCatalog();
+        loadPricingCatalogs();
+    } catch (error) {
+        console.error(error);
+        appAlert(t('pricingMaterialSaveError'), '', 'danger');
+    }
+}
+
+document.getElementById('material-add-btn')?.addEventListener('click', submitPricingMaterialForm);
+document.getElementById('material-add-cancel-edit-btn')?.addEventListener('click', resetPricingMaterialForm);
+
+// ── Máquinas ──
+
+const machineAddKindSwitch = createOptionSwitch('machine-add-kind-switch', () => {});
+machineAddKindSwitch.setValue('printer');
+
+function pricingMachineKindLabel(kind) {
+    if (kind === 'printer') return t('pricingMachineKindPrinter');
+    if (kind === 'laser') return t('pricingMachineKindLaser');
+    return t('pricingMachineKindCnc');
+}
+
+function resetPricingMachineForm() {
+    pricingMachineEditingId = null;
+    const nameInput = document.getElementById('machine-add-name-input');
+    if (nameInput) nameInput.value = '';
+    const wattsInput = document.getElementById('machine-add-watts-input');
+    if (wattsInput) wattsInput.value = '';
+    const rateInput = document.getElementById('machine-add-rate-input');
+    if (rateInput) rateInput.value = '';
+    machineAddKindSwitch.setValue('printer');
+    const errorEl = document.getElementById('machine-add-error');
+    if (errorEl) errorEl.hidden = true;
+    const addBtn = document.getElementById('machine-add-btn');
+    if (addBtn) addBtn.querySelector('span').textContent = t('pricingMachineAddAction');
+    const cancelBtn = document.getElementById('machine-add-cancel-edit-btn');
+    if (cancelBtn) cancelBtn.hidden = true;
+    const importSelect = document.getElementById('machine-import-device-select');
+    if (importSelect) importSelect.selectedIndex = 0;
+}
+
+function fillPricingMachineForm(machine) {
+    pricingMachineEditingId = machine.id;
+    document.getElementById('machine-add-name-input').value = machine.name;
+    machineAddKindSwitch.setValue(machine.kind);
+    document.getElementById('machine-add-watts-input').value = machine.watts;
+    document.getElementById('machine-add-rate-input').value = machine.rate_per_hour;
+    const addBtn = document.getElementById('machine-add-btn');
+    if (addBtn) addBtn.querySelector('span').textContent = t('pricingMachineSaveChangesAction');
+    const cancelBtn = document.getElementById('machine-add-cancel-edit-btn');
+    if (cancelBtn) cancelBtn.hidden = false;
+}
+
+async function loadPricingMachinesCatalog() {
+    try {
+        const response = await fetch('/api/pricing/machines');
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        renderPricingMachinesCatalogList(data.machines || []);
+    } catch (error) {
+        console.error(error);
+        renderPricingMachinesCatalogList([]);
+    }
+}
+
+function renderPricingMachinesCatalogList(machines) {
+    const container = document.getElementById('pricing-machines-catalog-list');
+    if (!container) return;
+    if (!machines.length) {
+        container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('pricingMachineCatalogEmpty'))}</div>`;
+        return;
+    }
+    container.innerHTML = machines.map(machine => `
+        <div class="usb-port-item" data-id="${escapeHtml(machine.id)}">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(machine.name)}</strong>
+                <span>${escapeHtml(pricingMachineKindLabel(machine.kind))} · ${machine.watts}W · $${machine.rate_per_hour}/h</span>
+            </div>
+            <div class="pricing-catalog-item-actions">
+                <button type="button" class="theme-option-icon-btn machine-edit-btn" data-id="${escapeHtml(machine.id)}" title="${escapeHtml(t('pricingMachineEditTitle'))}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger machine-remove-btn" data-id="${escapeHtml(machine.id)}" title="${escapeHtml(t('pricingMachineRemove'))}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.machine-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const machine = machines.find(m => m.id === btn.dataset.id);
+            if (machine) fillPricingMachineForm(machine);
+        });
+    });
+    container.querySelectorAll('.machine-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => removePricingMachineCatalogEntry(btn.dataset.id));
+    });
+}
+
+async function submitPricingMachineForm() {
+    const name = document.getElementById('machine-add-name-input')?.value.trim() || '';
+    const kind = machineAddKindSwitch.getValue() || 'printer';
+    const watts = parseFloat(document.getElementById('machine-add-watts-input')?.value);
+    const ratePerHour = parseFloat(document.getElementById('machine-add-rate-input')?.value);
+    const errorEl = document.getElementById('machine-add-error');
+    if (errorEl) errorEl.hidden = true;
+
+    if (!name || isNaN(watts) || isNaN(ratePerHour)) {
+        if (errorEl) {
+            errorEl.textContent = t('pricingMachineNameRequired');
+            errorEl.hidden = false;
+        }
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('kind', kind);
+        formData.append('watts', watts);
+        formData.append('rate_per_hour', ratePerHour);
+        if (pricingMachineEditingId) formData.append('id', pricingMachineEditingId);
+
+        const response = await fetch('/api/pricing/machines', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('pricingMachineSaveError'));
+        }
+        showToast(t(pricingMachineEditingId ? 'pricingMachineUpdatedToast' : 'pricingMachineAddedToast'));
+        resetPricingMachineForm();
+        loadPricingMachinesCatalog();
+        loadPricingCatalogs();
+    } catch (error) {
+        console.error(error);
+        if (errorEl) {
+            errorEl.textContent = error.message || t('pricingMachineSaveError');
+            errorEl.hidden = false;
+        }
+    }
+}
+
+async function removePricingMachineCatalogEntry(id) {
+    if (!(await appConfirm(t('pricingMachineRemoveConfirm'), t('pricingMachineRemove')))) return;
+    try {
+        const formData = new FormData();
+        formData.append('id', id);
+        const response = await fetch('/api/pricing/machines/remove', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error();
+        if (pricingMachineEditingId === id) resetPricingMachineForm();
+        loadPricingMachinesCatalog();
+        loadPricingCatalogs();
+    } catch (error) {
+        console.error(error);
+        appAlert(t('pricingMachineSaveError'), '', 'danger');
+    }
+}
+
+document.getElementById('machine-add-btn')?.addEventListener('click', submitPricingMachineForm);
+document.getElementById('machine-add-cancel-edit-btn')?.addEventListener('click', resetPricingMachineForm);
+
+async function loadPricingMachineImportOptions() {
+    const select = document.getElementById('machine-import-device-select');
+    if (!select) return;
+    let devices = [];
+    try {
+        const [printersRes, lasersRes] = await Promise.all([
+            fetch('/api/printers'),
+            fetch('/api/laser/registry'),
+        ]);
+        const printers = printersRes.ok ? (await printersRes.json()).printers || [] : [];
+        const registryDevices = lasersRes.ok ? (await lasersRes.json()).lasers || [] : [];
+        devices = [
+            ...printers.map(p => ({ name: p.name, kind: 'printer' })),
+            ...registryDevices.map(d => ({ name: d.name, kind: d.kind === 'cnc' ? 'cnc' : 'laser' })),
+        ];
+    } catch (error) {
+        console.error(error);
+    }
+
+    if (!devices.length) {
+        select.innerHTML = `<option value="" disabled selected>${escapeHtml(t('pricingMachineImportNoneFound'))}</option>`;
+        return;
+    }
+
+    select.innerHTML = `<option value="" disabled selected>${escapeHtml(t('pricingMachineImportPlaceholder'))}</option>` +
+        devices.map((device, index) => `<option value="${index}" data-name="${escapeHtml(device.name)}" data-kind="${escapeHtml(device.kind)}">${escapeHtml(device.name)} (${escapeHtml(pricingMachineKindLabel(device.kind))})</option>`).join('');
+}
+
+document.getElementById('machine-import-device-select')?.addEventListener('change', (e) => {
+    const option = e.target.selectedOptions[0];
+    if (!option || !option.dataset.name) return;
+    document.getElementById('machine-add-name-input').value = option.dataset.name;
+    machineAddKindSwitch.setValue(option.dataset.kind);
+});
+
+// ── Ajustes globales ──
+
+const settingsMarginModeSwitch = createOptionSwitch('settings-margin-mode-switch', (mode) => {
+    document.getElementById('settings-margin-percentage-field').hidden = mode !== 'percentage';
+    document.getElementById('settings-margin-flat-field').hidden = mode !== 'flat_amount';
+});
+settingsMarginModeSwitch.setValue('percentage');
+
+async function loadPricingCatalogsSettingsForm() {
+    try {
+        const response = await fetch('/api/pricing/settings');
+        if (!response.ok) throw new Error();
+        const settings = await response.json();
+        document.getElementById('settings-currency-select').value = settings.currency || 'MXN';
+        document.getElementById('settings-price-kwh-input').value = settings.price_per_kwh ?? '';
+        document.getElementById('settings-labor-rate-input').value = settings.labor_rate_per_hour ?? '';
+        document.getElementById('settings-prep-minutes-input').value = settings.default_prep_minutes ?? '';
+        const mode = settings.margin?.mode || 'percentage';
+        settingsMarginModeSwitch.setValue(mode);
+        document.getElementById('settings-margin-percentage-field').hidden = mode !== 'percentage';
+        document.getElementById('settings-margin-flat-field').hidden = mode !== 'flat_amount';
+        document.getElementById('settings-margin-percentage-input').value = settings.margin?.percentage ?? '';
+        document.getElementById('settings-margin-flat-input').value = settings.margin?.flat_amount ?? '';
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function submitPricingCatalogsSettingsForm() {
+    const errorEl = document.getElementById('settings-save-error');
+    if (errorEl) errorEl.hidden = true;
+    try {
+        const mode = settingsMarginModeSwitch.getValue() || 'percentage';
+        const margin = {
+            mode,
+            percentage: parseFloat(document.getElementById('settings-margin-percentage-input')?.value) || 0,
+            flat_amount: parseFloat(document.getElementById('settings-margin-flat-input')?.value) || 0,
+        };
+        const formData = new FormData();
+        formData.append('currency', document.getElementById('settings-currency-select')?.value || 'MXN');
+        formData.append('price_per_kwh', document.getElementById('settings-price-kwh-input')?.value || '0');
+        formData.append('labor_rate_per_hour', document.getElementById('settings-labor-rate-input')?.value || '0');
+        formData.append('default_prep_minutes', document.getElementById('settings-prep-minutes-input')?.value || '0');
+        formData.append('margin', JSON.stringify(margin));
+
+        const response = await fetch('/api/pricing/settings', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error();
+        showToast(t('pricingSettingsSavedToast'));
+        schedulePricingQuoteRefresh();
+    } catch (error) {
+        console.error(error);
+        if (errorEl) {
+            errorEl.textContent = t('pricingSettingsSaveError');
+            errorEl.hidden = false;
+        }
+    }
+}
+
+document.getElementById('settings-save-btn-catalogs')?.addEventListener('click', submitPricingCatalogsSettingsForm);
 
 // ── Configuración > Usuarios ──
 

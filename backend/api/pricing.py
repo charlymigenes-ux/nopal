@@ -1,10 +1,12 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from backend.auth_deps import require_auth
 from backend.services.pricing_service import (
+    build_whatsapp_link,
+    build_whatsapp_message,
     compute_quote,
     get_quote,
     get_settings,
@@ -187,3 +189,25 @@ async def pricing_quotes_status_endpoint(quote_id: str, status: str = Form(...),
     if entry is None:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     return entry
+
+
+@router.get("/api/pricing/quotes/{quote_id}/whatsapp-link")
+async def pricing_quote_whatsapp_link_endpoint(
+    quote_id: str, request: Request, message: Optional[str] = None, user: dict = Depends(require_auth)
+):
+    """Devuelve el mensaje (default o el `message` personalizado que mande
+    el frontend) y la URL wa.me ya armada con ese texto — no manda nada por
+    sí sola, el frontend la abre en pestaña nueva y el usuario aprieta
+    'Enviar' del lado de WhatsApp. Sin `message`, sirve para previsualizar
+    el texto por default antes de que el usuario lo edite. Requiere que el
+    quote guardado tenga client_phone (ver build_whatsapp_link)."""
+    quote = get_quote(quote_id)
+    if quote is None:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+
+    print_url = str(request.base_url).rstrip("/") + f"/cotizador/print/{quote_id}"
+    text = message.strip() if message and message.strip() else build_whatsapp_message(quote, print_url)
+    try:
+        return {"url": build_whatsapp_link(quote, text), "message": text}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

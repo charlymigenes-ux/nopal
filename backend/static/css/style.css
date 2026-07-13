@@ -9,6 +9,16 @@
     display: none !important;
 }
 
+/* El popup nativo de <option> no hereda el tema (fondo/texto propios del
+   SO) — sin esto se ve blanco sobre blanco/verde en cualquier <select>
+   oscuro de la app, no solo en el Cotizador. Chrome/Firefox de escritorio
+   sí respetan background/color en <option>, aunque no el borde/sombra del
+   popup (eso lo controla el SO, no es tocable desde CSS). */
+select option {
+    background: var(--card-bg);
+    color: var(--text);
+}
+
 :root {
     --bg: #F7F8FA;
     --sidebar-bg: #FFFFFF;
@@ -189,7 +199,11 @@ body.light input[type="number"] {
     z-index: 1;
     display: grid;
     grid-template-columns: 240px 1fr;
-    height: calc(100vh - var(--topbar-height));
+    grid-template-rows: var(--topbar-height) 1fr;
+    grid-template-areas:
+        "sidebar topbar"
+        "sidebar content";
+    height: 100vh;
 }
 
 /* ── Fondo animado: patrón de circuito que se desliza lentamente hacia arriba ── */
@@ -224,13 +238,14 @@ body.custom::before {
 /* ── Sidebar ── */
 
 .sidebar {
+    grid-area: sidebar;
     position: relative;
     background: var(--sidebar-bg);
     padding: 28px 16px;
     display: flex;
     flex-direction: column;
     gap: 32px;
-    height: 100vh;
+    height: 100%;
     overflow-y: auto;
 }
 
@@ -263,66 +278,70 @@ body.green .sidebar {
     background: transparent;
 }
 
-/* ── Barra superior global (logo/toggle a la izquierda, notificaciones/
-   idioma/usuario a la derecha) — NO confundir con .topbar, que existe por
-   sección dentro de .content y queda intacta. ── */
-
-.global-topbar {
+.brand {
     position: relative;
-    z-index: 2;
-    height: var(--topbar-height);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 0 20px;
-    background: var(--sidebar-bg);
-    border-bottom: 1px solid var(--border);
-}
-
-body.dark .global-topbar,
-body.green .global-topbar {
-    background: var(--card-bg);
-}
-
-.global-topbar-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 8px;
 }
 
 .brand-logo {
     width: auto;
-    height: 32px;
-    max-height: 32px;
+    height: auto;
+    max-height: 140px;
     object-fit: contain;
 }
 
 .sidebar-toggle-btn {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 28px;
     height: 28px;
     flex-shrink: 0;
-    border: none;
+    border: 1px solid var(--accent);
     border-radius: 8px;
-    background: rgba(148, 163, 184, 0.12);
-    color: var(--text-muted);
+    background: transparent;
+    color: var(--accent);
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
 .sidebar-toggle-btn:hover {
-    background: rgba(148, 163, 184, 0.22);
+    background: rgba(var(--accent-rgb), 0.12);
 }
 
 .sidebar-toggle-btn svg {
     transition: transform 0.2s ease;
 }
 
-.global-topbar-left.sidebar-collapsed .sidebar-toggle-btn svg {
-    transform: rotate(180deg);
+/* ── Barra superior global (notificaciones/idioma/usuario) — solo ocupa el
+   ancho de .content, el logo/toggle vive en el sidebar como siempre. NO
+   confundir con .topbar, que existe por sección dentro de .content y queda
+   intacta. ── */
+
+.global-topbar {
+    grid-area: topbar;
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+    padding: 0 20px;
+    background: linear-gradient(to left, var(--sidebar-bg) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+}
+
+body.dark .global-topbar,
+body.green .global-topbar {
+    background: linear-gradient(to left, var(--card-bg) 0%, transparent 100%);
 }
 
 .global-topbar-right {
@@ -339,6 +358,18 @@ body.green .global-topbar {
 
 .app-shell.sidebar-collapsed .sidebar {
     padding: 28px 10px;
+}
+
+.app-shell.sidebar-collapsed .brand {
+    justify-content: center;
+}
+
+.app-shell.sidebar-collapsed .brand-logo {
+    display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar-toggle-btn svg {
+    transform: rotate(180deg);
 }
 
 .app-shell.sidebar-collapsed .nav-item {
@@ -364,8 +395,76 @@ body.green .global-topbar {
     gap: 4px;
 }
 
-.nav-item-group-start {
+.nav-category {
     margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nav-category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 15px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.nav-category-chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+
+.nav-category.collapsed .nav-category-chevron {
+    transform: rotate(-90deg);
+}
+
+.nav-category.collapsed .nav-category-items {
+    display: none;
+}
+
+.nav-category-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nav-item-placeholder {
+    cursor: default;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.nav-item-soon-badge {
+    margin-left: auto;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.18);
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
+
+.app-shell.sidebar-collapsed .nav-category-header {
+    display: none;
+}
+
+.app-shell.sidebar-collapsed .nav-category.collapsed .nav-category-items {
+    display: flex;
+}
+
+.app-shell.sidebar-collapsed .nav-item-soon-badge {
+    display: none;
 }
 
 .nav-item {
@@ -484,10 +583,12 @@ body.green .global-topbar {
 /* ── Content ── */
 
 .content {
+    grid-area: content;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    height: 100vh;
+    min-height: 0;
+    height: 100%;
     overflow: hidden;
 }
 
@@ -2764,7 +2865,7 @@ body.green .settings-card {
     display: flex;
     gap: 20px;
     align-items: flex-start;
-    margin: 24px 32px 20px;
+    margin: 24px 32px 20px 16px;
     height: calc(100% - 44px);
 }
 
@@ -4849,6 +4950,22 @@ body[data-cnc-profile="plotter"] .cnc-router-only {
     display: none;
 }
 
+/* Firmware de la placa CNC/láser activa — ver refreshCncStatus()/
+   renderLaserStatus() en app.js, que escriben este atributo con el
+   "firmware" que devuelve /api/laser/status ("fluidnc" por defecto,
+   "marlin" para placas dadas de alta como Marlin). Los controles exclusivos
+   de GRBL (desbloquear $X, WCS G54-G59, overrides de feed/spindle en tiempo
+   real, pines de límite) no existen en Marlin y se ocultan. La fila con las
+   temperaturas de extrusor/cama (caso híbrido: placa Marlin con hotend) usa
+   el criterio inverso, .marlin-only, oculta salvo firmware="marlin". */
+body[data-machine-firmware="marlin"] .grbl-only {
+    display: none;
+}
+
+body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
+    display: none;
+}
+
 @media (max-width: 1100px) {
     .cnc-main-layout {
         grid-template-columns: 1fr;
@@ -6365,6 +6482,37 @@ body[data-cnc-profile="plotter"] .cnc-router-only {
     text-align: center;
 }
 
+.modal-content.pricing-catalogs-modal-content {
+    width: 92%;
+    max-width: 720px;
+    height: auto;
+    max-height: 88vh;
+    padding: 28px;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.pricing-catalogs-modal-content .option-switch {
+    margin-bottom: 16px;
+}
+
+.pricing-catalogs-tab {
+    display: flex;
+    flex-direction: column;
+}
+
+.pricing-catalogs-tab .usb-ports-list {
+    margin-bottom: 16px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.pricing-catalog-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 .app-confirm-icon {
     display: flex;
     align-items: center;
@@ -7770,6 +7918,14 @@ body.green .laser-start-confirm-copies input {
     color: var(--text-muted);
 }
 
+/* Subtítulo interno entre dos listas dentro de la misma tarjeta (ej. puertos
+   detectados vs. impresoras Marlin ya registradas). */
+.devices-subcard-sublabel {
+    margin-top: 16px !important;
+    font-weight: 600;
+    color: var(--text-secondary) !important;
+}
+
 .usb-ports-list {
     display: flex;
     flex-direction: column;
@@ -8033,6 +8189,18 @@ body.green .laser-start-confirm-copies input {
     font-weight: 700;
     color: #22c55e;
     background: rgba(34, 197, 94, 0.14);
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+/* Firmware ("FluidNC / GRBL" vs "Marlin") de una placa CNC/láser ya
+   registrada — ver deviceFirmwareBadgeLabel() en app.js. */
+.usb-port-firmware-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
     padding: 4px 10px;
     border-radius: 999px;
 }
@@ -8381,6 +8549,24 @@ body.green .laser-start-confirm-copies input {
 }
 
 .usb-classify-name-field select:focus {
+    outline: none;
+    border-color: rgba(34, 197, 94, 0.5);
+    background: rgba(34, 197, 94, 0.08);
+}
+
+.usb-classify-name-field textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    background: rgba(var(--accent-rgb), 0.05);
+    color: var(--text);
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.usb-classify-name-field textarea:focus {
     outline: none;
     border-color: rgba(34, 197, 94, 0.5);
     background: rgba(34, 197, 94, 0.08);
@@ -10049,14 +10235,47 @@ body.green .option-switch {
 }
 
 /* Cada columna es una lista vertical de una sola ficha por fila — nunca
-   un mosaico de varias columnas internas, sin importar el modo grid/lista. */
-.machines-columns .printers-grid {
+   un mosaico de varias columnas internas, sin importar el modo grid/lista.
+   El segundo selector agrega ".list-view" a propósito: sube la
+   especificidad a 3 clases para ganarle siempre a ".printers-grid.list-view"
+   (repeat(2, 1fr), más abajo en este archivo) — antes empataban en
+   especificidad y ganaba esa por venir después en el CSS, rompiendo el
+   layout de una sola columna apenas se activaba modo lista. */
+.machines-columns .printers-grid,
+.machines-columns .printers-grid.list-view {
     grid-template-columns: 1fr;
 }
 
 .machines-columns .printers-grid:not(.list-view) .printer-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+        "top top"
+        "status illustration";
+    align-items: start;
     padding: 12px;
-    gap: 8px;
+    gap: 6px 14px;
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-card-top {
+    grid-area: top;
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-status-line {
+    grid-area: status;
+    align-self: center;
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-illustration {
+    grid-area: illustration;
+    justify-self: end;
+    align-self: start;
+    padding: 0;
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-temps,
+.machines-columns .printers-grid:not(.list-view) .printer-progress {
+    grid-column: 1 / -1;
 }
 
 .machines-columns .printers-grid:not(.list-view) .printer-illustration img {
@@ -10174,11 +10393,6 @@ body.green .option-switch {
 .printers-grid.list-view .printer-progress {
     flex: 1;
     min-width: 100px;
-}
-
-.printers-grid.list-view .printer-quick-actions {
-    flex: 1;
-    min-width: 140px;
 }
 
 .printer-card {
@@ -10440,21 +10654,25 @@ body.green .option-switch {
 
 .printer-quick-actions {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 .printer-quick-action-btn {
-    flex: 1;
-    padding: 6px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    flex-shrink: 0;
     border: 1px solid rgba(96, 165, 250, 0.35);
-    border-radius: 8px;
+    border-radius: 50%;
     background: rgba(96, 165, 250, 0.14);
     color: #60a5fa;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background 0.15s ease, transform 0.1s ease;
 }
 
 .printer-quick-action-btn:hover {
@@ -10462,13 +10680,13 @@ body.green .option-switch {
 }
 
 .printer-quick-action-btn-accent {
-    border-color: rgba(34, 197, 94, 0.35);
-    background: rgba(34, 197, 94, 0.14);
-    color: #22c55e;
+    border-color: rgba(249, 115, 22, 0.35);
+    background: rgba(249, 115, 22, 0.14);
+    color: #f97316;
 }
 
 .printer-quick-action-btn-accent:hover {
-    background: rgba(34, 197, 94, 0.24);
+    background: rgba(249, 115, 22, 0.24);
 }
 
 .btn {
@@ -10985,10 +11203,34 @@ body.light .btn-accent {
     border-radius: var(--radius-lg);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-left: 4px solid var(--green-dark);
+    transition: border-left-color 0.2s ease;
 }
 
-.pricing-col-summary .pricing-card {
+/* Mismo criterio que .theme-cnc en la ficha de Conexión del láser: el
+   color de los "filos" de las tarjetas sigue el tipo de trabajo elegido,
+   no la columna en la que están — verde=impresión 3D, morado=láser,
+   ámbar=CNC. */
+#pricing-section.job-type-laser .pricing-card {
     border-left-color: var(--purple);
+}
+
+#pricing-section.job-type-cnc .pricing-card {
+    border-left-color: var(--orange);
+}
+
+/* Mismo criterio, extendido a los títulos de campo (texto, no íconos ni
+   fondos) dentro de las tarjetas del Cotizador: "Máquina", "Material",
+   "Cantidad", etc., y el texto de archivo activo/seleccionado. */
+#pricing-section.job-type-laser .pricing-field label,
+#pricing-section.job-type-laser .pricing-file-breadcrumb button,
+#pricing-section.job-type-laser .pricing-file-row.selected {
+    color: var(--purple);
+}
+
+#pricing-section.job-type-cnc .pricing-field label,
+#pricing-section.job-type-cnc .pricing-file-breadcrumb button,
+#pricing-section.job-type-cnc .pricing-file-row.selected {
+    color: var(--orange);
 }
 
 .pricing-label {
@@ -11138,12 +11380,17 @@ body.light .btn-accent {
 }
 
 .pricing-selected-file-thumb {
+    position: relative;
     margin-top: 14px;
     aspect-ratio: 1 / 1;
     width: 100%;
     border-radius: var(--radius-md);
     overflow: hidden;
-    background: var(--panel-bg);
+    background-color: var(--panel-bg);
+    background-image:
+        linear-gradient(rgba(var(--accent-rgb), 0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(var(--accent-rgb), 0.12) 1px, transparent 1px);
+    background-size: 16px 16px;
 }
 
 .pricing-selected-file-thumb img {
@@ -11152,10 +11399,31 @@ body.light .btn-accent {
     object-fit: contain;
 }
 
+.pricing-selected-file-thumb canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+    position: absolute;
+    inset: 0;
+}
+
+.pricing-selected-file-thumb .thumb-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
 .pricing-selected-file-dims {
     display: flex;
     justify-content: space-between;
     margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
     font-size: 0.78rem;
     color: var(--text-muted);
 }
@@ -11371,35 +11639,6 @@ body.light .btn-accent {
     background: rgba(239, 68, 68, 0.2);
 }
 
-.pricing-detected-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px 20px;
-}
-
-.pricing-detected-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.pricing-detected-item .label {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-}
-
-.pricing-detected-item .value {
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--text);
-}
-
-.pricing-detected-item .value.missing {
-    color: var(--text-muted);
-    font-style: italic;
-    font-weight: 400;
-}
-
 /* ── Columna 3: resumen de cotización ── */
 
 .pricing-cost-lines {
@@ -11522,14 +11761,13 @@ body.light .btn-accent {
     text-transform: none;
 }
 
-.pricing-summary-actions {
+.pricing-actions-card {
     display: flex;
+    flex-direction: column;
     gap: 10px;
 }
 
-.pricing-summary-actions .btn-file-action-decision,
-.pricing-summary-actions .btn-file-action-accent {
-    flex: 1;
+.pricing-actions-card button {
     justify-content: center;
 }
 

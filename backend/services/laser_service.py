@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 import requests
 import websockets
 
+from backend.services import marlin_driver
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_LASER_HOST = "192.168.0.61"
@@ -175,6 +177,7 @@ def register_laser(
     home_corner: Optional[str] = None,
     kind: str = "laser",
     machine_profile: Optional[str] = None,
+    firmware: Optional[str] = None,
 ) -> Dict[str, Any]:
     entries = [e for e in _load_registry() if e.get("host") != host]
     existing = next((e for e in _load_registry() if e.get("host") == host), None)
@@ -199,10 +202,30 @@ def register_laser(
         machine_profile = None
     entry["machine_profile"] = machine_profile or (existing.get("machine_profile") if existing else None) or "router"
 
+    # Mismo criterio que machine_profile: no resetear a "fluidnc" en cada
+    # edición si no viene explícito. Entradas viejas sin este campo (de antes
+    # de que existiera) se tratan como "fluidnc" — el único firmware que
+    # NOPAL soportaba hasta ahora.
+    if firmware not in ("fluidnc", "marlin"):
+        firmware = None
+    entry["firmware"] = firmware or (existing.get("firmware") if existing else None) or "fluidnc"
+
     entries.append(entry)
     _save_registry(entries)
-    logger.info(f"Dispositivo registrado: {host} ({name}, {entry['kind']}, perfil={entry['machine_profile']})")
+    logger.info(f"Dispositivo registrado: {host} ({name}, {entry['kind']}, perfil={entry['machine_profile']}, firmware={entry['firmware']})")
     return entry
+
+
+def _firmware_for_host(host: str) -> str:
+    entry = next((e for e in _load_registry() if e.get("host") == host), None)
+    return (entry or {}).get("firmware") or "fluidnc"
+
+
+def get_host_firmware(host: str) -> str:
+    """Firmware registrado para `host` ('fluidnc' por defecto para hosts sin
+    registrar o entradas viejas) — expuesta para anotar respuestas de la API
+    sin depender de un símbolo privado."""
+    return _firmware_for_host(host)
 
 
 def unregister_laser(host: str) -> bool:
@@ -384,7 +407,10 @@ def _send_serial_command(host: str, command: str) -> bool:
         if ser is None:
             return False
     try:
-        payload = command if command in REALTIME_SERIAL_COMMANDS else command + "\n"
+        # Los bytes realtime (sin '\n') son un protocolo exclusivo de GRBL —
+        # Marlin no tiene equivalente, todo comando ahí lleva salto de línea.
+        is_realtime = command in REALTIME_SERIAL_COMMANDS and _firmware_for_host(host) == "fluidnc"
+        payload = command if is_realtime else command + "\n"
         ser.write(payload.encode("utf-8"))
         logger.debug(f"[{host}] TX (serie): {command!r}")
         return True
@@ -415,7 +441,7 @@ def send_raw_command(host: str, command: str) -> bool:
         return False
 
 
-def parse_status_line(line: str) -> Optional[Dict[str, Any]]:
+def _parse_grbl_status_line(line: str) -> Optional[Dict[str, Any]]:
     """Parsea una línea de status de GRBL/FluidNC, ej:
     '<Idle|MPos:-994.500,0.000,0.000|FS:0,0|WCO:0.000,0.000,0.000>'
     Los campos opcionales (WCO/Pn/Bf/Ov/WCS) no siempre vienen, y el orden
@@ -654,6 +680,17 @@ def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
 _ws_was_connected: Dict[str, bool] = {}
 
 
+def _is_status_noise(host: str, text: str) -> bool:
+    """Filtra del buffer de consola visible las líneas que son solo
+    telemetría para los widgets, no mensajes reales de consola: los reportes
+    push de GRBL ('<...>') o, en Marlin (que no empuja nada), las respuestas
+    del polling de posición/temperatura (M114/M105) que igual llegan varias
+    veces por segundo mientras se muestra el estado en vivo."""
+    if _firmware_for_host(host) == "marlin":
+        return bool(marlin_driver.POSITION_RE.search(text) or marlin_driver.TEMP_RE.search(text))
+    return bool(STATUS_RE.search(text))
+
+
 async def _ws_listener_loop(host: str):
     # ESP3D clásico sirve su websocket en un puerto propio (81); FluidNC (que
     # reutiliza la WebUI de ESP3D) no abre ese puerto — su websocket vive en
@@ -674,7 +711,17 @@ async def _ws_listener_loop(host: str):
             _ws_was_connected[host] = False
         for uri in candidate_uris:
             try:
-                async with websockets.connect(uri, open_timeout=HTTP_TIMEOUT) as ws:
+                async with websockets.connect(
+                    uri,
+                    open_timeout=HTTP_TIMEOUT,
+                    # ESP3D/FluidNC no siempre responde a los pings del
+                    # protocolo WebSocket. El keepalive predeterminado de
+                    # websockets (20 s) cerraba conexiones sanas en bucle.
+                    ping_interval=None,
+                    # Varias implementaciones embebidas tampoco negocian
+                    # correctamente permessage-deflate.
+                    compression=None,
+                ) as ws:
                     ready_event.set()
                     logger.info(f"[{host}] WS conectado ({uri})")
                     _ws_was_connected[host] = True
@@ -691,7 +738,7 @@ async def _ws_listener_loop(host: str):
                             # reportes de status alimentan widgets, no la
                             # consola visible (ver comentario en
                             # _serial_reader_loop).
-                            if not STATUS_RE.search(text):
+                            if not _is_status_noise(host, text):
                                 buffer.append({"message": text, "time": time.time()})
                             for queue in list(_subscribers.get(host, [])):
                                 queue.put_nowait(text)
@@ -763,7 +810,7 @@ def _serial_reader_loop(host: str, device: str, baud: int, loop: asyncio.Abstrac
         # inunda el log visible sin agregar nada legible para el usuario.
         # Igual se reenvían a las colas de correlación (get_status() y
         # afines los esperan ahí), solo no quedan en el buffer visible.
-        if not STATUS_RE.search(text):
+        if not _is_status_noise(host, text):
             buffer.append({"message": text, "time": time.time()})
         for queue in list(_subscribers.get(host, [])):
             loop.call_soon_threadsafe(queue.put_nowait, text)
@@ -832,6 +879,18 @@ def _unsubscribe(host: str, queue: asyncio.Queue):
         subs.remove(queue)
 
 
+def _marlin_transport_for(host: str) -> marlin_driver.MarlinTransport:
+    """Envuelve la conexión ya existente (websocket o serie, compartida por
+    host) en la interfaz mínima que marlin_driver necesita — reutiliza el
+    mismo gestor de conexión que ya usa el protocolo GRBL, sin duplicarlo."""
+    return marlin_driver.MarlinTransport(
+        send=lambda command: send_raw_command(host, command),
+        ensure_ready=lambda: ensure_listener_ready(host),
+        subscribe=lambda: _subscribe(host),
+        unsubscribe=lambda queue: _unsubscribe(host, queue),
+    )
+
+
 def get_console_buffer(host: str = DEFAULT_LASER_HOST, count: int = 100) -> List[Dict[str, Any]]:
     messages = list(_console_buffers.get(host, []))
     return messages[-count:]
@@ -844,6 +903,12 @@ async def send_console_command(host: str, command: str) -> bool:
 
 
 async def get_status(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+    if _firmware_for_host(host) == "marlin":
+        return await _get_marlin_status(host, timeout)
+    return await _get_grbl_status(host, timeout)
+
+
+async def _get_grbl_status(host: str, timeout: float) -> Optional[Dict[str, Any]]:
     """Dispara '?' y espera la línea de estado de GRBL en la transmisión compartida."""
     await ensure_listener_ready(host)
     queue = _subscribe(host)
@@ -859,12 +924,43 @@ async def get_status(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Op
                 text = await asyncio.wait_for(queue.get(), timeout=remaining)
             except asyncio.TimeoutError:
                 break
-            parsed = parse_status_line(text)
+            parsed = _parse_grbl_status_line(text)
             if parsed:
                 return parsed
     finally:
         _unsubscribe(host, queue)
     return None
+
+
+async def _get_marlin_status(host: str, timeout: float) -> Optional[Dict[str, Any]]:
+    """Sin reportes push: arma el mismo shape de get_status a partir de
+    M114 (posición) + M105 (temperaturas), y sintetiza el estado desde el
+    job propio (Marlin no tiene una máquina de estados como GRBL)."""
+    transport = _marlin_transport_for(host)
+    position = await marlin_driver.get_position(transport, timeout=timeout)
+    if position is None:
+        return None
+
+    job = _jobs.get(host)
+    if job and job.state == "running":
+        state = "Run"
+    elif job and job.state == "paused":
+        state = "Hold"
+    else:
+        state = "Idle"
+
+    result: Dict[str, Any] = {
+        "state": state,
+        "x": position["x"],
+        "y": position["y"],
+        "z": position["z"],
+        "feed": None,
+        "speed": None,
+    }
+    temps = await marlin_driver.get_temperatures(transport, timeout=timeout)
+    if temps:
+        result.update(temps)
+    return result
 
 
 GCODE_PARSER_STATE_RE = re.compile(r"\[GC:(?P<words>[^\]]*)\]")
@@ -874,7 +970,14 @@ WORK_COORDINATE_SYSTEMS = {"G54", "G55", "G56", "G57", "G58", "G59"}
 async def get_parser_state(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
     """Dispara '$G' y espera la línea de estado del parser GRBL, ej.
     '[GC:G0 G54 G17 G21 G90 G94 M5 M9 T0 F0 S0]' — de ahí se saca el sistema
-    de coordenadas activo (G54/G55/...) para mostrarlo en la ficha CNC."""
+    de coordenadas activo (G54/G55/...) para mostrarlo en la ficha CNC.
+
+    Marlin no tiene sistemas de coordenadas de trabajo (G54-G59) ni un
+    comando equivalente a '$G' — se devuelve "no soportado" para que el
+    frontend oculte el selector de WCS en vez de mostrar un valor inventado."""
+    if _firmware_for_host(host) == "marlin":
+        return {"wcs": None, "words": [], "supported": False}
+
     await ensure_listener_ready(host)
     queue = _subscribe(host)
     try:
@@ -901,7 +1004,14 @@ async def get_parser_state(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0)
 
 
 async def get_grbl_settings(host: str = DEFAULT_LASER_HOST, timeout: float = 5.0) -> List[Dict[str, str]]:
-    """Obtiene los parámetros $$ actuales de la placa."""
+    """Obtiene los parámetros $$ actuales de la placa.
+
+    Marlin no tiene este protocolo (su volcado M503 es texto libre, no pares
+    clave=valor) — se devuelve vacío en vez de intentar imitar un formato
+    que no existe."""
+    if _firmware_for_host(host) == "marlin":
+        return []
+
     await ensure_listener_ready(host)
     queue = _subscribe(host)
     settings: List[Dict[str, str]] = []
@@ -929,6 +1039,9 @@ async def get_grbl_settings(host: str = DEFAULT_LASER_HOST, timeout: float = 5.0
 
 async def set_grbl_setting(host: str, key: str, value: str, timeout: float = 4.0) -> Dict[str, Any]:
     """Actualiza un parámetro $$ individual (ej. key='$0', value='10')."""
+    if _firmware_for_host(host) == "marlin":
+        return {"success": False, "message": "Ajustes no editables en Marlin desde NOPAL"}
+
     await ensure_listener_ready(host)
     queue = _subscribe(host)
     command = f"{key}={value}"
@@ -952,6 +1065,33 @@ async def set_grbl_setting(host: str, key: str, value: str, timeout: float = 4.0
     finally:
         _unsubscribe(host, queue)
     return {"success": False, "message": "Sin respuesta de la placa"}
+
+
+async def jog(host: str, axis: str, distance: float, feed: float) -> bool:
+    """Mueve un eje en relativo. fluidnc usa el modo de jog en tiempo real de
+    GRBL ($J=, no bloqueante); Marlin no tiene modo de jog dedicado, así que
+    se arma la secuencia G91/G1/G90 esperando el 'ok' de cada línea."""
+    if _firmware_for_host(host) == "marlin":
+        transport = _marlin_transport_for(host)
+        for line in marlin_driver.build_jog_lines(axis, distance, feed):
+            result = await marlin_driver.send_and_await_ok(transport, line)
+            if not result["success"]:
+                return False
+        return True
+    command = f"$J=G91 G21 {axis.upper()}{distance:.3f} F{feed}"
+    return await asyncio.get_event_loop().run_in_executor(None, send_raw_command, host, command)
+
+
+async def home(host: str, axes: Optional[str] = None) -> bool:
+    """fluidnc usa el ciclo de home de GRBL ($H, siempre todos los ejes);
+    Marlin usa G28, que sí acepta ejes puntuales."""
+    if _firmware_for_host(host) == "marlin":
+        transport = _marlin_transport_for(host)
+        result = await marlin_driver.send_and_await_ok(
+            transport, marlin_driver.build_home_command(axes), timeout=60.0
+        )
+        return result["success"]
+    return await asyncio.get_event_loop().run_in_executor(None, send_raw_command, host, "$H")
 
 
 class LaserJob:
@@ -1159,12 +1299,31 @@ def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:
     job = LaserJob(host, lines, filename, source="stream")
     _jobs[host] = job
     logger.info(f"[{host}] Trabajo iniciado: {filename or '(stream)'} ({len(lines)} líneas)")
-    asyncio.create_task(_run_job(job))
+    if _firmware_for_host(host) == "marlin":
+        asyncio.create_task(_run_marlin_job(job))
+    else:
+        asyncio.create_task(_run_job(job))
     return job.to_dict()
+
+
+async def _run_marlin_job(job: "LaserJob"):
+    """Envoltorio fino sobre marlin_driver.run_job: agrega el logueo y el
+    registro de historial que ya tiene _run_job para GRBL, pero que
+    marlin_driver no conoce (no sabe qué es un "historial de láser")."""
+    transport = _marlin_transport_for(job.host)
+    await marlin_driver.run_job(transport, job)
+    if job.state == "completed":
+        logger.info(f"[{job.host}] Trabajo completado (Marlin, {job.current}/{job.total} líneas)")
+    elif job.state == "error":
+        logger.warning(f"[{job.host}] Trabajo (Marlin) terminó con error: {job.error_message}")
+    record_laser_job_history(job)
 
 
 def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:
     """Inicia un trabajo ya subido a la SD, corriéndolo localmente en la placa."""
+    if _firmware_for_host(host) == "marlin":
+        raise RuntimeError("SD nativa no soportada para Marlin en esta versión")
+
     existing = _jobs.get(host)
     if existing is not None and existing.state in ("running", "paused"):
         logger.warning(f"[{host}] No se pudo iniciar '{sd_filename}' (SD): ya hay un trabajo en curso")
@@ -1255,14 +1414,22 @@ async def pause_job(host: str) -> bool:
     if job and job.state == "running":
         job.pause_requested = True
         job.state = "paused"
-        send_raw_command(job.host, "!")
+        # Marlin no tiene protocolo realtime — el propio loop de
+        # marlin_driver.run_job ya deja de mandar líneas al ver
+        # pause_requested, sin que haga falta ningún comando.
+        if _firmware_for_host(host) == "fluidnc":
+            send_raw_command(job.host, "!")
         logger.info(f"[{host}] Trabajo pausado")
         return True
     if job is None or job.state not in ("running", "paused"):
         # Sin trabajo propio activo (no hay job, o quedó uno viejo ya
         # terminado/con error): puede ser un trabajo externo (LightBurn u
         # otro cliente). Revalidar contra la placa antes de mandar '!' a
-        # ciegas — el último poll puede estar desactualizado.
+        # ciegas — el último poll puede estar desactualizado. Concepto
+        # solo-GRBL: Marlin no expone ninguna señal para distinguir "alguien
+        # más está imprimiendo" de "está inactivo".
+        if _firmware_for_host(host) != "fluidnc":
+            return False
         status = await get_status(host, timeout=1.5)
         if _external_job_state(status.get("state") if status else None) == "running":
             send_raw_command(host, "!")
@@ -1276,10 +1443,13 @@ async def resume_job(host: str) -> bool:
     if job and job.state == "paused":
         job.pause_requested = False
         job.state = "running"
-        send_raw_command(job.host, "~")
+        if _firmware_for_host(host) == "fluidnc":
+            send_raw_command(job.host, "~")
         logger.info(f"[{host}] Trabajo reanudado")
         return True
     if job is None or job.state not in ("running", "paused"):
+        if _firmware_for_host(host) != "fluidnc":
+            return False
         status = await get_status(host, timeout=1.5)
         if _external_job_state(status.get("state") if status else None) == "paused":
             send_raw_command(host, "~")
@@ -1293,12 +1463,19 @@ async def cancel_job(host: str) -> bool:
     if job and job.state in ("running", "paused"):
         job.cancel_requested = True
         job.pause_requested = False
+        # Igual que pause: Marlin no manda nada acá, el runner corta el
+        # streaming solo al ver cancel_requested. No se manda M112 (parada
+        # de emergencia) — demasiado agresivo para lo que "cancelar" significa
+        # en el resto de NOPAL.
         logger.info(f"[{host}] Cancelación de trabajo solicitada")
         return True
     if job is None or job.state not in ("running", "paused"):
         # No hay loop propio (_run_job/_run_sd_job) que note un
         # cancel_requested para un trabajo externo, así que acá el reset
         # (\x18) se manda directo en vez de solo marcar una bandera.
+        # Solo-GRBL, mismo motivo que en pause_job/resume_job.
+        if _firmware_for_host(host) != "fluidnc":
+            return False
         status = await get_status(host, timeout=1.5)
         if _external_job_state(status.get("state") if status else None) is not None:
             send_raw_command(host, "\x18")

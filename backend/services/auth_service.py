@@ -25,11 +25,21 @@ def _load_users() -> List[Dict[str, Any]]:
 
 
 def _save_users(users: List[Dict[str, Any]]):
+    temp_path = f"{AUTH_USERS_PATH}.tmp"
     try:
-        with open(AUTH_USERS_PATH, "w", encoding="utf-8") as handle:
+        with open(temp_path, "w", encoding="utf-8") as handle:
             json.dump(users, handle, indent=2)
-    except OSError:
-        pass
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, AUTH_USERS_PATH)
+    except OSError as exc:
+        logger.exception("No se pudo guardar el archivo de usuarios")
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise RuntimeError("No se pudo guardar la configuración de usuarios") from exc
 
 
 def _hash_password(password: str) -> str:
@@ -67,6 +77,11 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
 
 
 def create_user(username: str, password: str, role: str) -> Dict[str, Any]:
+    username = username.strip()
+    if not username:
+        raise ValueError("El nombre de usuario es obligatorio")
+    if len(password) < 8:
+        raise ValueError("La contraseña debe tener al menos 8 caracteres")
     if role not in ROLES:
         raise ValueError(f"Rol desconocido: {role}")
     if get_user_by_username(username) is not None:
@@ -104,6 +119,8 @@ def update_user(user_id: str, role: Optional[str] = None, new_password: Optional
 
     if role is not None:
         user["role"] = role
+    if new_password is not None and len(new_password) < 8:
+        raise ValueError("La contraseña debe tener al menos 8 caracteres")
     if new_password:
         user["password_hash"] = _hash_password(new_password)
 
@@ -171,6 +188,7 @@ def get_or_create_session_secret() -> str:
     (que en este entorno pasa seguido) desconectaría a todo el mundo."""
     if os.path.isfile(SESSION_SECRET_PATH):
         try:
+            os.chmod(SESSION_SECRET_PATH, 0o600)
             with open(SESSION_SECRET_PATH, "r", encoding="utf-8") as handle:
                 secret = handle.read().strip()
             if secret:
@@ -182,6 +200,7 @@ def get_or_create_session_secret() -> str:
     try:
         with open(SESSION_SECRET_PATH, "w", encoding="utf-8") as handle:
             handle.write(secret)
+        os.chmod(SESSION_SECRET_PATH, 0o600)
     except OSError:
         pass
     return secret
