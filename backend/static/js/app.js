@@ -290,12 +290,13 @@ if (sidebarToggleBtn) {
 
 // ── Orden personalizable de los accesos del sidebar ──
 const SIDEBAR_ORDER_KEY = 'sidebarOrder';
+const SIDEBAR_CATEGORY_STATE_KEY = 'sidebarCategoryState';
 const FIXED_SIDEBAR_SECTIONS = ['dashboard', 'help'];
 
 function getSidebarSections() {
     return Array.from(document.querySelectorAll('.nav-list .nav-item'))
         .map(btn => btn.dataset.section)
-        .filter(id => !FIXED_SIDEBAR_SECTIONS.includes(id));
+        .filter(id => id && !FIXED_SIDEBAR_SECTIONS.includes(id));
 }
 
 function getSidebarOrder() {
@@ -318,19 +319,51 @@ function saveSidebarOrder(order) {
 function applySidebarOrder() {
     const navList = document.querySelector('.nav-list');
     if (!navList) return;
-    const buttons = Array.from(navList.querySelectorAll('.nav-item'));
-    const dashboardBtn = buttons.find(b => b.dataset.section === 'dashboard');
-    if (dashboardBtn) navList.appendChild(dashboardBtn);
     const order = getSidebarOrder();
-    order.forEach(sectionId => {
-        const btn = buttons.find(b => b.dataset.section === sectionId);
-        if (btn) navList.appendChild(btn);
+    const orderIndex = new Map(order.map((sectionId, index) => [sectionId, index]));
+
+    // Cada acceso se reordena únicamente dentro de su categoría. La versión
+    // anterior anexaba todos los botones directamente a navList, destruyendo
+    // los grupos definidos en el HTML y dejando los encabezados separados.
+    navList.querySelectorAll('.nav-category-items').forEach(container => {
+        const buttons = Array.from(container.querySelectorAll(':scope > .nav-item'));
+        buttons
+            .sort((a, b) => (orderIndex.get(a.dataset.section) ?? Number.MAX_SAFE_INTEGER)
+                - (orderIndex.get(b.dataset.section) ?? Number.MAX_SAFE_INTEGER))
+            .forEach(button => container.appendChild(button));
     });
-    const helpBtn = buttons.find(b => b.dataset.section === 'help');
-    if (helpBtn) navList.appendChild(helpBtn);
 }
 
 applySidebarOrder();
+
+function getSidebarCategoryState() {
+    try {
+        return JSON.parse(localStorage.getItem(SIDEBAR_CATEGORY_STATE_KEY) || '{}');
+    } catch (error) {
+        return {};
+    }
+}
+
+function setCategoryCollapsed(category, collapsed) {
+    category.classList.toggle('collapsed', collapsed);
+    const header = category.querySelector('[data-category-toggle]');
+    if (header) header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+const sidebarCategoryState = getSidebarCategoryState();
+document.querySelectorAll('.nav-category').forEach(category => {
+    const group = category.dataset.group;
+    const header = category.querySelector('[data-category-toggle]');
+    setCategoryCollapsed(category, sidebarCategoryState[group] === true);
+    if (!header) return;
+    header.addEventListener('click', () => {
+        const collapsed = !category.classList.contains('collapsed');
+        setCategoryCollapsed(category, collapsed);
+        const state = getSidebarCategoryState();
+        state[group] = collapsed;
+        localStorage.setItem(SIDEBAR_CATEGORY_STATE_KEY, JSON.stringify(state));
+    });
+});
 
 function renderSidebarOrderList() {
     const container = document.getElementById('sidebar-order-list');
@@ -338,14 +371,19 @@ function renderSidebarOrderList() {
     if (!container || !navList) return;
 
     const order = getSidebarOrder();
-    container.innerHTML = order.map((sectionId, index) => {
+    container.innerHTML = order.map(sectionId => {
         const btn = navList.querySelector(`.nav-item[data-section="${sectionId}"]`);
         if (!btn) return '';
+        const groupContainer = btn.closest('.nav-category-items');
+        const groupSections = groupContainer
+            ? Array.from(groupContainer.querySelectorAll(':scope > .nav-item[data-section]')).map(item => item.dataset.section)
+            : [sectionId];
+        const index = groupSections.indexOf(sectionId);
         const iconEl = btn.querySelector('svg');
         const icon = iconEl ? iconEl.outerHTML : '';
         const labelEl = btn.querySelector('span[data-i18n]');
         const label = labelEl ? labelEl.textContent : sectionId;
-        const options = order.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
+        const options = groupSections.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
         return `
             <div class="sidebar-order-row">
                 <span class="sidebar-order-row-label">${icon}<span>${escapeHtml(label)}</span></span>
@@ -358,13 +396,16 @@ function renderSidebarOrderList() {
         select.addEventListener('change', () => {
             const sectionId = select.dataset.section;
             const newPos = parseInt(select.value, 10) - 1;
-            const current = getSidebarOrder();
-            const oldPos = current.indexOf(sectionId);
-            if (oldPos === -1) return;
-            current.splice(oldPos, 1);
-            current.splice(newPos, 0, sectionId);
-            saveSidebarOrder(current);
-            applySidebarOrder();
+            const button = navList.querySelector(`.nav-item[data-section="${sectionId}"]`);
+            const groupContainer = button?.closest('.nav-category-items');
+            if (!button || !groupContainer) return;
+            const groupButtons = Array.from(groupContainer.querySelectorAll(':scope > .nav-item[data-section]'));
+            const oldPos = groupButtons.indexOf(button);
+            if (oldPos === -1 || newPos === oldPos) return;
+            groupButtons.splice(oldPos, 1);
+            groupButtons.splice(newPos, 0, button);
+            groupButtons.forEach(item => groupContainer.appendChild(item));
+            saveSidebarOrder(getSidebarSections());
             renderSidebarOrderList();
         });
     });
@@ -9691,6 +9732,10 @@ function switchSection(sectionName) {
         item.classList.remove('active');
         if (item.dataset.section === sectionName) {
             item.classList.add('active');
+            const category = item.closest('.nav-category');
+            if (category?.classList.contains('collapsed')) {
+                setCategoryCollapsed(category, false);
+            }
         }
     });
 
