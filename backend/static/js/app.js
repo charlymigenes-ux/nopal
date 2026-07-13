@@ -6,6 +6,13 @@
 // carga pasaría desapercibido (dashboard visible, resto roto en silencio).
 
 let currentAuthUser = null;
+// Reflejado por checkAuth() vía /api/auth/setup-required. Sin esto, los
+// setInterval de polling (loadPrinters, loadTopbarServerStats, etc.) pegan
+// a endpoints protegidos, reciben 401 y el interceptor de abajo tapa la
+// pantalla de configuración inicial con el login en loop, cada pocos
+// segundos — aunque el backend ya haya decidido correctamente que
+// corresponde mostrar el setup.
+let setupRequired = false;
 
 const ORIGINAL_FETCH = window.fetch.bind(window);
 window.fetch = async function authAwareFetch(input, init) {
@@ -13,7 +20,11 @@ window.fetch = async function authAwareFetch(input, init) {
     if (response.status === 401) {
         const url = typeof input === 'string' ? input : (input && input.url) || '';
         if (url.startsWith('/api/') && !url.startsWith('/api/auth/')) {
-            showLoginOverlay();
+            if (setupRequired) {
+                showSetupOverlay();
+            } else {
+                showLoginOverlay();
+            }
         }
     }
     return response;
@@ -52,7 +63,8 @@ async function checkAuth() {
         const setupResponse = await ORIGINAL_FETCH('/api/auth/setup-required');
         if (setupResponse.ok) {
             const setupData = await setupResponse.json();
-            if (setupData.required) {
+            setupRequired = !!setupData.required;
+            if (setupRequired) {
                 showSetupOverlay();
                 return null;
             }
