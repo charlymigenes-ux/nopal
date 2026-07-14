@@ -2586,7 +2586,21 @@ async function loadPrinterTemperatures(port) {
     }
 }
 
-const TOPBAR_GAUGE_CIRCUMFERENCE = 2 * Math.PI * 24;
+const TOPBAR_GAUGE_RADIUS = 40;
+const TOPBAR_GAUGE_CIRCUMFERENCE = 2 * Math.PI * TOPBAR_GAUGE_RADIUS;
+
+// Íconos de línea (16px, stroke=currentColor) para las celdas de estadísticas
+// del host y las etiquetas de los gauges del topbar. Genéricos a propósito
+// (nada de logos de marca, ej. Debian).
+const TOPBAR_ICON_BRANCH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>';
+const TOPBAR_ICON_TERMINAL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+const TOPBAR_ICON_ACTIVITY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>';
+const TOPBAR_ICON_CHIP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>';
+const TOPBAR_ICON_THERMOMETER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"/></svg>';
+const TOPBAR_ICON_LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const TOPBAR_ICON_NETWORK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="7" y2="6"/><polyline points="3 10 7 6 11 10"/><line x1="17" y1="7" x2="17" y2="18"/><polyline points="13 14 17 18 21 14"/></svg>';
+const TOPBAR_ICON_DOWNLOAD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+const TOPBAR_ICON_UPLOAD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
 
 function renderTopbarServerStats(data) {
     const container = document.getElementById('topbar-server-stats');
@@ -2606,44 +2620,75 @@ function renderTopbarServerStats(data) {
     const cpuOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (cpuPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
     const memOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (memPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
     const tempOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (tempPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
-    const networkLine = host.network_interface
-        ? `${host.network_interface}${host.network_ip ? ` (${host.network_ip})` : ''} : ${t('hostBandwidth')}: ${host.bandwidth_kbps} kB/s , ${t('hostReceived')}: ${host.rx_gb} GB , ${t('hostTransmitted')}: ${host.tx_gb} GB`
-        : '—';
+    const cpuDesc = `${host.cpu_desc || ''}${host.cpu_bits ? `, ${host.cpu_bits}` : ''}`;
+
+    const cell = (icon, label, value) => `
+                <div class="topbar-host-cell">
+                    ${icon}
+                    <div class="topbar-host-cell-text">
+                        <span class="topbar-host-cell-label">${label}</span>
+                        <span class="topbar-host-cell-value">${value}</span>
+                    </div>
+                </div>`;
+
+    const cellsRow1 = [
+        cell(TOPBAR_ICON_BRANCH, t('hostVersion'), host.version || '—'),
+        cell(TOPBAR_ICON_TERMINAL, t('hostOs'), host.os || '—'),
+        cell(TOPBAR_ICON_ACTIVITY, t('hostLoad'), `${cpuPercent}%`),
+        cell(TOPBAR_ICON_CHIP, t('memory'), `${host.mem_used_gb} GB / ${host.mem_total_gb} GB`),
+        cell(TOPBAR_ICON_THERMOMETER, t('temperature'), tempValue != null ? `${tempValue.toFixed(1)}°C` : '—'),
+    ].join('');
+
+    const cellsRow2 = [
+        cell(TOPBAR_ICON_LOCK, t('hostIp'), host.network_ip || '—'),
+        cell(TOPBAR_ICON_NETWORK, t('hostNetworkSpeed'), `${host.bandwidth_kbps} KB/s`),
+        cell(TOPBAR_ICON_DOWNLOAD, t('hostReceived'), `${host.rx_gb} GB`),
+        cell(TOPBAR_ICON_UPLOAD, t('hostTransmitted'), `${host.tx_gb} GB`),
+    ].join('');
 
     container.innerHTML = `
-        <div class="topbar-host-block">
-            <div class="topbar-host-title">Host <small>${host.cpu_desc || ''}${host.cpu_bits ? `, ${host.cpu_bits}` : ''}</small></div>
-            <div class="topbar-host-lines">
-                <span>${t('hostVersion')}: <strong>${host.version || '—'}</strong></span>
-                <span>${t('hostOs')}: <strong>${host.os || '—'}</strong></span>
-                <span>${t('hostLoad')}: <strong>${cpuPercent}%</strong>, ${t('memory')}: <strong>${host.mem_used_gb} GB / ${host.mem_total_gb} GB</strong> , ${t('temperature')}: <strong>${host.temp != null ? host.temp.toFixed(1) + '°C' : '—'}</strong></span>
-                <span>${networkLine}</span>
+        <div class="topbar-host-card">
+            <div class="topbar-host-header">
+                <span class="topbar-host-dot"></span>
+                <span class="topbar-host-title-text">Host</span>
+                <span class="topbar-host-desc">${cpuDesc}</span>
+                <span class="topbar-host-online-pill">${t('online')}</span>
+            </div>
+            <div class="topbar-host-grid">
+                ${cellsRow1}
+                ${cellsRow2}
             </div>
         </div>
-        <div class="topbar-host-gauges">
-            <div class="topbar-gauge">
-                <svg viewBox="0 0 60 60">
-                    <circle class="gauge-track" cx="30" cy="30" r="24"/>
-                    <circle class="gauge-fill gauge-fill-cpu" cx="30" cy="30" r="24" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${cpuOffset}"/>
-                </svg>
-                <span class="gauge-value">${cpuPercent}</span>
-                <span class="gauge-label">Cpu</span>
+        <div class="topbar-gauges-card">
+            <div class="topbar-gauge gauge-cpu">
+                <div class="topbar-gauge-ring">
+                    <svg viewBox="0 0 96 96">
+                        <circle class="gauge-track" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}"/>
+                        <circle class="gauge-fill gauge-fill-cpu" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${cpuOffset}"/>
+                    </svg>
+                    <span class="gauge-value">${cpuPercent}</span>
+                </div>
+                <div class="topbar-gauge-label">${TOPBAR_ICON_ACTIVITY}<span>CPU</span></div>
             </div>
-            <div class="topbar-gauge">
-                <svg viewBox="0 0 60 60">
-                    <circle class="gauge-track" cx="30" cy="30" r="24"/>
-                    <circle class="gauge-fill gauge-fill-mem" cx="30" cy="30" r="24" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${memOffset}"/>
-                </svg>
-                <span class="gauge-value">${memPercent}</span>
-                <span class="gauge-label">${t('memory')}.</span>
+            <div class="topbar-gauge gauge-mem">
+                <div class="topbar-gauge-ring">
+                    <svg viewBox="0 0 96 96">
+                        <circle class="gauge-track" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}"/>
+                        <circle class="gauge-fill gauge-fill-mem" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${memOffset}"/>
+                    </svg>
+                    <span class="gauge-value">${memPercent}</span>
+                </div>
+                <div class="topbar-gauge-label">${TOPBAR_ICON_CHIP}<span>${t('memory')}.</span></div>
             </div>
-            <div class="topbar-gauge">
-                <svg viewBox="0 0 60 60">
-                    <circle class="gauge-track" cx="30" cy="30" r="24"/>
-                    <circle class="gauge-fill gauge-fill-temp" cx="30" cy="30" r="24" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${tempOffset}"/>
-                </svg>
-                <span class="gauge-value">${tempValue != null ? Math.round(tempValue) : '—'}</span>
-                <span class="gauge-label">${t('temperature')}</span>
+            <div class="topbar-gauge gauge-temp">
+                <div class="topbar-gauge-ring">
+                    <svg viewBox="0 0 96 96">
+                        <circle class="gauge-track" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}"/>
+                        <circle class="gauge-fill gauge-fill-temp" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${tempOffset}"/>
+                    </svg>
+                    <span class="gauge-value">${tempValue != null ? Math.round(tempValue) : '—'}</span>
+                </div>
+                <div class="topbar-gauge-label">${TOPBAR_ICON_THERMOMETER}<span>${t('temperature')}</span></div>
             </div>
         </div>
     `;
@@ -3155,6 +3200,7 @@ async function openPrinterModal(printer) {
     const { isPrinterInError } = refreshPrinterModalHeader(printer);
 
     printerModal.classList.add('active');
+    applyPrinterModulesLayout();
 
     if (printerModalTemperatureInterval) {
         clearInterval(printerModalTemperatureInterval);
@@ -3190,6 +3236,862 @@ async function openPrinterModal(printer) {
     }
 }
 
+// ── "Personalizar Módulos" (estilo Mainsail): reordenar y mostrar/ocultar
+// los módulos del modal de impresora Klipper (Toolhead/Temperaturas/Cola)
+// por breakpoint de pantalla. "Estado" representa la topbar fija de arriba;
+// se muestra bloqueado en la lista solo por fidelidad visual, nunca se
+// reordena ni se oculta (la topbar es estructuralmente independiente de las
+// 3 columnas de .printer-modal-body).
+//
+// Estructura pensada para poder agregar más módulos después (Extrusor,
+// Macros, Consola, etc. — fase futura explícitamente fuera de alcance) sin
+// reescribir nada: basta con añadir una entrada más a PRINTER_MODULE_DEFS.
+const PRINTER_MODULE_ICON_STATUS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>';
+const PRINTER_MODULE_ICON_TOOLHEAD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+const PRINTER_MODULE_ICON_TEMPERATURES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"/></svg>';
+const PRINTER_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
+const PRINTER_MODULE_LOCK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const PRINTER_MODULE_DRAG_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+
+const PRINTER_MODULE_DEFS = [
+    { key: 'estado', group: 'available', labelKey: 'status', iconSvg: PRINTER_MODULE_ICON_STATUS, locked: true },
+    { key: 'toolhead', group: 'available', labelKey: 'toolhead', iconSvg: PRINTER_MODULE_ICON_TOOLHEAD, locked: false },
+    { key: 'temperatures', group: 'extra', labelKey: 'temperatures', iconSvg: PRINTER_MODULE_ICON_TEMPERATURES, locked: false },
+    { key: 'queue', group: 'extra', labelKey: 'printerModuleQueue', iconSvg: PRINTER_MODULE_ICON_QUEUE, locked: false },
+];
+
+const PRINTER_MODULE_NONLOCKED_KEYS = PRINTER_MODULE_DEFS.filter(mod => !mod.locked).map(mod => mod.key);
+
+// Los 4 breakpoints se resuelven por ancho de ventana, igual que el resto
+// del layout responsive de la app (no hay coincidencia exacta con ningún
+// @media existente porque este es un concepto nuevo — el propio del editor).
+const PRINTER_MODULE_BREAKPOINTS = [
+    { id: 'mobile', maxWidth: 639 },
+    { id: 'tablet', minWidth: 640, maxWidth: 1023 },
+    { id: 'desktop', minWidth: 1024, maxWidth: 1439 },
+    { id: 'wide', minWidth: 1440 },
+];
+
+function getPrinterModuleBreakpointId(width = window.innerWidth) {
+    const match = PRINTER_MODULE_BREAKPOINTS.find(bp =>
+        (bp.minWidth === undefined || width >= bp.minWidth) &&
+        (bp.maxWidth === undefined || width <= bp.maxWidth));
+    return match ? match.id : 'desktop';
+}
+
+function getPrinterModulesLayout(breakpointId) {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(`printerModulesLayout_${breakpointId}`) || 'null');
+    } catch (error) {
+        saved = null;
+    }
+    const savedOrder = Array.isArray(saved?.order) ? saved.order.filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)) : [];
+    const missing = PRINTER_MODULE_NONLOCKED_KEYS.filter(key => !savedOrder.includes(key));
+    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)) : [];
+    return { order: [...savedOrder, ...missing], hidden };
+}
+
+function savePrinterModulesLayout(breakpointId, layout) {
+    localStorage.setItem(`printerModulesLayout_${breakpointId}`, JSON.stringify({
+        order: (layout.order || []).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)),
+        hidden: (layout.hidden || []).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)),
+    }));
+}
+
+function resetPrinterModulesLayout(breakpointId) {
+    localStorage.removeItem(`printerModulesLayout_${breakpointId}`);
+}
+
+// Aplica el layout guardado del breakpoint actual a las 3 columnas reales
+// del modal de impresora (reordenar + ocultar). Se llama al abrir el modal
+// y cuando el resize cruza un límite de breakpoint mientras está abierto.
+function applyPrinterModulesLayout() {
+    const modalBody = document.querySelector('#printer-modal .printer-modal-body');
+    if (!modalBody) return;
+    const layout = getPrinterModulesLayout(getPrinterModuleBreakpointId());
+    const orderIndex = new Map(layout.order.map((key, index) => [key, index]));
+    const columns = Array.from(modalBody.querySelectorAll(':scope > .printer-modal-column[data-module]'));
+    columns
+        .slice()
+        .sort((a, b) => (orderIndex.get(a.dataset.module) ?? 99) - (orderIndex.get(b.dataset.module) ?? 99))
+        .forEach(col => modalBody.appendChild(col));
+    columns.forEach(col => {
+        col.hidden = layout.hidden.includes(col.dataset.module);
+    });
+}
+
+let lastPrinterModuleBreakpointId = getPrinterModuleBreakpointId();
+window.addEventListener('resize', () => {
+    const current = getPrinterModuleBreakpointId();
+    if (current === lastPrinterModuleBreakpointId) return;
+    lastPrinterModuleBreakpointId = current;
+    if (printerModal && printerModal.classList.contains('active')) {
+        applyPrinterModulesLayout();
+    }
+});
+
+// Pestaña de breakpoint que se está editando en el modal "Personalizar
+// Módulos" — independiente del ancho real de la ventana, así se puede
+// editar por ejemplo el layout de "Celular" desde un monitor de escritorio.
+let moduleCustomizerActiveBreakpoint = getPrinterModuleBreakpointId();
+
+function renderModuleCustomizerTabs() {
+    document.querySelectorAll('#module-customizer-tabs .module-customizer-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.breakpoint === moduleCustomizerActiveBreakpoint);
+    });
+}
+
+function renderModuleCustomizerRow(mod, layout) {
+    const label = t(mod.labelKey);
+    if (mod.locked) {
+        return `
+            <div class="module-customizer-row module-customizer-row-locked" data-module="${mod.key}">
+                <span class="module-customizer-row-handle module-customizer-row-handle-disabled">${PRINTER_MODULE_DRAG_ICON}</span>
+                <span class="module-customizer-row-icon">${mod.iconSvg}</span>
+                <span class="module-customizer-row-label">${escapeHtml(label)}</span>
+                <span class="module-customizer-row-lock" title="${escapeHtml(t('moduleCustomizerLockedHint'))}">${PRINTER_MODULE_LOCK_ICON}</span>
+            </div>
+        `;
+    }
+    const isHidden = layout.hidden.includes(mod.key);
+    const checkboxClass = mod.group === 'available' ? 'module-customizer-checkbox-green' : 'module-customizer-checkbox-purple';
+    return `
+        <div class="module-customizer-row" data-module="${mod.key}">
+            <span class="module-customizer-row-handle">${PRINTER_MODULE_DRAG_ICON}</span>
+            <span class="module-customizer-row-icon">${mod.iconSvg}</span>
+            <span class="module-customizer-row-label">${escapeHtml(label)}</span>
+            <label class="module-customizer-row-toggle">
+                <input type="checkbox" class="module-customizer-checkbox ${checkboxClass}" data-module="${mod.key}" ${isHidden ? '' : 'checked'}>
+            </label>
+        </div>
+    `;
+}
+
+// Reordena visualmente en el DOM la fila que se está arrastrando dentro de
+// su propia lista (grupo), a mano con Pointer Events — sin HTML5 drag&drop
+// nativo (no funciona bien en touch) ni librerías de terceros. La fila
+// arrastrada se saca del flujo (position:absolute dentro de la lista, que
+// es position:relative) y sigue al cursor verticalmente mientras las demás
+// se reacomodan de inmediato al cruzar su punto medio.
+function getModuleCustomizerDropTarget(list, draggingRow, pointerY) {
+    const rows = Array.from(list.querySelectorAll(':scope > .module-customizer-row'))
+        .filter(row => row !== draggingRow && !row.classList.contains('module-customizer-row-locked'));
+    return rows.reduce((closest, row) => {
+        const box = row.getBoundingClientRect();
+        const offset = pointerY - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: row };
+        }
+        return closest;
+    }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+}
+
+function persistModuleOrderFromDom() {
+    const availableList = document.getElementById('module-customizer-list-available');
+    const extraList = document.getElementById('module-customizer-list-extra');
+    const domOrder = [
+        ...Array.from(availableList ? availableList.querySelectorAll(':scope > .module-customizer-row[data-module]') : []),
+        ...Array.from(extraList ? extraList.querySelectorAll(':scope > .module-customizer-row[data-module]') : []),
+    ].map(row => row.dataset.module).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key));
+    const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+    savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: domOrder, hidden: currentLayout.hidden });
+    applyPrinterModulesLayout();
+}
+
+function initModuleCustomizerDrag(list) {
+    let draggingRow = null;
+
+    function onPointerMove(event) {
+        if (!draggingRow) return;
+        event.preventDefault();
+        const dy = event.clientY - draggingRow._moduleDragStartPointerY;
+        draggingRow.style.top = `${draggingRow._moduleDragStartTop + dy}px`;
+        const after = getModuleCustomizerDropTarget(list, draggingRow, event.clientY);
+        if (after == null) {
+            list.appendChild(draggingRow);
+        } else if (after !== draggingRow.nextElementSibling) {
+            list.insertBefore(draggingRow, after);
+        }
+    }
+
+    function endDrag() {
+        if (!draggingRow) return;
+        draggingRow.classList.remove('module-customizer-row-dragging');
+        draggingRow.style.position = '';
+        draggingRow.style.top = '';
+        draggingRow.style.left = '';
+        draggingRow.style.right = '';
+        draggingRow.style.zIndex = '';
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', endDrag);
+        document.removeEventListener('pointercancel', endDrag);
+        draggingRow = null;
+        persistModuleOrderFromDom();
+    }
+
+    list.querySelectorAll('.module-customizer-row-handle:not(.module-customizer-row-handle-disabled)').forEach(handle => {
+        handle.addEventListener('pointerdown', (event) => {
+            const row = handle.closest('.module-customizer-row');
+            if (!row) return;
+            event.preventDefault();
+            const listRect = list.getBoundingClientRect();
+            const rowRect = row.getBoundingClientRect();
+            row._moduleDragStartPointerY = event.clientY;
+            row._moduleDragStartTop = rowRect.top - listRect.top;
+            draggingRow = row;
+            row.classList.add('module-customizer-row-dragging');
+            row.style.position = 'absolute';
+            row.style.top = `${row._moduleDragStartTop}px`;
+            row.style.left = '0';
+            row.style.right = '0';
+            row.style.zIndex = '20';
+            try { handle.setPointerCapture(event.pointerId); } catch (error) { /* no-op: no crítico si el navegador no lo soporta */ }
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', endDrag);
+            document.addEventListener('pointercancel', endDrag);
+        });
+    });
+}
+
+function renderModuleCustomizerLists() {
+    const availableList = document.getElementById('module-customizer-list-available');
+    const extraList = document.getElementById('module-customizer-list-extra');
+    if (!availableList || !extraList) return;
+
+    const layout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+    const orderIndex = new Map(layout.order.map((key, index) => [key, index]));
+
+    const byGroup = (group) => PRINTER_MODULE_DEFS
+        .filter(mod => mod.group === group)
+        .sort((a, b) => {
+            if (a.locked !== b.locked) return a.locked ? -1 : 1;
+            return (orderIndex.get(a.key) ?? 99) - (orderIndex.get(b.key) ?? 99);
+        });
+
+    availableList.innerHTML = byGroup('available').map(mod => renderModuleCustomizerRow(mod, layout)).join('');
+    extraList.innerHTML = byGroup('extra').map(mod => renderModuleCustomizerRow(mod, layout)).join('');
+
+    [availableList, extraList].forEach(list => {
+        list.querySelectorAll('input.module-customizer-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                const key = checkbox.dataset.module;
+                const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+                const hiddenSet = new Set(currentLayout.hidden);
+                if (checkbox.checked) hiddenSet.delete(key); else hiddenSet.add(key);
+                savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: currentLayout.order, hidden: Array.from(hiddenSet) });
+                applyPrinterModulesLayout();
+            });
+        });
+        initModuleCustomizerDrag(list);
+    });
+}
+
+function openModuleCustomizerModal() {
+    const modal = document.getElementById('module-customizer-modal');
+    if (!modal) return;
+    moduleCustomizerActiveBreakpoint = getPrinterModuleBreakpointId();
+    renderModuleCustomizerTabs();
+    renderModuleCustomizerLists();
+    modal.classList.add('active');
+}
+
+function closeModuleCustomizerModal() {
+    document.getElementById('module-customizer-modal')?.classList.remove('active');
+}
+
+document.getElementById('printer-modal-settings-btn')?.addEventListener('click', openModuleCustomizerModal);
+document.getElementById('module-customizer-modal-close')?.addEventListener('click', closeModuleCustomizerModal);
+document.getElementById('module-customizer-modal-backdrop')?.addEventListener('click', closeModuleCustomizerModal);
+
+document.querySelectorAll('#module-customizer-tabs .module-customizer-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        moduleCustomizerActiveBreakpoint = tab.dataset.breakpoint;
+        renderModuleCustomizerTabs();
+        renderModuleCustomizerLists();
+    });
+});
+
+document.getElementById('module-customizer-reset-btn')?.addEventListener('click', () => {
+    resetPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+    renderModuleCustomizerLists();
+    applyPrinterModulesLayout();
+    showToast(t('moduleCustomizerResetDone'));
+});
+
+// ── "Personalizar" para las páginas de Configuración y Ayuda ────────────
+// Configuración (7 tarjetas) y Ayuda (8 tarjetas) son de nuevo dos páginas
+// independientes (index.html: #settings-section / #help-section), cada una
+// con su propio pool de tarjetas reales (#settings-modules-pool /
+// #help-modules-pool — cada tarjeta con un atributo
+// data-settings-module="<key>" que la identifica sin importar en qué grupo
+// termine) y su propio editor "Personalizar" para crear/renombrar/borrar
+// grupos y arrastrar tarjetas entre ellos, igual que el editor de módulos
+// del modal de impresora pero con grupos definidos por el propio usuario en
+// vez de 2 columnas fijas "disponibles"/"adicionales".
+//
+// Las dos páginas comparten exactamente la misma lógica (grupos, arrastre,
+// persistencia por breakpoint), así que en vez de duplicarla existe un solo
+// motor genérico — createModulePageScope(config) — parametrizado por los ids
+// del DOM y el prefijo de localStorage de cada página; se instancia una vez
+// por página al final de este bloque (settingsModulesPageScope /
+// helpModulesPageScope). El arrastre nunca cruza entre páginas porque cada
+// instancia solo consulta el DOM dentro de su propio modal
+// (config.modalGroupsId): no comparten grupos, tarjetas ni localStorage.
+//
+// Persistencia en localStorage, una entrada por breakpoint y por página
+// (mismos 4 breakpoints que el editor de impresora — se mantienen aparte a
+// propósito: son features independientes, así cada una evoluciona sin
+// arriesgar a las otras):
+//   settingsModulesLayout_<breakpointId> = { groups: [{ id, name, modules: [key, ...] }, ...], hidden: [key, ...] }
+//   helpModulesLayout_<breakpointId>     = { groups: [{ id, name, modules: [key, ...] }, ...], hidden: [key, ...] }
+// Por defecto (primera vez, nada guardado) cada página arma un solo grupo con
+// todas sus tarjetas en su orden original ("General" en Configuración,
+// "Ayuda" en Ayuda) — así ningún usuario existente ve la página vacía.
+const SETTINGS_MODULE_ICON_GENERAL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>';
+const SETTINGS_MODULE_ICON_APPEARANCE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 6 6 0 0 0 0-12 4 4 0 0 1 0-8z"/></svg>';
+const SETTINGS_MODULE_ICON_UPDATES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>';
+const SETTINGS_MODULE_ICON_LOGS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>';
+const SETTINGS_MODULE_ICON_USERS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const SETTINGS_MODULE_ICON_DEVICES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>';
+const SETTINGS_MODULE_ICON_ACCESSORIES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>';
+const SETTINGS_MODULE_ICON_ABOUT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+const SETTINGS_MODULE_ICON_MODELS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>';
+const SETTINGS_MODULE_ICON_GCODE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+const SETTINGS_MODULE_ICON_DASHBOARD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+const SETTINGS_MODULE_ICON_LASER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>';
+const SETTINGS_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
+const SETTINGS_MODULE_ICON_MACROS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+const SETTINGS_MODULE_ICON_SETTINGS_HELP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+
+// Las 7 tarjetas reales de #settings-modules-pool.
+const SETTINGS_MODULE_DEFS = [
+    { key: 'general', labelKey: 'generalSettings', iconSvg: SETTINGS_MODULE_ICON_GENERAL },
+    { key: 'appearance', labelKey: 'appearanceSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_APPEARANCE },
+    { key: 'updates', labelKey: 'updates', iconSvg: SETTINGS_MODULE_ICON_UPDATES },
+    { key: 'logs', labelKey: 'systemLogs', iconSvg: SETTINGS_MODULE_ICON_LOGS },
+    { key: 'users', labelKey: 'usersTitle', iconSvg: SETTINGS_MODULE_ICON_USERS },
+    { key: 'devices', labelKey: 'devicesTitle', iconSvg: SETTINGS_MODULE_ICON_DEVICES },
+    { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
+];
+// Las 8 tarjetas reales de #help-modules-pool.
+const HELP_MODULE_DEFS = [
+    { key: 'about', labelKey: 'helpAboutTitle', iconSvg: SETTINGS_MODULE_ICON_ABOUT },
+    { key: 'models', labelKey: 'helpModelsTitle', iconSvg: SETTINGS_MODULE_ICON_MODELS },
+    { key: 'gcode', labelKey: 'helpGcodeTitle', iconSvg: SETTINGS_MODULE_ICON_GCODE },
+    { key: 'dashboardHelp', labelKey: 'helpDashboardTitle', iconSvg: SETTINGS_MODULE_ICON_DASHBOARD },
+    { key: 'laserHelp', labelKey: 'helpLaserTitle', iconSvg: SETTINGS_MODULE_ICON_LASER },
+    { key: 'queueHelp', labelKey: 'helpQueueTitle', iconSvg: SETTINGS_MODULE_ICON_QUEUE },
+    { key: 'macrosHelp', labelKey: 'helpMacrosTitle', iconSvg: SETTINGS_MODULE_ICON_MACROS },
+    { key: 'settingsHelp', labelKey: 'helpSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_SETTINGS_HELP },
+];
+
+// Mismos 4 breakpoints que PRINTER_MODULE_BREAKPOINTS más arriba, compartidos
+// por ambas páginas.
+const SETTINGS_MODULE_BREAKPOINTS = [
+    { id: 'mobile', maxWidth: 639 },
+    { id: 'tablet', minWidth: 640, maxWidth: 1023 },
+    { id: 'desktop', minWidth: 1024, maxWidth: 1439 },
+    { id: 'wide', minWidth: 1440 },
+];
+
+function getSettingsModuleBreakpointId(width = window.innerWidth) {
+    const match = SETTINGS_MODULE_BREAKPOINTS.find(bp =>
+        (bp.minWidth === undefined || width >= bp.minWidth) &&
+        (bp.maxWidth === undefined || width <= bp.maxWidth));
+    return match ? match.id : 'desktop';
+}
+
+function generateSettingsModuleGroupId() {
+    return `group_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Motor genérico: una instancia = una página con su propio pool de
+// tarjetas, su propio contenedor de grupos y su propio modal "Personalizar".
+// config = {
+//   storagePrefix,               // 'settingsModulesLayout_' | 'helpModulesLayout_'
+//   moduleDefs,                  // SETTINGS_MODULE_DEFS | HELP_MODULE_DEFS
+//   groupsElementId,             // contenedor real de la página (fuera del modal)
+//   modalId, modalTabsId, modalGroupsId, modalCloseId, modalBackdropId,
+//   customizeBtnId, addGroupBtnId, resetBtnId,
+//   defaultGroups: [{ id, nameKey, keys }],
+// }
+function createModulePageScope(config) {
+    const moduleKeys = config.moduleDefs.map(mod => mod.key);
+    const moduleDefsByKey = new Map(config.moduleDefs.map(mod => [mod.key, mod]));
+    // Pestaña de breakpoint que se está editando en el editor de esta
+    // página — independiente del ancho real de la ventana (igual que
+    // moduleCustomizerActiveBreakpoint del editor de impresora).
+    let customizerActiveBreakpoint = getSettingsModuleBreakpointId();
+
+    function getDefaultLayout() {
+        return {
+            groups: config.defaultGroups.map(g => ({ id: g.id, name: t(g.nameKey), modules: [...g.keys] })),
+            hidden: [],
+        };
+    }
+
+    // Reacomoda/sanea un layout leído de localStorage: descarta claves de
+    // módulo repetidas o que ya no existen, y agrega a un grupo "Sin grupo"
+    // (creándolo si hace falta) cualquier módulo que falte por alguna razón
+    // (versión vieja del layout, corrupción manual del localStorage, etc.)
+    // — así todas las tarjetas de esta página siempre quedan cubiertas y
+    // nunca se "pierde" una silenciosamente.
+    function sanitizeLayout(raw) {
+        const groupsIn = Array.isArray(raw?.groups) ? raw.groups : [];
+        const seen = new Set();
+        const groups = groupsIn
+            .filter(g => g && typeof g.id === 'string' && typeof g.name === 'string')
+            .map(g => ({
+                id: g.id,
+                name: g.name,
+                modules: Array.isArray(g.modules) ? g.modules.filter(key => {
+                    if (!moduleKeys.includes(key) || seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                }) : [],
+            }));
+        const missing = moduleKeys.filter(key => !seen.has(key));
+        if (missing.length) {
+            let ungrouped = groups.find(g => g.id === 'ungrouped');
+            if (!ungrouped) {
+                ungrouped = { id: 'ungrouped', name: t('settingsModuleGroupUngrouped'), modules: [] };
+                groups.push(ungrouped);
+            }
+            ungrouped.modules.push(...missing);
+        }
+        const hidden = Array.isArray(raw?.hidden) ? raw.hidden.filter(key => moduleKeys.includes(key)) : [];
+        return { groups, hidden };
+    }
+
+    function getLayout(breakpointId) {
+        let saved = null;
+        try {
+            saved = JSON.parse(localStorage.getItem(`${config.storagePrefix}${breakpointId}`) || 'null');
+        } catch (error) {
+            saved = null;
+        }
+        if (!saved || !Array.isArray(saved.groups) || !saved.groups.length) {
+            return getDefaultLayout();
+        }
+        return sanitizeLayout(saved);
+    }
+
+    function saveLayout(breakpointId, layout) {
+        localStorage.setItem(`${config.storagePrefix}${breakpointId}`, JSON.stringify(sanitizeLayout(layout)));
+    }
+
+    function resetLayout(breakpointId) {
+        localStorage.removeItem(`${config.storagePrefix}${breakpointId}`);
+    }
+
+    // Aplica el layout guardado del breakpoint actual a la página real: arma
+    // un <section> por grupo y mueve dentro las tarjetas reales (nunca las
+    // recrea — conservan todos sus listeners) tomándolas de donde estén (la
+    // "alberca" inicial de esta página la primera vez, o el grupo anterior
+    // en llamadas siguientes). El estado "oculto" elegido en el editor se
+    // aplica con una clase (settings-module-hidden-by-user), no con el
+    // atributo `hidden` nativo — ese lo sigue controlando exclusivamente
+    // cada función dueña de la tarjeta (p. ej. loadUsersSettings() según el
+    // rol del usuario), para que ambos mecanismos convivan sin pisarse.
+    function apply() {
+        const groupsContainer = document.getElementById(config.groupsElementId);
+        if (!groupsContainer) return;
+        const layout = getLayout(getSettingsModuleBreakpointId());
+        const sections = [];
+
+        layout.groups.forEach(group => {
+            const section = document.createElement('section');
+            section.className = 'settings-module-group';
+            section.dataset.groupId = group.id;
+
+            const titleRow = document.createElement('div');
+            titleRow.className = 'settings-module-group-title-row';
+            const title = document.createElement('h2');
+            title.className = 'settings-module-group-title';
+            title.textContent = group.name;
+            titleRow.appendChild(title);
+
+            const body = document.createElement('div');
+            body.className = 'settings-module-group-body';
+
+            let hasModule = false;
+            let hasVisibleModule = false;
+            group.modules.forEach(key => {
+                const el = document.querySelector(`[data-settings-module="${key}"]`);
+                if (!el) return;
+                hasModule = true;
+                const isHiddenByUser = layout.hidden.includes(key);
+                el.classList.toggle('settings-module-hidden-by-user', isHiddenByUser);
+                if (!isHiddenByUser) hasVisibleModule = true;
+                body.appendChild(el);
+            });
+
+            if (!hasModule) return;
+            section.appendChild(titleRow);
+            section.appendChild(body);
+            section.hidden = !hasVisibleModule;
+            sections.push(section);
+        });
+
+        groupsContainer.innerHTML = '';
+        sections.forEach(section => groupsContainer.appendChild(section));
+    }
+
+    let lastBreakpointId = getSettingsModuleBreakpointId();
+    window.addEventListener('resize', () => {
+        const current = getSettingsModuleBreakpointId();
+        if (current === lastBreakpointId) return;
+        lastBreakpointId = current;
+        apply();
+    });
+
+    function renderCustomizerTabs() {
+        document.querySelectorAll(`#${config.modalTabsId} .module-customizer-tab`).forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.breakpoint === customizerActiveBreakpoint);
+        });
+    }
+
+    function renderCustomizerRow(mod, layout) {
+        const label = t(mod.labelKey);
+        const isHidden = layout.hidden.includes(mod.key);
+        return `
+            <div class="module-customizer-row settings-module-customizer-row" data-module="${mod.key}">
+                <span class="module-customizer-row-handle">${PRINTER_MODULE_DRAG_ICON}</span>
+                <span class="module-customizer-row-icon">${mod.iconSvg}</span>
+                <span class="module-customizer-row-label">${escapeHtml(label)}</span>
+                <label class="module-customizer-row-toggle">
+                    <input type="checkbox" class="module-customizer-checkbox" data-module="${mod.key}" ${isHidden ? '' : 'checked'}>
+                </label>
+            </div>
+        `;
+    }
+
+    function renderCustomizerGroupHtml(group, layout) {
+        const rowsHtml = group.modules
+            .map(key => moduleDefsByKey.get(key))
+            .filter(Boolean)
+            .map(mod => renderCustomizerRow(mod, layout))
+            .join('');
+        const namePlaceholder = escapeHtml(t('settingsModuleCustomizerGroupNamePlaceholder'));
+        return `
+            <div class="module-customizer-group settings-module-customizer-group" data-group-id="${escapeHtml(group.id)}">
+                <div class="settings-module-customizer-group-header">
+                    <input type="text" class="settings-module-customizer-group-name-input" data-group-id="${escapeHtml(group.id)}" value="${escapeHtml(group.name)}" aria-label="${namePlaceholder}" placeholder="${namePlaceholder}">
+                    <button type="button" class="settings-module-customizer-group-delete-btn" data-group-id="${escapeHtml(group.id)}" title="${escapeHtml(t('settingsModuleCustomizerDeleteGroupBtn'))}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                </div>
+                <div class="module-customizer-list settings-module-customizer-list" data-group-id="${escapeHtml(group.id)}">${rowsHtml}</div>
+            </div>
+        `;
+    }
+
+    function listRows(list) {
+        return Array.from(list.children).filter(el => el.classList.contains('module-customizer-row'));
+    }
+
+    function toggleEmptyHint(list) {
+        if (!list) return;
+        const hint = list.querySelector(':scope > .settings-module-customizer-list-hint');
+        if (listRows(list).length) {
+            if (hint) hint.remove();
+        } else if (!hint) {
+            const newHint = document.createElement('div');
+            newHint.className = 'settings-module-customizer-list-hint';
+            newHint.textContent = t('settingsModuleCustomizerEmptyGroupHint');
+            list.appendChild(newHint);
+        }
+    }
+
+    function renderCustomizerGroups() {
+        const container = document.getElementById(config.modalGroupsId);
+        if (!container) return;
+        const layout = getLayout(customizerActiveBreakpoint);
+        container.innerHTML = layout.groups.map(group => renderCustomizerGroupHtml(group, layout)).join('');
+
+        container.querySelectorAll('.settings-module-customizer-list').forEach(list => {
+            toggleEmptyHint(list);
+            list.querySelectorAll('input.module-customizer-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    const key = checkbox.dataset.module;
+                    const currentLayout = getLayout(customizerActiveBreakpoint);
+                    const hiddenSet = new Set(currentLayout.hidden);
+                    if (checkbox.checked) hiddenSet.delete(key); else hiddenSet.add(key);
+                    saveLayout(customizerActiveBreakpoint, { groups: currentLayout.groups, hidden: Array.from(hiddenSet) });
+                    apply();
+                });
+            });
+            initCustomizerDrag(list);
+        });
+
+        container.querySelectorAll('.settings-module-customizer-group-name-input').forEach(input => {
+            input.addEventListener('change', () => {
+                const currentLayout = getLayout(customizerActiveBreakpoint);
+                const group = currentLayout.groups.find(g => g.id === input.dataset.groupId);
+                if (!group) return;
+                group.name = input.value.trim() || t('settingsModuleCustomizerNewGroupDefaultName');
+                input.value = group.name;
+                saveLayout(customizerActiveBreakpoint, currentLayout);
+                apply();
+            });
+        });
+
+        container.querySelectorAll('.settings-module-customizer-group-delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteGroup(btn.dataset.groupId));
+        });
+    }
+
+    // Borra un grupo. Si tenía tarjetas asignadas, nunca se pierden: se
+    // mueven a un grupo "Sin grupo" (se reutiliza si ya existe uno, o se
+    // crea de cero) — pide confirmación solo en ese caso, porque es la
+    // única variante con un efecto visible sobre el layout del usuario.
+    function deleteGroup(groupId) {
+        const layout = getLayout(customizerActiveBreakpoint);
+        const group = layout.groups.find(g => g.id === groupId);
+        if (!group) return;
+
+        const proceed = () => {
+            const remaining = layout.groups.filter(g => g.id !== groupId);
+            if (group.modules.length) {
+                let ungrouped = remaining.find(g => g.id === 'ungrouped');
+                if (!ungrouped) {
+                    ungrouped = { id: 'ungrouped', name: t('settingsModuleGroupUngrouped'), modules: [] };
+                    remaining.push(ungrouped);
+                }
+                ungrouped.modules.push(...group.modules);
+            }
+            saveLayout(customizerActiveBreakpoint, { groups: remaining, hidden: layout.hidden });
+            renderCustomizerGroups();
+            apply();
+        };
+
+        if (group.modules.length) {
+            appConfirm(t('settingsModuleCustomizerDeleteGroupConfirm'), t('settingsModuleCustomizerDeleteGroupTitle'), 'danger')
+                .then(confirmed => { if (confirmed) proceed(); });
+        } else {
+            proceed();
+        }
+    }
+
+    function nextGroupName(existingNames) {
+        const base = t('settingsModuleCustomizerNewGroupDefaultName');
+        if (!existingNames.includes(base)) return base;
+        let i = 2;
+        while (existingNames.includes(`${base} ${i}`)) i++;
+        return `${base} ${i}`;
+    }
+
+    function getDropTarget(list, draggingRow, pointerY) {
+        const rows = listRows(list).filter(row => row !== draggingRow);
+        return rows.reduce((closest, row) => {
+            const box = row.getBoundingClientRect();
+            const offset = pointerY - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset, element: row };
+            }
+            return closest;
+        }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }
+
+    // Solo mira listas dentro del modal de esta página (config.modalGroupsId)
+    // — así el arrastre nunca puede soltar una tarjeta en el modal de la
+    // otra página, aunque ambos compartan las mismas clases CSS.
+    function getListAtPoint(x, y) {
+        const lists = Array.from(document.querySelectorAll(`#${config.modalGroupsId} .settings-module-customizer-list`));
+        return lists.find(list => {
+            const box = list.getBoundingClientRect();
+            return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+        }) || null;
+    }
+
+    // Persiste en localStorage el orden/agrupación actual leyendo
+    // directamente el DOM de todas las listas del editor de esta página
+    // (cada .settings-module-customizer-list vale por un grupo) — se llama
+    // una sola vez al soltar el arrastre, nunca en cada pointermove (sería
+    // carísimo: movería las tarjetas reales de la página en cada frame).
+    function persistOrderFromDom() {
+        const currentLayout = getLayout(customizerActiveBreakpoint);
+        const groupsById = new Map(currentLayout.groups.map(g => [g.id, g]));
+        document.querySelectorAll(`#${config.modalGroupsId} .settings-module-customizer-list`).forEach(list => {
+            const group = groupsById.get(list.dataset.groupId);
+            if (!group) return;
+            group.modules = listRows(list)
+                .map(row => row.dataset.module)
+                .filter(key => moduleKeys.includes(key));
+        });
+        saveLayout(customizerActiveBreakpoint, { groups: Array.from(groupsById.values()), hidden: currentLayout.hidden });
+        apply();
+    }
+
+    // A diferencia de initModuleCustomizerDrag (editor de impresora: una sola
+    // lista fija por llamada, la fila nunca cambia de contenedor), acá el
+    // mismo arrastre tiene que poder soltarse en cualquier otro grupo — pero
+    // solo entre los grupos de esta misma página, nunca con los de la otra
+    // (getListAtPoint() solo mira dentro de config.modalGroupsId). Por eso
+    // la fila arrastrada se vuelve position:fixed (coordenadas de viewport)
+    // y sigue al cursor sin importar de qué lista sea hija en cada
+    // instante, mientras que por debajo se va reinsertando de verdad en el
+    // DOM de la lista que esté bajo el cursor — así el layout final ya
+    // queda reflejado en el propio árbol del DOM al soltar
+    // (persistOrderFromDom simplemente lee ese orden, no hace falta llevar
+    // un estado de arrastre aparte).
+    function initCustomizerDrag(list) {
+        list.querySelectorAll(':scope > .module-customizer-row > .module-customizer-row-handle').forEach(handle => {
+            handle.addEventListener('pointerdown', (event) => {
+                const row = handle.closest('.module-customizer-row');
+                if (!row) return;
+                event.preventDefault();
+                const rowRect = row.getBoundingClientRect();
+                const draggingRow = row;
+                const dragOffsetX = event.clientX - rowRect.left;
+                const dragOffsetY = event.clientY - rowRect.top;
+                draggingRow.classList.add('module-customizer-row-dragging');
+                draggingRow.style.position = 'fixed';
+                draggingRow.style.top = `${rowRect.top}px`;
+                draggingRow.style.left = `${rowRect.left}px`;
+                draggingRow.style.width = `${rowRect.width}px`;
+                draggingRow.style.zIndex = '2000';
+
+                function onPointerMove(moveEvent) {
+                    moveEvent.preventDefault();
+                    draggingRow.style.top = `${moveEvent.clientY - dragOffsetY}px`;
+                    draggingRow.style.left = `${moveEvent.clientX - dragOffsetX}px`;
+                    const targetList = getListAtPoint(moveEvent.clientX, moveEvent.clientY);
+                    if (!targetList) return;
+                    const originList = draggingRow.parentElement;
+                    const after = getDropTarget(targetList, draggingRow, moveEvent.clientY);
+                    let moved = false;
+                    if (after == null) {
+                        if (originList !== targetList || draggingRow.nextElementSibling) {
+                            targetList.appendChild(draggingRow);
+                            moved = true;
+                        }
+                    } else if (after !== draggingRow.nextElementSibling || originList !== targetList) {
+                        targetList.insertBefore(draggingRow, after);
+                        moved = true;
+                    }
+                    if (moved) {
+                        toggleEmptyHint(targetList);
+                        if (originList !== targetList) toggleEmptyHint(originList);
+                    }
+                }
+
+                function endDrag() {
+                    draggingRow.classList.remove('module-customizer-row-dragging');
+                    draggingRow.style.position = '';
+                    draggingRow.style.top = '';
+                    draggingRow.style.left = '';
+                    draggingRow.style.width = '';
+                    draggingRow.style.zIndex = '';
+                    document.removeEventListener('pointermove', onPointerMove);
+                    document.removeEventListener('pointerup', endDrag);
+                    document.removeEventListener('pointercancel', endDrag);
+                    document.querySelectorAll(`#${config.modalGroupsId} .settings-module-customizer-list`).forEach(toggleEmptyHint);
+                    persistOrderFromDom();
+                }
+
+                try { handle.setPointerCapture(event.pointerId); } catch (error) { /* no-op: no crítico si el navegador no lo soporta */ }
+                document.addEventListener('pointermove', onPointerMove);
+                document.addEventListener('pointerup', endDrag);
+                document.addEventListener('pointercancel', endDrag);
+            });
+        });
+    }
+
+    function openModal() {
+        const modal = document.getElementById(config.modalId);
+        if (!modal) return;
+        customizerActiveBreakpoint = getSettingsModuleBreakpointId();
+        renderCustomizerTabs();
+        renderCustomizerGroups();
+        modal.classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById(config.modalId)?.classList.remove('active');
+    }
+
+    document.getElementById(config.customizeBtnId)?.addEventListener('click', openModal);
+    document.getElementById(config.modalCloseId)?.addEventListener('click', closeModal);
+    document.getElementById(config.modalBackdropId)?.addEventListener('click', closeModal);
+
+    document.querySelectorAll(`#${config.modalTabsId} .module-customizer-tab`).forEach(tab => {
+        tab.addEventListener('click', () => {
+            customizerActiveBreakpoint = tab.dataset.breakpoint;
+            renderCustomizerTabs();
+            renderCustomizerGroups();
+        });
+    });
+
+    document.getElementById(config.addGroupBtnId)?.addEventListener('click', () => {
+        const layout = getLayout(customizerActiveBreakpoint);
+        const newGroup = { id: generateSettingsModuleGroupId(), name: nextGroupName(layout.groups.map(g => g.name)), modules: [] };
+        layout.groups.push(newGroup);
+        saveLayout(customizerActiveBreakpoint, layout);
+        renderCustomizerGroups();
+        apply();
+        const input = document.querySelector(`.settings-module-customizer-group-name-input[data-group-id="${newGroup.id}"]`);
+        if (input) { input.focus(); input.select(); }
+    });
+
+    document.getElementById(config.resetBtnId)?.addEventListener('click', () => {
+        resetLayout(customizerActiveBreakpoint);
+        renderCustomizerGroups();
+        apply();
+        showToast(t('moduleCustomizerResetDone'));
+    });
+
+    // Arma la página real ni bien carga la app — así ya se ve agrupada
+    // incluso antes de que el usuario entre por primera vez a esta sección.
+    apply();
+
+    return { apply, openModal, closeModal };
+}
+
+const settingsModulesPageScope = createModulePageScope({
+    storagePrefix: 'settingsModulesLayout_',
+    moduleDefs: SETTINGS_MODULE_DEFS,
+    groupsElementId: 'settings-modules-groups',
+    modalId: 'settings-module-customizer-modal',
+    modalTabsId: 'settings-module-customizer-tabs',
+    modalGroupsId: 'settings-module-customizer-groups',
+    customizeBtnId: 'settings-customize-btn',
+    modalCloseId: 'settings-module-customizer-modal-close',
+    modalBackdropId: 'settings-module-customizer-modal-backdrop',
+    addGroupBtnId: 'settings-module-customizer-add-group-btn',
+    resetBtnId: 'settings-module-customizer-reset-btn',
+    defaultGroups: [
+        { id: 'general', nameKey: 'settingsModuleGroupDefaultGeneral', keys: SETTINGS_MODULE_DEFS.map(mod => mod.key) },
+    ],
+});
+
+const helpModulesPageScope = createModulePageScope({
+    storagePrefix: 'helpModulesLayout_',
+    moduleDefs: HELP_MODULE_DEFS,
+    groupsElementId: 'help-modules-groups',
+    modalId: 'help-module-customizer-modal',
+    modalTabsId: 'help-module-customizer-tabs',
+    modalGroupsId: 'help-module-customizer-groups',
+    customizeBtnId: 'help-customize-btn',
+    modalCloseId: 'help-module-customizer-modal-close',
+    modalBackdropId: 'help-module-customizer-modal-backdrop',
+    addGroupBtnId: 'help-module-customizer-add-group-btn',
+    resetBtnId: 'help-module-customizer-reset-btn',
+    defaultGroups: [
+        { id: 'ayuda', nameKey: 'settingsModuleGroupDefaultHelp', keys: HELP_MODULE_DEFS.map(mod => mod.key) },
+    ],
+});
+
+// Wrappers con el mismo nombre que usaba la versión fusionada — switchSection()
+// los sigue llamando por nombre al entrar a cada sección.
+function applySettingsModulesLayout() {
+    settingsModulesPageScope.apply();
+}
+function applyHelpModulesLayout() {
+    helpModulesPageScope.apply();
+}
+
 async function loadPrinters() {
     try {
         const response = await fetch('/api/printers/status');
@@ -3199,6 +4101,7 @@ async function loadPrinters() {
         renderPrinters(allPrinters);
         updateActivePrintersCount();
         renderPrintQueue();
+        refreshModelsQueueBadge();
     } catch (error) {
         console.error(error);
         [printersGrid, lasersGrid, cncGrid].forEach(grid => {
@@ -3365,6 +4268,10 @@ async function refreshDashboardLaserCard() {
 
 function isShowOfflineMachinesEnabled() {
     return localStorage.getItem('showOfflineMachines') !== 'false';
+}
+
+function isOnboardingHintsEnabled() {
+    return localStorage.getItem('onboardingHintsEnabled') !== 'false';
 }
 
 // ── Alertas sonoras y notificaciones nativas (trabajos de impresión/láser) ──
@@ -4095,6 +5002,7 @@ if (gcodeSendLaserBtn) {
         try {
             const formData = new FormData();
             formData.append('path', relPath);
+            formData.append('kind', 'laser');
             const response = await fetch('/api/laser/queue/add', { method: 'POST', body: formData });
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
@@ -4962,9 +5870,19 @@ const ACCESSORY_KIND_ICONS = {
     other: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>',
 };
 
+const ACCESSORY_DRIVER_LABEL_KEYS = {
+    http_relay: 'accessoryDriverRelay',
+    home_assistant: 'accessoryDriverHa',
+    arduino: 'accessoryDriverArduino',
+};
+
+let accessoryArduinoTarget = null;
+
 const accessoryDriverSwitch = createOptionSwitch('accessory-driver-switch', value => {
     document.getElementById('accessory-config-relay').hidden = value !== 'http_relay';
     document.getElementById('accessory-config-ha').hidden = value !== 'home_assistant';
+    document.getElementById('accessory-config-arduino').hidden = value !== 'arduino';
+    if (value === 'arduino') updateAccessoryArduinoConfigUI();
 });
 
 async function loadAccessories() {
@@ -4982,6 +5900,8 @@ async function loadAccessories() {
 function renderAccessories(accessories) {
     const container = document.getElementById('accessories-list');
     if (!container) return;
+    const section = document.querySelector('.accessories-section');
+    if (section) section.hidden = !accessories.length;
     if (!accessories.length) {
         container.innerHTML = `<div class="empty-state-small">${t('accessoriesEmpty')}</div>`;
         return;
@@ -4989,7 +5909,8 @@ function renderAccessories(accessories) {
     container.innerHTML = accessories.map(acc => {
         const statusClass = acc.on === true ? 'on' : acc.on === false ? 'off' : 'unknown';
         const statusLabel = acc.on === true ? t('accessoryOn') : acc.on === false ? t('accessoryOff') : t('accessoryUnknown');
-        const driverLabel = acc.driver === 'home_assistant' ? t('accessoryDriverHa') : t('accessoryDriverRelay');
+        const driverLabelKey = ACCESSORY_DRIVER_LABEL_KEYS[acc.driver];
+        const driverLabel = driverLabelKey ? t(driverLabelKey) : (acc.driver || t('accessoryDriverRelay'));
         return `
         <div class="accessory-item">
             <span class="accessory-item-icon">${ACCESSORY_KIND_ICONS[acc.kind] || ACCESSORY_KIND_ICONS.other}</span>
@@ -5046,7 +5967,31 @@ function renderAccessories(accessories) {
     });
 }
 
-function openAccessoryModal() {
+function updateAccessoryArduinoConfigUI() {
+    const label = document.getElementById('accessory-arduino-device-label');
+    const relaySelect = document.getElementById('accessory-arduino-relay-select');
+    if (!label || !relaySelect) return;
+    if (!accessoryArduinoTarget || !accessoryArduinoTarget.device) {
+        label.textContent = t('accessoryArduinoNoDevice');
+        relaySelect.innerHTML = '';
+        relaySelect.disabled = true;
+        return;
+    }
+    label.textContent = accessoryArduinoTarget.chip
+        ? `${accessoryArduinoTarget.chip} · ${accessoryArduinoTarget.device}`
+        : accessoryArduinoTarget.device;
+    const relayCount = Math.max(parseInt(accessoryArduinoTarget.relays, 10) || 0, 1);
+    const selected = parseInt(accessoryArduinoTarget.relay, 10) || 1;
+    relaySelect.innerHTML = Array.from({ length: relayCount }, (_, i) => i + 1)
+        .map(n => `<option value="${n}" ${n === selected ? 'selected' : ''}>${n}</option>`)
+        .join('');
+    relaySelect.disabled = false;
+}
+
+// arduinoPrefill (opcional): { device, location, chip, relays, relay } — viene de
+// la lista de placas detectadas (ver renderAccessoryArduinoDiscoverList) cuando el
+// alta se hace desde ahí en vez del botón genérico "Agregar accesorio".
+function openAccessoryModal(arduinoPrefill) {
     document.getElementById('accessory-name-input').value = '';
     document.getElementById('accessory-kind-select').value = 'extractor';
     document.getElementById('accessory-relay-on-url').value = '';
@@ -5056,9 +6001,21 @@ function openAccessoryModal() {
     document.getElementById('accessory-ha-base-url').value = '';
     document.getElementById('accessory-ha-token').value = '';
     document.getElementById('accessory-ha-entity-id').value = '';
-    accessoryDriverSwitch.setValue('http_relay');
-    document.getElementById('accessory-config-relay').hidden = false;
-    document.getElementById('accessory-config-ha').hidden = true;
+    accessoryArduinoTarget = arduinoPrefill
+        ? {
+            device: arduinoPrefill.device,
+            location: arduinoPrefill.location || '',
+            chip: arduinoPrefill.chip || '',
+            relays: arduinoPrefill.relays,
+            relay: arduinoPrefill.relay || 1,
+        }
+        : null;
+    const driver = arduinoPrefill ? 'arduino' : 'http_relay';
+    accessoryDriverSwitch.setValue(driver);
+    document.getElementById('accessory-config-relay').hidden = driver !== 'http_relay';
+    document.getElementById('accessory-config-ha').hidden = driver !== 'home_assistant';
+    document.getElementById('accessory-config-arduino').hidden = driver !== 'arduino';
+    updateAccessoryArduinoConfigUI();
     document.getElementById('accessory-modal')?.classList.add('active');
 }
 
@@ -5067,6 +6024,7 @@ function closeAccessoryModal() {
 }
 
 document.getElementById('accessory-add-btn')?.addEventListener('click', openAccessoryModal);
+document.getElementById('accessory-add-btn-settings')?.addEventListener('click', openAccessoryModal);
 document.getElementById('accessory-modal-close')?.addEventListener('click', closeAccessoryModal);
 document.getElementById('accessory-modal-backdrop')?.addEventListener('click', closeAccessoryModal);
 document.getElementById('accessory-cancel-btn')?.addEventListener('click', closeAccessoryModal);
@@ -5084,6 +6042,15 @@ document.getElementById('accessory-save-btn')?.addEventListener('click', async (
             token: document.getElementById('accessory-ha-token').value.trim(),
             entity_id: document.getElementById('accessory-ha-entity-id').value.trim(),
         };
+    } else if (driver === 'arduino') {
+        const relaySelect = document.getElementById('accessory-arduino-relay-select');
+        const relay = relaySelect ? parseInt(relaySelect.value, 10) : NaN;
+        if (!accessoryArduinoTarget || !accessoryArduinoTarget.device || !relay) {
+            showToast(t('accessoryArduinoNoDeviceError'), 'error');
+            return;
+        }
+        config = { device: accessoryArduinoTarget.device, relay };
+        if (accessoryArduinoTarget.location) config.location = accessoryArduinoTarget.location;
     } else {
         config = {
             on_url: document.getElementById('accessory-relay-on-url').value.trim(),
@@ -5504,6 +6471,60 @@ if (deviceRenameInput) {
     });
 }
 
+// ── Badges numéricos de cola en el sidebar (Láser, CNC, Impresión 3D) ──
+// Láser y CNC son ambas placas GRBL y comparten una única cola en el backend
+// (solo puede haber un trabajo GRBL activo a la vez), así que sus dos badges
+// siempre muestran el mismo número. Impresión 3D consulta un endpoint propio
+// que ya excluye el trabajo que está imprimiendo activamente en cada Klipper.
+function setNavItemBadge(elId, count) {
+    const badge = document.getElementById(elId);
+    if (!badge) return;
+    if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : String(count);
+        badge.hidden = false;
+    } else {
+        badge.hidden = true;
+    }
+}
+
+// La cola es un único pool en el backend, pero cada archivo se agrega con
+// un `kind` ("laser"/"cnc", ver add_to_queue) según desde qué ficha se
+// mandó — así el badge de cada sección cuenta solo lo suyo, no el total
+// combinado. Entradas viejas sin `kind` (servidor recién reiniciado antes
+// de este cambio) se tratan como "laser" por default.
+function updateLaserCncQueueBadges(queue) {
+    const items = queue || [];
+    const laserCount = items.filter(item => (item.kind || 'laser') !== 'cnc').length;
+    const cncCount = items.filter(item => item.kind === 'cnc').length;
+    setNavItemBadge('nav-badge-laser', laserCount);
+    setNavItemBadge('nav-badge-cnc', cncCount);
+}
+
+// refreshLaserQueue()/refreshCncQueue() solo corren mientras se está dentro
+// de esas secciones (startLaserPolling/startCncPolling se detienen al salir
+// de Láser/CNC), así que además hace falta un poll propio y liviano que
+// mantenga los badges del sidebar al día sin importar en qué sección esté
+// el usuario.
+async function refreshLaserCncQueueBadgesGlobal() {
+    try {
+        const response = await fetch('/api/laser/queue');
+        const data = await response.json();
+        updateLaserCncQueueBadges(data.queue || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function refreshModelsQueueBadge() {
+    try {
+        const response = await fetch('/api/printers/queue/count');
+        const data = await response.json();
+        setNavItemBadge('nav-badge-models', data.count || 0);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
 // ── Laser (GRBL) ──
 let laserPollInterval = null;
 
@@ -5612,14 +6633,18 @@ function formatLaserJobDuration(ms) {
 }
 
 function renderLaserJob(job, jobHost) {
-    const pauseBtns = [document.getElementById('laser-pause-btn'), document.getElementById('laser-pause-btn-panel')];
-    const resumeBtns = [document.getElementById('laser-resume-btn'), document.getElementById('laser-resume-btn-panel')];
-    const cancelBtns = [document.getElementById('laser-cancel-btn'), document.getElementById('laser-cancel-btn-panel')];
-    const progressWraps = [document.getElementById('laser-job-progress'), document.getElementById('laser-job-progress-panel')];
-    const progressFills = [document.getElementById('laser-job-progress-fill'), document.getElementById('laser-job-progress-fill-panel')];
-    const progressTexts = [document.getElementById('laser-job-progress-text'), document.getElementById('laser-job-progress-text-panel')];
+    // El panel de trabajo activo (ficha "Movimiento del cabezal") es la
+    // única fuente de controles/progreso — antes había una segunda copia
+    // (pausar/cancelar + barra) suelta dentro de la ficha "Cola del láser"
+    // que duplicaba exactamente esta misma info sin agregar nada.
+    const pauseBtn = document.getElementById('laser-pause-btn-panel');
+    const resumeBtn = document.getElementById('laser-resume-btn-panel');
+    const cancelBtn = document.getElementById('laser-cancel-btn-panel');
+    const progressWrap = document.getElementById('laser-job-progress-panel');
+    const progressFill = document.getElementById('laser-job-progress-fill-panel');
+    const progressText = document.getElementById('laser-job-progress-text-panel');
     const errorEl = document.getElementById('laser-job-error');
-    if (!pauseBtns[0]) return;
+    if (!pauseBtn) return;
 
     const state = job?.state || 'idle';
     const isActive = state === 'running' || state === 'paused';
@@ -5654,9 +6679,9 @@ function renderLaserJob(job, jobHost) {
     }
     laserJobHostLastState.set(host, state);
 
-    pauseBtns.forEach(btn => { if (btn) btn.hidden = state !== 'running'; });
-    resumeBtns.forEach(btn => { if (btn) btn.hidden = state !== 'paused'; });
-    cancelBtns.forEach(btn => { if (btn) btn.hidden = !isActive; });
+    if (pauseBtn) pauseBtn.hidden = state !== 'running';
+    if (resumeBtn) resumeBtn.hidden = state !== 'paused';
+    if (cancelBtn) cancelBtn.hidden = !isActive;
 
     // El backend mantiene el último job terminado indefinidamente en el
     // polling, así que aquí se controla cuánto tiempo sigue visible la
@@ -5675,13 +6700,19 @@ function renderLaserJob(job, jobHost) {
 
     const showProgress = (isActive || isTerminal) && !dismissed;
     const percent = job?.total ? Math.round((job.current / job.total) * 100) : 0;
-    progressWraps.forEach(el => { if (el) el.hidden = !showProgress; });
-    progressFills.forEach(el => { if (el) el.style.width = `${percent}%`; });
-    const progressTextLegacy = document.getElementById('laser-job-progress-text');
-    if (progressTextLegacy) progressTextLegacy.textContent = `${job?.current || 0} / ${job?.total || 0}`;
-    const progressTextPanel = document.getElementById('laser-job-progress-text-panel');
-    if (progressTextPanel) progressTextPanel.textContent = `${percent}%`;
+    if (progressWrap) progressWrap.hidden = !showProgress;
+    if (progressFill) progressFill.style.width = `${percent}%`;
+    if (progressText) progressText.textContent = `${percent}%`;
     if (errorEl) errorEl.textContent = dismissed ? '' : (job?.error || '');
+
+    // Mientras hay un trabajo para mostrar, "Controles de máquina" (encender
+    // láser/aire asistido) no aporta nada — el gcode ya maneja el láser — así
+    // que se oculta y el panel del trabajo ocupa todo el ancho de esa fila
+    // en vez de quedar apretado a la mitad.
+    const controlsQuadrant = document.querySelector('.laser-jog-quadrant-controls');
+    const jobQuadrant = document.querySelector('.laser-jog-quadrant-job');
+    if (controlsQuadrant) controlsQuadrant.hidden = showProgress;
+    if (jobQuadrant) jobQuadrant.classList.toggle('laser-jog-quadrant-job-full', showProgress);
 
     const infoRow = document.getElementById('laser-job-info-row');
     const statsRow = document.getElementById('laser-job-stats-row');
@@ -5714,8 +6745,26 @@ function renderLaserJob(job, jobHost) {
         laserJobThumbFilename = null;
     }
 
-    document.querySelectorAll('.laser-jog-btn, .laser-step-btn, #laser-unlock-btn, #laser-fire-btn, #laser-fire-power-input, #laser-air-btn').forEach(el => {
-        el.disabled = isActive;
+    // Los botones de jog/step (.laser-jog-btn/.laser-step-btn) son la MISMA
+    // clase compartida entre la ficha de Láser, la de CNC y el asistente de
+    // dibujo de CNC — pero acá arriba "host" puede ser el de un láser
+    // trabajando mientras el usuario está mirando la sección CNC (ambas
+    // pueden tener trabajos activos en simultáneo, cada una en su propia
+    // placa). Deshabilitar por clase sin distinguir sección apagaba el jog
+    // de CNC entero apenas cualquier láser se ponía a correr, aunque la
+    // placa CNC seleccionada estuviera completamente libre. Se compara el
+    // host del trabajo activo contra el host seleccionado en CADA sección
+    // para decidir si a ESA sección le toca deshabilitarse.
+    const laserSelectedHost = document.getElementById('laser-host-select')?.value || '';
+    const cncSelectedHost = document.getElementById('cnc-host-select')?.value || '';
+    const disableLaserJog = isActive && host === laserSelectedHost;
+    const disableCncJog = isActive && host === cncSelectedHost;
+
+    document.querySelectorAll('#laser-section .laser-jog-btn, #laser-section .laser-step-btn, #laser-unlock-btn, #laser-fire-btn, #laser-fire-power-input, #laser-air-btn').forEach(el => {
+        el.disabled = disableLaserJog;
+    });
+    document.querySelectorAll('#cnc-section .laser-jog-btn, #cnc-section .laser-step-btn, #cnc-wizard-modal .laser-jog-btn, #cnc-wizard-modal .laser-step-btn').forEach(el => {
+        el.disabled = disableCncJog;
     });
 }
 
@@ -5723,15 +6772,22 @@ async function refreshLaserJob() {
     try {
         // Antes esto solo consultaba el host seleccionado en pantalla, así
         // que un corte en curso "desaparecía" de la ficha en cuanto el
-        // usuario miraba otro láser/CNC en la interfaz. Ahora se pregunta
-        // primero si CUALQUIER host registrado tiene un trabajo propio
-        // activo (running/paused) y, si lo hay, se muestra ese — sin
-        // importar cuál esté seleccionado — para no perderlo de vista al
-        // navegar. Si no hay ninguno activo, se sigue mostrando el estado
-        // (idle/terminado) del host seleccionado, como antes.
+        // usuario miraba otro láser en la interfaz. Ahora se pregunta
+        // primero si CUALQUIER host registrado de tipo láser tiene un
+        // trabajo propio activo (running/paused) y, si lo hay, se muestra
+        // ese — sin importar cuál esté seleccionado — para no perderlo de
+        // vista al navegar. Se excluyen los hosts tipo CNC a propósito: esta
+        // ficha vive en la sección Láser, y `/api/laser/jobs/active` no
+        // distingue kind — sin este filtro, un trabajo de CNC corriendo se
+        // mostraba acá como si fuera del láser. Si no hay ninguno activo, se
+        // sigue mostrando el estado (idle/terminado) del host seleccionado,
+        // como antes.
         const activeResponse = await fetch('/api/laser/jobs/active');
         const activeData = await activeResponse.json();
-        const activeJob = (activeData.jobs || [])[0];
+        const activeJob = (activeData.jobs || []).find(job => {
+            const device = laserHostOptions.find(item => item.host === job.host);
+            return (device?.kind || 'laser') !== 'cnc';
+        });
         if (activeJob) {
             renderLaserJob(activeJob, activeJob.host);
             return;
@@ -5852,7 +6908,9 @@ async function refreshLaserQueue() {
     try {
         const response = await fetch('/api/laser/queue');
         const data = await response.json();
-        renderLaserQueue(data.queue || []);
+        const queue = data.queue || [];
+        renderLaserQueue(queue.filter(item => (item.kind || 'laser') !== 'cnc'));
+        updateLaserCncQueueBadges(queue);
     } catch (error) {
         console.error(error);
     }
@@ -6689,9 +7747,11 @@ if (laserHostSelect) {
             formData.append('host', laserHostSelect.value);
             await fetch('/api/laser/host', { method: 'POST', body: formData });
             localStorage.setItem('lastLaserHost', laserHostSelect.value);
-            const modeEl = document.getElementById('laser-connection-mode');
-            if (modeEl) modeEl.textContent = laserConnectionModeLabel(laserHostSelect.value);
-            applyLaserMachineKindUI(laserHostSelect.value);
+            // renderLaserHostOptions (no solo applyLaserMachineKindUI) porque
+            // también actualiza el título de "Consola Láser de: X" y el mapa
+            // de área de trabajo — si no, ambos quedan pegados a la máquina
+            // anterior hasta que se sale y se vuelve a entrar a la sección.
+            renderLaserHostOptions(laserHostSelect.value);
             loadLaserBoardInfo();
             refreshLaserStatus();
             refreshLaserJob();
@@ -7355,20 +8415,9 @@ async function handleLaserCancel() {
     }
 }
 
-['laser-pause-btn', 'laser-pause-btn-panel'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', handleLaserPause);
-});
-
-['laser-resume-btn', 'laser-resume-btn-panel'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', handleLaserResume);
-});
-
-['laser-cancel-btn', 'laser-cancel-btn-panel'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', handleLaserCancel);
-});
+document.getElementById('laser-pause-btn-panel')?.addEventListener('click', handleLaserPause);
+document.getElementById('laser-resume-btn-panel')?.addEventListener('click', handleLaserResume);
+document.getElementById('laser-cancel-btn-panel')?.addEventListener('click', handleLaserCancel);
 
 async function sendLaserRawCommand(command, host) {
     try {
@@ -7739,7 +8788,9 @@ async function refreshCncQueue() {
     try {
         const response = await fetch('/api/laser/queue');
         const data = await response.json();
-        renderCncQueue(data.queue || []);
+        const queue = data.queue || [];
+        renderCncQueue(queue.filter(item => item.kind === 'cnc'));
+        updateLaserCncQueueBadges(queue);
     } catch (error) {
         console.error(error);
     }
@@ -8772,6 +9823,7 @@ async function renderCncFilesTable() {
                 const relPath = stripSectionPrefix(btn.dataset.queueFile, 'gcode');
                 formData.append('path', relPath);
                 formData.append('filename', relPath.split('/').pop());
+                formData.append('kind', 'cnc');
                 try {
                     await fetch('/api/laser/queue/add', { method: 'POST', body: formData });
                     showToast(t('printerSendQueued'));
@@ -9737,6 +10789,283 @@ async function refreshMarlinPrintStatus() {
     }
 }
 
+// ── Onboarding tour (spotlight guiado) ──
+// Un paso por elemento destacado, con contador y botones Siguiente/Anterior/Omitir.
+// Data-driven: una entrada por sección, cada una con un array de pasos
+// { selector, titleKey, bodyKey }. Se dispara solo una vez por sección
+// (localStorage `tourSeen_{section}`) y se puede desactivar globalmente
+// desde Ajustes (`onboardingHintsEnabled`) o repetir desde Ayuda.
+const TOUR_STEPS = {
+    dashboard: [
+        { selector: '.stats-grid', titleKey: 'tourDashboard1Title', bodyKey: 'tourDashboard1Body' },
+        { selector: '#machines-columns', titleKey: 'tourDashboard2Title', bodyKey: 'tourDashboard2Body' },
+        { selector: '.accessories-section', titleKey: 'tourDashboard3Title', bodyKey: 'tourDashboard3Body' },
+        { selector: '.dashboard-bottom', titleKey: 'tourDashboard4Title', bodyKey: 'tourDashboard4Body' },
+    ],
+    models: [
+        { selector: '#models-section .section-search', titleKey: 'tourModels1Title', bodyKey: 'tourModels1Body' },
+        { selector: '#models-section .upload-wrapper', titleKey: 'tourModels2Title', bodyKey: 'tourModels2Body' },
+        { selector: '#models-full', titleKey: 'tourModels3Title', bodyKey: 'tourModels3Body' },
+        { selector: '.models-preview-card', titleKey: 'tourModels4Title', bodyKey: 'tourModels4Body' },
+    ],
+    gcode: [
+        { selector: '#gcode-section .upload-wrapper', titleKey: 'tourGcode1Title', bodyKey: 'tourGcode1Body' },
+        { selector: '#gcode-table', titleKey: 'tourGcode2Title', bodyKey: 'tourGcode2Body' },
+        { selector: '#gcode-preview', titleKey: 'tourGcode3Title', bodyKey: 'tourGcode3Body' },
+        { selector: '#gcode-send-laser-btn', titleKey: 'tourGcode4Title', bodyKey: 'tourGcode4Body' },
+    ],
+    console: [
+        { selector: '#console-printer-picker', titleKey: 'tourConsole1Title', bodyKey: 'tourConsole1Body' },
+        { selector: '#console-log', titleKey: 'tourConsole2Title', bodyKey: 'tourConsole2Body' },
+        { selector: '#console-input-form', titleKey: 'tourConsole3Title', bodyKey: 'tourConsole3Body' },
+        { selector: '#macros-grid', titleKey: 'tourConsole4Title', bodyKey: 'tourConsole4Body' },
+    ],
+    laser: [
+        { selector: '#laser-connection-card', titleKey: 'tourLaser1Title', bodyKey: 'tourLaser1Body' },
+        { selector: '#laser-queue-card', titleKey: 'tourLaser2Title', bodyKey: 'tourLaser2Body' },
+        { selector: '.toolhead-card', titleKey: 'tourLaser3Title', bodyKey: 'tourLaser3Body' },
+        { selector: '#laser-console-card', titleKey: 'tourLaser4Title', bodyKey: 'tourLaser4Body' },
+    ],
+    cnc: [
+        { selector: '#cnc-status-card', titleKey: 'tourCnc1Title', bodyKey: 'tourCnc1Body' },
+        { selector: '#cnc-job-card', titleKey: 'tourCnc2Title', bodyKey: 'tourCnc2Body' },
+        { selector: '#cnc-jog-card', titleKey: 'tourCnc3Title', bodyKey: 'tourCnc3Body' },
+        { selector: '#cnc-viewer-card', titleKey: 'tourCnc4Title', bodyKey: 'tourCnc4Body' },
+        { selector: '#cnc-files-card', titleKey: 'tourCnc5Title', bodyKey: 'tourCnc5Body' },
+    ],
+    marlin: [
+        { selector: '#marlin-section .page-header', titleKey: 'tourMarlin1Title', bodyKey: 'tourMarlin1Body' },
+        { selector: '#marlin-printers-add-btn', titleKey: 'tourMarlin2Title', bodyKey: 'tourMarlin2Body' },
+        { selector: '#marlin-printers-grid', titleKey: 'tourMarlin3Title', bodyKey: 'tourMarlin3Body' },
+    ],
+    queue: [
+        { selector: '#search-recent', titleKey: 'tourQueue1Title', bodyKey: 'tourQueue1Body' },
+        { selector: '#models', titleKey: 'tourQueue2Title', bodyKey: 'tourQueue2Body' },
+        { selector: '#laser-history-list', titleKey: 'tourQueue3Title', bodyKey: 'tourQueue3Body' },
+    ],
+    pricing: [
+        { selector: '#pricing-new-quote-btn', titleKey: 'tourPricing1Title', bodyKey: 'tourPricing1Body' },
+        { selector: '#pricing-steps-breadcrumb', titleKey: 'tourPricing2Title', bodyKey: 'tourPricing2Body' },
+        { selector: '.pricing-col-file', titleKey: 'tourPricing3Title', bodyKey: 'tourPricing3Body' },
+        { selector: '#pricing-job-type-switch', titleKey: 'tourPricing4Title', bodyKey: 'tourPricing4Body' },
+        { selector: '.pricing-col-summary', titleKey: 'tourPricing5Title', bodyKey: 'tourPricing5Body' },
+    ],
+    settings: [
+        { selector: '.settings-general-card', titleKey: 'tourSettings1Title', bodyKey: 'tourSettings1Body' },
+        { selector: '.theme-config-card', titleKey: 'tourSettings2Title', bodyKey: 'tourSettings2Body' },
+        { selector: '.usb-ports-settings-card', titleKey: 'tourSettings3Title', bodyKey: 'tourSettings3Body' },
+        { selector: '#settings-save-btn', titleKey: 'tourSettings4Title', bodyKey: 'tourSettings4Body' },
+    ],
+};
+
+let tourState = null; // { sectionName, steps, index }
+let tourResizeHandler = null;
+let tourTypewriterTimer = null;
+
+// Efecto "máquina de escribir" para la descripción de cada paso — revela
+// `text` en `el` caracter por caracter en vez de de una sola vez.
+function typewriteTourText(el, text, onDone, speed = 32) {
+    if (tourTypewriterTimer) {
+        clearInterval(tourTypewriterTimer);
+        tourTypewriterTimer = null;
+    }
+    el.textContent = '';
+    let i = 0;
+    tourTypewriterTimer = setInterval(() => {
+        i += 1;
+        el.textContent = text.slice(0, i);
+        if (i >= text.length) {
+            clearInterval(tourTypewriterTimer);
+            tourTypewriterTimer = null;
+            if (onDone) onDone();
+        }
+    }, speed);
+}
+
+function removeTourOverlay() {
+    document.getElementById('tour-overlay')?.remove();
+    if (tourResizeHandler) {
+        window.removeEventListener('resize', tourResizeHandler);
+        tourResizeHandler = null;
+    }
+    if (tourTypewriterTimer) {
+        clearInterval(tourTypewriterTimer);
+        tourTypewriterTimer = null;
+    }
+}
+
+function endTour() {
+    if (tourState) {
+        localStorage.setItem(`tourSeen_${tourState.sectionName}`, 'true');
+    }
+    tourState = null;
+    removeTourOverlay();
+}
+
+// Un paso con selector cuyo elemento no existe, está oculto (atributo
+// `hidden`/`display:none`) o no ocupa espacio en el layout (p.ej. la
+// sección de accesorios cuando no hay ninguno cargado) no es un paso
+// válido para el tour — hay que saltarlo en vez de dibujar un spotlight
+// roto sobre un elemento invisible.
+function isTourStepValid(step) {
+    if (!step || !step.selector) return true;
+    const el = document.querySelector(step.selector);
+    return !!(el && el.offsetParent !== null);
+}
+
+// Busca, a partir de startIndex y avanzando en `direction` (1 o -1), el
+// próximo índice de paso válido. Devuelve -1/steps.length si no hay ninguno.
+function findValidTourIndex(steps, startIndex, direction) {
+    let idx = startIndex;
+    while (idx >= 0 && idx < steps.length && !isTourStepValid(steps[idx])) {
+        idx += direction;
+    }
+    return idx;
+}
+
+function tourNext() {
+    if (!tourState) return;
+    const idx = findValidTourIndex(tourState.steps, tourState.index + 1, 1);
+    if (idx < 0 || idx >= tourState.steps.length) {
+        endTour();
+        return;
+    }
+    tourState.index = idx;
+    renderTourStep();
+}
+
+function tourPrev() {
+    if (!tourState || tourState.index === 0) return;
+    const idx = findValidTourIndex(tourState.steps, tourState.index - 1, -1);
+    if (idx < 0) return;
+    tourState.index = idx;
+    renderTourStep();
+}
+
+function positionTourElements(spotlight, card, target) {
+    if (!target) {
+        spotlight.hidden = true;
+        card.style.top = '50%';
+        card.style.left = '50%';
+        card.style.transform = 'translate(-50%, -50%)';
+        card.style.visibility = 'visible';
+        return;
+    }
+    target.scrollIntoView({ block: 'center', behavior: 'auto' });
+    requestAnimationFrame(() => {
+        const rect = target.getBoundingClientRect();
+        const pad = 8;
+        spotlight.hidden = false;
+        spotlight.style.top = `${Math.max(rect.top - pad, 0)}px`;
+        spotlight.style.left = `${Math.max(rect.left - pad, 0)}px`;
+        spotlight.style.width = `${rect.width + pad * 2}px`;
+        spotlight.style.height = `${rect.height + pad * 2}px`;
+
+        const cardWidth = card.offsetWidth || 320;
+        const cardHeight = card.offsetHeight || 200;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        let top;
+        if (spaceBelow > cardHeight + 24) {
+            top = rect.bottom + 16;
+        } else if (spaceAbove > cardHeight + 24) {
+            top = rect.top - cardHeight - 16;
+        } else {
+            top = Math.max(16, (window.innerHeight - cardHeight) / 2);
+        }
+        let left = Math.min(rect.left, window.innerWidth - cardWidth - 16);
+        left = Math.max(left, 16);
+        card.style.top = `${top}px`;
+        card.style.left = `${left}px`;
+        card.style.transform = 'none';
+        card.style.visibility = 'visible';
+    });
+}
+
+function renderTourStep() {
+    if (!tourState) return;
+    removeTourOverlay();
+
+    const step = tourState.steps[tourState.index];
+    const total = tourState.steps.length;
+    const index = tourState.index;
+    const target = step.selector ? document.querySelector(step.selector) : null;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tour-overlay';
+    overlay.className = 'tour-overlay';
+
+    const spotlight = document.createElement('div');
+    spotlight.className = 'tour-spotlight';
+    spotlight.hidden = true;
+    overlay.appendChild(spotlight);
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'tour-backdrop';
+    backdrop.hidden = !!target;
+    overlay.appendChild(backdrop);
+
+    const card = document.createElement('div');
+    card.className = 'tour-card';
+    card.style.visibility = 'hidden';
+    card.innerHTML = `
+        <div class="tour-card-counter">${index + 1} / ${total}</div>
+        <h3 class="tour-card-title">${escapeHtml(t(step.titleKey))}</h3>
+        <p class="tour-card-body" id="tour-card-body"></p>
+        <div class="tour-card-actions">
+            <button type="button" class="tour-btn tour-btn-skip" id="tour-skip-btn">${escapeHtml(t('tourSkip'))}</button>
+            <div class="tour-card-nav">
+                <button type="button" class="tour-btn tour-btn-secondary" id="tour-prev-btn"${index === 0 ? ' disabled' : ''}>${escapeHtml(t('tourPrev'))}</button>
+                <button type="button" class="tour-btn tour-btn-primary" id="tour-next-btn">${escapeHtml(index === total - 1 ? t('tourFinish') : t('tourNext'))}</button>
+            </div>
+        </div>
+    `;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    document.getElementById('tour-skip-btn').addEventListener('click', endTour);
+    document.getElementById('tour-prev-btn').addEventListener('click', tourPrev);
+    document.getElementById('tour-next-btn').addEventListener('click', tourNext);
+
+    positionTourElements(spotlight, card, target);
+    tourResizeHandler = () => positionTourElements(spotlight, card, target);
+    window.addEventListener('resize', tourResizeHandler);
+
+    // El card se posicionó recién arriba casi vacío (sin la descripción
+    // todavía) — una vez que termina de escribirse, se reacomoda porque
+    // puede haber crecido de alto.
+    const bodyEl = document.getElementById('tour-card-body');
+    typewriteTourText(bodyEl, t(step.bodyKey), () => positionTourElements(spotlight, card, target));
+}
+
+function startTour(sectionName) {
+    const steps = TOUR_STEPS[sectionName];
+    if (!steps || !steps.length) return;
+    const startIndex = findValidTourIndex(steps, 0, 1);
+    if (startIndex < 0 || startIndex >= steps.length) return;
+    tourState = { sectionName, steps, index: startIndex };
+    renderTourStep();
+}
+
+function maybeStartTour(sectionName) {
+    if (!isOnboardingHintsEnabled()) return;
+    if (!TOUR_STEPS[sectionName]) return;
+    if (localStorage.getItem(`tourSeen_${sectionName}`) === 'true') return;
+    // El chequeo de auth va DENTRO del timeout, no antes de programarlo:
+    // checkAuth() es fire-and-forget (ver app.js:238) y todavía puede no
+    // haber resuelto en el instante en que esta función corre durante la
+    // carga inicial de la página — los 350ms de delay ya existentes suelen
+    // alcanzar de sobra para que /api/auth/me responda.
+    setTimeout(() => {
+        if (!currentAuthUser || setupRequired) return;
+        startTour(sectionName);
+    }, 350);
+}
+
+document.addEventListener('keydown', (event) => {
+    if (tourState && event.key === 'Escape') endTour();
+});
+
 // ── Navigation ──
 function switchSection(sectionName) {
     // Hide all sections
@@ -9799,11 +11128,13 @@ function switchSection(sectionName) {
         renderLaserMarkerSettings();
         renderGamepadBadge();
         loadUsersSettings();
+        applySettingsModulesLayout();
     } else {
         stopSystemLogPolling();
     }
     if (sectionName === 'help') {
         loadHelpVersion();
+        applyHelpModulesLayout();
     }
     if (sectionName === 'pricing') {
         loadPricingSection();
@@ -9813,6 +11144,7 @@ function switchSection(sectionName) {
     } else {
         stopMarlinPrintersPolling();
     }
+    maybeStartTour(sectionName);
 }
 
 async function loadHelpVersion() {
@@ -9827,6 +11159,16 @@ async function loadHelpVersion() {
         console.error(error);
         badge.textContent = '—';
     }
+}
+
+const helpReplayTourBtn = document.getElementById('help-replay-tour-btn');
+if (helpReplayTourBtn) {
+    helpReplayTourBtn.addEventListener('click', () => {
+        Object.keys(localStorage)
+            .filter(key => key.startsWith('tourSeen_'))
+            .forEach(key => localStorage.removeItem(key));
+        switchSection('dashboard');
+    });
 }
 
 // Add click listeners to nav items
@@ -10071,6 +11413,7 @@ const settingsAutoRefresh = document.getElementById('settings-autorefresh');
 const settingsShowOfflineMachines = document.getElementById('settings-show-offline-machines');
 const settingsSoundAlerts = document.getElementById('settings-sound-alerts');
 const settingsLaserHomeConfirm = document.getElementById('settings-laser-home-confirm');
+const settingsOnboardingHints = document.getElementById('settings-onboarding-hints');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
 
 function createOptionSwitch(containerId, onSelect) {
@@ -10241,6 +11584,7 @@ function loadSettingsPanel() {
     if (settingsShowOfflineMachines) settingsShowOfflineMachines.checked = isShowOfflineMachinesEnabled();
     if (settingsSoundAlerts) settingsSoundAlerts.checked = isSoundAlertsEnabled();
     if (settingsLaserHomeConfirm) settingsLaserHomeConfirm.checked = isLaserHomeConfirmEnabled();
+    if (settingsOnboardingHints) settingsOnboardingHints.checked = isOnboardingHintsEnabled();
     settingsUiScaleSwitch.setValue(savedUiScale);
     settingsCncModeSwitch.setValue(localStorage.getItem('cncDashboardMode') || 'simple');
 
@@ -10407,6 +11751,9 @@ function saveSettings() {
     if (settingsLaserHomeConfirm) {
         localStorage.setItem('laserHomeConfirmEnabled', settingsLaserHomeConfirm.checked ? 'true' : 'false');
     }
+    if (settingsOnboardingHints) {
+        localStorage.setItem('onboardingHintsEnabled', settingsOnboardingHints.checked ? 'true' : 'false');
+    }
     const uiScaleValue = settingsUiScaleSwitch.getValue();
     if (uiScaleValue) {
         localStorage.setItem('uiScale', uiScaleValue);
@@ -10459,6 +11806,9 @@ if (settingsShowOfflineMachines) {
 }
 if (settingsLaserHomeConfirm) {
     settingsLaserHomeConfirm.addEventListener('change', saveSettings);
+}
+if (settingsOnboardingHints) {
+    settingsOnboardingHints.addEventListener('change', saveSettings);
 }
 if (settingsSaveBtn) {
     settingsSaveBtn.addEventListener('click', saveSettings);
@@ -10788,6 +12138,7 @@ loadTopbarServerStats();
 refreshDashboardLaserCard();
 refreshUsbPorts();
 loadAccessories();
+maybeStartTour('dashboard');
 
 // Refresh printers every 5 seconds
 setInterval(loadPrinters, 5000);
@@ -10802,6 +12153,13 @@ setInterval(loadAccessories, 10000);
 // (checkLaserConnectionTransitions) sin la contención constante.
 setInterval(refreshDashboardLaserCard, 20000);
 setInterval(refreshUsbPorts, 8000);
+
+// Badge de cola de Láser/CNC en el sidebar: independiente de si el usuario
+// está dentro de esas secciones (startLaserPolling/startCncPolling se
+// detienen al salir de Láser/CNC, pero el badge del sidebar debe seguir
+// actualizado desde cualquier otra sección).
+refreshLaserCncQueueBadgesGlobal();
+setInterval(refreshLaserCncQueueBadgesGlobal, 5000);
 
 // ── Cotizador ──
 
@@ -11453,7 +12811,20 @@ async function savePricingQuote() {
 function openPricingPrintPreview(quoteId) {
     const id = quoteId || pricingLastSavedQuoteId;
     if (!id) return;
-    window.open(`/cotizador/print/${encodeURIComponent(id)}`, '_blank');
+    window.open(`/api/pricing/quotes/${encodeURIComponent(id)}/pdf`, '_blank');
+}
+
+// Dispara la descarga de un archivo sin navegar la pestaña actual — un
+// <a download> temporal en vez de window.open, que en algunos navegadores
+// solo previsualiza el PDF en vez de bajarlo (acá si o si tiene que quedar
+// un archivo en Descargas para poder adjuntarlo a mano en WhatsApp).
+function triggerFileDownload(url) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
 }
 
 async function sendPricingQuoteAction(quoteId) {
@@ -11513,6 +12884,11 @@ async function confirmPricingWhatsappSend() {
         }
         const data = await response.json();
         closePricingWhatsappModal();
+        // WhatsApp (wa.me) solo permite prellenar texto, no adjuntar un
+        // archivo automáticamente — así que se baja el PDF real primero y
+        // se abre WhatsApp después, para que el usuario lo arrastre al
+        // chat que ya está esperando con el mensaje listo.
+        triggerFileDownload(`/api/pricing/quotes/${encodeURIComponent(id)}/pdf?download=true`);
         window.open(data.url, '_blank');
     } catch (error) {
         console.error(error);
@@ -12024,6 +13400,7 @@ async function loadPricingCatalogsSettingsForm() {
         document.getElementById('settings-margin-flat-field').hidden = mode !== 'flat_amount';
         document.getElementById('settings-margin-percentage-input').value = settings.margin?.percentage ?? '';
         document.getElementById('settings-margin-flat-input').value = settings.margin?.flat_amount ?? '';
+        document.getElementById('settings-whatsapp-template-input').value = settings.whatsapp_message_template || '';
     } catch (error) {
         console.error(error);
     }
@@ -12045,6 +13422,7 @@ async function submitPricingCatalogsSettingsForm() {
         formData.append('labor_rate_per_hour', document.getElementById('settings-labor-rate-input')?.value || '0');
         formData.append('default_prep_minutes', document.getElementById('settings-prep-minutes-input')?.value || '0');
         formData.append('margin', JSON.stringify(margin));
+        formData.append('whatsapp_message_template', document.getElementById('settings-whatsapp-template-input')?.value.trim() || '');
 
         const response = await fetch('/api/pricing/settings', { method: 'POST', body: formData });
         if (!response.ok) throw new Error();

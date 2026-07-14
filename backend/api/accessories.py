@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 
 from backend.auth_deps import require_auth, require_role
 from backend.services.accessory_service import (
+    discover_arduino_boards,
     get_accessories,
     get_accessories_status,
     get_driver_names,
@@ -20,6 +21,16 @@ async def accessory_drivers_endpoint(user: dict = Depends(require_auth)):
     """Drivers disponibles (ej. 'home_assistant', 'http_relay') — para poblar
     el formulario de registro sin hardcodear la lista en el frontend."""
     return {"drivers": get_driver_names()}
+
+
+@router.get("/api/accessories/arduino/discover")
+async def accessory_arduino_discover_endpoint(user: dict = Depends(require_role("admin"))):
+    """Escanea los puertos USB en busca de placas ESP32 con el firmware
+    NOPAL (firmware/nopal_accessory/) — para cada una que contesta, el
+    puerto que tomó y el modelo/capacidades que declaró (relés, tira PWM,
+    WS2812), para poblar el formulario de alta sin que el usuario tenga que
+    adivinar nada."""
+    return {"boards": await discover_arduino_boards()}
 
 
 @router.get("/api/accessories")

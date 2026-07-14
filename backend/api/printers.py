@@ -13,6 +13,7 @@ from backend.services.klipper_service import (
     get_printer_status,
     get_recent_printer_files,
     get_scheduled_prints,
+    get_total_queued_print_jobs,
     pause_printer_print,
     remove_printer_queue_job,
     remove_scheduled_print,
@@ -56,6 +57,12 @@ async def get_all_status(request: Request, user: dict = Depends(require_auth)):
     except Exception as e:
         logger.exception("Error al leer el estado de las impresoras")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/printers/queue/count")
+async def get_printers_queue_count(user: dict = Depends(require_auth)):
+    """Total de trabajos esperando turno entre todas las impresoras — para el badge del sidebar."""
+    return {"count": get_total_queued_print_jobs()}
 
 
 @router.get("/api/printers/recent-files")

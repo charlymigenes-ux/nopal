@@ -29,6 +29,7 @@ select option {
     --text-secondary: #64748B;
     --text-muted: #64748B;
     --green: #22c55e;
+    --green-rgb: 34, 197, 94;
     --green-dark: #17B754;
     --accent: #22c55e;
     --accent-rgb: 34, 197, 94;
@@ -37,6 +38,7 @@ select option {
     --orange: #f59e0b;
     --orange-light: #fbbf24;
     --purple: #8b5cf6;
+    --purple-rgb: 139, 92, 246;
     --black: #1E293B;
     --radius-lg: 20px;
     --radius-md: 14px;
@@ -54,6 +56,7 @@ body.dark {
     --text-secondary: #B8B8B8;
     --text-muted: #B8B8B8;
     --green: #22c55e;
+    --green-rgb: 34, 197, 94;
     --green-dark: #31E06F;
     --accent: #22c55e;
     --accent-rgb: 34, 197, 94;
@@ -62,6 +65,7 @@ body.dark {
     --orange: #f59e0b;
     --orange-light: #fbbf24;
     --purple: #8b5cf6;
+    --purple-rgb: 139, 92, 246;
     --black: #FFFFFF;
 }
 
@@ -75,6 +79,7 @@ body.green {
     --text-secondary: #B7C1CC;
     --text-muted: #7A8795;
     --green: #22c55e;
+    --green-rgb: 34, 197, 94;
     --green-dark: #17B754;
     --accent: #22c55e;
     --accent-rgb: 34, 197, 94;
@@ -83,6 +88,7 @@ body.green {
     --orange: #f59e0b;
     --orange-light: #fbbf24;
     --purple: #8b5cf6;
+    --purple-rgb: 139, 92, 246;
     --black: #F5F7FA;
 }
 
@@ -96,6 +102,7 @@ body.red {
     --text-secondary: #D2B8BA;
     --text-muted: #D2B8BA;
     --green: #22c55e;
+    --green-rgb: 34, 197, 94;
     --green-dark: #17B754;
     --accent: #E5484D;
     --accent-rgb: 229, 72, 77;
@@ -104,6 +111,7 @@ body.red {
     --orange: #f59e0b;
     --orange-light: #fbbf24;
     --purple: #7B61FF;
+    --purple-rgb: 123, 97, 255;
     --black: #FFFFFF;
 }
 
@@ -467,7 +475,12 @@ body.green .global-topbar {
     display: none;
 }
 
+.app-shell.sidebar-collapsed .nav-item-badge {
+    display: none;
+}
+
 .nav-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -484,6 +497,26 @@ body.green .global-topbar {
 
 .nav-item svg {
     flex-shrink: 0;
+}
+
+/* Badge numérico de trabajos en cola (esperando turno, sin contar el que ya
+   está corriendo) — Impresión 3D, Láser y CNC. Se oculta por completo con
+   [hidden] en vez de mostrar "0" cuando no hay nada en cola. */
+.nav-item-badge {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
 }
 
 .nav-item:not(.active):hover,
@@ -605,101 +638,211 @@ body.green .global-topbar {
 
 .topbar-server-stats {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
+    align-items: stretch;
+    gap: 16px;
     background: transparent;
     flex: 1;
+    min-width: 0;
 }
 
-.topbar-host-block {
+/* ── Ficha "Host" (izquierda, ~70%): mismo lenguaje visual que .laser-card
+   (fondo/borde por variables de tema, radius-lg) pero sin el acento de
+   color en el borde izquierdo. ── */
+
+.topbar-host-card {
+    flex: 7 1 0%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    justify-content: center;
+    gap: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
 }
 
-.topbar-host-title {
+.topbar-host-header {
     display: flex;
-    align-items: baseline;
-    gap: 6px;
-    font-size: 0.85rem;
+    align-items: center;
+    gap: 8px;
+}
+
+.topbar-host-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+}
+
+.topbar-host-title-text {
     font-weight: 700;
     color: var(--text);
+    font-size: 0.85rem;
+    flex-shrink: 0;
 }
 
-.topbar-host-title small {
-    font-weight: 500;
+.topbar-host-desc {
+    flex: 1;
+    min-width: 0;
+    color: var(--accent);
+    font-size: 0.76rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.topbar-host-online-pill {
+    flex-shrink: 0;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    background: rgba(34, 197, 94, 0.14);
+    color: var(--green);
+}
+
+.topbar-host-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px 14px;
+}
+
+.topbar-host-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    border-right: 1px solid var(--border);
+    padding-right: 14px;
+}
+
+/* Última celda de cada fila (5 en la fila 1, 4 en la fila 2) sin línea. */
+.topbar-host-cell:nth-child(5n),
+.topbar-host-cell:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.topbar-host-cell svg {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
     color: var(--text-muted);
-    font-size: 0.72rem;
 }
 
-.topbar-host-lines {
+.topbar-host-cell-text {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
+    min-width: 0;
 }
 
-.topbar-host-lines span {
-    font-size: 0.72rem;
+.topbar-host-cell-label {
+    font-size: 0.62rem;
     color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.topbar-host-lines strong {
+.topbar-host-cell-value {
+    font-size: 0.8rem;
+    font-weight: 700;
     color: var(--text);
-    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.topbar-host-gauges {
-    display: flex;
-    gap: 14px;
-    margin-bottom: 12px;
-}
+/* ── Ficha de gauges (derecha, ~30%): mismos anillos de progreso de antes,
+   escalados de 62px a ~92px y con la etiqueta debajo en flujo normal en
+   vez de absolute, para que puedan crecer sin superponerse. ── */
 
-.topbar-gauge {
-    position: relative;
-    width: 62px;
-    height: 62px;
+.topbar-gauges-card {
+    flex: 3 1 0%;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 12px 16px;
 }
 
-.topbar-gauge svg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 62px;
-    height: 62px;
+.topbar-gauge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
 }
 
-.topbar-gauge .gauge-value {
+.topbar-gauge-ring {
     position: relative;
-    font-size: 0.85rem;
-    font-weight: 700;
+    width: 92px;
+    height: 92px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.topbar-gauge-ring svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.topbar-gauge-ring .gauge-value {
+    position: relative;
+    font-size: 1.4rem;
+    font-weight: 800;
     color: var(--text);
 }
 
-.topbar-gauge .gauge-label {
-    position: absolute;
-    bottom: -16px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.62rem;
-    color: var(--text-muted);
+.topbar-gauge-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.66rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.03em;
     white-space: nowrap;
+}
+
+.topbar-gauge-label svg {
+    flex-shrink: 0;
+}
+
+.topbar-gauge.gauge-cpu .topbar-gauge-label {
+    color: var(--green-dark);
+}
+
+.topbar-gauge.gauge-mem .topbar-gauge-label {
+    color: var(--orange);
+}
+
+.topbar-gauge.gauge-temp .topbar-gauge-label {
+    color: #ef4444;
 }
 
 .gauge-track {
     fill: none;
     stroke: rgba(148, 163, 184, 0.2);
-    stroke-width: 6;
+    stroke-width: 8;
 }
 
 .gauge-fill {
     fill: none;
-    stroke-width: 6;
+    stroke-width: 8;
     stroke-linecap: round;
     transform: rotate(-90deg);
     transform-origin: 50% 50%;
@@ -1393,7 +1536,7 @@ body.green .topbar-search input::placeholder {
 .preview-image {
     min-height: 260px;
     border-radius: 28px;
-    background: linear-gradient(180deg, #111827 0%, #1f2937 100%);
+    background: linear-gradient(180deg, var(--panel-bg) 0%, var(--card-bg) 100%);
     position: relative;
     overflow: hidden;
     display: flex;
@@ -1414,7 +1557,7 @@ body.green .topbar-search input::placeholder {
 }
 
 .preview-image-placeholder {
-    color: #f8fafc;
+    color: var(--text);
     font-size: 5rem;
     font-weight: 700;
     opacity: 0.18;
@@ -1425,7 +1568,7 @@ body.green .topbar-search input::placeholder {
     padding: 0;
     border-radius: 0;
     background: none;
-    color: #22c55e;
+    color: var(--accent);
     font-size: 0.72rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -1863,6 +2006,430 @@ body.green .settings-card {
 .printer-modal-topbar-mcu .system-stats-row strong {
     text-align: center;
     font-size: 0.78rem;
+}
+
+/* Botón de engranaje que abre "Personalizar Módulos", junto al cierre (X)
+   del modal de impresora. Reusa .modal-close (tamaño/posición/hover) pero
+   necesita mayor especificidad (dos clases) para ganarle a los estilos base
+   de .modal-close definidos más abajo en la hoja. */
+.modal-close.printer-modal-settings-btn {
+    right: 76px;
+    background: var(--panel-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+/* ── "Personalizar Módulos": editor de módulos del modal de impresora ── */
+
+.module-customizer-modal-content {
+    width: 92%;
+    max-width: 760px;
+    height: auto;
+    max-height: 90vh;
+    padding: 32px 28px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.module-customizer-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+    margin-bottom: 22px;
+}
+
+.module-customizer-logo.login-card-logo {
+    height: 40px;
+    margin: 0 0 8px;
+}
+
+.module-customizer-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--text);
+}
+
+.module-customizer-subtitle {
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.module-customizer-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.module-customizer-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 92px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.module-customizer-tab:hover {
+    color: var(--text);
+    border-color: rgba(var(--green-rgb), 0.4);
+}
+
+.module-customizer-tab.active {
+    border-color: var(--green);
+    color: var(--green-dark);
+    background: rgba(var(--green-rgb), 0.1);
+    box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.4), 0 0 16px rgba(var(--green-rgb), 0.35);
+}
+
+.module-customizer-groups {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 22px;
+}
+
+@media (max-width: 700px) {
+    .module-customizer-groups {
+        grid-template-columns: 1fr;
+    }
+}
+
+.module-customizer-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+}
+
+.module-customizer-group-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.module-customizer-group-available .module-customizer-group-header h3 {
+    color: var(--green-dark);
+}
+
+.module-customizer-group-extra .module-customizer-group-header h3 {
+    color: var(--purple);
+}
+
+.module-customizer-group-header p {
+    margin: 2px 0 0;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+
+.module-customizer-list {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.module-customizer-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    user-select: none;
+}
+
+.module-customizer-row-dragging {
+    border-color: var(--green);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+    opacity: 0.96;
+}
+
+.module-customizer-row-locked {
+    opacity: 0.85;
+}
+
+.module-customizer-row-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    cursor: grab;
+    touch-action: none;
+}
+
+.module-customizer-row-handle:active {
+    cursor: grabbing;
+}
+
+.module-customizer-row-handle-disabled {
+    color: var(--border);
+    cursor: not-allowed;
+}
+
+.module-customizer-row-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.module-customizer-row-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.86rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.module-customizer-row-toggle {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.module-customizer-checkbox {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: var(--green);
+}
+
+.module-customizer-checkbox-green {
+    accent-color: var(--green);
+}
+
+.module-customizer-checkbox-purple {
+    accent-color: var(--purple);
+}
+
+.module-customizer-row-lock {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.module-customizer-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.module-customizer-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 22px;
+    border-radius: 999px;
+    border: 1.5px solid var(--green);
+    background: transparent;
+    color: var(--green-dark);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.module-customizer-reset-btn:hover {
+    background: rgba(var(--green-rgb), 0.12);
+}
+
+.module-customizer-reset-hint {
+    margin: 0;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+/* ── Página de Configuración unificada (Configuración + Ayuda fusionadas):
+   grupos de tarjetas creados por el usuario, armados en tiempo real por
+   applySettingsModulesLayout() en app.js. Reemplaza el layout fijo de 2
+   columnas que tenía .settings-layout (retirado) — acá el número de grupos
+   y qué tarjeta va en cada uno lo decide el usuario desde "Personalizar". ── */
+
+.settings-modules-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 24px 32px 32px;
+}
+
+.settings-module-group-title-row {
+    margin-bottom: 14px;
+}
+
+.settings-module-group-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.settings-module-group-body {
+    column-count: 2;
+    column-gap: 20px;
+}
+
+.settings-module-group-body > .settings-card {
+    break-inside: avoid;
+    margin-bottom: 20px;
+}
+
+.settings-modules-pool {
+    display: none;
+}
+
+.settings-module-hidden-by-user {
+    display: none !important;
+}
+
+@media (max-width: 900px) {
+    .settings-module-group-body {
+        column-count: 1;
+    }
+}
+
+/* ── Editor "Personalizar Página de Configuración": grupos dinámicos ── */
+
+.settings-module-customizer-modal-content {
+    max-width: 620px;
+}
+
+.settings-module-customizer-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.settings-module-customizer-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.settings-module-customizer-group-name-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-family: inherit;
+    color: var(--text);
+}
+
+.settings-module-customizer-group-name-input:hover {
+    border-color: var(--border);
+}
+
+.settings-module-customizer-group-name-input:focus {
+    border-color: var(--green);
+    background: var(--card-bg);
+    outline: none;
+}
+
+.settings-module-customizer-group-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.settings-module-customizer-group-delete-btn:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.settings-module-customizer-list {
+    min-height: 46px;
+}
+
+.settings-module-customizer-list-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-align: center;
+    padding: 8px;
+    pointer-events: none;
+}
+
+.settings-module-customizer-add-group-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    border-radius: var(--radius-md);
+    border: 1.5px dashed var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+    margin-bottom: 22px;
+}
+
+.settings-module-customizer-add-group-btn:hover {
+    border-color: var(--green);
+    color: var(--green-dark);
+    background: rgba(var(--green-rgb), 0.08);
 }
 
 .system-stats-body {
@@ -3987,6 +4554,13 @@ body.green .settings-card {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 14px;
+}
+
+/* Cuando hay un trabajo activo, "Controles de máquina" se oculta (ver
+   renderLaserJob en app.js) y este cuadrante pasa a ocupar las dos columnas
+   de su fila en vez de quedar a la mitad. */
+.laser-jog-quadrant-job.laser-jog-quadrant-job-full {
+    grid-column: 1 / -1;
 }
 
 .laser-jog-quadrant {
@@ -7365,11 +7939,11 @@ body.green .laser-start-confirm-copies input {
 }
 
 .gcode-preview-card {
-    background: linear-gradient(160deg, rgba(74, 93, 46, 0.22) 0%, rgba(54, 69, 34, 0.16) 55%, rgba(34, 43, 21, 0.15) 100%);
+    background-color: var(--card-bg);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-radius: var(--radius-lg);
-    border: 1px solid rgba(107, 124, 68, 0.28);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
     box-shadow: 0 24px 80px rgba(0,0,0,0.08);
     padding: 24px;
     min-height: 0;
@@ -7403,8 +7977,8 @@ body.green .laser-start-confirm-copies input {
     gap: 8px;
 }
 .preview-meta-grid div {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 8px 10px;
 }
@@ -10762,6 +11336,7 @@ body.green .option-switch {
    y el texto queda invisible. Una sombra negra a -2px/-2px da contraste sin
    afectar los casos donde ya se ve bien (blanco sobre fondo oscuro). */
 body.light .badge,
+body.light .nav-item-badge,
 body.light .models-table td.model-name svg,
 body.light .toolhead-card .temp-card-header-actions,
 body.light .toolhead-card .temp-icon-btn,
@@ -11026,6 +11601,42 @@ body.light .btn-accent {
     display: block;
 }
 
+/* Selector de idioma del overlay de login/configuración inicial — reusa
+   la clase .lang-switch-btn (misma lógica JS que el topbar) pero con sus
+   propios colores basados en variables de tema, porque el estilo del
+   topbar asume un fondo oscuro fijo y no se ve bien sobre --card-bg claro. */
+.login-lang-switch {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.login-lang-switch .lang-switch-btn {
+    flex: 0 0 auto;
+    min-width: 48px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--panel-bg);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.login-lang-switch .lang-switch-btn:hover {
+    color: var(--text);
+}
+
+.login-lang-switch .lang-switch-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
 .login-card h2 {
     margin: 0 0 6px;
     font-size: 1.2rem;
@@ -11183,6 +11794,25 @@ body.light .btn-accent {
     color: var(--text-muted);
     opacity: 0.5;
     flex-shrink: 0;
+}
+
+/* Acciones de la cotización (guardar/PDF/enviar), reubicadas al espacio
+   libre del breadcrumb en vez de una tarjeta aparte apilada en la columna
+   central — más finas para no competir con los pasos 1-2-3. */
+.pricing-breadcrumb-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.pricing-breadcrumb-actions .btn-file-action,
+.pricing-breadcrumb-actions .btn-file-action-accent,
+.pricing-breadcrumb-actions .btn-file-action-decision {
+    padding: 6px 12px;
+    font-size: 0.72rem;
+    gap: 6px;
+    white-space: nowrap;
 }
 
 /* ── Columnas siempre visibles ── */
@@ -11766,16 +12396,6 @@ body.light .btn-accent {
     text-transform: none;
 }
 
-.pricing-actions-card {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.pricing-actions-card button {
-    justify-content: center;
-}
-
 /* ── Cotizaciones recientes ── */
 
 .pricing-recent-section {
@@ -11885,5 +12505,125 @@ body.light .btn-accent {
 .device-status-pill.role-operador {
     background: rgba(148, 163, 184, 0.14);
     color: var(--text-muted);
+}
+
+/* ── Onboarding tour (spotlight guiado) ── */
+
+.tour-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3500;
+}
+
+.tour-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.tour-spotlight {
+    position: fixed;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62);
+    pointer-events: none;
+    transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+.tour-card {
+    position: fixed;
+    z-index: 3501;
+    width: 320px;
+    max-width: calc(100vw - 32px);
+    background: var(--card-bg);
+    border: 1px solid rgba(var(--accent-rgb), 0.4);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    padding: 20px;
+    transition: top 0.2s ease, left 0.2s ease;
+}
+
+.tour-card-counter {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+}
+
+.tour-card-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+.tour-card-body {
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+}
+
+.tour-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.tour-card-nav {
+    display: flex;
+    gap: 8px;
+}
+
+.tour-btn {
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.tour-btn-skip {
+    background: transparent;
+    color: var(--text-secondary);
+    padding-left: 0;
+}
+
+.tour-btn-skip:hover {
+    color: var(--text);
+}
+
+.tour-btn-secondary {
+    background: var(--panel-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.tour-btn-secondary:hover {
+    background: var(--border);
+}
+
+.tour-btn-secondary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.tour-btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.tour-btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.tour-btn-primary:active {
+    background: var(--accent-active);
 }
 

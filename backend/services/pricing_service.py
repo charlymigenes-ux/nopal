@@ -70,6 +70,8 @@ def _default_config() -> Dict[str, Any]:
             "margin": {"mode": "percentage", "percentage": 30, "flat_amount": 0},
             "labor_rate_per_hour": 20.0,
             "default_prep_minutes": 15.0,
+            # None/"" = usar el mensaje genérico armado en build_whatsapp_message.
+            "whatsapp_message_template": None,
         },
     }
 
@@ -89,6 +91,7 @@ def _load_config() -> Dict[str, Any]:
     config["settings"].setdefault("margin", {"mode": "percentage", "percentage": 30, "flat_amount": 0})
     config["settings"].setdefault("labor_rate_per_hour", 20.0)
     config["settings"].setdefault("default_prep_minutes", 15.0)
+    config["settings"].setdefault("whatsapp_message_template", None)
     return config
 
 
@@ -211,6 +214,7 @@ def update_settings(
     margin: Optional[Dict[str, Any]] = None,
     labor_rate_per_hour: Optional[float] = None,
     default_prep_minutes: Optional[float] = None,
+    whatsapp_message_template: Optional[str] = None,
 ) -> Dict[str, Any]:
     config = _load_config()
     settings = config["settings"]
@@ -226,6 +230,10 @@ def update_settings(
         settings["default_prep_minutes"] = default_prep_minutes
     if margin is not None:
         settings["margin"].update(margin)
+    # "" (campo vaciado a mano en Ajustes) también se guarda, para poder
+    # volver al mensaje genérico sin dejar pegado un template viejo.
+    if whatsapp_message_template is not None:
+        settings["whatsapp_message_template"] = whatsapp_message_template
     _save_config(config)
     return settings
 
@@ -592,7 +600,7 @@ def compute_quote(
 
     if material["kind"] == "filament":
         if not is_gcode:
-            warnings.append("Subí el G-code laminado (no el modelo sin laminar) para obtener un peso real de filamento.")
+            warnings.append("Sube el G-code laminado (no el modelo sin laminar) para obtener un peso real de filamento.")
         else:
             cached = _get_or_extract(source_path, section, rel_path, estimate_print_gcode_quantities)
             grams = cached["filament_grams_direct"]
@@ -856,17 +864,33 @@ def build_whatsapp_message(quote: Dict[str, Any], print_url: str) -> str:
     una propuesta inicial. El frontend la muestra en un campo editable antes
     de armar el link final (ver build_whatsapp_link), así el usuario puede
     personalizarla por completo (o borrarla y escribir la suya) antes de
-    enviar."""
+    enviar. Si el usuario configuró un mensaje personal en Ajustes
+    (Cotizador > Gestionar catálogos > Ajustes), se usa ese en vez del
+    genérico de acá abajo, con placeholders reemplazados a mano (no
+    str.format: un "{" suelto que el usuario haya escrito en su propio
+    texto no debe romper el envío con un KeyError)."""
     costs = quote.get("costs") or {}
     total = costs.get("total")
     currency = costs.get("currency", "")
     client_name = (quote.get("client_name") or "").strip()
-    valid_until = quote.get("valid_until")
+    valid_until = quote.get("valid_until") or ""
+    total_str = f"${total:,.2f} {currency}".strip() if total is not None else "—"
+
+    template = (get_settings().get("whatsapp_message_template") or "").strip()
+    if template:
+        return (
+            template
+            .replace("{cliente}", client_name or "cliente")
+            .replace("{total}", total_str)
+            .replace("{id}", quote.get("id", ""))
+            .replace("{vigencia}", valid_until)
+            .replace("{link}", print_url)
+        )
 
     lines = [
         f"Hola {client_name}!" if client_name else "Hola!",
         f"Aquí tienes tu cotización {quote.get('id', '')}.",
-        f"Total: ${total:,.2f} {currency}".strip() if total is not None else "Total: —",
+        f"Total: {total_str}",
     ]
     if valid_until:
         lines.append(f"Vigente hasta: {valid_until}")
@@ -880,9 +904,41 @@ def build_whatsapp_link(quote: Dict[str, Any], message: str) -> str:
     envía nada por sí sola, abre WhatsApp con el texto listo y el usuario
     aprieta 'Enviar' del lado de WhatsApp. `client_phone` es un campo
     opcional del quote (mismo patrón pass-through que notes/valid_until en
-    save_quote); si no está guardado no hay a quién mandarle el link."""
+    save_quote); si no está guardado, se arma el link sin número de destino
+    (wa.me lo permite) — WhatsApp abre igual y deja elegir el contacto a
+    mano en vez de bloquear el envío por no tener el teléfono cargado."""
     digits = re.sub(r"\D", "", quote.get("client_phone") or "")
-    if not digits:
-        raise ValueError("La cotización no tiene teléfono de cliente guardado")
+    base = f"https://wa.me/{digits}" if digits else "https://wa.me/"
+    return f"{base}?text={urllib.parse.quote(message)}"
 
-    return f"https://wa.me/{digits}?text={urllib.parse.quote(message)}"
+
+# ── PDF real de la cotización ──
+#
+# quote_print.html (la vista HTML de /cotizador/print/{id}) usa flexbox/grid
+# y var() para verse bien en el navegador — nada de eso lo soporta el motor
+# CSS 2.1 de xhtml2pdf, así que el PDF usa una plantilla aparte
+# (quote_pdf.html) con tablas/bloques y colores literales, mismo contenido.
+# A propósito no incluye la miniatura del archivo: viene de un endpoint
+# dinámico (no un archivo estático), y resolverla para xhtml2pdf necesitaría
+# un link_callback que la reprocese — se dejó afuera para no sumar otra
+# fuente de fallos a una función que recién se está agregando.
+def generate_quote_pdf(quote_id: str) -> Optional[bytes]:
+    quote = get_quote(quote_id)
+    if quote is None:
+        return None
+
+    from jinja2 import Environment, FileSystemLoader
+    from xhtml2pdf import pisa
+    import io
+
+    created_at = quote.get("created_at")
+    created_at_str = datetime.fromtimestamp(created_at).strftime("%d/%m/%Y %H:%M") if created_at else "—"
+
+    env = Environment(loader=FileSystemLoader("backend/templates"))
+    html = env.get_template("quote_pdf.html").render(quote=quote, created_at_str=created_at_str)
+
+    buffer = io.BytesIO()
+    result = pisa.CreatePDF(html, dest=buffer)
+    if result.err:
+        return None
+    return buffer.getvalue()

@@ -453,6 +453,17 @@ def get_printer_job_queue(port: int) -> Dict[str, Any]:
     return status or {"queued_jobs": [], "queue_state": "paused"}
 
 
+def get_total_queued_print_jobs() -> int:
+    """Suma los trabajos esperando turno (sin contar el que ya está
+    imprimiendo) entre todas las impresoras detectadas — usado por el badge
+    de la barra lateral."""
+    total = 0
+    for printer in find_moonraker_instances():
+        status = MoonrakerClient(printer["port"]).get_job_queue_status()
+        total += len((status or {}).get("queued_jobs", []))
+    return total
+
+
 # ── Impresiones programadas (persistidas) ──
 
 def _load_schedule() -> List[Dict[str, Any]]:

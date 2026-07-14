@@ -2,12 +2,14 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import Response
 
 from backend.auth_deps import require_auth
 from backend.services.pricing_service import (
     build_whatsapp_link,
     build_whatsapp_message,
     compute_quote,
+    generate_quote_pdf,
     get_quote,
     get_settings,
     list_machines,
@@ -106,6 +108,7 @@ async def pricing_settings_update_endpoint(
     margin: Optional[str] = Form(None),
     labor_rate_per_hour: Optional[float] = Form(None),
     default_prep_minutes: Optional[float] = Form(None),
+    whatsapp_message_template: Optional[str] = Form(None),
     user: dict = Depends(require_auth),
 ):
     """Ajustes globales del cotizador. `machine_watts_default` y `margin` son
@@ -118,7 +121,8 @@ async def pricing_settings_update_endpoint(
         raise HTTPException(status_code=400, detail="JSON inválido en 'machine_watts_default' o 'margin'")
 
     return update_settings(
-        currency, price_per_kwh, watts_dict, margin_dict, labor_rate_per_hour, default_prep_minutes
+        currency, price_per_kwh, watts_dict, margin_dict, labor_rate_per_hour, default_prep_minutes,
+        whatsapp_message_template,
     )
 
 
@@ -191,23 +195,39 @@ async def pricing_quotes_status_endpoint(quote_id: str, status: str = Form(...),
     return entry
 
 
+@router.get("/api/pricing/quotes/{quote_id}/pdf")
+async def pricing_quote_pdf_endpoint(quote_id: str, download: bool = False, user: dict = Depends(require_auth)):
+    """PDF real de la cotización (tabla de costos, no una captura de la
+    página) — `download=true` fuerza que el navegador lo baje en vez de
+    mostrarlo inline, para el flujo de 'Enviar por WhatsApp' (adjuntarlo a
+    mano después de descargarlo, ver frontend)."""
+    pdf_bytes = generate_quote_pdf(quote_id)
+    if pdf_bytes is None:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    disposition = "attachment" if download else "inline"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'{disposition}; filename="Cotizacion_{quote_id}.pdf"'},
+    )
+
+
 @router.get("/api/pricing/quotes/{quote_id}/whatsapp-link")
 async def pricing_quote_whatsapp_link_endpoint(
     quote_id: str, request: Request, message: Optional[str] = None, user: dict = Depends(require_auth)
 ):
-    """Devuelve el mensaje (default o el `message` personalizado que mande
-    el frontend) y la URL wa.me ya armada con ese texto — no manda nada por
-    sí sola, el frontend la abre en pestaña nueva y el usuario aprieta
-    'Enviar' del lado de WhatsApp. Sin `message`, sirve para previsualizar
-    el texto por default antes de que el usuario lo edite. Requiere que el
-    quote guardado tenga client_phone (ver build_whatsapp_link)."""
+    """Devuelve el mensaje (default, o el mensaje personal configurado en
+    Ajustes, o el `message` que mande el frontend ya editado) y la URL
+    wa.me ya armada con ese texto — no manda nada por sí sola, el frontend
+    la abre en pestaña nueva y el usuario aprieta 'Enviar' del lado de
+    WhatsApp. Sin `message`, sirve para previsualizar el texto por default
+    antes de que el usuario lo edite. No requiere client_phone: si el quote
+    no lo tiene guardado, el link queda sin número de destino y WhatsApp
+    deja elegir el contacto a mano (ver build_whatsapp_link)."""
     quote = get_quote(quote_id)
     if quote is None:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
 
     print_url = str(request.base_url).rstrip("/") + f"/cotizador/print/{quote_id}"
     text = message.strip() if message and message.strip() else build_whatsapp_message(quote, print_url)
-    try:
-        return {"url": build_whatsapp_link(quote, text), "message": text}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return {"url": build_whatsapp_link(quote, text), "message": text}

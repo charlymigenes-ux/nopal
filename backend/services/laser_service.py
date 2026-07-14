@@ -1700,12 +1700,17 @@ _queue_counter = itertools.count(1)
 _laser_queue: List[Dict[str, Any]] = []
 
 
-def add_to_queue(path: str, filename: str) -> Dict[str, Any]:
+def add_to_queue(path: str, filename: str, kind: str = "laser") -> Dict[str, Any]:
     entry = {
         "id": next(_queue_counter),
         "path": path,
         "filename": filename,
         "added_at": time.time(),
+        # "laser"/"cnc" — a qué ficha de Cola pertenece el archivo. Sin esto
+        # la cola era un único pool sin tipo, y tanto la ficha de Láser como
+        # la de CNC mostraban exactamente los mismos archivos sin importar
+        # a cuál se los mandó el usuario.
+        "kind": kind,
     }
     _laser_queue.append(entry)
     return entry

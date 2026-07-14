@@ -333,12 +333,13 @@ async def laser_queue_list_endpoint(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/laser/queue/add")
-async def laser_queue_add_endpoint(path: str = Form(...), user: dict = Depends(require_auth)):
-    """Agrega un archivo G-code de la biblioteca a la cola del láser."""
+async def laser_queue_add_endpoint(path: str = Form(...), kind: str = Form("laser"), user: dict = Depends(require_auth)):
+    """Agrega un archivo G-code de la biblioteca a la cola del láser o del CNC
+    (`kind` decide en qué ficha aparece — ver add_to_queue)."""
     file_path = safe_section_path("gcode", path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    entry = add_to_queue(path, os.path.basename(path))
+    entry = add_to_queue(path, os.path.basename(path), kind)
     return entry
 
 

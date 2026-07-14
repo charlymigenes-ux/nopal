@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Cotización {{ quote.id }} - NOPAL</title>
+    <style>
+        /* xhtml2pdf usa un motor CSS 2.1 (reportlab por debajo) — nada de
+           flexbox, grid ni var(): todo con tablas/bloques y colores
+           literales, calcados de los mismos valores que quote_print.html
+           usa para la vista HTML (que sí puede usar CSS moderno). */
+        @page {
+            size: letter;
+            margin: 2cm 1.5cm;
+        }
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            color: #1a1a1a;
+            font-size: 10pt;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        .doc-header td { vertical-align: top; padding-bottom: 14pt; }
+        .brand { font-size: 16pt; font-weight: bold; }
+        .doc-meta { text-align: right; }
+        .doc-meta .quote-id { font-size: 13pt; font-weight: bold; }
+        .doc-meta .quote-date { color: #6b7280; font-size: 8pt; }
+        .status-pill { color: #15803d; font-size: 8pt; font-weight: bold; }
+        .rule { border-bottom: 2pt solid #22c55e; margin-bottom: 14pt; }
+        h2.section-title {
+            font-size: 9pt;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin: 0 0 6pt;
+        }
+        .info-table td { padding: 4pt 8pt 10pt 0; width: 33%; }
+        .info-table .label { font-size: 8pt; color: #6b7280; }
+        .info-table .value { font-size: 10pt; font-weight: bold; }
+        table.cost-table th, table.cost-table td {
+            text-align: left;
+            padding: 6pt 4pt;
+            border-bottom: 0.5pt solid #e2e2e2;
+            font-size: 9pt;
+        }
+        table.cost-table th { color: #6b7280; font-size: 8pt; text-transform: uppercase; }
+        table.cost-table td.amount, table.cost-table th.amount { text-align: right; }
+        .totals-row td { font-weight: bold; font-size: 11pt; border-top: 1pt solid #1a1a1a; border-bottom: none; }
+        .missing { color: #6b7280; }
+        .warnings { font-size: 8pt; color: #92400e; background-color: #fffbeb; border: 0.5pt solid #fde68a; padding: 8pt 10pt; }
+        .section { margin-bottom: 16pt; }
+        .footer { margin-top: 24pt; text-align: center; color: #6b7280; font-size: 8pt; }
+    </style>
+</head>
+<body>
+    <table class="doc-header">
+        <tr>
+            <td><span class="brand">NOPAL</span></td>
+            <td class="doc-meta">
+                <div class="quote-id">{{ quote.id }}</div>
+                <div class="quote-date">{{ created_at_str }}</div>
+                <div class="status-pill">{{ quote.status }}</div>
+            </td>
+        </tr>
+    </table>
+    <div class="rule"></div>
+
+    <div class="section">
+        <h2 class="section-title">Trabajo cotizado</h2>
+        <table class="info-table">
+            <tr>
+                <td>
+                    <div class="label">Archivo</div>
+                    <div class="value">{{ quote.file.name if quote.file else "—" }}</div>
+                </td>
+                <td>
+                    <div class="label">Material</div>
+                    <div class="value">{{ quote.material.name if quote.material else "—" }}</div>
+                </td>
+                <td>
+                    <div class="label">Máquina</div>
+                    <div class="value">{{ quote.machine.name if quote.machine else "—" }}</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    {% if quote.extracted and quote.extracted.slicer_settings %}
+    <div class="section">
+        <h2 class="section-title">Parámetros detectados</h2>
+        <table class="info-table">
+            <tr>
+                <td>
+                    <div class="label">Temp. nozzle</div>
+                    <div class="value">{{ quote.extracted.slicer_settings.nozzle_temp_c or "—" }}</div>
+                </td>
+                <td>
+                    <div class="label">Temp. cama</div>
+                    <div class="value">{{ quote.extracted.slicer_settings.bed_temp_c or "—" }}</div>
+                </td>
+                <td>
+                    <div class="label">Velocidad</div>
+                    <div class="value">{{ quote.extracted.slicer_settings.print_speed_mm_s or "—" }}</div>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <div class="label">Relleno</div>
+                    <div class="value">{{ quote.extracted.slicer_settings.infill_percent or "—" }}</div>
+                </td>
+                <td>
+                    <div class="label">Soportes</div>
+                    <div class="value">{{ "Sí" if quote.extracted.slicer_settings.supports else ("—" if quote.extracted.slicer_settings.supports is none else "No") }}</div>
+                </td>
+                <td>
+                    <div class="label">Adherencia</div>
+                    <div class="value">{{ quote.extracted.slicer_settings.adhesion or "—" }}</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2 class="section-title">Desglose de costos</h2>
+        <table class="cost-table">
+            <thead>
+                <tr>
+                    <th>Concepto</th>
+                    <th>Detalle</th>
+                    <th class="amount">Monto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in quote.cost_lines %}
+                <tr>
+                    <td>{{ line.label }}</td>
+                    <td>{{ line.detail or "—" }}</td>
+                    <td class="amount">
+                        {% if line.missing %}<span class="missing">—</span>{% else %}{{ quote.costs.currency }} {{ "%.2f"|format(line.amount) }}{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td colspan="2">Margen</td>
+                    <td class="amount">{{ quote.costs.currency }} {{ "%.2f"|format(quote.costs.margin_cost) }}</td>
+                </tr>
+                <tr class="totals-row">
+                    <td colspan="2">Total{{ " (parcial)" if quote.costs.total_is_partial else "" }}</td>
+                    <td class="amount">{{ quote.costs.currency }} {{ "%.2f"|format(quote.costs.total) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {% if quote.warnings %}
+    <div class="section warnings">
+        <strong>Notas del cálculo:</strong>
+        <ul>
+            {% for warning in quote.warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div class="footer">Generado por NOPAL — {{ created_at_str }}</div>
+</body>
+</html>

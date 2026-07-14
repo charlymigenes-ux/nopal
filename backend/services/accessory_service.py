@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 REGISTRY_PATH = "accessory_registry.json"
 HTTP_TIMEOUT = 5
+NOPAL_BOARD_BAUD = 115200
 
 
 # ── Drivers ──
@@ -127,6 +128,83 @@ def _relay_set_state(config: Dict[str, Any], on: bool) -> bool:
         return False
 
 
+# "arduino" habla con una placa ESP32 propia corriendo el firmware de este
+# proyecto (firmware/nopal_accessory/nopal_accessory.ino) por USB-serie, para
+# quien arma su propio relé/tira LED con una placa de unos pesos en vez de
+# comprar un enchufe Tasmota. Cada accesorio registrado controla UN relé de
+# la placa (config["relay"], 1-indexado); una misma placa con 4 relés se da
+# de alta como 4 accesorios separados que comparten "device"/"location" (ver
+# discover_arduino_boards() más abajo para encontrar esos valores). La
+# conexión serie se mantiene abierta entre comandos (_arduino_connections)
+# para no pagar el margen de arranque de 2s del ESP32 en cada toggle.
+
+_arduino_connections: Dict[str, Any] = {}
+
+
+def _resolve_arduino_device(config: Dict[str, Any]) -> Optional[str]:
+    """Ubicación física primero (estable entre reinicios/replugs, mismo
+    criterio que laser_service/marlin_printer_service), 'device' como
+    respaldo si no hay ubicación registrada o la placa no está conectada ahí
+    ahora mismo."""
+    location = config.get("location")
+    if location:
+        from backend.services.laser_service import _resolve_usb_location
+        resolved = _resolve_usb_location(location)
+        if resolved:
+            return resolved
+    return config.get("device")
+
+
+def _open_arduino_connection(device: str):
+    import serial
+    ser = _arduino_connections.get(device)
+    if ser is not None:
+        if ser.is_open:
+            return ser
+        _arduino_connections.pop(device, None)
+    ser = serial.Serial(device, NOPAL_BOARD_BAUD, timeout=1.0)
+    # Margen de arranque del ESP32 (toggle de DTR al abrir el puerto) — se
+    # paga una sola vez por conexión, no en cada comando.
+    time.sleep(2)
+    ser.reset_input_buffer()
+    _arduino_connections[device] = ser
+    return ser
+
+
+def _arduino_send_command(config: Dict[str, Any], command: str) -> Optional[str]:
+    device = _resolve_arduino_device(config)
+    if not device:
+        return None
+    try:
+        ser = _open_arduino_connection(device)
+        ser.reset_input_buffer()
+        ser.write(f"{command}\n".encode("utf-8"))
+        raw = ser.readline()
+    except Exception as e:
+        logger.warning(f"[{device}] Fallo al hablar con la placa NOPAL: {e}")
+        old = _arduino_connections.pop(device, None)
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+        return None
+    return raw.decode("utf-8", errors="ignore").strip() or None
+
+
+def _arduino_get_state(config: Dict[str, Any]) -> Optional[bool]:
+    response = _arduino_send_command(config, f"NOPAL:R{config.get('relay', 1)}?")
+    if response is None:
+        return None
+    return {"ON": True, "OFF": False}.get(response)
+
+
+def _arduino_set_state(config: Dict[str, Any], on: bool) -> bool:
+    action = "ON" if on else "OFF"
+    response = _arduino_send_command(config, f"NOPAL:R{config.get('relay', 1)}:{action}")
+    return response == "OK"
+
+
 DRIVERS: Dict[str, Dict[str, Any]] = {
     "tasmota": {
         "required": ("host",),
@@ -143,11 +221,148 @@ DRIVERS: Dict[str, Dict[str, Any]] = {
         "get_state": _relay_get_state,
         "set_state": _relay_set_state,
     },
+    "arduino": {
+        "required": ("device", "relay"),
+        "get_state": _arduino_get_state,
+        "set_state": _arduino_set_state,
+    },
 }
 
 
 def get_driver_names() -> List[str]:
     return list(DRIVERS.keys())
+
+
+# ── Descubrimiento de placas Arduino/ESP32 (firmware NOPAL) ──
+#
+# El driver "arduino" habla con una placa ESP32 que corre
+# firmware/nopal_accessory/nopal_accessory.ino por USB-serie. Antes de poder
+# controlar nada hay que encontrar en qué puerto está esa placa y qué
+# capacidades declaró (cuántos relés, si tiene tira PWM y/o WS2812) — eso es
+# lo que hace este bloque, siguiendo el mismo patrón de
+# list_usb_laser_ports()/list_usb_marlin_ports() en los otros servicios de
+# serie: filtrar por chips USB conocidos, excluir lo ya reclamado por otro
+# servicio, y para lo que queda, un handshake liviano que abre y cierra su
+# propia conexión.
+
+
+def _parse_nopal_identification(line: str) -> Optional[Dict[str, Any]]:
+    """Parsea la línea que manda sendIdentification() en el firmware, ej.
+    'NOPAL,role=accessory,chip=ESP32-D0WD-V3,fw=1.0,relays=4,pwm_led=1,
+    ws2812=1,ws2812_count=30'. None si la línea no viene de una placa NOPAL
+    (puede ser ruido de arranque, u otro firmware que no es el nuestro)."""
+    if not line.startswith("NOPAL,"):
+        return None
+    fields: Dict[str, str] = {}
+    for part in line.split(",")[1:]:
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        fields[key] = value
+    if fields.get("role") != "accessory":
+        return None
+    try:
+        return {
+            "chip": fields.get("chip", ""),
+            "firmware": fields.get("fw", ""),
+            "relays": int(fields.get("relays", 0)),
+            "pwm_led": fields.get("pwm_led") == "1",
+            "ws2812": fields.get("ws2812") == "1",
+            "ws2812_count": int(fields.get("ws2812_count", 0)),
+        }
+    except ValueError:
+        return None
+
+
+def _probe_nopal_board_sync(device: str, baud: int = NOPAL_BOARD_BAUD, timeout: float = 2.5) -> Optional[Dict[str, Any]]:
+    """Handshake autocontenido (mismo criterio que _probe_grbl_sync en
+    laser_service.py): abre su propia conexión y la cierra al terminar, sin
+    tocar ninguna conexión persistente. Manda NOPAL:ID? y devuelve las
+    capacidades declaradas, o None si el puerto no contestó como firmware
+    NOPAL dentro del timeout."""
+    try:
+        import serial
+    except ImportError:
+        return None
+    try:
+        ser = serial.Serial(device, baud, timeout=0.5)
+    except Exception:
+        return None
+    try:
+        # El ESP32 resetea al abrir el puerto (toggle de DTR vía CH340/CP2102
+        # o el USB nativo) — mismo margen de arranque que laser_service.py
+        # antes de mandar el primer comando, si no el ID? se pierde.
+        time.sleep(2)
+        try:
+            ser.reset_input_buffer()
+            ser.write(b"NOPAL:ID?\n")
+        except Exception:
+            return None
+        end_time = time.monotonic() + timeout
+        while time.monotonic() < end_time:
+            try:
+                raw = ser.readline()
+            except Exception:
+                return None
+            if not raw:
+                continue
+            parsed = _parse_nopal_identification(raw.decode("utf-8", errors="ignore").strip())
+            if parsed:
+                return parsed
+        return None
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+
+def list_usb_arduino_ports() -> List[Dict[str, Any]]:
+    """Puertos USB candidatos para una placa de accesorios NOPAL: misma
+    whitelist de chips que láser/CNC/Marlin (CH340, CP2102, ESP32), excluyendo
+    lo ya reclamado por Klipper o ya registrado como láser/CNC o impresora
+    Marlin, para que el mismo puerto físico no se ofrezca en varios flujos de
+    alta a la vez (mismo criterio que list_usb_marlin_ports)."""
+    from backend.services.laser_service import get_registered_lasers, list_usb_laser_ports
+    from backend.services.marlin_printer_service import get_registered_printers
+
+    laser_entries = [e for e in get_registered_lasers() if e.get("host", "").startswith("usb:")]
+    claimed_laser_locations = {e["location"] for e in laser_entries if e.get("location")}
+    claimed_laser_devices = {e["host"][len("usb:"):] for e in laser_entries if not e.get("location")}
+
+    printer_entries = get_registered_printers()
+    claimed_printer_locations = {e["location"] for e in printer_entries if e.get("location")}
+    claimed_printer_devices = {
+        e.get("device") for e in printer_entries if not e.get("location") and e.get("device")
+    }
+
+    claimed_locations = claimed_laser_locations | claimed_printer_locations
+    claimed_devices = claimed_laser_devices | claimed_printer_devices
+
+    return [
+        port for port in list_usb_laser_ports()
+        if port["device"] not in claimed_devices
+        and not (port.get("location") and port["location"] in claimed_locations)
+    ]
+
+
+def _discover_arduino_boards_sync() -> List[Dict[str, Any]]:
+    boards = []
+    for port in list_usb_arduino_ports():
+        identification = _probe_nopal_board_sync(port["device"])
+        if identification is not None:
+            boards.append({**port, **identification})
+    return boards
+
+
+async def discover_arduino_boards() -> List[Dict[str, Any]]:
+    """Escanea los puertos USB candidatos y hace el handshake NOPAL:ID? en
+    cada uno, en un hilo aparte (abrir puertos serie y esperar el margen de
+    arranque de la placa no debe bloquear el event loop de FastAPI). Devuelve
+    solo los que efectivamente contestaron como firmware NOPAL: el puerto que
+    tomaron y el modelo/capacidades que declararon."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _discover_arduino_boards_sync)
 
 
 # ── Registro de accesorios (persistido) ──

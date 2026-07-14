@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=249">
+    <link rel="stylesheet" href="/static/css/style.css?v=252">
 </head>
 <body>
     <div class="app-shell">
@@ -70,16 +70,14 @@
                         <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                     <div class="nav-category-items">
-                        <button class="nav-item" data-section="models" data-i18n-title="navPrinting3d" title="Impresión 3D">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                            <span data-i18n="navPrinting3d">Impresión 3D</span>
-                        </button>
                         <button class="nav-item" data-section="laser" data-i18n-title="laser" title="Láser">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
+                            <span class="nav-item-badge" id="nav-badge-laser" hidden>0</span>
                             <span data-i18n="laser">Láser</span>
                         </button>
                         <button class="nav-item" data-section="cnc" data-i18n-title="cnc" title="CNC">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"/><path d="M12 6c0-2-2-3-2-3M12 8c0-2 2-3 2-3"/><path d="M8 12h8l-2 10h-4z"/></svg>
+                            <span class="nav-item-badge" id="nav-badge-cnc" hidden>0</span>
                             <span data-i18n="cnc">CNC</span>
                         </button>
                         <button class="nav-item" data-section="marlin" data-i18n-title="navMarlinPrinters" title="Impresoras Marlin">
@@ -100,6 +98,11 @@
                         <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                     <div class="nav-category-items">
+                        <button class="nav-item" data-section="models" data-i18n-title="navPrinting3d" title="Impresión 3D">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                            <span class="nav-item-badge" id="nav-badge-models" hidden>0</span>
+                            <span data-i18n="navPrinting3d">Impresión 3D</span>
+                        </button>
                         <button class="nav-item" data-section="gcode" data-i18n-title="navFiles" title="Archivos">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             <span data-i18n="navFiles">Archivos</span>
@@ -469,8 +472,8 @@
                             <div class="preview-card-inner">
                                 <div class="preview-card-header">
                                     <div>
-                                        <span class="preview-label">Realtime</span>
-                                        <h2>G-code Preview</h2>
+                                        <span class="preview-label" data-i18n="gcodePreviewRealtime">Realtime</span>
+                                        <h2 data-i18n="gcodePreviewHeading">G-code Preview</h2>
                                     </div>
                                 </div>
                                 <div class="preview-details-panel">
@@ -482,15 +485,15 @@
                                     </div>
                                     <div class="preview-meta-grid">
                                         <div>
-                                            <span>Lines</span>
+                                            <span data-i18n="previewMetaLines">Lines</span>
                                             <strong id="gcode-preview-lines">—</strong>
                                         </div>
                                         <div>
-                                            <span>Size</span>
+                                            <span data-i18n="columnSize">Size</span>
                                             <strong id="gcode-preview-size">—</strong>
                                         </div>
                                         <div>
-                                            <span>Modified</span>
+                                            <span data-i18n="previewMetaModified">Modified</span>
                                             <strong id="gcode-preview-date">—</strong>
                                         </div>
                                     </div>
@@ -610,40 +613,6 @@
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                             </button>
                         </div>
-                    </div>
-
-                    <div class="laser-card laser-card-accent laser-card-half card-collapsible laser-card-compact" id="laser-queue-card">
-                        <div class="card-header-std">
-                            <span class="card-header-std-icon">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                            </span>
-                            <h2 class="card-header-std-title" data-i18n="laserQueue">Cola del láser</h2>
-                            <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
-                        </div>
-                        <div class="laser-queue-list" id="laser-queue-list"></div>
-                        <div class="laser-job-toolbar" id="laser-job-controls">
-                            <button type="button" class="btn-file-action" id="laser-pause-btn" hidden>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                                <span data-i18n="laserPause">Pausar</span>
-                            </button>
-                            <button type="button" class="btn-file-action" id="laser-resume-btn" hidden>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                                <span data-i18n="laserResume">Reanudar</span>
-                            </button>
-                            <button type="button" class="btn-file-action btn-file-action-danger" id="laser-cancel-btn" hidden>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                <span data-i18n="laserCancel">Cancelar</span>
-                            </button>
-                        </div>
-                        <div class="laser-job-progress" id="laser-job-progress" hidden>
-                            <div class="laser-job-progress-bar">
-                                <div class="laser-job-progress-fill" id="laser-job-progress-fill"></div>
-                            </div>
-                            <span id="laser-job-progress-text">0 / 0</span>
-                        </div>
-                        <p class="laser-job-error" id="laser-job-error"></p>
                     </div>
 
                     <div class="laser-card laser-card-accent laser-card-half card-collapsible laser-card-compact" id="laser-sd-card" hidden>
@@ -929,8 +898,22 @@
                                         <strong id="laser-job-power">—</strong>
                                     </div>
                                 </div>
+                                <p class="laser-job-error" id="laser-job-error"></p>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="laser-card laser-card-accent laser-card-half card-collapsible laser-card-compact" id="laser-queue-card">
+                        <div class="card-header-std">
+                            <span class="card-header-std-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            </span>
+                            <h2 class="card-header-std-title" data-i18n="laserQueue">Cola del láser</h2>
+                            <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                        </div>
+                        <div class="laser-queue-list" id="laser-queue-list"></div>
                     </div>
                     </div>
                     </div>
@@ -1244,7 +1227,7 @@
                                                 <li><span class="cnc-visor-swatch cnc-visor-swatch-selected"></span><span data-i18n="cncVisorLegendSelected">Seleccionado</span></li>
                                             </ul>
                                         </div>
-                                        <div class="cnc-visor-empty-state" id="cnc-visor-empty-state" data-i18n="cncVisorEmptyState">Seleccioná un archivo en ARCHIVOS para previsualizarlo</div>
+                                        <div class="cnc-visor-empty-state" id="cnc-visor-empty-state" data-i18n="cncVisorEmptyState">Selecciona un archivo en ARCHIVOS para previsualizarlo</div>
                                     </div>
                                 </div>
                                 <div class="cnc-viewer-panel" id="cnc-viewer-panel-3d" data-viewer-panel="3d">
@@ -1442,6 +1425,25 @@
                                 <small data-i18n="pricingStep3Sub">Revisión y cálculo</small>
                             </span>
                         </div>
+
+                        <div class="pricing-breadcrumb-actions" id="pricing-breadcrumb-actions">
+                            <button type="button" class="btn-file-action-accent" id="pricing-save-btn" disabled>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                <span data-i18n="pricingSaveQuote">Guardar cotización</span>
+                            </button>
+                            <button type="button" class="btn-file-action-decision" id="pricing-print-btn" disabled title="Guarda la cotización primero" data-i18n-title="pricingSaveFirstHint">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                <span data-i18n="pricingPrintPreview">Vista previa PDF</span>
+                            </button>
+                            <button type="button" class="btn-file-action" id="pricing-send-btn" disabled title="Guarda la cotización primero" data-i18n-title="pricingSaveFirstHint">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                <span data-i18n="pricingSendQuote">Enviar cotización</span>
+                            </button>
+                            <button type="button" class="btn-file-action" id="pricing-whatsapp-btn" disabled title="Guarda la cotización primero" data-i18n-title="pricingSaveFirstHint">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                                <span data-i18n="pricingSendWhatsapp">Enviar por WhatsApp</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="pricing-columns">
@@ -1546,24 +1548,6 @@
                                         <span data-i18n="pricingAddCost">Agregar costo</span>
                                     </button>
                                 </div>
-                            </div>
-                            <div class="pricing-card pricing-actions-card">
-                                <button type="button" class="btn-file-action-accent" id="pricing-save-btn" disabled>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                                    <span data-i18n="pricingSaveQuote">Guardar cotización</span>
-                                </button>
-                                <button type="button" class="btn-file-action-decision" id="pricing-print-btn" disabled title="Guardá la cotización primero" data-i18n-title="pricingSaveFirstHint">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                                    <span data-i18n="pricingPrintPreview">Vista previa PDF</span>
-                                </button>
-                                <button type="button" class="btn-file-action" id="pricing-send-btn" disabled title="Guardá la cotización primero" data-i18n-title="pricingSaveFirstHint">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                                    <span data-i18n="pricingSendQuote">Enviar cotización</span>
-                                </button>
-                                <button type="button" class="btn-file-action" id="pricing-whatsapp-btn" disabled title="Guardá la cotización primero" data-i18n-title="pricingSaveFirstHint">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                                    <span data-i18n="pricingSendWhatsapp">Enviar por WhatsApp</span>
-                                </button>
                             </div>
                         </div>
 
@@ -1676,12 +1660,23 @@
                     </div>
                     <div class="settings-topbar-actions">
                         <span id="settings-status" class="settings-status"></span>
+                        <button type="button" class="btn-file-action" id="settings-customize-btn" data-i18n-title="settingsModuleCustomizerButtonHint" title="Personaliza el orden y los grupos de esta página">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                            <span data-i18n="settingsModuleCustomizerButton">Personalizar</span>
+                        </button>
                         <button id="settings-save-btn" class="btn btn-primary btn-settings-save" data-i18n="saveSettings">Save Settings</button>
                     </div>
                 </header>
                 <main class="main-content">
-                    <div class="settings-layout">
-                        <div class="settings-card card-collapsible settings-general-card">
+                    <!-- Los grupos reales (creados por el usuario) se arman en JS a
+                         partir del layout guardado en localStorage, moviendo las
+                         tarjetas de #settings-modules-pool a su grupo correspondiente.
+                         Ver createModulePageScope()/settingsModulesPageScope en
+                         app.js — página independiente de #help-section: nunca
+                         comparten grupos ni localStorage entre sí. -->
+                    <div class="settings-modules-groups" id="settings-modules-groups"></div>
+                    <div class="settings-modules-pool" id="settings-modules-pool" hidden>
+                        <div class="settings-card card-collapsible settings-general-card" data-settings-module="general">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
@@ -1771,9 +1766,19 @@
                                     <span class="switch-label" data-i18n="enabled">Enabled</span>
                                 </label>
                             </div>
+                            <div class="settings-field settings-field-switch">
+                                <div>
+                                    <span class="settings-field-label" data-i18n="onboardingHintsLabel">Recorrido guiado</span>
+                                    <p class="settings-field-hint" data-i18n="onboardingHintsDescription">Muestra un recorrido paso a paso la primera vez que entras a cada sección del panel.</p>
+                                </div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="settings-onboarding-hints">
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                </label>
+                            </div>
                         </div>
-                        <div class="settings-right-col">
-                        <div class="settings-card theme-config-card card-collapsible">
+                        <div class="settings-card theme-config-card card-collapsible" data-settings-module="appearance">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 6 6 0 0 0 0-12 4 4 0 0 1 0-8z"/></svg>
@@ -1896,8 +1901,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="settings-row-pair">
-                            <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="updates">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
@@ -1928,7 +1932,7 @@
                             </div>
                             <div class="updates-changelog" id="updates-changelog" hidden></div>
                         </div>
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="logs">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
@@ -1946,8 +1950,7 @@
                                 </button>
                             </div>
                         </div>
-                    </div>
-                        <div class="settings-card card-collapsible" id="users-settings-card" hidden>
+                        <div class="settings-card card-collapsible" id="users-settings-card" hidden data-settings-module="users">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -1984,7 +1987,7 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="settings-card card-collapsible usb-ports-settings-card">
+                        <div class="settings-card card-collapsible usb-ports-settings-card" data-settings-module="devices">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
@@ -2077,19 +2080,63 @@
                                 <div class="usb-ports-list" id="marlin-printers-registry-list"></div>
                             </div>
                         </div>
+                        <div class="settings-card card-collapsible" id="accessories-settings-card" data-settings-module="accessories">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="accessoriesSettingsTitle">Accesorios</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="accessoriesSettingsBody">Conecta extractores, ventiladores, bombas o compresores controlados por relé HTTP o Home Assistant, y enciéndelos o apágalos desde el panel principal.</p>
+                            <button type="button" class="btn-file-action" id="accessory-add-btn-settings">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                <span data-i18n="accessoryAddTitle">Agregar accesorio</span>
+                            </button>
+                            <div class="devices-subcard">
+                                <div class="devices-subcard-header">
+                                    <span class="card-header-std-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+                                    </span>
+                                    <h3 data-i18n="accessoryArduinoDiscoverTitle">Placas Arduino/ESP32</h3>
+                                    <button type="button" class="theme-option-icon-btn" id="accessory-arduino-discover-btn" title="Actualizar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
+                                <p data-i18n="accessoryArduinoDiscoverBody">Placas con firmware NOPAL conectadas por USB, con uno o más relés. Cada relé se registra como un accesorio independiente.</p>
+                                <div class="usb-ports-list" id="accessory-arduino-discover-list"></div>
+                            </div>
                         </div>
                     </div>
                 </main>
             </section>
 
             <section id="help-section" class="view-section" style="display: none;">
-                <main class="main-content">
-                    <section class="page-header">
+                <header class="topbar settings-topbar">
+                    <div class="settings-topbar-title">
                         <h1 data-i18n="help">Ayuda</h1>
-                        <p data-i18n="helpDescription">Información sobre NOPAL, contacto y guía rápida de cada sección.</p>
-                    </section>
-                    <div class="settings-grid">
-                        <div class="settings-card card-collapsible">
+                        <p class="settings-topbar-subtitle" data-i18n="helpDescription">Información sobre NOPAL, contacto y guía rápida de cada sección.</p>
+                    </div>
+                    <div class="settings-topbar-actions">
+                        <button type="button" class="btn-file-action" id="help-customize-btn" data-i18n-title="settingsModuleCustomizerButtonHint" title="Personaliza el orden y los grupos de esta página">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                            <span data-i18n="settingsModuleCustomizerButton">Personalizar</span>
+                        </button>
+                    </div>
+                </header>
+                <main class="main-content">
+                    <!-- Los grupos reales (creados por el usuario) se arman en JS a
+                         partir del layout guardado en localStorage, moviendo las
+                         tarjetas de #help-modules-pool a su grupo correspondiente.
+                         Ver createModulePageScope()/helpModulesPageScope en app.js
+                         — misma lógica que #settings-modules-pool, pero con su
+                         propio pool, sus propios grupos y su propio namespace de
+                         localStorage: nunca se mezclan entre sí. -->
+                    <div class="settings-modules-groups" id="help-modules-groups"></div>
+                    <div class="settings-modules-pool" id="help-modules-pool" hidden>
+                        <div class="settings-card card-collapsible" data-settings-module="about">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -2106,10 +2153,15 @@
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.09 3.29 9.4 7.86 10.93.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.87-1.36-3.87-1.36-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.78 1.19 1.78 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 5.73 0c2.18-1.49 3.14-1.18 3.14-1.18.63 1.59.23 2.76.12 3.05.73.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.68.8.56A10.99 10.99 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
                                     <span data-i18n="helpGithub">Repositorio en GitHub</span>
                                 </a>
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="help-replay-tour-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    <span data-i18n="helpReplayTour">Repetir recorrido guiado</span>
+                                </button>
                             </div>
+                            <p data-i18n="helpReplayTourHint">Vuelve a mostrar el recorrido guiado de todas las secciones del panel.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="models">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
@@ -2122,7 +2174,7 @@
                             <p data-i18n="helpModelsBody">Sube archivos STL/3MF, organízalos en carpetas y previsualízalos en 3D antes de imprimir. Desde aquí generas el G-code o envías el modelo directo a una impresora.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="gcode">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -2135,7 +2187,7 @@
                             <p data-i18n="helpGcodeBody">Biblioteca de archivos G-code ya listos (de impresión 3D o de láser). Previsualiza la trayectoria y envíalos directo a una impresora o a la cola del láser.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="dashboardHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -2148,7 +2200,7 @@
                             <p data-i18n="helpDashboardBody">Muestra todas tus impresoras y láseres detectados, ordenados por estado. Toca una ficha para abrir sus controles: temperaturas, movimiento del cabezal (Toolhead) y progreso en vivo.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="laserHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
@@ -2161,7 +2213,7 @@
                             <p data-i18n="helpLaserBody">Controla tus láseres GRBL por red o USB: movimiento manual, encendido (doble clic para armar), aire asistido, tarjeta SD y consola de comandos. Puedes tener varios láseres registrados y cambiar entre ellos.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="queueHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -2174,7 +2226,7 @@
                             <p data-i18n="helpQueueBody">Historial de impresión (archivos ya impresos por cada impresora) y la cola de trabajos activos con progreso y tiempo restante reales.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="macrosHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -2187,7 +2239,7 @@
                             <p data-i18n="helpMacrosBody">Lista los macros configurados en tu `printer.cfg` (Klipper) y te deja ejecutarlos con un toque, sin usar la consola.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible">
+                        <div class="settings-card card-collapsible" data-settings-module="settingsHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -2208,6 +2260,10 @@
     <!-- Login overlay -->
     <div id="login-overlay" class="login-overlay" hidden>
         <div class="login-card">
+            <div class="login-lang-switch" id="login-lang-switch">
+                <button type="button" class="lang-switch-btn" data-lang="es">ES</button>
+                <button type="button" class="lang-switch-btn" data-lang="en">EN</button>
+            </div>
             <img class="login-card-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
 
             <div id="login-mode-login">
@@ -2231,7 +2287,7 @@
 
             <div id="login-mode-setup" hidden>
                 <h2 data-i18n="setupTitle">Configuración inicial</h2>
-                <p class="login-card-subtitle" data-i18n="setupSubtitle">Es la primera vez que se abre NOPAL — creá la cuenta de administrador.</p>
+                <p class="login-card-subtitle" data-i18n="setupSubtitle">Es la primera vez que se abre NOPAL — crea la cuenta de administrador.</p>
                 <form id="setup-form">
                     <div class="usb-classify-name-field">
                         <label for="setup-username-input" data-i18n="loginUsername">Usuario</label>
@@ -2292,6 +2348,9 @@
     <div id="printer-modal" class="modal">
         <div class="modal-backdrop"></div>
         <div class="modal-content printer-modal-content" id="printer-modal-content">
+            <button class="modal-close printer-modal-settings-btn" id="printer-modal-settings-btn" data-i18n-title="moduleCustomizerTitle" title="Personalizar Módulos">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
             <button class="modal-close" id="printer-modal-close">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -2332,15 +2391,189 @@
                 </div>
             </div>
             <div class="modal-body printer-modal-body">
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="toolhead">
                     <div id="printer-modal-toolhead"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="temperatures">
                     <div id="printer-modal-temperatures"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="queue">
                     <div id="printer-modal-queue"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Personalizar Módulos: reordenar y mostrar/ocultar los módulos del modal
+         de impresora Klipper (Toolhead/Temperaturas/Cola), por breakpoint de
+         pantalla, estilo Mainsail. "Estado" representa la topbar fija de arriba
+         y siempre está bloqueado/visible — solo aparece aquí por fidelidad
+         visual, no participa del reordenamiento real. -->
+    <div id="module-customizer-modal" class="modal">
+        <div class="modal-backdrop" id="module-customizer-modal-backdrop"></div>
+        <div class="modal-content module-customizer-modal-content">
+            <button class="modal-close" id="module-customizer-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="module-customizer-header">
+                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <h2 data-i18n="moduleCustomizerTitle">Personalizar Módulos</h2>
+                <p class="module-customizer-subtitle" data-i18n="moduleCustomizerSubtitle">Elige qué información quieres ver en tu escritorio.</p>
+            </div>
+
+            <div class="module-customizer-tabs" id="module-customizer-tabs">
+                <button type="button" class="module-customizer-tab" data-breakpoint="mobile">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointMobile">Celular</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="tablet">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointTablet">Tableta</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="desktop">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointDesktop">Escritorio</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="wide">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="11" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointWide">Pantalla ancha</span>
+                </button>
+            </div>
+
+            <div class="module-customizer-groups">
+                <div class="module-customizer-group module-customizer-group-available">
+                    <div class="module-customizer-group-header">
+                        <h3 data-i18n="moduleCustomizerAvailableTitle">Módulos disponibles</h3>
+                        <p data-i18n="moduleCustomizerAvailableSubtitle">Arrastra para reordenar</p>
+                    </div>
+                    <div class="module-customizer-list" id="module-customizer-list-available"></div>
+                </div>
+                <div class="module-customizer-group module-customizer-group-extra">
+                    <div class="module-customizer-group-header">
+                        <h3 data-i18n="moduleCustomizerExtraTitle">Módulos adicionales</h3>
+                        <p data-i18n="moduleCustomizerExtraSubtitle">Activa los módulos que necesites</p>
+                    </div>
+                    <div class="module-customizer-list" id="module-customizer-list-extra"></div>
+                </div>
+            </div>
+
+            <div class="module-customizer-footer">
+                <button type="button" class="module-customizer-reset-btn" id="module-customizer-reset-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
+                </button>
+                <p class="module-customizer-reset-hint" data-i18n="moduleCustomizerResetHint">Restaura la configuración predeterminada de módulos.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Personalizar Página de Configuración: a diferencia del editor de arriba
+         (2 grupos fijos "disponibles"/"adicionales"), acá los grupos los crea,
+         renombra y borra el propio usuario — sirve para las 7 tarjetas que
+         viven en #settings-modules-pool. Mismos 4 breakpoints, mismo patrón de
+         Pointer Events a mano, extendido para permitir soltar una tarjeta en
+         un grupo distinto al que la contenía (ver createModulePageScope() en
+         app.js, instanciada como settingsModulesPageScope). #help-section más
+         abajo tiene su propio modal gemelo (#help-module-customizer-modal)
+         para sus 8 tarjetas — misma lógica, pools y grupos completamente
+         independientes. -->
+    <div id="settings-module-customizer-modal" class="modal">
+        <div class="modal-backdrop" id="settings-module-customizer-modal-backdrop"></div>
+        <div class="modal-content module-customizer-modal-content settings-module-customizer-modal-content">
+            <button class="modal-close" id="settings-module-customizer-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="module-customizer-header">
+                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <h2 data-i18n="settingsModuleCustomizerTitle">Personalizar Página de Configuración</h2>
+                <p class="module-customizer-subtitle" data-i18n="settingsModuleCustomizerSubtitle">Crea tus propios grupos y elige qué tarjetas quieres ver en cada uno.</p>
+            </div>
+
+            <div class="module-customizer-tabs" id="settings-module-customizer-tabs">
+                <button type="button" class="module-customizer-tab" data-breakpoint="mobile">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointMobile">Celular</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="tablet">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointTablet">Tableta</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="desktop">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointDesktop">Escritorio</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="wide">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="11" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointWide">Pantalla ancha</span>
+                </button>
+            </div>
+
+            <div class="settings-module-customizer-groups" id="settings-module-customizer-groups"></div>
+
+            <button type="button" class="settings-module-customizer-add-group-btn" id="settings-module-customizer-add-group-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span data-i18n="settingsModuleCustomizerAddGroup">Nuevo grupo</span>
+            </button>
+
+            <div class="module-customizer-footer">
+                <button type="button" class="module-customizer-reset-btn" id="settings-module-customizer-reset-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
+                </button>
+                <p class="module-customizer-reset-hint" data-i18n="settingsModuleCustomizerResetHint">Restaura el grupo predeterminado (General) de este tamaño de pantalla.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Personalizar Página de Ayuda: modal gemelo del de Configuración de
+         arriba (mismas clases CSS, misma lógica de createModulePageScope() en
+         app.js, instanciada como helpModulesPageScope), pero apuntando a las
+         8 tarjetas de #help-modules-pool. Nunca comparte grupos ni
+         localStorage con el de Configuración. -->
+    <div id="help-module-customizer-modal" class="modal">
+        <div class="modal-backdrop" id="help-module-customizer-modal-backdrop"></div>
+        <div class="modal-content module-customizer-modal-content settings-module-customizer-modal-content">
+            <button class="modal-close" id="help-module-customizer-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="module-customizer-header">
+                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <h2 data-i18n="helpModuleCustomizerTitle">Personalizar Página de Ayuda</h2>
+                <p class="module-customizer-subtitle" data-i18n="settingsModuleCustomizerSubtitle">Crea tus propios grupos y elige qué tarjetas quieres ver en cada uno.</p>
+            </div>
+
+            <div class="module-customizer-tabs" id="help-module-customizer-tabs">
+                <button type="button" class="module-customizer-tab" data-breakpoint="mobile">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointMobile">Celular</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="tablet">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointTablet">Tableta</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="desktop">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointDesktop">Escritorio</span>
+                </button>
+                <button type="button" class="module-customizer-tab" data-breakpoint="wide">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="11" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <span data-i18n="moduleCustomizerBreakpointWide">Pantalla ancha</span>
+                </button>
+            </div>
+
+            <div class="settings-module-customizer-groups" id="help-module-customizer-groups"></div>
+
+            <button type="button" class="settings-module-customizer-add-group-btn" id="help-module-customizer-add-group-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span data-i18n="settingsModuleCustomizerAddGroup">Nuevo grupo</span>
+            </button>
+
+            <div class="module-customizer-footer">
+                <button type="button" class="module-customizer-reset-btn" id="help-module-customizer-reset-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
+                </button>
+                <p class="module-customizer-reset-hint" data-i18n="helpModuleCustomizerResetHint">Restaura el grupo predeterminado (Ayuda) de este tamaño de pantalla.</p>
             </div>
         </div>
     </div>
@@ -3241,6 +3474,7 @@
                 <div class="option-switch" id="accessory-driver-switch">
                     <button type="button" class="option-switch-btn" data-value="http_relay" data-i18n="accessoryDriverRelay">Relé HTTP</button>
                     <button type="button" class="option-switch-btn" data-value="home_assistant" data-i18n="accessoryDriverHa">Home Assistant</button>
+                    <button type="button" class="option-switch-btn" data-value="arduino" data-i18n="accessoryDriverArduino">Placa Arduino/ESP32</button>
                 </div>
             </div>
             <div id="accessory-config-relay">
@@ -3277,6 +3511,16 @@
                 <div class="usb-classify-name-field">
                     <label for="accessory-ha-entity-id" data-i18n="accessoryHaEntityId">Entity ID</label>
                     <input type="text" id="accessory-ha-entity-id" autocomplete="off" placeholder="switch.extractor_taller">
+                </div>
+            </div>
+            <div id="accessory-config-arduino" hidden>
+                <div class="usb-classify-name-field">
+                    <label data-i18n="accessoryArduinoDeviceLabel">Placa detectada</label>
+                    <p class="laser-card-subtitle" id="accessory-arduino-device-label" data-i18n="accessoryArduinoNoDevice">Elige una placa desde la lista de abajo en Configuración → Accesorios.</p>
+                </div>
+                <div class="usb-classify-name-field">
+                    <label for="accessory-arduino-relay-select" data-i18n="accessoryArduinoRelayLabel">Relé</label>
+                    <select id="accessory-arduino-relay-select" disabled></select>
                 </div>
             </div>
             <div class="usb-classify-name-actions">
@@ -3439,6 +3683,11 @@
                         <input type="number" step="any" min="0" id="settings-margin-flat-input">
                     </div>
                 </div>
+                <div class="pricing-field pricing-field-wide">
+                    <label data-i18n="pricingSettingsWhatsappTemplateLabel">Mensaje personal de WhatsApp</label>
+                    <textarea id="settings-whatsapp-template-input" rows="4" data-i18n-placeholder="pricingSettingsWhatsappTemplatePlaceholder" placeholder="Hola {cliente}! Aquí tienes tu cotización..."></textarea>
+                    <p class="pricing-file-empty-hint" data-i18n="pricingSettingsWhatsappTemplateHint">Placeholders disponibles: {cliente}, {total}, {id}, {vigencia}, {link}. Déjalo vacío para usar el mensaje genérico.</p>
+                </div>
                 <div class="login-error" id="settings-save-error" hidden></div>
                 <button type="button" class="btn-file-action" id="settings-save-btn-catalogs">
                     <span data-i18n="pricingSettingsSaveAction">Guardar ajustes</span>
@@ -3459,7 +3708,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             </div>
             <h2 data-i18n="pricingWhatsappModalTitle">Enviar cotización por WhatsApp</h2>
-            <p data-i18n="pricingWhatsappModalHint">Revisá o editá el mensaje antes de abrir WhatsApp.</p>
+            <p data-i18n="pricingWhatsappModalHint">Revisa o edita el mensaje antes de abrir WhatsApp.</p>
             <div class="usb-classify-name-field">
                 <label for="pricing-whatsapp-message-input" data-i18n="pricingWhatsappMessageLabel">Mensaje</label>
                 <textarea id="pricing-whatsapp-message-input" rows="7"></textarea>
@@ -3495,14 +3744,14 @@
             </div>
 
             <div id="cnc-wizard-step-1" class="cnc-wizard-step">
-                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep1Title">1. Elegí un diseño</span></p>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep1Title">1. Elige un diseño</span></p>
                 <input type="text" id="cnc-wizard-file-search" class="usb-classify-input-icon-wrap" data-i18n-placeholder="cncFilesFilter" placeholder="Buscar archivo...">
                 <div class="cnc-wizard-file-list" id="cnc-wizard-file-list"></div>
             </div>
 
             <div id="cnc-wizard-step-2" class="cnc-wizard-step" hidden>
-                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep2Title">2. Posicioná el origen</span></p>
-                <p class="cnc-wizard-step-hint" data-i18n="cncWizardStep2Hint">Movete con las flechas hasta donde querés que empiece el dibujo, después apretá "Cero aquí".</p>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep2Title">2. Posiciona el origen</span></p>
+                <p class="cnc-wizard-step-hint" data-i18n="cncWizardStep2Hint">Muévete con las flechas hasta donde quieras que empiece el dibujo, después aprieta "Cero aquí".</p>
                 <div class="cnc-wizard-unlock-row">
                     <span class="cnc-state-pill" id="cnc-wizard-state-pill">—</span>
                     <button type="button" class="btn-file-action" id="cnc-wizard-unlock-btn">
@@ -3545,7 +3794,7 @@
             </div>
 
             <div id="cnc-wizard-step-3" class="cnc-wizard-step" hidden>
-                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep3Title">3. Confirmá que entra</span></p>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep3Title">3. Confirma que entra</span></p>
                 <div class="cnc-wizard-fit-outer" id="cnc-wizard-fit-outer">
                     <div class="cnc-wizard-fit-inner" id="cnc-wizard-fit-inner"></div>
                 </div>
@@ -3666,7 +3915,7 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=13"></script>
-    <script src="/static/js/app.js?v=191"></script>
+    <script src="/static/js/translations.js?v=16"></script>
+    <script src="/static/js/app.js?v=194"></script>
 </body>
 </html>

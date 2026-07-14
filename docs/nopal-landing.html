@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOPAL — El dashboard definitivo para fabricación digital</title>
+<style>
+  :root{
+    --bg: #08090a;
+    --bg-soft: #0c0f0d;
+    --card: rgba(255,255,255,0.03);
+    --card-solid: #0e1210;
+    --border: rgba(255,255,255,0.08);
+    --border-soft: rgba(255,255,255,0.06);
+    --text: #f2f4f2;
+    --text-muted: #9aa39c;
+    --text-faint: #6b756f;
+    --green: #33d17a;
+    --green-soft: #22c55e;
+    --green-glow: rgba(51,209,122,0.35);
+    --purple: #b478ff;
+    --purple-glow: rgba(180,120,255,0.35);
+    --orange: #ffb648;
+    --orange-glow: rgba(255,182,72,0.35);
+    --radius: 16px;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  html{ scroll-behavior:smooth; }
+
+  body{
+    background:
+      radial-gradient(1100px 600px at 15% -10%, rgba(51,209,122,0.10), transparent 60%),
+      radial-gradient(900px 500px at 90% 10%, rgba(180,120,255,0.06), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:"Inter","Segoe UI",-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  a{ color:inherit; text-decoration:none; }
+  ul{ list-style:none; }
+  img,svg{ display:block; }
+
+  .container{ max-width:1240px; margin:0 auto; padding:0 32px; }
+
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--green);
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:12px 22px; border-radius:10px; font-size:14.5px; font-weight:600;
+    border:1px solid transparent; cursor:pointer; white-space:nowrap;
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn svg{ width:16px; height:16px; }
+  .btn-primary{
+    background:linear-gradient(180deg,#3fe08a,#1fae5e);
+    color:#04170c;
+    box-shadow:0 8px 24px -8px rgba(51,209,122,0.55);
+  }
+  .btn-primary:hover{ transform:translateY(-1px); box-shadow:0 12px 28px -8px rgba(51,209,122,0.7); }
+  .btn-outline{
+    background:rgba(255,255,255,0.02);
+    border-color:var(--border);
+    color:var(--text);
+  }
+  .btn-outline:hover{ border-color:rgba(255,255,255,0.25); background:rgba(255,255,255,0.05); }
+  .btn-sm{ padding:9px 16px; font-size:13px; border-radius:8px; }
+  .btn-block{ width:100%; }
+
+  /* ---------- Nav ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(8,9,10,0.75);
+    backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--border-soft);
+  }
+  .nav{
+    display:flex; align-items:center; justify-content:space-between;
+    height:72px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; letter-spacing:.02em; }
+  .brand .logo{ width:30px; height:30px; }
+  .nav-links{ display:flex; align-items:center; gap:34px; font-size:14px; color:var(--text-muted); }
+  .nav-links a:hover{ color:var(--text); }
+  .nav-right{ display:flex; align-items:center; gap:12px; }
+
+  @media (max-width:920px){
+    .nav-links{ display:none; }
+  }
+
+  /* ---------- Hero ---------- */
+  .hero{ padding:96px 0 64px; }
+  .hero-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center;
+  }
+  .hero h1{
+    font-size:44px; line-height:1.12; font-weight:800; letter-spacing:-0.02em;
+    margin:20px 0 18px;
+  }
+  .hero h1 .accent{ color:var(--green); }
+  .hero p.lead{ color:var(--text-muted); font-size:16.5px; max-width:480px; margin-bottom:28px; }
+  .hero-actions{ display:flex; gap:14px; margin-bottom:26px; flex-wrap:wrap; }
+  .hero-checks{ display:flex; gap:26px; flex-wrap:wrap; color:var(--text-faint); font-size:13.5px; }
+  .hero-checks span{ display:flex; align-items:center; gap:7px; }
+  .hero-checks svg{ width:15px; height:15px; color:var(--green); flex:none; }
+
+  /* ---------- Mockup (hero visual) ---------- */
+  .mockup-wrap{ perspective:1600px; }
+  .mockup{
+    background:linear-gradient(160deg,#10151222,#0a0d0b);
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow:0 40px 90px -30px rgba(0,0,0,0.7), 0 0 90px -20px var(--green-glow);
+    transform:rotateY(-10deg) rotateX(4deg) rotateZ(1deg);
+    transform-style:preserve-3d;
+    overflow:hidden;
+  }
+  .mockup-topbar{
+    display:flex; align-items:center; gap:8px; padding:10px 14px;
+    border-bottom:1px solid var(--border-soft);
+    background:rgba(255,255,255,0.02);
+  }
+  .mockup-dot{ width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,0.15); }
+  .mockup-title{ margin-left:8px; font-size:11px; color:var(--text-faint); font-weight:600; }
+  .mockup-body{ display:grid; grid-template-columns:44px 1fr 210px; gap:14px; padding:16px; min-height:300px; }
+  .mockup-sidebar{ display:flex; flex-direction:column; gap:10px; align-items:center; padding-top:4px; }
+  .mockup-sidebar .ico{ width:26px; height:26px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); }
+  .mockup-sidebar .ico.active{ background:rgba(51,209,122,0.18); border-color:rgba(51,209,122,0.4); }
+  .mockup-main{ display:flex; flex-direction:column; gap:12px; }
+  .mockup-panel{
+    background:rgba(255,255,255,0.025); border:1px solid var(--border-soft); border-radius:10px; padding:12px;
+  }
+  .mockup-panel .ph-line{ height:7px; border-radius:4px; background:rgba(255,255,255,0.08); margin-bottom:7px; }
+  .mockup-panel .ph-line.w60{ width:60%; }
+  .mockup-panel .ph-line.w40{ width:40%; }
+  .mockup-boat{
+    height:150px; border-radius:8px;
+    background:radial-gradient(circle at 50% 40%, rgba(51,209,122,0.35), rgba(51,209,122,0.03) 65%);
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid rgba(51,209,122,0.15);
+  }
+  .mockup-boat svg{ width:64px; height:64px; color:var(--green); filter:drop-shadow(0 0 14px rgba(51,209,122,0.6)); }
+  .mockup-side{ display:flex; flex-direction:column; gap:12px; }
+  .mockup-bar{ height:6px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden; }
+  .mockup-bar > span{ display:block; height:100%; background:linear-gradient(90deg,#3fe08a,#1fae5e); width:70%; }
+  .mockup-graph{ height:70px; border-radius:8px; background:rgba(255,255,255,0.025); border:1px solid var(--border-soft); position:relative; overflow:hidden; }
+  .mockup-graph svg{ width:100%; height:100%; }
+
+  /* ---------- Features row ---------- */
+  .features{ padding:8px 0 72px; }
+  .features-card{
+    background:var(--card); border:1px solid var(--border-soft); border-radius:var(--radius);
+    display:grid; grid-template-columns:repeat(5,1fr);
+  }
+  .feature{ padding:28px 22px; border-right:1px solid var(--border-soft); }
+  .feature:last-child{ border-right:none; }
+  .feature .f-icon{
+    width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,0.04); border:1px solid var(--border-soft); margin-bottom:14px;
+  }
+  .feature .f-icon svg{ width:19px; height:19px; color:var(--green); }
+  .feature h3{ font-size:14.5px; margin-bottom:6px; }
+  .feature p{ font-size:13px; color:var(--text-muted); line-height:1.5; }
+
+  @media (max-width:920px){
+    .features-card{ grid-template-columns:repeat(2,1fr); }
+    .feature{ border-right:none; border-bottom:1px solid var(--border-soft); }
+  }
+
+  /* ---------- Section heading ---------- */
+  .section-head{ text-align:center; max-width:640px; margin:0 auto 46px; }
+  .section-head h2{ font-size:32px; font-weight:800; letter-spacing:-0.01em; margin-top:14px; }
+  .section-head h2 .accent{ color:var(--green); }
+  .section-head p{ color:var(--text-muted); margin-top:12px; font-size:15px; }
+  .section-head.left{ text-align:left; margin:0; }
+
+  /* ---------- Machine compatibility ---------- */
+  .machine-compatibility{
+    padding:90px 0 96px;
+    background:
+      radial-gradient(900px 500px at 50% -8%, rgba(113,227,48,0.05), transparent 70%),
+      #050708;
+  }
+  .machine-compatibility .container{ max-width:1500px; }
+  .compatibility-shell{
+    background:linear-gradient(180deg,#0d1115,#090d10);
+    border:1px solid rgba(255,255,255,0.035);
+    border-radius:26px;
+    padding:56px 40px 48px;
+    box-shadow:0 30px 80px rgba(0,0,0,0.65);
+  }
+  .compatibility-header{ text-align:center; max-width:640px; margin:0 auto 46px; }
+  .compatibility-badge{
+    display:inline-flex; align-items:center;
+    background:rgba(113,227,48,0.08);
+    color:#71e330;
+    font-size:11.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+    border-radius:999px; padding:7px 16px;
+    box-shadow:0 0 24px -8px rgba(113,227,48,0.45);
+  }
+  .compatibility-header h2{
+    color:#fff; font-weight:800; letter-spacing:-0.015em;
+    font-size:clamp(32px,4vw,54px); line-height:1.15;
+    margin-top:18px;
+  }
+  .compatibility-header h2 span{ color:#71e330; }
+
+  .machine-grid{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; }
+
+  .machine-card{
+    position:relative; display:flex; flex-direction:column; min-height:570px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0) 40%), #0b0f10;
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:20px; overflow:hidden;
+    box-shadow:0 20px 50px -20px rgba(0,0,0,0.6);
+    transition:transform .3s ease, border-color .3s ease, box-shadow .3s ease;
+  }
+  .machine-card:hover{ transform:translateY(-6px); }
+
+  .machine-image-slot{
+    position:relative; height:min(50%,280px); min-height:230px;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  .machine-image-slot img{ max-width:82%; max-height:88%; object-fit:contain; transition:transform .3s ease; }
+  .machine-card:hover .machine-image-slot img{ transform:scale(1.015); }
+
+  .machine-card--printer{ background:radial-gradient(circle at 50% 30%, rgba(71,255,66,.16), transparent 65%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0) 40%), #0b0f10; }
+  .machine-card--laser{ background:radial-gradient(circle at 50% 30%, rgba(174,63,255,.18), transparent 65%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0) 40%), #0b0f10; }
+  .machine-card--cnc{ background:radial-gradient(circle at 50% 30%, rgba(255,176,28,.16), transparent 65%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0) 40%), #0b0f10; }
+
+  .machine-card--printer{ border-color:rgba(115,229,47,.15); }
+  .machine-card--laser{ border-color:rgba(179,92,255,.15); }
+  .machine-card--cnc{ border-color:rgba(244,181,31,.15); }
+  .machine-card--printer:hover{ border-color:rgba(115,229,47,.4); box-shadow:0 20px 60px -20px rgba(82,255,58,.28); }
+  .machine-card--laser:hover{ border-color:rgba(179,92,255,.4); box-shadow:0 20px 60px -20px rgba(162,62,255,.28); }
+  .machine-card--cnc:hover{ border-color:rgba(244,181,31,.4); box-shadow:0 20px 60px -20px rgba(244,181,31,.25); }
+
+  .machine-content{ padding:28px 28px 24px; display:flex; flex-direction:column; gap:16px; flex:1; }
+  .machine-content h3{ color:#fff; text-transform:uppercase; font-weight:800; font-size:clamp(22px,2vw,28px); margin-bottom:6px; }
+  .machine-content ul{ list-style:none; display:flex; flex-direction:column; gap:13px; margin:0; padding:0; }
+  .machine-content li{ display:flex; align-items:flex-start; gap:10px; color:#c3c9d0; font-size:15.5px; line-height:1.5; }
+  .machine-content .check{ font-weight:900; flex:none; line-height:1.5; }
+  .machine-card--printer .check{ color:#73e52f; text-shadow:0 0 10px rgba(115,229,47,.5); }
+  .machine-card--laser .check{ color:#b35cff; text-shadow:0 0 10px rgba(179,92,255,.5); }
+  .machine-card--cnc .check{ color:#f4b51f; text-shadow:0 0 10px rgba(244,181,31,.5); }
+
+  .machine-card-footer{ display:flex; align-items:center; justify-content:space-between; margin-top:auto; }
+
+  .machine-info-btn{
+    display:inline-flex; align-items:center; gap:8px;
+    height:48px; padding:0 22px;
+    border-radius:9px; font-size:14px; font-weight:700;
+    background:rgba(255,255,255,0.03);
+    cursor:pointer; transition:background .2s ease, box-shadow .2s ease;
+    font-family:inherit;
+  }
+  .machine-info-btn svg{ width:17px; height:17px; flex:none; }
+  .machine-card--printer .machine-info-btn{ color:#73e52f; border:1px solid rgba(115,229,47,.35); }
+  .machine-card--laser .machine-info-btn{ color:#b35cff; border:1px solid rgba(179,92,255,.35); }
+  .machine-card--cnc .machine-info-btn{ color:#f4b51f; border:1px solid rgba(244,181,31,.35); }
+  .machine-card--printer .machine-info-btn:hover{ background:rgba(115,229,47,.14); box-shadow:0 0 20px -6px rgba(115,229,47,.5); }
+  .machine-card--laser .machine-info-btn:hover{ background:rgba(179,92,255,.14); box-shadow:0 0 20px -6px rgba(179,92,255,.5); }
+  .machine-card--cnc .machine-info-btn:hover{ background:rgba(244,181,31,.14); box-shadow:0 0 20px -6px rgba(244,181,31,.5); }
+  .machine-info-btn:focus-visible, .machine-arrow:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+
+  .machine-arrow{
+    width:36px; height:36px; border:none; background:transparent; cursor:pointer;
+    font-size:22px; line-height:1; display:flex; align-items:center; justify-content:center;
+    transition:transform .2s ease;
+  }
+  .machine-card--printer .machine-arrow{ color:#73e52f; }
+  .machine-card--laser .machine-arrow{ color:#b35cff; }
+  .machine-card--cnc .machine-arrow{ color:#f4b51f; }
+  .machine-arrow:hover{ transform:translateX(4px); }
+
+  @media (max-width:980px){
+    .machine-grid{ grid-template-columns:repeat(2,1fr); }
+    .machine-grid .machine-card:last-child{ grid-column:1 / -1; }
+  }
+  @media (max-width:640px){
+    .compatibility-shell{ padding:40px 20px 32px; border-radius:20px; }
+    .machine-grid{ grid-template-columns:1fr; }
+    .machine-grid .machine-card:last-child{ grid-column:auto; }
+    .machine-card{ min-height:auto; }
+    .machine-content{ padding:22px 20px 20px; }
+  }
+
+  /* ---------- Interface section ---------- */
+  .interface{ padding:20px 0 84px; }
+  .interface-grid{ display:grid; grid-template-columns:0.85fr 1.15fr; gap:60px; align-items:center; }
+  .interface-list{ display:flex; flex-direction:column; gap:14px; margin-top:22px; }
+  .interface-list li{ display:flex; align-items:center; gap:12px; font-size:14.5px; color:var(--text-muted); }
+  .interface-list .chk{
+    width:22px; height:22px; border-radius:7px; background:rgba(51,209,122,0.14);
+    display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .interface-list .chk svg{ width:13px; height:13px; color:var(--green); }
+
+  .stack{ position:relative; height:400px; }
+  .stack-card{
+    position:absolute; background:var(--card-solid); border:1px solid var(--border-soft);
+    border-radius:12px; box-shadow:0 30px 60px -25px rgba(0,0,0,0.65); overflow:hidden;
+  }
+  .stack-card .mockup-topbar{ padding:8px 10px; }
+  .stack-a{ width:230px; height:300px; left:0; top:40px; z-index:1; opacity:.85; }
+  .stack-b{ width:290px; height:340px; left:150px; top:10px; z-index:2; }
+  .stack-c{ width:230px; height:190px; right:0; top:130px; z-index:3; }
+  .mini-line{ height:6px; border-radius:3px; background:rgba(255,255,255,0.08); margin:6px 10px; }
+  .mini-panel{ margin:8px 10px; padding:8px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); }
+  .mini-boat{ margin:8px 10px; height:110px; border-radius:8px; background:radial-gradient(circle at 50% 40%, rgba(51,209,122,0.3), transparent 70%); display:flex; align-items:center; justify-content:center; }
+  .mini-boat svg{ width:44px; height:44px; color:var(--green); }
+  .mini-graph{ margin:8px 10px; height:70px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); }
+  .mini-graph svg{ width:100%; height:100%; }
+
+  @media (max-width:920px){
+    .interface-grid{ grid-template-columns:1fr; }
+    .stack{ height:320px; margin-top:20px; }
+  }
+
+  /* ---------- Compare table ---------- */
+  .compare{ padding:20px 0 84px; }
+  .compare-table-wrap{
+    background:var(--card); border:1px solid var(--border-soft); border-radius:var(--radius);
+    overflow:hidden; overflow-x:auto;
+  }
+  table.compare-table{ width:100%; border-collapse:collapse; min-width:640px; }
+  .compare-table th, .compare-table td{ padding:16px 22px; text-align:center; font-size:13.5px; border-bottom:1px solid var(--border-soft); }
+  .compare-table th:first-child, .compare-table td:first-child{ text-align:left; color:var(--text-muted); }
+  .compare-table thead th{ font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); font-weight:700; }
+  .compare-table thead th.nopal-col{ color:var(--green); }
+  .compare-table td.nopal-col{ background:rgba(51,209,122,0.06); }
+  .compare-table tbody tr:last-child td{ border-bottom:none; }
+  .compare-table .yes{ color:var(--green); }
+  .compare-table .no{ color:var(--text-faint); }
+  .compare-table .partial{ color:var(--orange); font-size:12.5px; }
+
+  /* ---------- Roadmap / CTA / Community ---------- */
+  .bottom{ padding:20px 0 90px; }
+  .bottom-grid{ display:grid; grid-template-columns:0.9fr 1fr 0.9fr; gap:24px; align-items:stretch; }
+  .panel{
+    background:var(--card); border:1px solid var(--border-soft); border-radius:var(--radius); padding:28px;
+  }
+  .panel h4.eyebrow{ display:block; margin-bottom:6px; }
+  .panel h3{ font-size:19px; font-weight:800; margin-bottom:18px; }
+  .roadmap-list{ display:flex; flex-direction:column; gap:16px; }
+  .roadmap-row{ display:grid; grid-template-columns:60px 1fr 20px; align-items:center; gap:12px; font-size:13.5px; }
+  .roadmap-row .q{ color:var(--text-faint); font-weight:700; font-size:12.5px; }
+  .roadmap-row .label{ color:var(--text-muted); }
+  .roadmap-row svg{ width:16px; height:16px; }
+  .roadmap-row.done svg{ color:var(--green); }
+  .roadmap-row.pending svg{ color:var(--text-faint); }
+
+  .cta-panel{
+    display:flex; flex-direction:column; align-items:center; text-align:center; justify-content:center;
+    background:linear-gradient(180deg, rgba(51,209,122,0.10), rgba(51,209,122,0.02));
+    border:1px solid rgba(51,209,122,0.25);
+    gap:14px;
+  }
+  .cta-panel .logo-big{ width:56px; height:56px; margin-bottom:6px; }
+  .cta-panel h3{ font-size:22px; margin-bottom:0; }
+  .cta-panel p{ color:var(--text-muted); font-size:14px; margin-bottom:6px; }
+  .cta-panel .btn{ width:100%; }
+  .cta-panel .star-link{ font-size:13px; color:var(--green); display:flex; align-items:center; gap:6px; margin-top:4px; }
+  .cta-panel .star-link svg{ width:14px; height:14px; }
+
+  .community-list{ display:flex; flex-direction:column; gap:20px; }
+  .community-row{ display:flex; align-items:center; gap:14px; }
+  .community-row .c-icon{
+    width:36px; height:36px; border-radius:9px; background:rgba(255,255,255,0.04); border:1px solid var(--border-soft);
+    display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .community-row .c-icon svg{ width:17px; height:17px; }
+  .community-row .c-text .t1{ font-size:14px; font-weight:700; }
+  .community-row .c-text .t2{ font-size:12.5px; color:var(--text-faint); }
+  .community-row .go{ margin-left:auto; width:15px; height:15px; color:var(--text-faint); }
+
+  @media (max-width:1000px){ .bottom-grid{ grid-template-columns:1fr; } }
+
+  /* ---------- Footer ---------- */
+  footer{ border-top:1px solid var(--border-soft); padding:26px 0; }
+  .footer-row{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .footer-brand{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:15px; }
+  .footer-brand svg{ width:24px; height:24px; }
+  .footer-mid{ color:var(--text-faint); font-size:13px; }
+  .footer-copy{ color:var(--text-faint); font-size:13px; display:flex; align-items:center; gap:10px; }
+  .footer-copy svg{ width:20px; height:20px; }
+
+  @media (max-width:640px){
+    .hero-grid{ grid-template-columns:1fr; }
+    .mockup-wrap{ order:-1; }
+    .hero h1{ font-size:32px; }
+    .container{ padding:0 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<header>
+  <div class="container nav">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" stroke="#33d17a" stroke-width="1.6" fill="rgba(51,209,122,0.08)"/>
+        <path d="M12 8c-1.6 0-2.4 1.2-2.4 2.6V16h1.4v-3.6h2V16h1.4v-5.4C14.4 9.2 13.6 8 12 8z" fill="#33d17a"/>
+        <circle cx="10.6" cy="9.6" r=".55" fill="#33d17a"/>
+        <circle cx="13.4" cy="9.6" r=".55" fill="#33d17a"/>
+      </svg>
+      NOPAL
+    </div>
+    <nav class="nav-links">
+      <a href="#inicio">Inicio</a>
+      <a href="#caracteristicas">Características</a>
+      <a href="#dispositivos">Dispositivos</a>
+      <a href="#capturas">Capturas</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#documentacion">Documentación</a>
+    </nav>
+    <div class="nav-right">
+      <a class="btn btn-outline btn-sm" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-1.04-.01-1.88-2.78.62-3.37-1.21-3.37-1.21-.46-1.2-1.11-1.52-1.11-1.52-.91-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+        GitHub
+      </a>
+      <a class="btn btn-primary btn-sm" href="#descargar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+        Descargar
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="inicio">
+  <div class="container hero-grid">
+    <div>
+      <span class="eyebrow">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L21 7V17L12 22L3 17V7L12 2Z"/></svg>
+        CONTROL TOTAL PARA TU TALLER
+      </span>
+      <h1>El dashboard definitivo<br>para <span class="accent">fabricación digital</span></h1>
+      <p class="lead">Controla impresoras 3D, láseres y CNC desde una sola interfaz moderna, rápida y potente.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#descargar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+          Descargar NOPAL
+        </a>
+        <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-1.04-.01-1.88-2.78.62-3.37-1.21-3.37-1.21-.46-1.2-1.11-1.52-1.11-1.52-.91-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          Ver en GitHub
+        </a>
+      </div>
+      <div class="hero-checks">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Código abierto</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Multi plataforma</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Actualizaciones frecuentes</span>
+      </div>
+    </div>
+
+    <div class="mockup-wrap">
+      <div class="mockup">
+        <div class="mockup-topbar">
+          <span class="mockup-dot"></span><span class="mockup-dot"></span><span class="mockup-dot"></span>
+          <span class="mockup-title">NOPAL · Ender 3 V2</span>
+        </div>
+        <div class="mockup-body">
+          <div class="mockup-sidebar">
+            <div class="ico active"></div>
+            <div class="ico"></div>
+            <div class="ico"></div>
+            <div class="ico"></div>
+            <div class="ico"></div>
+          </div>
+          <div class="mockup-main">
+            <div class="mockup-panel">
+              <div class="ph-line w60"></div>
+              <div class="ph-line w40"></div>
+            </div>
+            <div class="mockup-boat">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 14l1.5 5.5C6 20.7 7 21 8 21h8c1 0 2-.3 2.5-1.5L20 14H4z" opacity=".85"/><path d="M6 13V4h2v9M11 13V6h2v7M16 13V8h2v5" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>
+            </div>
+            <div class="mockup-panel">
+              <div class="ph-line w60"></div>
+              <div class="ph-line w40"></div>
+            </div>
+          </div>
+          <div class="mockup-side">
+            <div class="mockup-panel">
+              <div class="ph-line w60"></div>
+              <div class="mockup-bar"><span></span></div>
+            </div>
+            <div class="mockup-panel">
+              <div class="ph-line w40"></div>
+              <div class="mockup-bar"><span style="width:45%"></span></div>
+            </div>
+            <div class="mockup-graph">
+              <svg viewBox="0 0 200 70" preserveAspectRatio="none">
+                <polyline points="0,55 25,50 50,40 75,42 100,25 125,30 150,15 175,18 200,10" fill="none" stroke="#33d17a" stroke-width="2"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ROW ============ -->
+<section class="features" id="caracteristicas">
+  <div class="container">
+    <div class="features-card">
+      <div class="feature">
+        <div class="f-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 11-14h-7l1-6z"/></svg></div>
+        <h3>En tiempo real</h3>
+        <p>Monitorea y controla todo en tiempo real. Sin recargas, sin demoras.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c-1.5 0-2.3 1.1-2.3 2.4V13h1.3v-6h2v6h1.3V5.4C14.3 4.1 13.5 3 12 3zM9 13v6a3 3 0 003 3 3 3 0 003-3v-6"/></svg></div>
+        <h3>Multi dispositivo</h3>
+        <p>Impresoras 3D, láseres y CNC. Un solo dashboard para todos tus equipos.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg></div>
+        <h3>Acceso remoto</h3>
+        <p>Controla desde tu red local o desde cualquier lugar del mundo.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h1.5c1.9 0 3.5-1.6 3.5-3.5C20 6.9 16.4 2 12 2z"/><circle cx="7" cy="10" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="9" r="1.2" fill="currentColor" stroke="none"/></svg></div>
+        <h3>Personalizable</h3>
+        <p>Temas, colores y diseños hechos para que NOPAL sea tuyo.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h3v3a2 2 0 004 0V3h3v3a2 2 0 000 4h-3v3a2 2 0 01-4 0v-3H9a2 2 0 010-4h0z"/></svg></div>
+        <h3>Extensible</h3>
+        <p>Macros, plugins y API abierta. NOPAL crece contigo.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MACHINE COMPATIBILITY ============ -->
+<section class="machine-compatibility" id="dispositivos">
+  <div class="container">
+    <div class="compatibility-shell">
+
+      <div class="compatibility-header">
+        <span class="compatibility-badge">COMPATIBLE CON</span>
+        <h2>Todas tus <span>máquinas</span>, en un solo lugar</h2>
+      </div>
+
+      <div class="machine-grid">
+
+        <article class="machine-card machine-card--printer">
+          <div class="machine-image-slot">
+            <img src="assets/img/verde.png" alt="Impresora 3D con NOPAL">
+          </div>
+          <div class="machine-content">
+            <h3>IMPRESORAS 3D</h3>
+            <ul>
+              <li><span class="check">✓</span><span>Klipper, Marlin y RepRap</span></li>
+              <li><span class="check">✓</span><span>Control de temperatura</span></li>
+              <li><span class="check">✓</span><span>Macros personalizadas</span></li>
+              <li><span class="check">✓</span><span>Timelapse y gráficas</span></li>
+            </ul>
+            <div class="machine-card-footer">
+              <button type="button" class="machine-info-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5h.01M11.25 11h1.25v5h1"/></svg>
+                Más información
+              </button>
+              <button type="button" class="machine-arrow" aria-label="Ver más sobre impresoras 3D">›</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="machine-card machine-card--laser">
+          <div class="machine-image-slot">
+            <img src="assets/img/purple.png" alt="Láser NOPAL">
+          </div>
+          <div class="machine-content">
+            <h3>LÁSERES</h3>
+            <ul>
+              <li><span class="check">✓</span><span>GRBL, LightBurn y más</span></li>
+              <li><span class="check">✓</span><span>Vista previa de trabajos</span></li>
+              <li><span class="check">✓</span><span>Control de potencia</span></li>
+              <li><span class="check">✓</span><span>Colas de trabajos</span></li>
+            </ul>
+            <div class="machine-card-footer">
+              <button type="button" class="machine-info-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5h.01M11.25 11h1.25v5h1"/></svg>
+                Más información
+              </button>
+              <button type="button" class="machine-arrow" aria-label="Ver más sobre láseres">›</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="machine-card machine-card--cnc">
+          <div class="machine-image-slot">
+            <img src="assets/img/cncespera.png" alt="CNC con NOPAL">
+          </div>
+          <div class="machine-content">
+            <h3>CNC</h3>
+            <ul>
+              <li><span class="check">✓</span><span>GRBL, CNCjs y FluidNC</span></li>
+              <li><span class="check">✓</span><span>Control de ejes (Jog)</span></li>
+              <li><span class="check">✓</span><span>Macros y sondas</span></li>
+              <li><span class="check">✓</span><span>Work offset y herramientas</span></li>
+            </ul>
+            <div class="machine-card-footer">
+              <button type="button" class="machine-info-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5h.01M11.25 11h1.25v5h1"/></svg>
+                Más información
+              </button>
+              <button type="button" class="machine-arrow" aria-label="Ver más sobre CNC">›</button>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INTERFACE ============ -->
+<section class="interface" id="capturas">
+  <div class="container interface-grid">
+    <div>
+      <span class="eyebrow">INTERFAZ MODERNA</span>
+      <div class="section-head left">
+        <h2>Diseñada para ser <span class="accent">potente</span> y fácil de usar</h2>
+        <p>NOPAL combina una interfaz moderna con funciones avanzadas para que tengas el control total de tu taller.</p>
+      </div>
+      <ul class="interface-list">
+        <li><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Paneles personalizables</li>
+        <li><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Gráficas en tiempo real</li>
+        <li><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Consola integrada</li>
+        <li><span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Gestión avanzada de archivos</li>
+      </ul>
+    </div>
+
+    <div class="stack">
+      <div class="stack-card stack-a">
+        <div class="mockup-topbar"><span class="mockup-dot"></span><span class="mockup-dot"></span></div>
+        <div class="mini-line" style="width:70%"></div>
+        <div class="mini-line" style="width:50%"></div>
+        <div class="mini-panel"><div class="mini-line" style="width:60%;margin:0 0 6px"></div><div class="mini-line" style="width:40%;margin:0"></div></div>
+        <div class="mini-panel"><div class="mini-line" style="width:80%;margin:0 0 6px"></div><div class="mini-line" style="width:30%;margin:0"></div></div>
+        <div class="mini-panel"><div class="mini-line" style="width:55%;margin:0"></div></div>
+      </div>
+      <div class="stack-card stack-b">
+        <div class="mockup-topbar"><span class="mockup-dot"></span><span class="mockup-dot"></span><span class="mockup-dot"></span><span class="mockup-title">Temperaturas</span></div>
+        <div class="mini-boat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 14l1.5 5.5C6 20.7 7 21 8 21h8c1 0 2-.3 2.5-1.5L20 14H4z" opacity=".85"/><path d="M6 13V4h2v9M11 13V6h2v7M16 13V8h2v5" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>
+        </div>
+        <div class="mini-panel"><div class="mini-line" style="width:65%;margin:0 0 6px"></div><div class="mini-line" style="width:35%;margin:0"></div></div>
+        <div class="mini-graph">
+          <svg viewBox="0 0 200 70" preserveAspectRatio="none">
+            <polyline points="0,50 20,45 40,48 60,30 80,35 100,20 120,25 140,15 160,20 180,10 200,14" fill="none" stroke="#33d17a" stroke-width="2"/>
+            <polyline points="0,60 20,58 40,55 60,52 80,50 100,47 120,45 140,42 160,40 180,38 200,36" fill="none" stroke="#ffb648" stroke-width="2" opacity=".7"/>
+          </svg>
+        </div>
+      </div>
+      <div class="stack-card stack-c">
+        <div class="mockup-topbar"><span class="mockup-dot"></span><span class="mockup-title">Consola</span></div>
+        <div class="mini-line" style="width:80%"></div>
+        <div class="mini-line" style="width:60%"></div>
+        <div class="mini-line" style="width:70%"></div>
+        <div class="mini-line" style="width:45%"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPARE TABLE ============ -->
+<section class="compare">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">¿POR QUÉ NOPAL?</span>
+      <h2>Más que un simple dashboard</h2>
+    </div>
+
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Características</th>
+            <th class="nopal-col">NOPAL</th>
+            <th>Mainsail</th>
+            <th>Fluidd</th>
+            <th>OctoPrint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Impresoras 3D</td>
+            <td class="nopal-col yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>Láser (GRBL/LiteBurn)</td>
+            <td class="nopal-col yes">✓</td>
+            <td class="no">✕</td>
+            <td class="no">✕</td>
+            <td class="no">✕</td>
+          </tr>
+          <tr>
+            <td>CNC (GRBL/FluidNC)</td>
+            <td class="nopal-col yes">✓</td>
+            <td class="no">✕</td>
+            <td class="no">✕</td>
+            <td class="no">✕</td>
+          </tr>
+          <tr>
+            <td>Temas personalizables</td>
+            <td class="nopal-col yes">✓</td>
+            <td class="partial">Limitado</td>
+            <td class="partial">Limitado</td>
+            <td class="partial">Limitado</td>
+          </tr>
+          <tr>
+            <td>Acceso remoto</td>
+            <td class="nopal-col yes">✓</td>
+            <td class="partial">Limitado</td>
+            <td class="partial">Limitado</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>Macros y automatizaciones</td>
+            <td class="nopal-col yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="partial">Limitado</td>
+          </tr>
+          <tr>
+            <td>Código abierto</td>
+            <td class="nopal-col yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ROADMAP / CTA / COMMUNITY ============ -->
+<section class="bottom" id="roadmap">
+  <div class="container bottom-grid">
+    <div class="panel">
+      <span class="eyebrow">ROADMAP</span>
+      <h3>Lo que viene</h3>
+      <div class="roadmap-list">
+        <div class="roadmap-row done">
+          <span class="q">2024 Q4</span><span class="label">Control de impresoras 3D</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div class="roadmap-row done">
+          <span class="q">2025 Q1</span><span class="label">Soporte para láseres</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div class="roadmap-row done">
+          <span class="q">2025 Q2</span><span class="label">Soporte para CNC</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div class="roadmap-row done">
+          <span class="q">2025 Q3</span><span class="label">Temas y personalización avanzada</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div class="roadmap-row pending">
+          <span class="q">2025 Q4</span><span class="label">Plugins y API</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+        </div>
+        <div class="roadmap-row pending">
+          <span class="q">2026</span><span class="label">Nube y sincronización</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel cta-panel" id="descargar">
+      <svg class="logo-big" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" stroke="#33d17a" stroke-width="1.3" fill="rgba(51,209,122,0.1)"/>
+        <path d="M12 8c-1.6 0-2.4 1.2-2.4 2.6V16h1.4v-3.6h2V16h1.4v-5.4C14.4 9.2 13.6 8 12 8z" fill="#33d17a"/>
+        <circle cx="10.6" cy="9.6" r=".55" fill="#33d17a"/>
+        <circle cx="13.4" cy="9.6" r=".55" fill="#33d17a"/>
+      </svg>
+      <h3>NOPAL</h3>
+      <p>El futuro del control de fabricación digital.</p>
+      <a class="btn btn-primary btn-block" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+        Descargar ahora
+      </a>
+      <a class="star-link" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Star en GitHub
+      </a>
+    </div>
+
+    <div class="panel" id="documentacion">
+      <span class="eyebrow">ÚNETE A LA COMUNIDAD</span>
+      <div class="community-list" style="margin-top:14px;">
+        <div class="community-row">
+          <div class="c-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor" style="color:var(--text)"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-1.04-.01-1.88-2.78.62-3.37-1.21-3.37-1.21-.46-1.2-1.11-1.52-1.11-1.52-.91-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          </div>
+          <div class="c-text">
+            <div class="t1">GitHub</div>
+            <div class="t2">github.com/charlymigenes-ux/nopal</div>
+          </div>
+          <svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="community-row">
+          <div class="c-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor" style="color:#8ea1e1"><path d="M20 6.5a17 17 0 00-4.2-1.3l-.2.4a13 13 0 014 1.5A16 16 0 003 8.6c-.7 3.5-1 7-.7 10.5A16 16 0 007 21.3l.9-1.3a10 10 0 01-1.7-.8l.4-.3c3.3 1.5 6.9 1.5 10.2 0l.4.3c-.5.3-1.1.6-1.7.8l.9 1.3a16 16 0 004.7-2.2c.4-4-.6-7.4-2.3-10.5-1-.6-2-1-3.1-1.3zM9.5 15.3c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.7.8 1.6 1.8c0 1-.7 1.8-1.6 1.8zm5 0c-.9 0-1.6-.8-1.6-1.8s.7-1.8 1.6-1.8 1.6.8 1.6 1.8-.7 1.8-1.6 1.8z"/></svg>
+          </div>
+          <div class="c-text">
+            <div class="t1">Discord</div>
+            <div class="t2">Únete a nuestra comunidad</div>
+          </div>
+          <svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="community-row">
+          <div class="c-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+          </div>
+          <div class="c-text">
+            <div class="t1">Documentación</div>
+            <div class="t2">docs.nopalos.app</div>
+          </div>
+          <svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="community-row">
+          <div class="c-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor" style="color:var(--text)"><path d="M4 4l7.4 9.2L4.2 20H6l6-6.8L17 20h3l-7.7-9.6L19.6 4H18l-5.6 6.3L8 4H4z"/></svg>
+          </div>
+          <div class="c-text">
+            <div class="t1">Twitter / X</div>
+            <div class="t2">@nopalos_app</div>
+          </div>
+          <svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="container footer-row">
+    <div class="footer-brand">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" stroke="#33d17a" stroke-width="1.6" fill="rgba(51,209,122,0.08)"/>
+        <path d="M12 8c-1.6 0-2.4 1.2-2.4 2.6V16h1.4v-3.6h2V16h1.4v-5.4C14.4 9.2 13.6 8 12 8z" fill="#33d17a"/>
+      </svg>
+      NOPAL
+    </div>
+    <div class="footer-mid">Hecho con ❤️ por la comunidad para la comunidad.</div>
+    <div class="footer-copy">
+      © 2025 NOPAL — Licencia GPLv3
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" stroke="#33d17a" stroke-width="1.3" fill="rgba(51,209,122,0.08)"/>
+        <path d="M12 8c-1.6 0-2.4 1.2-2.4 2.6V16h1.4v-3.6h2V16h1.4v-5.4C14.4 9.2 13.6 8 12 8z" fill="#33d17a"/>
+      </svg>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
