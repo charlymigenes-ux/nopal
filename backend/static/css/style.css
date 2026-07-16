@@ -12209,6 +12209,53 @@ body.green .option-switch {
     gap: 6px 14px;
 }
 
+/* Composición térmica del mosaico 3D: la ficha conserva su tamaño y su
+   distribución, pero el color deja de ser una capa plana. El resplandor se
+   concentra detrás de las ondas y se desvanece hacia los cuatro bordes. */
+.machines-columns .printers-grid:not(.list-view) .printer-card-type-3d.online:not(.error) {
+    background: linear-gradient(160deg, var(--panel-bg) 0%, var(--card-bg) 100%);
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-card-type-3d .printer-thermal-layer {
+    inset: 0;
+    opacity: 1;
+    background:
+        radial-gradient(
+            ellipse 92% 42% at 50% 58%,
+            color-mix(in srgb, var(--thermal-color) 24%, transparent) 0%,
+            color-mix(in srgb, var(--thermal-color) 10%, transparent) 45%,
+            transparent 76%
+        );
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-card-type-3d .printer-thermal-waves {
+    position: absolute;
+    top: 35%;
+    left: -5%;
+    width: 110%;
+    height: 34%;
+    opacity: calc(var(--thermal-strength, 0.28) + 0.28);
+    filter:
+        drop-shadow(0 0 4px currentColor)
+        drop-shadow(0 0 11px currentColor)
+        drop-shadow(0 0 20px var(--thermal-color));
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-card-type-3d .printer-status-line {
+    width: max-content;
+    max-width: 100%;
+    padding: 5px 10px;
+    border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 9%, transparent);
+    backdrop-filter: blur(4px);
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-card-type-3d .printer-temps {
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--border) 72%, transparent);
+    background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--card-bg) 28%, transparent));
+}
+
 .machines-columns .printers-grid:not(.list-view) .printer-card-top {
     grid-area: top;
 }
