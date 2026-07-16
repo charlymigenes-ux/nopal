@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "shape-creator",
+  "name": "Creador de formas",
+  "version": "1.1.1",
+  "publisher": "NOPAL Labs",
+  "description": "Editor vectorial paramétrico para láser y CNC.",
+  "category": "Diseño",
+  "entry": {
+    "section": "shape-creator",
+    "script": "/static/plugins/shape-creator/shape-creator.js",
+    "style": "/static/plugins/shape-creator/shape-creator.css"
+  },
+  "permissions": [
+    "library.write",
+    "devices.read",
+    "jobs.create"
+  ],
+  "compatibility": ["laser", "cnc"]
+}

@@ -185,6 +185,25 @@ async def pricing_quotes_save_endpoint(quote: str = Form(...), user: dict = Depe
     return save_quote(quote_dict)
 
 
+@router.put("/api/pricing/quotes/{quote_id}")
+async def pricing_quotes_update_endpoint(quote_id: str, quote: str = Form(...), user: dict = Depends(require_auth)):
+    try:
+        quote_dict = json.loads(quote)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="El campo 'quote' no es un JSON válido")
+    updated = update_quote(quote_id, quote_dict)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    return updated
+
+
+@router.delete("/api/pricing/quotes/{quote_id}")
+async def pricing_quotes_delete_endpoint(quote_id: str, user: dict = Depends(require_auth)):
+    if not remove_quote(quote_id):
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    return {"success": True}
+
+
 @router.post("/api/pricing/quotes/{quote_id}/status")
 async def pricing_quotes_status_endpoint(quote_id: str, status: str = Form(...), user: dict = Depends(require_auth)):
     """'Enviar cotización' desde la UI solo llama esto con status='sent' —
