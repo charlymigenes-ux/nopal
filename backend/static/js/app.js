@@ -271,6 +271,53 @@ checkAuth().then(user => {
 });
 setInterval(() => { if (currentAuthUser) loadTopbarNotifications(); }, 10000);
 
+function installModernModelsLibraryMarkup() {
+    const section = document.getElementById('models-section');
+    if (!section) return;
+    section.innerHTML = `
+        <main class="main-content gcode-library-main models-modern-main">
+            <div class="gcode-library-shell models-library-shell">
+                <section class="gcode-library-card models-library-card">
+                    <header class="gcode-library-header">
+                        <div><span class="library-page-eyebrow">BIBLIOTECA NOPAL</span><h1>Impresión 3D</h1><p>Explora, organiza y gestiona tus modelos y archivos listos para imprimir.</p></div>
+                        <div class="gcode-library-actions">
+                            <div class="upload-wrapper"><button id="upload-btn-models" class="gcode-primary-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Subir archivo</span></button><input id="upload-input-models" type="file" accept=".stl,.3mf,.obj,.gcode,.gc,.gco" multiple hidden></div>
+                            <button id="create-folder-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span>Nueva carpeta</span></button>
+                            <button id="reload-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg><span>Actualizar</span></button>
+                            <button id="settings-btn-models" class="gcode-icon-action" type="button" title="Más opciones"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
+                        </div>
+                    </header>
+                    <div class="gcode-navigation-row">
+                        <div class="gcode-navigation-buttons"><button id="models-nav-back" type="button" title="Atrás"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button><button id="models-nav-forward" type="button" title="Adelante"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button><button id="models-nav-up" type="button" title="Subir nivel"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg></button><button id="models-nav-home" type="button" title="Inicio"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg></button></div>
+                        <nav class="gcode-breadcrumbs" id="models-breadcrumb" aria-label="Ruta actual"></nav><span id="models-disk-free" class="gcode-disk-free">—</span>
+                    </div>
+                    <div class="gcode-library-toolbar">
+                        <label class="gcode-library-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.7" y2="16.7"/></svg><input id="search-models" type="search" placeholder="Buscar modelos..."><kbd>Ctrl K</kbd></label>
+                        <div class="gcode-toolbar-spacer"></div>
+                        <label class="gcode-select-control"><span>Ordenar por:</span><select id="models-sort-select"><option value="name-asc">Nombre (A-Z)</option><option value="name-desc">Nombre (Z-A)</option><option value="date-desc">Más recientes</option><option value="date-asc">Más antiguos</option><option value="size-desc">Mayor tamaño</option></select></label>
+                        <label class="gcode-select-control gcode-filter-control"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10m-7 7h4"/></svg><select id="models-filter-select"><option value="all">Filtros</option><option value="favorites">Favoritos</option><option value="recent">Recientes</option><option value="models">Modelos 3D</option><option value="gcode">G-code</option></select></label>
+                        <div class="gcode-view-switch"><button id="view-grid-full" type="button" data-view="grid" title="Vista de cuadrícula"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button><button id="view-list-full" class="active" type="button" data-view="list" title="Vista de lista"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button></div>
+                    </div>
+                    <div class="gcode-browser-layout">
+                        <aside class="gcode-inner-sidebar"><section><div class="gcode-sidebar-heading"><strong>★ Favoritos</strong><button id="models-favorites-all" type="button">Ver todos</button></div><div id="models-favorites-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◷ Recientes</strong><button id="models-recents-all" type="button">Ver todos</button></div><div id="models-recents-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◇ Formatos</strong></div><div id="models-tags-list" class="gcode-sidebar-list"></div></section></aside>
+                        <div class="gcode-browser-content"><div id="models-folder-strip" class="gcode-folder-strip"></div><div class="bulk-actions-bar" id="models-bulk-bar" hidden><span id="models-bulk-count">0</span><button type="button" class="btn-file-action" id="models-bulk-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="models-bulk-delete-btn">Eliminar</button><button type="button" class="bulk-actions-clear-btn" id="models-bulk-clear-btn">Cancelar selección</button></div><div id="models-full" class="models-table-wrapper gcode-modern-table models-modern-table"></div><footer class="gcode-pagination" id="models-pagination"></footer></div>
+                    </div>
+                </section>
+                <aside class="models-preview-card gcode-modern-preview models-modern-preview"><div class="preview-card-inner">
+                    <div class="preview-card-header"><div><span class="preview-label">VISTA PREVIA DEL MODELO</span></div><button type="button" class="preview-expand-btn" id="preview-expand-btn" title="Ampliar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button></div>
+                    <div class="gcode-preview-name-row"><h2 id="preview-filename">Selecciona un modelo</h2><button type="button" class="preview-favorite-btn" id="preview-favorite-btn" title="Favorito">☆</button></div><p class="models-preview-description">Vista interactiva para modelos 3D y trayectorias G-code.</p>
+                    <div class="preview-meta-grid"><div><span>Tipo</span><strong id="preview-type">—</strong><span id="preview-type-pill" hidden></span></div><div><span>Tamaño</span><strong id="preview-size">—</strong></div><div><span>Modificado</span><strong id="preview-date">—</strong></div></div>
+                    <div class="preview-file-actions"><button type="button" class="btn-file-action btn-file-action-accent" id="preview-send-printer-btn" hidden>Enviar a impresora</button><button type="button" class="btn-file-action" id="preview-download-btn">Descargar</button><button type="button" class="btn-file-action" id="preview-rename-btn">Renombrar</button><button type="button" class="btn-file-action" id="preview-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="preview-delete-btn">Eliminar</button></div>
+                    <div class="models-preview-stage" id="model-preview-box"><div class="preview-image" id="preview-image"><div class="preview-image-placeholder">3D</div></div></div>
+                    <div class="gcode-preview-insights"><div><span>Formato</span><strong id="models-preview-format">—</strong></div><div><span>Estado</span><strong id="models-preview-status">Listo</strong></div></div>
+                    <button type="button" class="btn-file-action preview-goto-printer-btn models-goto-printer" id="preview-goto-printer-btn" hidden>Ir a la impresora</button>
+                </div></aside>
+            </div>
+        </main>`;
+}
+
+installModernModelsLibraryMarkup();
+
 const modelsGrid = document.getElementById('models');
 const printersGrid = document.getElementById('printers-grid');
 const lasersGrid = document.getElementById('lasers-grid');
@@ -5084,6 +5131,8 @@ if (searchGcodeInput) {
 
 if (searchModelsInput) {
     searchModelsInput.addEventListener('input', event => {
+        modelsTagFilter = '';
+        modelsPage = 1;
         renderModelsFullPage(event.target.value);
     });
 }
@@ -12124,6 +12173,16 @@ if (sidebarHelpBtn) {
 
 let currentModelsPath = '';
 let currentModelsData = { folders: [], files: [] };
+let modelsSearchQuery = '';
+let modelsSortMode = localStorage.getItem('nopalModelsSort') || 'name-asc';
+let modelsFilterMode = 'all';
+let modelsTagFilter = '';
+let modelsViewMode = localStorage.getItem('nopalModelsView') || 'list';
+let modelsPage = 1;
+let modelsPathHistory = [''];
+let modelsPathHistoryIndex = 0;
+const MODELS_PAGE_SIZE = 8;
+const MODELS_RECENTS_KEY = 'nopalModelsRecents';
 
 async function loadModelsFolder(path = currentModelsPath) {
     currentModelsPath = path;
@@ -12286,6 +12345,202 @@ function selectPreviewModel(model, rerender = true) {
     }
 }
 
+function modelLibrarySnapshot(model) {
+    return { id: model.id, name: model.name, path: stripSectionPrefix(model.id, 'model'), extension: model.extension || '', modified: model.modified || 0 };
+}
+
+function rememberRecentModel(model) {
+    const recent = readGcodeLibraryItems(MODELS_RECENTS_KEY).filter(item => item.id !== model.id);
+    recent.unshift(modelLibrarySnapshot(model));
+    writeGcodeLibraryItems(MODELS_RECENTS_KEY, recent.slice(0, 12));
+}
+
+function recordModelsPath(path) {
+    if (modelsPathHistory[modelsPathHistoryIndex] === path) return;
+    modelsPathHistory = modelsPathHistory.slice(0, modelsPathHistoryIndex + 1);
+    modelsPathHistory.push(path);
+    modelsPathHistoryIndex = modelsPathHistory.length - 1;
+}
+
+async function loadModelsFolder(path = currentModelsPath, options = {}) {
+    const normalizedPath = String(path || '').replace(/^\/+|\/+$/g, '');
+    if (options.recordHistory !== false) recordModelsPath(normalizedPath);
+    currentModelsPath = normalizedPath;
+    modelsPage = 1;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(normalizedPath)}&type=model`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        currentModelsData = await response.json();
+    } catch (error) {
+        console.error(error);
+        currentModelsData = { folders: [], files: [] };
+    }
+    renderModelsBreadcrumb();
+    renderModelsFullPage();
+}
+
+function renderModelsBreadcrumb() {
+    const breadcrumb = document.getElementById('models-breadcrumb');
+    if (!breadcrumb) return;
+    const parts = currentModelsPath.split('/').filter(Boolean);
+    const segments = [{ label: 'Raíz', path: '' }, { label: 'Biblioteca', path: '' }, { label: 'Impresión 3D', path: '' }];
+    parts.forEach((part, index) => segments.push({ label: part, path: parts.slice(0, index + 1).join('/') }));
+    breadcrumb.innerHTML = segments.map(segment => `<button type="button" class="breadcrumb-segment" data-models-path="${escapeHtml(segment.path)}">${escapeHtml(segment.label)}</button>`).join('');
+    breadcrumb.querySelectorAll('[data-models-path]').forEach(button => button.addEventListener('click', () => loadModelsFolder(button.dataset.modelsPath)));
+    document.getElementById('models-nav-back')?.toggleAttribute('disabled', modelsPathHistoryIndex <= 0);
+    document.getElementById('models-nav-forward')?.toggleAttribute('disabled', modelsPathHistoryIndex >= modelsPathHistory.length - 1);
+    document.getElementById('models-nav-up')?.toggleAttribute('disabled', !currentModelsPath);
+    const disk = document.getElementById('models-disk-free');
+    if (disk) disk.textContent = `${currentModelsData.folders.length} carpetas · ${currentModelsData.files.length} archivos`;
+}
+
+function renderModelsFolderStrip(folders) {
+    const strip = document.getElementById('models-folder-strip');
+    if (!strip) return;
+    strip.hidden = !folders.length;
+    strip.innerHTML = folders.map(folder => `<button type="button" class="gcode-folder-card" data-model-folder="${escapeHtml(folder.path)}"><svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg><span><strong>${escapeHtml(folder.name)}</strong><small>${Number(folder.file_count || 0).toLocaleString()} elementos</small></span><span class="gcode-folder-menu">›</span></button>`).join('');
+    strip.querySelectorAll('[data-model-folder]').forEach(button => button.addEventListener('click', () => loadModelsFolder(button.dataset.modelFolder)));
+}
+
+function getFilteredModelsFiles() {
+    const query = modelsSearchQuery.trim().toLowerCase();
+    const favorites = getFavoriteModelIds();
+    const recentIds = new Set(readGcodeLibraryItems(MODELS_RECENTS_KEY).map(item => item.id));
+    return currentModelsData.files.filter(model => {
+        const extension = String(model.extension || '').replace('.', '').toLowerCase();
+        if (query && !String(model.name || '').toLowerCase().includes(query)) return false;
+        if (modelsTagFilter && extension !== modelsTagFilter) return false;
+        if (modelsFilterMode === 'favorites' && !favorites.has(model.id)) return false;
+        if (modelsFilterMode === 'recent' && !recentIds.has(model.id)) return false;
+        if (modelsFilterMode === 'gcode' && !isGcodeFile(model)) return false;
+        if (modelsFilterMode === 'models' && isGcodeFile(model)) return false;
+        return true;
+    }).sort((a, b) => {
+        if (modelsSortMode === 'name-desc') return String(b.name).localeCompare(String(a.name), undefined, { sensitivity: 'base' });
+        if (modelsSortMode === 'date-desc') return Number(b.modified || 0) - Number(a.modified || 0);
+        if (modelsSortMode === 'date-asc') return Number(a.modified || 0) - Number(b.modified || 0);
+        if (modelsSortMode === 'size-desc') return Number(b.size || 0) - Number(a.size || 0);
+        return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+    });
+}
+
+function renderModelsSidebar() {
+    const favorites = getFavoriteModelIds();
+    const recent = readGcodeLibraryItems(MODELS_RECENTS_KEY);
+    const favoriteModels = currentModelsData.files.filter(model => favorites.has(model.id));
+    const itemHtml = item => `<button type="button" class="gcode-sidebar-item" data-model-library-item="${escapeHtml(item.id)}"><span class="gcode-sidebar-icon">◇</span><span>${escapeHtml(item.name)}</span><b>${escapeHtml(String(item.extension || '3D').replace('.', '').toUpperCase())}</b></button>`;
+    const favoriteList = document.getElementById('models-favorites-list');
+    const recentList = document.getElementById('models-recents-list');
+    if (favoriteList) favoriteList.innerHTML = favoriteModels.slice(0, 4).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin favoritos</span>';
+    if (recentList) recentList.innerHTML = recent.slice(0, 5).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin archivos recientes</span>';
+    const formats = new Map();
+    currentModelsData.files.forEach(model => {
+        const extension = String(model.extension || 'archivo').replace('.', '').toUpperCase();
+        formats.set(extension, (formats.get(extension) || 0) + 1);
+    });
+    const tags = document.getElementById('models-tags-list');
+    if (tags) tags.innerHTML = Array.from(formats.entries()).map(([format, count]) => `<button type="button" class="gcode-sidebar-item" data-model-format="${escapeHtml(format.toLowerCase())}"><span class="gcode-sidebar-icon">◆</span><span>${escapeHtml(format)}</span><b>${count}</b></button>`).join('') || '<span class="gcode-sidebar-empty">Sin formatos</span>';
+    document.querySelectorAll('[data-model-library-item]').forEach(button => button.addEventListener('click', async () => {
+        const snapshot = [...favoriteModels.map(modelLibrarySnapshot), ...recent].find(item => item.id === button.dataset.modelLibraryItem);
+        if (!snapshot) return;
+        const parent = getGcodePathParent(snapshot.path);
+        if (parent !== currentModelsPath) await loadModelsFolder(parent);
+        const model = currentModelsData.files.find(item => item.id === snapshot.id);
+        if (model) selectPreviewModel(model);
+    }));
+    tags?.querySelectorAll('[data-model-format]').forEach(button => button.addEventListener('click', () => {
+        modelsTagFilter = button.dataset.modelFormat;
+        modelsSearchQuery = '';
+        if (searchModelsInput) searchModelsInput.value = '';
+        modelsPage = 1;
+        renderModelsFullPage();
+    }));
+}
+
+function renderModelsPagination(totalItems, totalPages) {
+    const pagination = document.getElementById('models-pagination');
+    if (!pagination) return;
+    if (!totalItems) { pagination.innerHTML = '<span>0 resultados</span>'; return; }
+    const start = (modelsPage - 1) * MODELS_PAGE_SIZE + 1;
+    const end = Math.min(modelsPage * MODELS_PAGE_SIZE, totalItems);
+    const pages = Array.from({ length: totalPages }, (_, index) => index + 1).filter(page => page === 1 || page === totalPages || Math.abs(page - modelsPage) <= 1);
+    let previous = 0;
+    const controls = pages.map(page => { const gap = previous && page - previous > 1 ? '<span>…</span>' : ''; previous = page; return `${gap}<button type="button" class="${page === modelsPage ? 'active' : ''}" data-models-page="${page}">${page}</button>`; }).join('');
+    pagination.innerHTML = `<span>Mostrando ${start} a ${end} de ${totalItems} resultados</span><div class="gcode-pagination-pages"><button type="button" data-models-page="${modelsPage - 1}" ${modelsPage === 1 ? 'disabled' : ''}>‹</button>${controls}<button type="button" data-models-page="${modelsPage + 1}" ${modelsPage === totalPages ? 'disabled' : ''}>›</button></div><span>${MODELS_PAGE_SIZE} por página</span>`;
+    pagination.querySelectorAll('[data-models-page]').forEach(button => button.addEventListener('click', () => { const page = Number(button.dataset.modelsPage); if (page < 1 || page > totalPages || page === modelsPage) return; modelsPage = page; renderModelsFullPage(); }));
+}
+
+function renderModelsFullPage(filterQuery = modelsSearchQuery) {
+    const container = document.getElementById('models-full');
+    if (!container) return;
+    modelsSearchQuery = filterQuery || '';
+    const folderQuery = modelsSearchQuery.toLowerCase();
+    renderModelsFolderStrip(currentModelsData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    renderModelsSidebar();
+    renderModelsBreadcrumb();
+    const files = getFilteredModelsFiles();
+    const totalPages = Math.max(1, Math.ceil(files.length / MODELS_PAGE_SIZE));
+    modelsPage = Math.min(modelsPage, totalPages);
+    const pageFiles = files.slice((modelsPage - 1) * MODELS_PAGE_SIZE, modelsPage * MODELS_PAGE_SIZE);
+    container.classList.toggle('is-grid', modelsViewMode === 'grid');
+    document.getElementById('view-list-full')?.classList.toggle('active', modelsViewMode === 'list');
+    document.getElementById('view-grid-full')?.classList.toggle('active', modelsViewMode === 'grid');
+    renderModelsPagination(files.length, totalPages);
+    if (!files.length) { container.innerHTML = `<div class="empty-state">${t('noFilesFound')}</div>`; return; }
+    if (!selectedModelId || !files.some(model => model.id === selectedModelId)) selectedModelId = pageFiles[0]?.id || null;
+    const rows = pageFiles.map(model => {
+        const extension = String(model.extension || '').replace('.', '').toUpperCase() || '—';
+        const checked = getBulkSelection('model').has(model.id) ? 'checked' : '';
+        return `<tr class="${model.id === selectedModelId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}"><td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td><td class="model-name"><span class="model-format-icon">${escapeHtml(extension)}</span><strong>${escapeHtml(model.name)}</strong>${getFavoriteModelIds().has(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td><td>${isGcodeFile(model) ? 'G-code' : 'Modelo 3D'}</td><td><span class="tag-pill">${escapeHtml(extension)}</span></td><td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td><td>${escapeHtml(model.dimensions || '—')}</td><td><span class="gcode-status-ok" title="Disponible">✓</span></td><td><button type="button" class="gcode-row-menu" data-model-row-menu>•••</button></td></tr>`;
+    }).join('');
+    container.innerHTML = `<table class="models-table"><thead><tr><th class="select-col"><input type="checkbox" class="select-all-checkbox" id="models-select-all"></th><th>Nombre</th><th>Tipo</th><th>Formato</th><th>Tamaño</th><th>Modificado</th><th>Dimensiones</th><th>Estado</th><th>•••</th></tr></thead><tbody>${rows}</tbody></table>`;
+    wireBulkSelection('model', container, pageFiles);
+    container.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
+        row.addEventListener('click', event => { if (event.target.closest('.row-select-checkbox')) return; const model = currentModelsData.files.find(item => item.id === row.dataset.modelId); if (model) selectPreviewModel(model); });
+        row.querySelector('[data-model-row-menu]')?.addEventListener('click', event => { event.stopPropagation(); const model = currentModelsData.files.find(item => item.id === row.dataset.modelId); if (model) selectPreviewModel(model); });
+    });
+    const selected = files.find(model => model.id === selectedModelId);
+    if (selected) selectPreviewModel(selected, false);
+}
+
+function selectPreviewModel(model, rerender = true) {
+    if (!model) return;
+    selectedModelId = model.id;
+    rememberRecentModel(model);
+    const extension = model.extension ? model.extension.replace('.', '').toUpperCase() : '—';
+    const previewTitle = document.getElementById('preview-filename');
+    if (previewTitle) previewTitle.textContent = model.name;
+    const previewType = document.getElementById('preview-type');
+    if (previewType) previewType.textContent = extension;
+    const previewSize = document.getElementById('preview-size');
+    if (previewSize) previewSize.textContent = formatSize(model.size);
+    const previewDate = document.getElementById('preview-date');
+    if (previewDate) previewDate.textContent = formatDate(model.modified);
+    const previewFormat = document.getElementById('models-preview-format');
+    if (previewFormat) previewFormat.textContent = extension;
+    const favoriteBtn = document.getElementById('preview-favorite-btn');
+    if (favoriteBtn) { const favorite = getFavoriteModelIds().has(model.id); favoriteBtn.textContent = favorite ? '★' : '☆'; favoriteBtn.classList.toggle('active', favorite); }
+    const sendPrinterBtn = document.getElementById('preview-send-printer-btn');
+    if (sendPrinterBtn) sendPrinterBtn.hidden = !isGcodeFile(model);
+    const gotoPrinterBtn = document.getElementById('preview-goto-printer-btn');
+    if (gotoPrinterBtn) gotoPrinterBtn.hidden = false;
+    renderSelectedPreview(model);
+    if (rerender) renderModelsFullPage();
+}
+
+document.getElementById('models-nav-back')?.addEventListener('click', () => { if (modelsPathHistoryIndex <= 0) return; modelsPathHistoryIndex -= 1; loadModelsFolder(modelsPathHistory[modelsPathHistoryIndex], { recordHistory: false }); });
+document.getElementById('models-nav-forward')?.addEventListener('click', () => { if (modelsPathHistoryIndex >= modelsPathHistory.length - 1) return; modelsPathHistoryIndex += 1; loadModelsFolder(modelsPathHistory[modelsPathHistoryIndex], { recordHistory: false }); });
+document.getElementById('models-nav-up')?.addEventListener('click', () => loadModelsFolder(getGcodePathParent(currentModelsPath)));
+document.getElementById('models-nav-home')?.addEventListener('click', () => loadModelsFolder(''));
+document.getElementById('models-sort-select')?.addEventListener('change', event => { modelsSortMode = event.target.value; localStorage.setItem('nopalModelsSort', modelsSortMode); modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('models-filter-select')?.addEventListener('change', event => { modelsFilterMode = event.target.value; modelsTagFilter = ''; modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('models-favorites-all')?.addEventListener('click', () => { modelsFilterMode = 'favorites'; const select = document.getElementById('models-filter-select'); if (select) select.value = 'favorites'; modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('models-recents-all')?.addEventListener('click', () => { modelsFilterMode = 'recent'; const select = document.getElementById('models-filter-select'); if (select) select.value = 'recent'; modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('view-grid-full')?.addEventListener('click', () => { modelsViewMode = 'grid'; localStorage.setItem('nopalModelsView', modelsViewMode); renderModelsFullPage(); });
+document.getElementById('view-list-full')?.addEventListener('click', () => { modelsViewMode = 'list'; localStorage.setItem('nopalModelsView', modelsViewMode); renderModelsFullPage(); });
+const modelsSortSelect = document.getElementById('models-sort-select');
+if (modelsSortSelect) modelsSortSelect.value = modelsSortMode;
+
 const previewSendPrinterBtn = document.getElementById('preview-send-printer-btn');
 if (previewSendPrinterBtn) {
     previewSendPrinterBtn.addEventListener('click', () => {
@@ -12302,6 +12557,8 @@ if (previewFavoriteBtn) {
         if (!selectedModelId) return;
         const isFavorite = toggleFavoriteModel(selectedModelId);
         previewFavoriteBtn.classList.toggle('active', isFavorite);
+        previewFavoriteBtn.textContent = isFavorite ? '★' : '☆';
+        renderModelsFullPage();
     });
 }
 
