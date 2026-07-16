@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=254">
+    <link rel="stylesheet" href="/static/css/style.css?v=255">
 </head>
 <body>
     <div class="app-shell">
@@ -4019,10 +4019,34 @@
         </div>
     </div>
 
+    <div class="update-safety-modal" id="update-safety-modal" hidden>
+        <section class="update-safety-dialog" role="dialog" aria-modal="true" aria-labelledby="update-safety-title">
+            <div class="update-safety-icon" aria-hidden="true">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"/><path d="M12 8v5"/><path d="M12 17h.01"/></svg>
+            </div>
+            <div class="update-safety-eyebrow" data-i18n="updatesSafetyEyebrow">ACTUALIZACIÓN DEL SISTEMA</div>
+            <h2 id="update-safety-title" data-i18n="updatesSafetyTitle">Detén todas las máquinas antes de continuar</h2>
+            <p class="update-safety-intro" data-i18n="updatesSafetyBody">NOPAL se reiniciará para aplicar la actualización. Un reinicio durante un trabajo puede interrumpir el envío de comandos y dejar una máquina sin supervisión.</p>
+            <div class="update-safety-checks">
+                <div><span>01</span><strong data-i18n="updatesSafetyJobs">No hay impresiones, cortes, grabados ni trabajos CNC activos.</strong></div>
+                <div><span>02</span><strong data-i18n="updatesSafetyOutputs">El láser, husillo, aire asistido y calentadores están apagados.</strong></div>
+                <div><span>03</span><strong data-i18n="updatesSafetyIdle">Todas las máquinas están detenidas y en una posición segura.</strong></div>
+            </div>
+            <label class="update-safety-confirmation">
+                <input type="checkbox" id="update-safety-checkbox">
+                <span data-i18n="updatesSafetyConfirm">Confirmo que revisé físicamente las máquinas y es seguro reiniciar NOPAL.</span>
+            </label>
+            <div class="update-safety-actions">
+                <button type="button" class="update-safety-cancel" id="update-safety-cancel" data-i18n="updatesSafetyCancel">Cancelar</button>
+                <button type="button" class="update-safety-proceed" id="update-safety-proceed" disabled data-i18n="updatesSafetyProceed">Actualizar y reiniciar</button>
+            </div>
+        </section>
+    </div>
+
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=16"></script>
-    <script src="/static/js/app.js?v=196"></script>
+    <script src="/static/js/translations.js?v=17"></script>
+    <script src="/static/js/app.js?v=197"></script>
 </body>
 </html>

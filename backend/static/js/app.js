@@ -12170,6 +12170,63 @@ if (updatesPillWrap) {
     });
 }
 
+function confirmSafeSystemUpdate() {
+    const modal = document.getElementById('update-safety-modal');
+    const checkbox = document.getElementById('update-safety-checkbox');
+    const cancelBtn = document.getElementById('update-safety-cancel');
+    const proceedBtn = document.getElementById('update-safety-proceed');
+    if (!modal || !checkbox || !cancelBtn || !proceedBtn) return Promise.resolve(false);
+
+    modal.hidden = false;
+    checkbox.checked = false;
+    proceedBtn.disabled = true;
+    document.body.classList.add('modal-open');
+
+    return new Promise(resolve => {
+        const finish = confirmed => {
+            modal.hidden = true;
+            document.body.classList.remove('modal-open');
+            checkbox.removeEventListener('change', onCheckboxChange);
+            cancelBtn.removeEventListener('click', onCancel);
+            proceedBtn.removeEventListener('click', onProceed);
+            modal.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKeydown);
+            resolve(confirmed);
+        };
+        const onCheckboxChange = () => { proceedBtn.disabled = !checkbox.checked; };
+        const onCancel = () => finish(false);
+        const onProceed = () => { if (checkbox.checked) finish(true); };
+        const onBackdrop = event => { if (event.target === modal) finish(false); };
+        const onKeydown = event => { if (event.key === 'Escape') finish(false); };
+
+        checkbox.addEventListener('change', onCheckboxChange);
+        cancelBtn.addEventListener('click', onCancel);
+        proceedBtn.addEventListener('click', onProceed);
+        modal.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKeydown);
+        checkbox.focus();
+    });
+}
+
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function waitForNopalRestart(timeoutMs = 45000) {
+    await wait(1800);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(`/api/system/version?restartCheck=${Date.now()}`, {
+                cache: 'no-store',
+            });
+            if (response.ok) return true;
+        } catch (_error) {
+            // El corte de conexión es esperado mientras systemd levanta NOPAL.
+        }
+        await wait(1000);
+    }
+    return false;
+}
+
 const updatesApplyBtn = document.getElementById('updates-apply-btn');
 if (updatesApplyBtn) {
     updatesApplyBtn.addEventListener('click', async () => {
@@ -12177,7 +12234,7 @@ if (updatesApplyBtn) {
         const label = updatesApplyBtn.querySelector('span');
         const originalLabel = label ? label.textContent : '';
 
-        if (!(await appConfirm(t('updatesApply') + '?', t('updatesApply'), 'warning'))) return;
+        if (!(await confirmSafeSystemUpdate())) return;
 
         updatesApplyBtn.disabled = true;
         if (label) label.textContent = t('updatesApplying');
@@ -12193,11 +12250,19 @@ if (updatesApplyBtn) {
                     changelogEl.innerHTML = `
                         <div class="updates-changelog-title">${escapeHtml(t('updatesAppliedTitle'))}</div>
                         <ul>${data.commits.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
-                        <div class="updates-changelog-title" style="margin-top:8px;">${escapeHtml(t('updatesReloadHint'))}</div>
+                        <div class="updates-changelog-title" style="margin-top:8px;">${escapeHtml(data.restart_scheduled ? t('updatesRestarting') : t('updatesManualRestart'))}</div>
                     `;
                 } else {
                     changelogEl.innerHTML = `<div class="updates-changelog-title">${escapeHtml(t('updatesAlreadyCurrent'))}</div>`;
                 }
+            }
+
+            if (data.updated && data.restart_scheduled) {
+                if (label) label.textContent = t('updatesRestarting');
+                const serviceReady = await waitForNopalRestart();
+                if (!serviceReady) throw new Error(t('updatesRestartTimeout'));
+                window.location.reload();
+                return;
             }
 
             loadUpdatesStatus();

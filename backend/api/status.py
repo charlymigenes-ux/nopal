@@ -3,11 +3,20 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 from typing import Optional
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException
 
 from backend.auth_deps import require_auth, require_role
-from backend.services.klipper_service import get_system_stats, get_temperature_snapshot, set_heater_target, get_toolhead_status
+from backend.services.klipper_service import (
+    get_all_printers_status,
+    get_system_stats,
+    get_temperature_snapshot,
+    get_toolhead_status,
+    set_heater_target,
+)
+from backend.services.laser_service import get_active_job_hosts
+from backend.services.marlin_printer_service import get_active_job_devices
 from backend.utils import get_app_version
 
 logger = logging.getLogger(__name__)
@@ -42,6 +51,48 @@ def _run_git(args, timeout: int = 6) -> Optional[str]:
         return result.stdout.strip()
     except Exception:
         return None
+
+
+def _collect_active_machine_jobs() -> list[str]:
+    """Devuelve trabajos que hacen inseguro actualizar o reiniciar NOPAL.
+
+    No intenta pausarlos ni cancelarlos: la actualización se rechaza y la
+    persona conserva el control explícito de la máquina.
+    """
+    active_jobs: list[str] = []
+
+    for job in get_active_job_hosts():
+        label = job.get("filename") or job.get("host") or "Láser/CNC"
+        active_jobs.append(f"Láser/CNC: {label} ({job.get('state', 'activo')})")
+
+    for job in get_active_job_devices():
+        label = job.get("filename") or job.get("device") or "Impresora Marlin"
+        active_jobs.append(f"Marlin: {label} ({job.get('state', 'activo')})")
+
+    try:
+        for printer in get_all_printers_status():
+            job = printer.get("job") or {}
+            state = str(job.get("state") or "").lower()
+            if state in {"printing", "paused"}:
+                label = job.get("filename") or printer.get("name") or "Impresora Klipper"
+                active_jobs.append(f"Klipper: {label} ({state})")
+    except Exception:
+        # La confirmación de seguridad en pantalla sigue cubriendo equipos
+        # externos o temporalmente inaccesibles; dejamos registro del fallo.
+        logger.exception("No se pudo verificar el estado de las impresoras Klipper")
+
+    return active_jobs
+
+
+def _is_systemd_managed() -> bool:
+    return bool(os.environ.get("INVOCATION_ID") or os.environ.get("JOURNAL_STREAM"))
+
+
+def _restart_after_response() -> None:
+    """Finaliza con error controlado para que Restart=on-failure lo levante."""
+    time.sleep(1.0)
+    logger.warning("Reiniciando NOPAL para aplicar la actualización")
+    os._exit(75)
 
 
 @router.get("/api/status")
@@ -179,11 +230,27 @@ async def get_version_endpoint(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/system/update")
-async def update_app_endpoint(user: dict = Depends(require_role("admin"))):
+async def update_app_endpoint(
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_role("admin")),
+):
     """Aplica `git pull --ff-only` para traer la última versión del repositorio."""
+    active_jobs = _collect_active_machine_jobs()
+    if active_jobs:
+        summary = "; ".join(active_jobs[:4])
+        if len(active_jobs) > 4:
+            summary += f"; y {len(active_jobs) - 4} más"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Actualización bloqueada: hay trabajos activos. Deténlos de forma segura antes de continuar. {summary}",
+        )
+
     branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"]) or "main"
 
-    dirty = _run_git(["status", "--porcelain"])
+    # Datos, cargas y respaldos locales suelen ser directorios no rastreados y
+    # no deben impedir una actualización. Sí bloqueamos cualquier modificación
+    # de archivos que ya forman parte del repositorio.
+    dirty = _run_git(["status", "--porcelain", "--untracked-files=no"])
     if dirty:
         raise HTTPException(
             status_code=409,
@@ -205,14 +272,25 @@ async def update_app_endpoint(user: dict = Depends(require_role("admin"))):
     after_sha = _run_git(["rev-parse", "HEAD"])
 
     if before_sha == after_sha:
-        return {"success": True, "updated": False, "commits": [], "app_version": get_app_version()}
+        return {
+            "success": True,
+            "updated": False,
+            "commits": [],
+            "app_version": get_app_version(),
+            "restart_scheduled": False,
+        }
 
     log_output = _run_git(["log", "--oneline", f"{before_sha}..{after_sha}"]) or ""
     commits = [line for line in log_output.splitlines() if line.strip()]
+
+    restart_scheduled = _is_systemd_managed()
+    if restart_scheduled:
+        background_tasks.add_task(_restart_after_response)
 
     return {
         "success": True,
         "updated": True,
         "commits": commits,
         "app_version": get_app_version(),
+        "restart_scheduled": restart_scheduled,
     }
