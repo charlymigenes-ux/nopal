@@ -2763,6 +2763,69 @@ function heatColor(percent) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
+/* Estado térmico decorativo de las fichas de impresora. Se deriva siempre de
+   las temperaturas y objetivos que ya entrega cada controlador; no mantiene
+   un estado paralelo ni crea temporizadores por impresora. */
+const PRINTER_THERMAL_COLOR_STOPS = [
+    { value: 0, color: [34, 211, 238] },
+    { value: 40, color: [34, 211, 238] },
+    { value: 80, color: [163, 230, 53] },
+    { value: 150, color: [245, 158, 11] },
+    { value: 215, color: [249, 115, 22] },
+    { value: 260, color: [244, 63, 94] },
+];
+
+function interpolatePrinterThermalColor(value) {
+    const thermalValue = Math.max(0, Math.min(260, value));
+    let lower = PRINTER_THERMAL_COLOR_STOPS[0];
+    let upper = PRINTER_THERMAL_COLOR_STOPS[PRINTER_THERMAL_COLOR_STOPS.length - 1];
+    for (let index = 0; index < PRINTER_THERMAL_COLOR_STOPS.length - 1; index++) {
+        const current = PRINTER_THERMAL_COLOR_STOPS[index];
+        const next = PRINTER_THERMAL_COLOR_STOPS[index + 1];
+        if (thermalValue >= current.value && thermalValue <= next.value) {
+            lower = current;
+            upper = next;
+            break;
+        }
+    }
+    const range = upper.value - lower.value || 1;
+    const ratio = (thermalValue - lower.value) / range;
+    const color = lower.color.map((channel, index) => Math.round(channel + (upper.color[index] - channel) * ratio));
+    return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+}
+
+function printerThermalWaves(bedActual, extruderActual, bedTarget, extruderTarget, printState) {
+    const actualValues = [bedActual, extruderActual].filter(Number.isFinite);
+    if (!actualValues.length) return '';
+
+    const thermalValue = Math.max(...actualValues);
+    const activeHeaters = [
+        { actual: bedActual, target: bedTarget },
+        { actual: extruderActual, target: extruderTarget },
+    ].filter(heater => Number.isFinite(heater.actual) && Number.isFinite(heater.target) && heater.target > 0);
+    const isActivelyHeating = activeHeaters.some(heater => heater.actual < heater.target - 3);
+    const isStable = activeHeaters.length > 0 && activeHeaters.every(heater => Math.abs(heater.actual - heater.target) <= 3);
+    const thermalPhase = thermalValue < 40 ? 'cold' : thermalValue < 80 ? 'warm' : thermalValue < 215 ? 'heating' : 'hot';
+    const strength = Math.min(0.5, 0.24 + (thermalValue / 260) * 0.22);
+    const modifierClasses = [
+        `thermal-${thermalPhase}`,
+        isActivelyHeating ? 'is-actively-heating' : '',
+        isStable ? 'is-thermal-stable' : '',
+        printState === 'error' ? 'is-thermal-error' : '',
+    ].filter(Boolean).join(' ');
+
+    return `
+        <div class="printer-thermal-layer ${modifierClasses}" aria-hidden="true"
+             style="--thermal-color:${interpolatePrinterThermalColor(thermalValue)};--thermal-strength:${strength.toFixed(3)}">
+            <svg class="printer-thermal-waves" viewBox="0 0 800 150" preserveAspectRatio="none" focusable="false">
+                <path class="printer-thermal-wave printer-thermal-wave-a" d="M-160 78 C-60 18 40 138 140 78 S340 18 440 78 S640 138 740 78 S940 18 1040 78"/>
+                <path class="printer-thermal-wave printer-thermal-wave-b" d="M-180 96 C-70 48 20 142 130 92 S330 42 430 94 S630 146 730 90 S930 42 1040 94"/>
+                <path class="printer-thermal-wave printer-thermal-wave-c" d="M-140 58 C-45 108 55 16 155 62 S355 112 455 58 S655 12 755 64 S955 110 1050 58"/>
+            </svg>
+        </div>
+    `;
+}
+
 function heatColorForSensor(current, key) {
     const max = (key || '').includes('bed') ? 120 : 280;
     return heatColor(((current || 0) / max) * 100);
@@ -4948,6 +5011,13 @@ function renderPrinters(printersInput) {
 
         const html = `
             <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}" data-port="${printer.port}">
+                ${printerThermalWaves(
+                    typeof bedTemp === 'number' ? bedTemp : null,
+                    typeof extruderTemp === 'number' ? extruderTemp : null,
+                    bedTarget,
+                    extruderTarget,
+                    displayState
+                )}
                 <div class="printer-card-top">
                     <div>
                         <h3 class="printer-name">${escapeHtml(printerName)}</h3>
@@ -10707,13 +10777,16 @@ function marlinPrinterCardHtml(printer, status) {
     const stateLabel = isOnline ? t(visualState) : t('offline');
     const name = printer.name || printer.device;
 
-    let extruderTemp = '--';
-    let bedTemp = '--';
+    let extruderTemp = null;
+    let bedTemp = null;
     if (status?.extruder && typeof status.extruder.current === 'number') extruderTemp = Math.round(status.extruder.current * 10) / 10;
     if (status?.heater_bed && typeof status.heater_bed.current === 'number') bedTemp = Math.round(status.heater_bed.current * 10) / 10;
+    const extruderTarget = status?.extruder && typeof status.extruder.target === 'number' ? status.extruder.target : 0;
+    const bedTarget = status?.heater_bed && typeof status.heater_bed.target === 'number' ? status.heater_bed.target : 0;
 
     return `
         <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
+            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState)}
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${escapeHtml(name)}</h3>
@@ -10736,11 +10809,11 @@ function marlinPrinterCardHtml(printer, status) {
                 <div class="printer-temps">
                     <div class="temp-item">
                         <div class="temp-label">${t('bedTemp')}</div>
-                        <div class="temp-value">${bedTemp}<span class="temp-unit">°C</span></div>
+                        <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
                     </div>
                     <div class="temp-item">
                         <div class="temp-label">${t('extruderTemp')}</div>
-                        <div class="temp-value">${extruderTemp}<span class="temp-unit">°C</span></div>
+                        <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
                     </div>
                 </div>
             ` : ''}
