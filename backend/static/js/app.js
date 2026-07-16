@@ -11323,6 +11323,7 @@ function pluginIconSvg(icon, size = 24) {
         shapes: '<rect x="3" y="3" width="7" height="7" rx="1"/><circle cx="17.5" cy="6.5" r="3.5"/><path d="m4 20 4-7 4 7Z"/><path d="M15 14h6v6h-6z"/>',
         route: '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h3a4 4 0 0 0 4-4V9a4 4 0 0 1 4-4"/>',
         vector: '<path d="m5 3 14 0 2 7-9 11-9-11Z"/><path d="M5 3l7 18L19 3M3 10h18"/>',
+        type: '<path d="M4 5V3h16v2"/><path d="M9 21h6"/><path d="M12 3v18"/>',
         layers: '<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>'
     };
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[icon] || paths.shapes}</svg>`;

@@ -28,7 +28,9 @@ jobs:
       - name: Wait for server and check health
         run: |
           for i in $(seq 1 20); do
-            if curl -sf http://127.0.0.1:8420/api/status > /dev/null; then
+            # /api/status requiere sesión; la portada es el health check
+            # público que confirma que Uvicorn y la aplicación respondieron.
+            if curl -sf http://127.0.0.1:8420/ > /dev/null; then
               echo "Server is up"
               exit 0
             fi
