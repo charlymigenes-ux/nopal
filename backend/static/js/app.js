@@ -1715,6 +1715,17 @@ async function loadLaserHistory() {
 
 let currentGcodePath = '';
 let currentGcodeData = { folders: [], files: [] };
+let gcodeSearchQuery = '';
+let gcodeSortMode = localStorage.getItem('nopalGcodeSort') || 'name-asc';
+let gcodeFilterMode = 'all';
+let gcodeTagFilter = '';
+let gcodeViewMode = localStorage.getItem('nopalGcodeView') || 'list';
+let gcodePage = 1;
+let gcodePathHistory = [''];
+let gcodePathHistoryIndex = 0;
+const GCODE_PAGE_SIZE = 8;
+const GCODE_FAVORITES_KEY = 'nopalGcodeFavorites';
+const GCODE_RECENTS_KEY = 'nopalGcodeRecents';
 
 async function loadGcodeFolder(path = currentGcodePath) {
     currentGcodePath = path;
@@ -1856,6 +1867,393 @@ async function selectGcodePreview(model, rerender = true) {
 function updateGcodeSearch(query) {
     renderGcodeTable(query);
 }
+
+// Modern G-code library. It deliberately builds on the existing browse and
+// file-action endpoints so this UI remains a presentation-only refactor.
+function readGcodeLibraryItems(key) {
+    try {
+        const value = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(value) ? value : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function writeGcodeLibraryItems(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+}
+
+function gcodeSnapshot(model) {
+    return {
+        id: model.id,
+        name: model.name,
+        path: stripSectionPrefix(model.id, 'gcode'),
+        material: model.material || 'MDF',
+        modified: model.modified || 0,
+    };
+}
+
+function getGcodeFavorites() {
+    return readGcodeLibraryItems(GCODE_FAVORITES_KEY);
+}
+
+function isGcodeFavorite(id) {
+    return getGcodeFavorites().some(item => item.id === id);
+}
+
+function toggleGcodeFavorite(model) {
+    if (!model) return;
+    const favorites = getGcodeFavorites();
+    const index = favorites.findIndex(item => item.id === model.id);
+    if (index >= 0) favorites.splice(index, 1);
+    else favorites.unshift(gcodeSnapshot(model));
+    writeGcodeLibraryItems(GCODE_FAVORITES_KEY, favorites.slice(0, 50));
+    renderGcodeTable();
+}
+
+function rememberRecentGcode(model) {
+    const recent = readGcodeLibraryItems(GCODE_RECENTS_KEY).filter(item => item.id !== model.id);
+    recent.unshift(gcodeSnapshot(model));
+    writeGcodeLibraryItems(GCODE_RECENTS_KEY, recent.slice(0, 12));
+}
+
+function getGcodePathParent(path) {
+    const parts = String(path || '').split('/').filter(Boolean);
+    parts.pop();
+    return parts.join('/');
+}
+
+function recordGcodePath(path) {
+    if (gcodePathHistory[gcodePathHistoryIndex] === path) return;
+    gcodePathHistory = gcodePathHistory.slice(0, gcodePathHistoryIndex + 1);
+    gcodePathHistory.push(path);
+    gcodePathHistoryIndex = gcodePathHistory.length - 1;
+}
+
+async function loadGcodeFolder(path = currentGcodePath, options = {}) {
+    const normalizedPath = String(path || '').replace(/^\/+|\/+$/g, '');
+    if (options.recordHistory !== false) recordGcodePath(normalizedPath);
+    currentGcodePath = normalizedPath;
+    gcodePage = 1;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(normalizedPath)}&type=gcode`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        currentGcodeData = await response.json();
+    } catch (error) {
+        console.error(error);
+        currentGcodeData = { folders: [], files: [] };
+    }
+    renderGcodeBreadcrumb();
+    renderGcodeTable();
+}
+
+function renderGcodeBreadcrumb() {
+    const breadcrumb = document.getElementById('gcode-breadcrumb');
+    if (!breadcrumb) return;
+    const parts = currentGcodePath.split('/').filter(Boolean);
+    const segments = [
+        { label: 'Raíz', path: '' },
+        { label: 'Biblioteca', path: '' },
+        { label: 'G-code', path: '' },
+    ];
+    parts.forEach((part, index) => segments.push({ label: part, path: parts.slice(0, index + 1).join('/') }));
+    breadcrumb.innerHTML = segments.map(segment => `
+        <button type="button" class="breadcrumb-segment" data-gcode-path="${escapeHtml(segment.path)}">${escapeHtml(segment.label)}</button>
+    `).join('');
+    breadcrumb.querySelectorAll('[data-gcode-path]').forEach(button => {
+        button.addEventListener('click', () => loadGcodeFolder(button.dataset.gcodePath));
+    });
+    document.getElementById('gcode-nav-back')?.toggleAttribute('disabled', gcodePathHistoryIndex <= 0);
+    document.getElementById('gcode-nav-forward')?.toggleAttribute('disabled', gcodePathHistoryIndex >= gcodePathHistory.length - 1);
+    document.getElementById('gcode-nav-up')?.toggleAttribute('disabled', !currentGcodePath);
+    const disk = document.getElementById('gcode-disk-free');
+    if (disk) disk.textContent = `${currentGcodeData.folders.length} carpetas · ${currentGcodeData.files.length} archivos`;
+}
+
+function renderGcodeFolderStrip(folders) {
+    const strip = document.getElementById('gcode-folder-strip');
+    if (!strip) return;
+    strip.hidden = folders.length === 0;
+    strip.innerHTML = folders.map(folder => `
+        <button type="button" class="gcode-folder-card" data-folder-path="${escapeHtml(folder.path)}">
+            <svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg>
+            <span><strong>${escapeHtml(folder.name)}</strong><small>${Number(folder.file_count || 0).toLocaleString()} elementos</small></span>
+            <span class="gcode-folder-menu" aria-hidden="true">›</span>
+        </button>
+    `).join('');
+    strip.querySelectorAll('[data-folder-path]').forEach(button => {
+        button.addEventListener('click', () => loadGcodeFolder(button.dataset.folderPath));
+    });
+}
+
+function getFilteredGcodeFiles() {
+    const query = gcodeSearchQuery.trim().toLowerCase();
+    const favoriteIds = new Set(getGcodeFavorites().map(item => item.id));
+    const recentIds = new Set(readGcodeLibraryItems(GCODE_RECENTS_KEY).map(item => item.id));
+    const files = currentGcodeData.files.filter(model => {
+        if (query && !String(model.name || '').toLowerCase().includes(query)) return false;
+        if (gcodeTagFilter && String(model.material || 'G-code').toLowerCase() !== gcodeTagFilter) return false;
+        if (gcodeFilterMode === 'favorites' && !favoriteIds.has(model.id)) return false;
+        if (gcodeFilterMode === 'recent' && !recentIds.has(model.id)) return false;
+        return true;
+    });
+    return files.sort((a, b) => {
+        if (gcodeSortMode === 'name-desc') return String(b.name).localeCompare(String(a.name), undefined, { sensitivity: 'base' });
+        if (gcodeSortMode === 'date-desc') return Number(b.modified || 0) - Number(a.modified || 0);
+        if (gcodeSortMode === 'date-asc') return Number(a.modified || 0) - Number(b.modified || 0);
+        if (gcodeSortMode === 'size-desc') return Number(b.size || 0) - Number(a.size || 0);
+        return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+    });
+}
+
+function renderGcodeSidebar() {
+    const favorites = getGcodeFavorites();
+    const recents = readGcodeLibraryItems(GCODE_RECENTS_KEY);
+    const itemHtml = item => `
+        <button type="button" class="gcode-sidebar-item" data-gcode-item="${escapeHtml(item.id)}">
+            <span class="gcode-sidebar-icon">◇</span><span>${escapeHtml(item.name)}</span><b>GC</b>
+        </button>`;
+    const favoriteList = document.getElementById('gcode-favorites-list');
+    const recentList = document.getElementById('gcode-recents-list');
+    if (favoriteList) favoriteList.innerHTML = favorites.slice(0, 4).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin favoritos</span>';
+    if (recentList) recentList.innerHTML = recents.slice(0, 5).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin archivos recientes</span>';
+    const tagCounts = new Map();
+    currentGcodeData.files.forEach(model => {
+        const tag = model.material || 'G-code';
+        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    });
+    const tags = document.getElementById('gcode-tags-list');
+    if (tags) tags.innerHTML = Array.from(tagCounts.entries()).map(([tag, count]) => `
+        <button type="button" class="gcode-sidebar-item" data-gcode-tag="${escapeHtml(tag)}">
+            <span class="gcode-sidebar-icon">◆</span><span>${escapeHtml(tag)}</span><b>${count}</b>
+        </button>`).join('') || '<span class="gcode-sidebar-empty">Sin etiquetas</span>';
+    document.querySelectorAll('[data-gcode-item]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const snapshot = [...favorites, ...recents].find(item => item.id === button.dataset.gcodeItem);
+            if (!snapshot) return;
+            const parent = getGcodePathParent(snapshot.path);
+            if (parent !== currentGcodePath) await loadGcodeFolder(parent);
+            const model = currentGcodeData.files.find(item => item.id === snapshot.id);
+            if (model) selectGcodePreview(model);
+        });
+    });
+    tags?.querySelectorAll('[data-gcode-tag]').forEach(button => {
+        button.addEventListener('click', () => {
+            gcodeTagFilter = button.dataset.gcodeTag.toLowerCase();
+            gcodeSearchQuery = '';
+            if (searchGcodeInput) searchGcodeInput.value = '';
+            gcodePage = 1;
+            renderGcodeTable();
+        });
+    });
+}
+
+function renderGcodePagination(totalItems, totalPages) {
+    const pagination = document.getElementById('gcode-pagination');
+    if (!pagination) return;
+    if (!totalItems) {
+        pagination.innerHTML = '<span>0 resultados</span>';
+        return;
+    }
+    const start = (gcodePage - 1) * GCODE_PAGE_SIZE + 1;
+    const end = Math.min(gcodePage * GCODE_PAGE_SIZE, totalItems);
+    const pages = Array.from({ length: totalPages }, (_, index) => index + 1)
+        .filter(page => page === 1 || page === totalPages || Math.abs(page - gcodePage) <= 1);
+    let previousPage = 0;
+    const pageButtons = pages.map(page => {
+        const gap = previousPage && page - previousPage > 1 ? '<span>…</span>' : '';
+        previousPage = page;
+        return `${gap}<button type="button" class="${page === gcodePage ? 'active' : ''}" data-gcode-page="${page}">${page}</button>`;
+    }).join('');
+    pagination.innerHTML = `
+        <span>Mostrando ${start} a ${end} de ${totalItems} resultados</span>
+        <div class="gcode-pagination-pages"><button type="button" data-gcode-page="${gcodePage - 1}" ${gcodePage === 1 ? 'disabled' : ''}>‹</button>${pageButtons}<button type="button" data-gcode-page="${gcodePage + 1}" ${gcodePage === totalPages ? 'disabled' : ''}>›</button></div>
+        <span>${GCODE_PAGE_SIZE} por página</span>`;
+    pagination.querySelectorAll('[data-gcode-page]').forEach(button => {
+        button.addEventListener('click', () => {
+            const page = Number(button.dataset.gcodePage);
+            if (page < 1 || page > totalPages || page === gcodePage) return;
+            gcodePage = page;
+            renderGcodeTable();
+        });
+    });
+}
+
+function renderGcodeTable(filterQuery = gcodeSearchQuery) {
+    const gcodeTable = document.getElementById('gcode-table');
+    if (!gcodeTable) return;
+    gcodeSearchQuery = filterQuery || '';
+    const folderQuery = gcodeSearchQuery.toLowerCase();
+    renderGcodeFolderStrip(currentGcodeData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    renderGcodeSidebar();
+    renderGcodeBreadcrumb();
+    const files = getFilteredGcodeFiles();
+    const totalPages = Math.max(1, Math.ceil(files.length / GCODE_PAGE_SIZE));
+    gcodePage = Math.min(gcodePage, totalPages);
+    const pageFiles = files.slice((gcodePage - 1) * GCODE_PAGE_SIZE, gcodePage * GCODE_PAGE_SIZE);
+    gcodeTable.classList.toggle('is-grid', gcodeViewMode === 'grid');
+    document.getElementById('gcode-view-list')?.classList.toggle('active', gcodeViewMode === 'list');
+    document.getElementById('gcode-view-grid')?.classList.toggle('active', gcodeViewMode === 'grid');
+    renderGcodePagination(files.length, totalPages);
+    if (!files.length) {
+        gcodeTable.innerHTML = `<div class="empty-state">${t('noFilesFound')}</div>`;
+        return;
+    }
+    if (!selectedGcodeId || !files.some(entry => entry.id === selectedGcodeId)) selectedGcodeId = pageFiles[0]?.id || null;
+    const fileRows = pageFiles.map(model => {
+        const cachedDimensions = gcodeDimensionsCache.get(model.file_url);
+        const checked = getBulkSelection('gcode').has(model.id) ? 'checked' : '';
+        return `
+            <tr class="${model.id === selectedGcodeId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}">
+                <td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td>
+                <td class="model-name"><img class="cnc-files-thumb" loading="lazy" alt="" src="/api/gcode/thumbnail?path=${encodeURIComponent(stripSectionPrefix(model.id, 'gcode'))}&kind=printer"><strong>${escapeHtml(model.name)}</strong>${isGcodeFavorite(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td>
+                <td><span class="tag-pill">${escapeHtml(model.material || 'MDF')}</span></td>
+                <td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td>
+                <td class="gcode-dimensions">${cachedDimensions !== undefined ? formatGcodeDimensions(cachedDimensions) : '…'}</td>
+                <td><span class="gcode-status-ok" title="Disponible">✓</span></td>
+                <td><button type="button" class="gcode-row-menu" data-row-menu title="Acciones">•••</button></td>
+            </tr>`;
+    }).join('');
+    gcodeTable.innerHTML = `<table class="models-table"><thead><tr>
+        <th class="select-col"><input type="checkbox" class="select-all-checkbox" id="gcode-select-all"></th>
+        <th>${t('columnName')}</th><th>${t('material')}</th><th>${t('columnSize')}</th><th>${t('columnDate')}</th><th>${t('columnDimensions')}</th><th>Estado</th><th aria-label="Acciones">•••</th>
+        </tr></thead><tbody>${fileRows}</tbody></table>`;
+    wireBulkSelection('gcode', gcodeTable, pageFiles);
+    gcodeTable.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
+        row.addEventListener('click', event => {
+            if (event.target.closest('.row-select-checkbox')) return;
+            const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
+            if (model) selectGcodePreview(model);
+        });
+        row.querySelector('[data-row-menu]')?.addEventListener('click', event => {
+            event.stopPropagation();
+            const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
+            if (model) selectGcodePreview(model);
+        });
+    });
+    pageFiles.forEach(model => {
+        if (gcodeDimensionsCache.has(model.file_url)) return;
+        getGcodeDimensions(model.file_url).then(dimensions => {
+            const row = Array.from(gcodeTable.querySelectorAll('tbody tr[data-model-id]')).find(item => item.dataset.modelId === model.id);
+            const cell = row?.querySelector('.gcode-dimensions');
+            if (cell) cell.textContent = formatGcodeDimensions(dimensions);
+        });
+    });
+    const selectedModel = files.find(entry => entry.id === selectedGcodeId);
+    if (selectedModel) selectGcodePreview(selectedModel, false);
+}
+
+async function selectGcodePreview(model, rerender = true) {
+    if (!model) return;
+    selectedGcodeId = model.id;
+    rememberRecentGcode(model);
+    const fileUrl = model.file_url;
+    if (gcodePreviewTitle) gcodePreviewTitle.textContent = model.name;
+    if (gcodePreviewDescription) gcodePreviewDescription.textContent = model.description || 'Vista previa en tiempo real para G-code.';
+    if (gcodePreviewSize) gcodePreviewSize.textContent = formatSize(model.size);
+    if (gcodePreviewDate) gcodePreviewDate.textContent = formatDate(model.modified);
+    const material = document.getElementById('gcode-preview-material');
+    const estimatedTime = document.getElementById('gcode-preview-time');
+    const favoriteButton = document.getElementById('gcode-preview-favorite');
+    if (material) material.textContent = model.material || 'MDF';
+    if (estimatedTime) estimatedTime.textContent = model.estimated_time || formatEstimatedTime(model.estimated_time_minutes);
+    if (favoriteButton) {
+        const favorite = isGcodeFavorite(model.id);
+        favoriteButton.textContent = favorite ? '★' : '☆';
+        favoriteButton.classList.toggle('active', favorite);
+    }
+    if (gcodePreviewLines) {
+        const requestedId = model.id;
+        getGcodeLineCount(fileUrl).then(lineCount => {
+            if (selectedGcodeId === requestedId) gcodePreviewLines.textContent = lineCount.toLocaleString();
+        });
+    }
+    getGcodeDimensions(fileUrl).then(dimensions => {
+        if (!dimensions || selectedGcodeId !== model.id) return;
+        const xValues = [0, dimensions.width / 2, dimensions.width];
+        const yValues = [dimensions.height, dimensions.height / 2, 0];
+        document.querySelectorAll('.gcode-preview-ruler-x i').forEach((label, index) => { label.textContent = Math.round(xValues[index] || 0); });
+        document.querySelectorAll('.gcode-preview-ruler-y i').forEach((label, index) => { label.textContent = Math.round(yValues[index] || 0); });
+    });
+    if (gcodePreviewScene) {
+        gcodePreviewScene.innerHTML = '';
+        const img = document.createElement('img');
+        img.alt = model.name;
+        img.loading = 'lazy';
+        img.onerror = () => renderGcodePreview(gcodePreviewScene, fileUrl);
+        img.src = `/api/gcode/thumbnail?path=${encodeURIComponent(stripSectionPrefix(model.id, 'gcode'))}&kind=printer`;
+        gcodePreviewScene.appendChild(img);
+    }
+    if (rerender) renderGcodeTable();
+}
+
+function updateGcodeSearch(query) {
+    gcodeSearchQuery = query || '';
+    gcodeTagFilter = '';
+    gcodePage = 1;
+    renderGcodeTable();
+}
+
+document.getElementById('gcode-nav-back')?.addEventListener('click', () => {
+    if (gcodePathHistoryIndex <= 0) return;
+    gcodePathHistoryIndex -= 1;
+    loadGcodeFolder(gcodePathHistory[gcodePathHistoryIndex], { recordHistory: false });
+});
+document.getElementById('gcode-nav-forward')?.addEventListener('click', () => {
+    if (gcodePathHistoryIndex >= gcodePathHistory.length - 1) return;
+    gcodePathHistoryIndex += 1;
+    loadGcodeFolder(gcodePathHistory[gcodePathHistoryIndex], { recordHistory: false });
+});
+document.getElementById('gcode-nav-up')?.addEventListener('click', () => loadGcodeFolder(getGcodePathParent(currentGcodePath)));
+document.getElementById('gcode-nav-home')?.addEventListener('click', () => loadGcodeFolder(''));
+document.getElementById('gcode-sort-select')?.addEventListener('change', event => {
+    gcodeSortMode = event.target.value;
+    localStorage.setItem('nopalGcodeSort', gcodeSortMode);
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.getElementById('gcode-filter-select')?.addEventListener('change', event => {
+    gcodeFilterMode = event.target.value;
+    gcodeTagFilter = '';
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.querySelectorAll('[data-view]').forEach(button => {
+    if (!button.id.startsWith('gcode-view-')) return;
+    button.addEventListener('click', () => {
+        gcodeViewMode = button.dataset.view;
+        localStorage.setItem('nopalGcodeView', gcodeViewMode);
+        renderGcodeTable();
+    });
+});
+document.getElementById('gcode-favorites-all')?.addEventListener('click', () => {
+    gcodeFilterMode = 'favorites';
+    const select = document.getElementById('gcode-filter-select');
+    if (select) select.value = 'favorites';
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.getElementById('gcode-recents-all')?.addEventListener('click', () => {
+    gcodeFilterMode = 'recent';
+    const select = document.getElementById('gcode-filter-select');
+    if (select) select.value = 'recent';
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.getElementById('gcode-preview-favorite')?.addEventListener('click', () => {
+    toggleGcodeFavorite(currentGcodeData.files.find(entry => entry.id === selectedGcodeId));
+});
+const gcodeSortSelect = document.getElementById('gcode-sort-select');
+if (gcodeSortSelect) gcodeSortSelect.value = gcodeSortMode;
+document.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        const section = document.getElementById('gcode-section');
+        if (section?.classList.contains('active') || section?.style.display !== 'none') {
+            event.preventDefault();
+            searchGcodeInput?.focus();
+        }
+    }
+});
 
 function renderThumbPreview(thumb, fileUrl = '', isGcode = false) {
     if (!thumb || !window.THREE || typeof window.THREE.Scene !== 'function') return;
