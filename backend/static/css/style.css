@@ -9168,6 +9168,11 @@ body.green .laser-start-confirm-copies input {
     display: inline-flex;
 }
 
+.settings-card.updates-tooltip-open {
+    position: relative;
+    z-index: 100;
+}
+
 .updates-status-pill {
     font-size: 0.75rem;
     font-weight: 700;
@@ -9187,7 +9192,7 @@ body.green .laser-start-confirm-copies input {
     position: absolute;
     top: calc(100% + 10px);
     left: 0;
-    z-index: 20;
+    z-index: 110;
     min-width: 220px;
     max-width: 300px;
     background: var(--card-bg);

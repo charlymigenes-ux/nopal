@@ -11334,6 +11334,31 @@ function pluginActionLabel(plugin) {
     return plugin.installed ? t('pluginsUninstall') : t('pluginsInstall');
 }
 
+function pluginCatalogText(plugin, field) {
+    const safeId = String(plugin.id || '').replace(/-/g, '_');
+    const key = `pluginCatalog_${safeId}_${field}`;
+    const translated = t(key);
+    return translated === key ? (plugin[field] || '') : translated;
+}
+
+function pluginCategoryText(category) {
+    const keys = {
+        'Diseño': 'pluginCategoryDesign',
+        'Producción': 'pluginCategoryProduction',
+        'Utilidades': 'pluginCategoryUtilities',
+    };
+    return keys[category] ? t(keys[category]) : category;
+}
+
+function pluginCompatibilityText(value) {
+    const keys = {
+        'Láser': 'pluginCompatibilityLaser',
+        'Impresión 3D': 'pluginCompatibilityPrint3d',
+        'CNC': 'pluginCompatibilityCnc',
+    };
+    return keys[value] ? t(keys[value]) : value;
+}
+
 function renderPluginCard(plugin) {
     const status = plugin.installed ? t('pluginsStatusInstalled') : plugin.availability === 'available' ? t('pluginsStatusAvailable') : t('pluginsComingSoon');
     const disabled = plugin.availability !== 'available';
@@ -11343,12 +11368,12 @@ function renderPluginCard(plugin) {
                 <div class="plugin-card-icon">${pluginIconSvg(plugin.icon)}</div>
                 <span class="plugin-card-status${plugin.installed ? ' is-installed' : ''}">${escapeHtml(status)}</span>
             </div>
-            <h3>${escapeHtml(plugin.name)}</h3>
+            <h3>${escapeHtml(pluginCatalogText(plugin, 'name'))}</h3>
             <span class="plugin-card-publisher">${escapeHtml(plugin.publisher)} · v${escapeHtml(plugin.version)}</span>
-            <p class="plugin-card-description">${escapeHtml(plugin.description)}</p>
-            <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(item)}</span>`).join('')}</div>
+            <p class="plugin-card-description">${escapeHtml(pluginCatalogText(plugin, 'description'))}</p>
+            <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
             <div class="plugin-card-footer">
-                <span class="plugin-card-meta">${escapeHtml(plugin.category)} · ${escapeHtml(plugin.size)}</span>
+                <span class="plugin-card-meta">${escapeHtml(pluginCategoryText(plugin.category))} · ${escapeHtml(plugin.size === 'Por definir' ? t('pluginsSizeTbd') : plugin.size)}</span>
                 <button type="button" class="plugin-install-btn${plugin.installed ? ' is-installed' : ''}" data-plugin-action="${plugin.installed ? 'uninstall' : 'install'}" data-plugin-id="${escapeHtml(plugin.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(pluginActionLabel(plugin))}</button>
             </div>
         </article>`;
@@ -11363,16 +11388,16 @@ function renderPluginsFeatured() {
     pluginsFeatured.innerHTML = `
         <div class="plugins-featured-copy" style="--plugin-accent:${escapeHtml(featured.accent)}">
             <span class="plugins-featured-label">${escapeHtml(t('pluginsFeatured'))}</span>
-            <h2>${escapeHtml(featured.name)}</h2>
-            <p>${escapeHtml(featured.long_description)}</p>
-            <div class="plugin-card-tags">${featured.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(item)}</span>`).join('')}</div>
+            <h2>${escapeHtml(pluginCatalogText(featured, 'name'))}</h2>
+            <p>${escapeHtml(pluginCatalogText(featured, 'long_description'))}</p>
+            <div class="plugin-card-tags">${featured.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
         </div>
         <div class="plugins-featured-visual"><div class="plugins-featured-icon">${pluginIconSvg(featured.icon, 58)}</div></div>`;
 }
 
 function renderPluginsFilters() {
     if (!pluginsCategoryFilters) return;
-    const filters = [{ id: 'all', label: t('pluginsFilterAll') }, ...pluginsCategories.map(category => ({ id: category, label: category }))];
+    const filters = [{ id: 'all', label: t('pluginsFilterAll') }, ...pluginsCategories.map(category => ({ id: category, label: pluginCategoryText(category) }))];
     pluginsCategoryFilters.innerHTML = filters.map(filter => `
         <button type="button" class="plugins-filter-chip${pluginsActiveCategory === filter.id ? ' active' : ''}" data-plugin-category="${escapeHtml(filter.id)}">${escapeHtml(filter.label)}</button>`).join('');
 }
@@ -11382,7 +11407,7 @@ function renderPluginsGallery() {
     const query = (pluginsSearchInput?.value || '').trim().toLocaleLowerCase();
     const filtered = pluginsCatalog.filter(plugin => {
         const inCategory = pluginsActiveCategory === 'all' || plugin.category === pluginsActiveCategory;
-        const haystack = `${plugin.name} ${plugin.description} ${plugin.publisher} ${plugin.category} ${plugin.compatibility.join(' ')}`.toLocaleLowerCase();
+        const haystack = `${pluginCatalogText(plugin, 'name')} ${pluginCatalogText(plugin, 'description')} ${plugin.publisher} ${pluginCategoryText(plugin.category)} ${plugin.compatibility.map(pluginCompatibilityText).join(' ')}`.toLocaleLowerCase();
         return inCategory && (!query || haystack.includes(query));
     });
     pluginsGrid.innerHTML = filtered.map(renderPluginCard).join('');
@@ -11413,7 +11438,8 @@ async function loadPluginsGallery(force = false) {
 async function changePluginInstallation(pluginId, action, button) {
     const plugin = pluginsCatalog.find(item => item.id === pluginId);
     if (!plugin) return;
-    if (action === 'uninstall' && !(await appConfirm(t('pluginsUninstallConfirm').replace('{name}', plugin.name), t('pluginsUninstall')))) return;
+    const localizedName = pluginCatalogText(plugin, 'name');
+    if (action === 'uninstall' && !(await appConfirm(t('pluginsUninstallConfirm').replace('{name}', localizedName), t('pluginsUninstall')))) return;
     button.disabled = true;
     button.textContent = t('pluginsWorking');
     try {
@@ -11423,7 +11449,7 @@ async function changePluginInstallation(pluginId, action, button) {
         if (action === 'uninstall') unloadPluginModule(pluginId);
         pluginsLoaded = false;
         await loadPluginsGallery(true);
-        showToast(action === 'install' ? t('pluginsInstalledSuccess').replace('{name}', plugin.name) : t('pluginsUninstalledSuccess').replace('{name}', plugin.name));
+        showToast(action === 'install' ? t('pluginsInstalledSuccess').replace('{name}', localizedName) : t('pluginsUninstalledSuccess').replace('{name}', localizedName));
     } catch (error) {
         showToast(error.message || t('pluginsActionError'), 'error');
         button.disabled = false;
@@ -12163,10 +12189,12 @@ if (updatesPillWrap) {
         const tooltipEl = document.getElementById('updates-pill-tooltip');
         if (pillEl?.classList.contains('available') && tooltipEl?.innerHTML.trim()) {
             updatesPillWrap.classList.add('show-tooltip');
+            updatesPillWrap.closest('.settings-card')?.classList.add('updates-tooltip-open');
         }
     });
     updatesPillWrap.addEventListener('mouseleave', () => {
         updatesPillWrap.classList.remove('show-tooltip');
+        updatesPillWrap.closest('.settings-card')?.classList.remove('updates-tooltip-open');
     });
 }
 
@@ -12305,6 +12333,14 @@ function saveSettings() {
     if (languageValue) {
         setLanguage(languageValue);
         updateLangSwitchUI();
+        if (pluginsLoaded) renderPluginsGallery();
+        if (document.getElementById('pricing-section')?.classList.contains('active')) {
+            renderPricingExtraCosts();
+            renderPricingCostSummary(pricingLastQuoteResult);
+            renderPricingFileInfo(pricingLastQuoteResult);
+            updatePricingBreadcrumbState();
+            loadPricingQuotesHistory();
+        }
     }
     if (settingsPreviewQuality) {
         localStorage.setItem('previewQuality', settingsPreviewQuality.checked ? 'performance' : 'standard');
@@ -13255,18 +13291,31 @@ function renderPricingCostSummary(result, errorMessage) {
     const rate = parseFloat(document.getElementById('pricing-exchange-rate-input')?.value) || 1;
     const fmt = (amount) => `${displayCurrency} ${(amount * rate).toFixed(2)}`;
 
-    linesContainer.innerHTML = result.cost_lines.map((line, index) => `
+    linesContainer.innerHTML = result.cost_lines.map((line, index) => {
+        const labelKey = `pricingCostLine_${line.key}`;
+        const localizedLabel = t(labelKey) === labelKey ? line.label : t(labelKey);
+        let localizedDetail = line.detail;
+        if (line.key === 'machine_usage' && result.machine && result.extracted?.estimated_time_minutes != null) {
+            const rate = String(line.detail || '').match(/\$([\d.,]+)/)?.[1] || '0';
+            localizedDetail = t('pricingMachineUsageDetail')
+                .replace('{time}', _formatMinutes(result.extracted.estimated_time_minutes))
+                .replace('{rate}', rate);
+        } else if (line.key === 'labor') {
+            const minutes = String(line.detail || '').match(/[\d.,]+/)?.[0] || '0';
+            localizedDetail = t('pricingLaborDetail').replace('{minutes}', minutes);
+        }
+        return `
         <div class="pricing-cost-line">
             <span class="pricing-cost-line-icon icon-${line.key}">${index + 1}</span>
             <span class="pricing-cost-line-body">
                 <span>
-                    <span class="pricing-cost-line-label">${escapeHtml(line.label)}</span>
-                    ${line.detail ? `<span class="pricing-cost-line-detail">${escapeHtml(line.detail)}</span>` : ''}
+                    <span class="pricing-cost-line-label">${escapeHtml(localizedLabel)}</span>
+                    ${localizedDetail ? `<span class="pricing-cost-line-detail">${escapeHtml(localizedDetail)}</span>` : ''}
                 </span>
                 <span class="pricing-cost-line-amount${line.missing ? ' missing' : ''}">${line.missing ? '—' : fmt(line.amount)}</span>
             </span>
         </div>
-    `).join('');
+    `; }).join('');
 
     const subtotalAmountEl = document.getElementById('pricing-cost-subtotal-amount');
     if (subtotalAmountEl) subtotalAmountEl.textContent = fmt(result.costs.subtotal);
