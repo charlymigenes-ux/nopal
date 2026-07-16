@@ -12392,6 +12392,53 @@ body.green .option-switch {
         drop-shadow(0 0 20px var(--thermal-color));
 }
 
+/* Estado desconectado: conserva la misma composición luminosa del mosaico,
+   pero usa una señal neutra en gris y evita el fondo rojo/plano de error. */
+.machines-columns .printers-grid:not(.list-view) .printer-card.offline {
+    opacity: 0.82;
+    background: linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--panel-bg) 94%, var(--text-muted)) 0%,
+        color-mix(in srgb, var(--card-bg) 92%, var(--text-muted)) 100%
+    );
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-card.offline .printer-thermal-layer {
+    inset: 0;
+    opacity: 1;
+    background: radial-gradient(
+        ellipse 92% 42% at 50% 58%,
+        color-mix(in srgb, var(--thermal-color) 18%, transparent) 0%,
+        color-mix(in srgb, var(--thermal-color) 8%, transparent) 45%,
+        transparent 76%
+    );
+}
+
+.machines-columns .printers-grid:not(.list-view) .printer-card.offline .printer-thermal-waves {
+    position: absolute;
+    top: 35%;
+    left: -5%;
+    width: 110%;
+    height: 34%;
+    opacity: calc(var(--thermal-strength, 0.32) + 0.24);
+    filter:
+        drop-shadow(0 0 4px currentColor)
+        drop-shadow(0 0 10px currentColor)
+        drop-shadow(0 0 18px var(--thermal-color));
+}
+
+.printer-thermal-layer.is-thermal-offline .printer-thermal-wave-a {
+    animation-duration: 14s;
+}
+
+.printer-thermal-layer.is-thermal-offline .printer-thermal-wave-b {
+    animation-duration: 18s;
+}
+
+.printer-thermal-layer.is-thermal-offline .printer-thermal-wave-c {
+    animation-duration: 22s;
+}
+
 .machines-columns .printers-grid:not(.list-view) .printer-card-type-3d .printer-status-line {
     width: max-content;
     max-width: 100%;
@@ -12727,6 +12774,15 @@ body.green .option-switch {
 
 .printer-card.error {
     background: rgba(239, 68, 68, 0.22);
+}
+
+.printer-card.offline,
+.printer-card.offline.error {
+    background: linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--panel-bg) 95%, var(--text-muted)) 0%,
+        color-mix(in srgb, var(--card-bg) 93%, var(--text-muted)) 100%
+    );
 }
 
 .printer-card.printer-card-warm {

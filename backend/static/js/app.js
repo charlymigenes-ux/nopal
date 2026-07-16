@@ -2795,29 +2795,35 @@ function interpolatePrinterThermalColor(value) {
     return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
 }
 
-function printerThermalWaves(bedActual, extruderActual, bedTarget, extruderTarget, printState) {
+function printerThermalWaves(bedActual, extruderActual, bedTarget, extruderTarget, printState, isOffline = false) {
     const actualValues = [bedActual, extruderActual].filter(Number.isFinite);
-    if (!actualValues.length) return '';
+    if (!actualValues.length && !isOffline) return '';
 
-    const thermalValue = Math.max(...actualValues);
-    const activeHeaters = [
-        { actual: bedActual, target: bedTarget },
-        { actual: extruderActual, target: extruderTarget },
-    ].filter(heater => Number.isFinite(heater.actual) && Number.isFinite(heater.target) && heater.target > 0);
-    const isActivelyHeating = activeHeaters.some(heater => heater.actual < heater.target - 3);
-    const isStable = activeHeaters.length > 0 && activeHeaters.every(heater => Math.abs(heater.actual - heater.target) <= 3);
-    const thermalPhase = thermalValue < 40 ? 'cold' : thermalValue < 80 ? 'warm' : thermalValue < 215 ? 'heating' : 'hot';
-    const strength = Math.min(0.5, 0.24 + (thermalValue / 260) * 0.22);
-    const modifierClasses = [
-        `thermal-${thermalPhase}`,
-        isActivelyHeating ? 'is-actively-heating' : '',
-        isStable ? 'is-thermal-stable' : '',
-        printState === 'error' ? 'is-thermal-error' : '',
-    ].filter(Boolean).join(' ');
+    let thermalColor = 'rgb(148, 163, 184)';
+    let strength = 0.32;
+    let modifierClasses = 'thermal-offline is-thermal-offline';
+    if (!isOffline) {
+        const thermalValue = Math.max(...actualValues);
+        const activeHeaters = [
+            { actual: bedActual, target: bedTarget },
+            { actual: extruderActual, target: extruderTarget },
+        ].filter(heater => Number.isFinite(heater.actual) && Number.isFinite(heater.target) && heater.target > 0);
+        const isActivelyHeating = activeHeaters.some(heater => heater.actual < heater.target - 3);
+        const isStable = activeHeaters.length > 0 && activeHeaters.every(heater => Math.abs(heater.actual - heater.target) <= 3);
+        const thermalPhase = thermalValue < 40 ? 'cold' : thermalValue < 80 ? 'warm' : thermalValue < 215 ? 'heating' : 'hot';
+        thermalColor = interpolatePrinterThermalColor(thermalValue);
+        strength = Math.min(0.5, 0.24 + (thermalValue / 260) * 0.22);
+        modifierClasses = [
+            `thermal-${thermalPhase}`,
+            isActivelyHeating ? 'is-actively-heating' : '',
+            isStable ? 'is-thermal-stable' : '',
+            printState === 'error' ? 'is-thermal-error' : '',
+        ].filter(Boolean).join(' ');
+    }
 
     return `
         <div class="printer-thermal-layer ${modifierClasses}" aria-hidden="true"
-             style="--thermal-color:${interpolatePrinterThermalColor(thermalValue)};--thermal-strength:${strength.toFixed(3)}">
+             style="--thermal-color:${thermalColor};--thermal-strength:${strength.toFixed(3)}">
             <svg class="printer-thermal-waves" viewBox="0 0 800 150" preserveAspectRatio="none" focusable="false">
                 <path class="printer-thermal-wave printer-thermal-wave-a" d="M-160 78 C-60 18 40 138 140 78 S340 18 440 78 S640 138 740 78 S940 18 1040 78"/>
                 <path class="printer-thermal-wave printer-thermal-wave-b" d="M-180 96 C-70 48 20 142 130 92 S330 42 430 94 S630 146 730 90 S930 42 1040 94"/>
@@ -4775,6 +4781,7 @@ function laserDashboardCardHtml(entry) {
 
     return `
         <div class="printer-card ${typeClass} laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
+            ${isOnline ? '' : printerThermalWaves(null, null, 0, 0, 'offline', true)}
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
@@ -5174,7 +5181,8 @@ function renderPrinters(printersInput) {
                     typeof extruderTemp === 'number' ? extruderTemp : null,
                     bedTarget,
                     extruderTarget,
-                    displayState
+                    displayState,
+                    !isOnline
                 )}
                 <div class="printer-card-top">
                     <div>
@@ -10952,7 +10960,7 @@ function marlinPrinterCardHtml(printer, status) {
 
     return `
         <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
-            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState)}
+            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${escapeHtml(name)}</h3>
