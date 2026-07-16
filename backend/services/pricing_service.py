@@ -859,6 +859,31 @@ def update_quote_status(quote_id: str, status: str) -> Optional[Dict[str, Any]]:
     return entry
 
 
+def update_quote(quote_id: str, quote: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    entries = _load_quotes_registry()
+    for index, entry in enumerate(entries):
+        if entry.get("id") == quote_id:
+            updated = {
+                **entry,
+                **quote,
+                "id": quote_id,
+                "created_at": entry.get("created_at"),
+            }
+            entries[index] = updated
+            _save_quotes_registry(entries)
+            return updated
+    return None
+
+
+def remove_quote(quote_id: str) -> bool:
+    entries = _load_quotes_registry()
+    remaining = [q for q in entries if q.get("id") != quote_id]
+    if len(remaining) == len(entries):
+        return False
+    _save_quotes_registry(remaining)
+    return True
+
+
 def build_whatsapp_message(quote: Dict[str, Any], print_url: str) -> str:
     """Texto por default para reenviar una cotización por WhatsApp — solo
     una propuesta inicial. El frontend la muestra en un campo editable antes

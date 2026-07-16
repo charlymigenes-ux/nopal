@@ -33,6 +33,7 @@ from backend.api.accessories import router as accessories_router
 from backend.api.pricing import router as pricing_router
 from backend.api.auth import router as auth_router
 from backend.api.notifications import router as notifications_router
+from backend.api.plugins import router as plugins_router
 from backend.services.pricing_service import get_quote
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
@@ -98,6 +99,7 @@ app.include_router(accessories_router)
 app.include_router(pricing_router)
 app.include_router(auth_router)
 app.include_router(notifications_router)
+app.include_router(plugins_router)
 
 
 @app.on_event("startup")

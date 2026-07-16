@@ -58,6 +58,32 @@ function updateTopbarUser(user) {
     if (roleEl) roleEl.textContent = user.role === 'admin' ? t('roleAdmin') : t('roleOperator');
 }
 
+function showFullscreenRecommendation() {
+    if (!document.fullscreenEnabled || document.fullscreenElement || sessionStorage.getItem('fullscreenRecommendationDismissed') === 'true' || document.getElementById('fullscreen-recommendation')) return;
+    const banner = document.createElement('div');
+    banner.id = 'fullscreen-recommendation';
+    banner.className = 'fullscreen-recommendation';
+    banner.innerHTML = `
+        <span class="fullscreen-recommendation-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></span>
+        <span><strong>NOPAL funciona mejor en pantalla completa</strong><small>Obtén más espacio para el área de trabajo y los controles.</small></span>
+        <button type="button" class="fullscreen-recommendation-action">Activar pantalla completa</button>
+        <button type="button" class="fullscreen-recommendation-close" aria-label="Cerrar">×</button>`;
+    document.body.appendChild(banner);
+    banner.querySelector('.fullscreen-recommendation-action').addEventListener('click', async () => {
+        try {
+            await document.documentElement.requestFullscreen();
+            banner.remove();
+        } catch (error) {
+            console.error(error);
+            showToast('El navegador no permitió activar la pantalla completa.', 'warning');
+        }
+    });
+    banner.querySelector('.fullscreen-recommendation-close').addEventListener('click', () => {
+        sessionStorage.setItem('fullscreenRecommendationDismissed', 'true');
+        banner.remove();
+    });
+}
+
 async function checkAuth() {
     try {
         const setupResponse = await ORIGINAL_FETCH('/api/auth/setup-required');
@@ -83,6 +109,7 @@ async function checkAuth() {
         currentAuthUser = user;
         hideLoginOverlay();
         updateTopbarUser(user);
+        showFullscreenRecommendation();
         return user;
     } catch (error) {
         console.error(error);
@@ -237,7 +264,10 @@ async function loadTopbarNotifications() {
 
 checkAuth().then(user => {
     updateTopbarLangLabel();
-    if (user) loadTopbarNotifications();
+    if (user) {
+        loadTopbarNotifications();
+        loadInstalledPluginModules();
+    }
 });
 setInterval(() => { if (currentAuthUser) loadTopbarNotifications(); }, 10000);
 
@@ -6479,6 +6509,7 @@ if (deviceRenameInput) {
 function setNavItemBadge(elId, count) {
     const badge = document.getElementById(elId);
     if (!badge) return;
+    badge.closest('.nav-item')?.classList.toggle('has-queue-items', count > 0);
     if (count > 0) {
         badge.textContent = count > 99 ? '99+' : String(count);
         badge.hidden = false;
@@ -6534,7 +6565,6 @@ function renderLaserStatus(data) {
     const pill = document.getElementById('laser-state-pill');
     const position = document.getElementById('laser-position');
     const feedSpeed = document.getElementById('laser-feed-speed');
-    const overrides = document.getElementById('laser-overrides');
     const illustrationWrap = document.getElementById('laser-illustration-wrap');
     const illustration = document.getElementById('laser-illustration');
     if (!dot || !text) return;
@@ -6549,7 +6579,6 @@ function renderLaserStatus(data) {
         if (pill) pill.textContent = '';
         if (position) position.textContent = '—';
         if (feedSpeed) feedSpeed.textContent = '—';
-        if (overrides) overrides.textContent = '— / — / —';
         return;
     }
 
@@ -6566,14 +6595,6 @@ function renderLaserStatus(data) {
     const hasFeedSpeed = data.feed != null && data.speed != null;
     const powerPercent = hasFeedSpeed ? Math.round((data.speed / LASER_POWER_S_MAX) * 100) : null;
     if (feedSpeed) feedSpeed.textContent = hasFeedSpeed ? `${data.feed} / ${powerPercent}%` : '—';
-    if (overrides) {
-        // GRBL no manda "Ov" en cada reporte de status (solo cada ~10
-        // reportes) — si todavía no llegó ninguno esta sesión, mostrar "—"
-        // en vez de 0%, que se leería como "override puesto a cero".
-        overrides.textContent = data.overrides
-            ? `${data.overrides.feed}% / ${data.overrides.rapid}% / ${data.overrides.spindle}%`
-            : '— / — / —';
-    }
     const jobSpeedEl = document.getElementById('laser-job-speed');
     if (jobSpeedEl) jobSpeedEl.textContent = hasFeedSpeed ? `${data.feed} mm/min` : '—';
     const jobPowerEl = document.getElementById('laser-job-power');
@@ -6646,7 +6667,11 @@ function renderLaserJob(job, jobHost) {
     const errorEl = document.getElementById('laser-job-error');
     if (!pauseBtn) return;
 
-    const state = job?.state || 'idle';
+    // Un G0/G1 manual pone GRBL en estado Run durante unos instantes. El
+    // backend lo reporta como `source: external`, pero no es una grabación
+    // administrada por NOPAL y no debe abrir ni bloquear este panel.
+    const isManagedJob = job?.source === 'stream' || job?.source === 'sd';
+    const state = isManagedJob ? (job?.state || 'idle') : 'idle';
     const isActive = state === 'running' || state === 'paused';
     const isTerminal = state === 'completed' || state === 'error' || state === 'cancelled';
     laserJobIsActive = isActive;
@@ -6712,7 +6737,10 @@ function renderLaserJob(job, jobHost) {
     const controlsQuadrant = document.querySelector('.laser-jog-quadrant-controls');
     const jobQuadrant = document.querySelector('.laser-jog-quadrant-job');
     if (controlsQuadrant) controlsQuadrant.hidden = showProgress;
-    if (jobQuadrant) jobQuadrant.classList.toggle('laser-jog-quadrant-job-full', showProgress);
+    if (jobQuadrant) {
+        jobQuadrant.hidden = !showProgress;
+        jobQuadrant.classList.toggle('laser-jog-quadrant-job-full', showProgress);
+    }
 
     const infoRow = document.getElementById('laser-job-info-row');
     const statsRow = document.getElementById('laser-job-stats-row');
@@ -8432,6 +8460,48 @@ async function sendLaserRawCommand(command, host) {
         return false;
     }
 }
+
+document.getElementById('laser-move-to-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (laserJobIsActive) {
+        appAlert(t('laserMoveBusy'), '', 'warning');
+        return;
+    }
+
+    const parseCoordinate = (id) => Number.parseFloat(
+        (document.getElementById(id)?.value || '').trim().replace(',', '.')
+    );
+    const x = parseCoordinate('laser-move-x-input');
+    const y = parseCoordinate('laser-move-y-input');
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        appAlert(t('laserMoveInvalid'), '', 'warning');
+        return;
+    }
+    if (laserBedMapWorkArea && (
+        x < 0 || y < 0 ||
+        x > laserBedMapWorkArea.width || y > laserBedMapWorkArea.height
+    )) {
+        appAlert(t('laserMoveOutsideWorkArea'), '', 'warning');
+        return;
+    }
+
+    const moved = await sendLaserRawCommand(
+        `G90 G21 G0 X${x.toFixed(2)} Y${y.toFixed(2)} F${LASER_JOG_FEED}`
+    );
+    if (!moved) {
+        appAlert(t('laserMoveError'), '', 'danger');
+        return;
+    }
+    refreshLaserStatus();
+});
+
+document.querySelectorAll('#laser-move-to-form input').forEach((input) => {
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        document.getElementById('laser-move-to-form')?.requestSubmit();
+    });
+});
 
 // Mueve UN eje en relativo — el backend arma la secuencia real ($J=... GRBL
 // o G91/G1/G90 Marlin) según el firmware registrado para `host`, así el
@@ -11094,6 +11164,7 @@ function switchSection(sectionName) {
             }
         }
     });
+    document.getElementById('topbar-plugins-btn')?.classList.toggle('active', sectionName === 'plugins');
 
     // Handle models section
     if (sectionName === 'models') {
@@ -11139,6 +11210,9 @@ function switchSection(sectionName) {
     if (sectionName === 'pricing') {
         loadPricingSection();
     }
+    if (sectionName === 'plugins') {
+        loadPluginsGallery();
+    }
     if (sectionName === 'marlin') {
         loadMarlinSection();
     } else {
@@ -11179,6 +11253,439 @@ navItems.forEach(item => {
         switchSection(section);
     });
 });
+
+document.getElementById('topbar-plugins-btn')?.addEventListener('click', () => {
+    switchSection('plugins');
+});
+
+// ── Galería de plugins ──
+const pluginsGrid = document.getElementById('plugins-grid');
+const pluginsFeatured = document.getElementById('plugins-featured');
+const pluginsEmpty = document.getElementById('plugins-empty');
+const pluginsSearchInput = document.getElementById('plugins-search-input');
+const pluginsCategoryFilters = document.getElementById('plugins-category-filters');
+const pluginsInstalledCount = document.getElementById('plugins-installed-count');
+let pluginsCatalog = [];
+let pluginsCategories = [];
+let pluginsActiveCategory = 'all';
+let pluginsLoaded = false;
+
+window.NopalPluginRegistry = window.NopalPluginRegistry || {};
+
+function loadPluginAsset(plugin) {
+    if (!plugin?.frontend?.script || window.NopalPluginRegistry[plugin.id]) return Promise.resolve();
+    const styleId = `plugin-style-${plugin.id}`;
+    if (plugin.frontend.style && !document.getElementById(styleId)) {
+        const link = document.createElement('link');
+        link.id = styleId;
+        link.rel = 'stylesheet';
+        link.href = plugin.frontend.style;
+        document.head.appendChild(link);
+    }
+    const scriptId = `plugin-script-${plugin.id}`;
+    const existing = document.getElementById(scriptId);
+    if (existing) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.src = plugin.frontend.script;
+        script.defer = true;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`No se pudo cargar ${plugin.name}`));
+        document.body.appendChild(script);
+    });
+}
+
+async function loadInstalledPluginModules(catalog = null) {
+    try {
+        let list = catalog;
+        if (!Array.isArray(list)) {
+            const response = await fetch('/api/plugins');
+            if (!response.ok) return;
+            list = (await response.json()).plugins || [];
+        }
+        await Promise.all(list.filter(plugin => plugin.installed && plugin.enabled && plugin.frontend).map(loadPluginAsset));
+    } catch (error) {
+        console.error('Error al cargar plugins:', error);
+    }
+}
+
+function unloadPluginModule(pluginId) {
+    const module = window.NopalPluginRegistry[pluginId];
+    if (module?.unmount) module.unmount();
+    delete window.NopalPluginRegistry[pluginId];
+    document.getElementById(`plugin-script-${pluginId}`)?.remove();
+    document.getElementById(`plugin-style-${pluginId}`)?.remove();
+}
+
+function pluginIconSvg(icon, size = 24) {
+    const paths = {
+        shapes: '<rect x="3" y="3" width="7" height="7" rx="1"/><circle cx="17.5" cy="6.5" r="3.5"/><path d="m4 20 4-7 4 7Z"/><path d="M15 14h6v6h-6z"/>',
+        route: '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h3a4 4 0 0 0 4-4V9a4 4 0 0 1 4-4"/>',
+        vector: '<path d="m5 3 14 0 2 7-9 11-9-11Z"/><path d="M5 3l7 18L19 3M3 10h18"/>',
+        layers: '<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>'
+    };
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[icon] || paths.shapes}</svg>`;
+}
+
+function pluginActionLabel(plugin) {
+    if (plugin.availability !== 'available') return t('pluginsComingSoon');
+    return plugin.installed ? t('pluginsUninstall') : t('pluginsInstall');
+}
+
+function renderPluginCard(plugin) {
+    const status = plugin.installed ? t('pluginsStatusInstalled') : plugin.availability === 'available' ? t('pluginsStatusAvailable') : t('pluginsComingSoon');
+    const disabled = plugin.availability !== 'available';
+    return `
+        <article class="plugin-card" style="--plugin-accent:${escapeHtml(plugin.accent || '#a855f7')}">
+            <div class="plugin-card-top">
+                <div class="plugin-card-icon">${pluginIconSvg(plugin.icon)}</div>
+                <span class="plugin-card-status${plugin.installed ? ' is-installed' : ''}">${escapeHtml(status)}</span>
+            </div>
+            <h3>${escapeHtml(plugin.name)}</h3>
+            <span class="plugin-card-publisher">${escapeHtml(plugin.publisher)} · v${escapeHtml(plugin.version)}</span>
+            <p class="plugin-card-description">${escapeHtml(plugin.description)}</p>
+            <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(item)}</span>`).join('')}</div>
+            <div class="plugin-card-footer">
+                <span class="plugin-card-meta">${escapeHtml(plugin.category)} · ${escapeHtml(plugin.size)}</span>
+                <button type="button" class="plugin-install-btn${plugin.installed ? ' is-installed' : ''}" data-plugin-action="${plugin.installed ? 'uninstall' : 'install'}" data-plugin-id="${escapeHtml(plugin.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(pluginActionLabel(plugin))}</button>
+            </div>
+        </article>`;
+}
+
+function renderPluginsFeatured() {
+    if (!pluginsFeatured) return;
+    const featured = pluginsCatalog.find(plugin => plugin.featured);
+    const show = featured && pluginsActiveCategory === 'all' && !pluginsSearchInput?.value.trim();
+    pluginsFeatured.hidden = !show;
+    if (!show) return;
+    pluginsFeatured.innerHTML = `
+        <div class="plugins-featured-copy" style="--plugin-accent:${escapeHtml(featured.accent)}">
+            <span class="plugins-featured-label">${escapeHtml(t('pluginsFeatured'))}</span>
+            <h2>${escapeHtml(featured.name)}</h2>
+            <p>${escapeHtml(featured.long_description)}</p>
+            <div class="plugin-card-tags">${featured.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(item)}</span>`).join('')}</div>
+        </div>
+        <div class="plugins-featured-visual"><div class="plugins-featured-icon">${pluginIconSvg(featured.icon, 58)}</div></div>`;
+}
+
+function renderPluginsFilters() {
+    if (!pluginsCategoryFilters) return;
+    const filters = [{ id: 'all', label: t('pluginsFilterAll') }, ...pluginsCategories.map(category => ({ id: category, label: category }))];
+    pluginsCategoryFilters.innerHTML = filters.map(filter => `
+        <button type="button" class="plugins-filter-chip${pluginsActiveCategory === filter.id ? ' active' : ''}" data-plugin-category="${escapeHtml(filter.id)}">${escapeHtml(filter.label)}</button>`).join('');
+}
+
+function renderPluginsGallery() {
+    if (!pluginsGrid) return;
+    const query = (pluginsSearchInput?.value || '').trim().toLocaleLowerCase();
+    const filtered = pluginsCatalog.filter(plugin => {
+        const inCategory = pluginsActiveCategory === 'all' || plugin.category === pluginsActiveCategory;
+        const haystack = `${plugin.name} ${plugin.description} ${plugin.publisher} ${plugin.category} ${plugin.compatibility.join(' ')}`.toLocaleLowerCase();
+        return inCategory && (!query || haystack.includes(query));
+    });
+    pluginsGrid.innerHTML = filtered.map(renderPluginCard).join('');
+    if (pluginsEmpty) pluginsEmpty.hidden = filtered.length > 0;
+    renderPluginsFilters();
+    renderPluginsFeatured();
+}
+
+async function loadPluginsGallery(force = false) {
+    if (!pluginsGrid || (pluginsLoaded && !force)) return;
+    pluginsGrid.innerHTML = `<div class="plugins-loading">${escapeHtml(t('pluginsLoading'))}</div>`;
+    try {
+        const response = await fetch('/api/plugins');
+        if (!response.ok) throw new Error(t('pluginsLoadError'));
+        const data = await response.json();
+        pluginsCatalog = Array.isArray(data.plugins) ? data.plugins : [];
+        pluginsCategories = Array.isArray(data.categories) ? data.categories : [];
+        pluginsLoaded = true;
+        if (pluginsInstalledCount) pluginsInstalledCount.textContent = data.installed_count || 0;
+        await loadInstalledPluginModules(pluginsCatalog);
+        renderPluginsGallery();
+    } catch (error) {
+        console.error(error);
+        pluginsGrid.innerHTML = `<div class="plugins-loading">${escapeHtml(t('pluginsLoadError'))}</div>`;
+    }
+}
+
+async function changePluginInstallation(pluginId, action, button) {
+    const plugin = pluginsCatalog.find(item => item.id === pluginId);
+    if (!plugin) return;
+    if (action === 'uninstall' && !(await appConfirm(t('pluginsUninstallConfirm').replace('{name}', plugin.name), t('pluginsUninstall')))) return;
+    button.disabled = true;
+    button.textContent = t('pluginsWorking');
+    try {
+        const response = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}${action === 'install' ? '/install' : ''}`, { method: action === 'install' ? 'POST' : 'DELETE' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || t('pluginsActionError'));
+        if (action === 'uninstall') unloadPluginModule(pluginId);
+        pluginsLoaded = false;
+        await loadPluginsGallery(true);
+        showToast(action === 'install' ? t('pluginsInstalledSuccess').replace('{name}', plugin.name) : t('pluginsUninstalledSuccess').replace('{name}', plugin.name));
+    } catch (error) {
+        showToast(error.message || t('pluginsActionError'), 'error');
+        button.disabled = false;
+        button.textContent = pluginActionLabel(plugin);
+    }
+}
+
+pluginsCategoryFilters?.addEventListener('click', event => {
+    const button = event.target.closest('[data-plugin-category]');
+    if (!button) return;
+    pluginsActiveCategory = button.dataset.pluginCategory;
+    renderPluginsGallery();
+});
+pluginsSearchInput?.addEventListener('input', renderPluginsGallery);
+pluginsGrid?.addEventListener('click', event => {
+    const button = event.target.closest('[data-plugin-action]');
+    if (button) changePluginInstallation(button.dataset.pluginId, button.dataset.pluginAction, button);
+});
+
+// ── Editor G-Code local ──
+const gcodeEditorTextarea = document.getElementById('gcode-editor-textarea');
+const gcodeEditorFilename = document.getElementById('gcode-editor-filename');
+const gcodeEditorLineCount = document.getElementById('gcode-editor-line-count');
+const gcodeEditorFileInput = document.getElementById('gcode-editor-file-input');
+const gcodeAnalysisType = document.getElementById('gcode-analysis-type');
+const gcodeAnalysisSummary = document.getElementById('gcode-analysis-summary');
+const gcodeAnalysisDetails = document.getElementById('gcode-analysis-details');
+const gcodeAnalysisSignals = document.getElementById('gcode-analysis-signals');
+let gcodeAnalysisTimer = null;
+
+function analyzeGcodeContent(content) {
+    const rawLines = content.split(/\r?\n/);
+    const scores = { print3d: 0, laser: 0, cnc: 0 };
+    const signals = { print3d: [], laser: [], cnc: [] };
+    const addSignal = (type, points, label) => {
+        scores[type] += points;
+        if (!signals[type].includes(label)) signals[type].push(label);
+    };
+    const stats = { executable: 0, g0: 0, g1: 0, g2: 0, g3: 0, layers: new Set(), tools: new Set(), commands: new Set() };
+    const ranges = { feed: [Infinity, -Infinity], power: [Infinity, -Infinity], nozzle: [Infinity, -Infinity], bed: [Infinity, -Infinity] };
+    const bounds = { X: [Infinity, -Infinity], Y: [Infinity, -Infinity], Z: [Infinity, -Infinity] };
+    const position = { X: 0, Y: 0, Z: 0 };
+    let units = '';
+    let absolute = true;
+    let coordinateSystem = '';
+    let plane = '';
+    let generator = '';
+    let firmware = '';
+    let declaredBounds = '';
+    let declaredFeed = '';
+    let declaredPower = '';
+    let pathDistance = 0;
+    let hasExtrusion = false;
+
+    rawLines.forEach(rawLine => {
+        const trimmed = rawLine.trim();
+        if (!trimmed) return;
+        const comment = ((trimmed.match(/;(.+)/) || [])[1] || '').trim();
+        if (comment) {
+            const generatorMatch = comment.match(/\b(LightBurn(?:\s+(?:Pro\s+)?[\d.]+)?|Ultimaker Cura[^;]*|Cura_SteamEngine[^;]*|PrusaSlicer[^;]*|SuperSlicer[^;]*|OrcaSlicer[^;]*|Bambu Studio[^;]*|Simplify3D[^;]*|ideaMaker[^;]*|Fusion 360[^;]*|FreeCAD[^;]*|VCarve[^;]*|Aspire[^;]*|Estlcam[^;]*|Carbide Create[^;]*)/i);
+            if (generatorMatch && !generator) generator = generatorMatch[1].trim();
+            if (/\bLightBurn\b/i.test(comment)) addSignal('laser', 8, 'LightBurn');
+            if (/\b(Cura|PrusaSlicer|SuperSlicer|OrcaSlicer|Bambu Studio|Simplify3D|ideaMaker)\b/i.test(comment)) addSignal('print3d', 8, t('gcodeSignalSlicer'));
+            if (/\b(Fusion 360|FreeCAD|VCarve|Aspire|Estlcam|Carbide Create|CAM)\b/i.test(comment)) addSignal('cnc', 7, t('gcodeSignalCam'));
+            if (/\bGRBL\b/i.test(comment)) firmware = 'GRBL';
+            if (/\bLAYER\s*[: ]\s*(-?\d+)/i.test(comment)) {
+                stats.layers.add(comment.match(/\bLAYER\s*[: ]\s*(-?\d+)/i)[1]);
+                addSignal('print3d', 3, t('gcodeSignalLayers'));
+            }
+            if (/\b(TYPE|WALL-INNER|WALL-OUTER|SKIRT|BRIM|INFILL)\b/i.test(comment)) addSignal('print3d', 2, t('gcodeSignalPrintFeatures'));
+            if (/\b(LASER|ENGRAV|CUTTING)\b/i.test(comment)) addSignal('laser', 3, t('gcodeSignalLaserTerms'));
+            const declared = comment.match(/Bounds:\s*X\s*(-?[\d.]+)\s*Y\s*(-?[\d.]+)\s+to\s+X\s*(-?[\d.]+)\s*Y\s*(-?[\d.]+)/i);
+            if (declared) declaredBounds = `X ${declared[1]}–${declared[3]} · Y ${declared[2]}–${declared[4]}`;
+            const processSettings = comment.match(/@\s*([\d.]+)\s*(mm\/min|in\/min).*?([\d.]+)\s*%\s*power/i);
+            if (processSettings) {
+                declaredFeed = `${processSettings[1]} ${processSettings[2]}`;
+                declaredPower = `${processSettings[3]}%`;
+            }
+        }
+
+        const code = trimmed.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim().toUpperCase();
+        if (!code || code.startsWith('%')) return;
+        const commands = [...code.matchAll(/(?:^|\s)([GMT])\s*(\d+(?:\.\d+)?)/g)]
+            .map(match => `${match[1]}${Number(match[2])}`);
+        if (!commands.length) return;
+        const command = commands.find(item => ['G0', 'G1', 'G2', 'G3'].includes(item))
+            || commands.find(item => item.startsWith('M'))
+            || commands[0];
+        stats.executable += 1;
+        commands.forEach(item => stats.commands.add(item));
+
+        const values = {};
+        for (const match of code.matchAll(/([A-Z])\s*(-?(?:\d+(?:\.\d*)?|\.\d+))/g)) values[match[1]] = Number(match[2]);
+        if (commands.includes('G20')) units = t('gcodeUnitsInches');
+        if (commands.includes('G21')) units = t('gcodeUnitsMillimeters');
+        if (commands.includes('G90')) absolute = true;
+        if (commands.includes('G91')) absolute = false;
+        commands.filter(item => /^G5[4-9]$/.test(item)).forEach(item => { coordinateSystem = item; });
+        commands.filter(item => /^G1[789]$/.test(item)).forEach(item => { plane = item; });
+
+        if (/^T\d+$/.test(command)) stats.tools.add(command.slice(1));
+        const standaloneTool = code.match(/^T\s*(\d+)/);
+        if (standaloneTool) stats.tools.add(standaloneTool[1]);
+        if (commands.some(item => item === 'M6' || /^G8[1-9]$/.test(item) || item === 'G43' || item === 'G49')) addSignal('cnc', 7, t('gcodeSignalCncTooling'));
+        if (commands.some(item => item === 'G2' || item === 'G3')) addSignal('cnc', 1, t('gcodeSignalArcs'));
+        if (commands.includes('M4')) addSignal('laser', 6, 'M4');
+        if (commands.some(item => item === 'M3' || item === 'M4') && Number.isFinite(values.S)) addSignal('laser', 2, t('gcodeSignalPowerControl'));
+
+        if (['M104', 'M109'].includes(command)) {
+            const temperature = Number.isFinite(values.S) ? values.S : values.R;
+            if (Number.isFinite(temperature)) { ranges.nozzle[0] = Math.min(ranges.nozzle[0], temperature); ranges.nozzle[1] = Math.max(ranges.nozzle[1], temperature); }
+            addSignal('print3d', 7, t('gcodeSignalHotend'));
+        }
+        if (['M140', 'M190'].includes(command)) {
+            const temperature = Number.isFinite(values.S) ? values.S : values.R;
+            if (Number.isFinite(temperature)) { ranges.bed[0] = Math.min(ranges.bed[0], temperature); ranges.bed[1] = Math.max(ranges.bed[1], temperature); }
+            addSignal('print3d', 7, t('gcodeSignalBed'));
+        }
+        if (['M106', 'M107'].includes(command)) addSignal('print3d', 2, t('gcodeSignalFan'));
+
+        if (Number.isFinite(values.F)) { ranges.feed[0] = Math.min(ranges.feed[0], values.F); ranges.feed[1] = Math.max(ranges.feed[1], values.F); }
+        if (Number.isFinite(values.S) && ['M3', 'M4', 'G0', 'G1'].includes(command)) {
+            ranges.power[0] = Math.min(ranges.power[0], values.S);
+            ranges.power[1] = Math.max(ranges.power[1], values.S);
+        }
+        if (Number.isFinite(values.E) && ['G0', 'G1'].includes(command)) {
+            hasExtrusion = true;
+            addSignal('print3d', 6, t('gcodeSignalExtrusion'));
+        }
+
+        if (['G0', 'G1', 'G2', 'G3'].includes(command)) {
+            stats[command.toLowerCase()] += 1;
+            const next = { ...position };
+            ['X', 'Y', 'Z'].forEach(axis => {
+                if (Number.isFinite(values[axis])) next[axis] = absolute ? values[axis] : position[axis] + values[axis];
+            });
+            if (Number.isFinite(values.X) || Number.isFinite(values.Y) || Number.isFinite(values.Z)) {
+                pathDistance += Math.hypot(next.X - position.X, next.Y - position.Y, next.Z - position.Z);
+                ['X', 'Y', 'Z'].forEach(axis => {
+                    bounds[axis][0] = Math.min(bounds[axis][0], next[axis]);
+                    bounds[axis][1] = Math.max(bounds[axis][1], next[axis]);
+                    position[axis] = next[axis];
+                });
+            }
+        }
+    });
+
+    if (firmware === 'GRBL' && ranges.power[1] > -Infinity && !hasExtrusion) addSignal('laser', 2, 'GRBL + S');
+    if (bounds.Z[0] < 0 && !hasExtrusion) addSignal('cnc', 2, t('gcodeSignalNegativeZ'));
+    if (stats.tools.size) addSignal('cnc', 5, t('gcodeSignalToolChanges'));
+
+    const ranking = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    const [type, topScore] = ranking[0][1] > 0 ? ranking[0] : ['unknown', 0];
+    const margin = topScore - (ranking[1]?.[1] || 0);
+    const confidence = topScore >= 10 && margin >= 5 ? t('gcodeConfidenceHigh') : topScore >= 5 && margin >= 2 ? t('gcodeConfidenceMedium') : t('gcodeConfidenceLow');
+    const rangeText = range => range[1] > -Infinity ? (range[0] === range[1] ? `${range[0]}` : `${range[0]}–${range[1]}`) : '';
+    const axisBounds = ['X', 'Y', 'Z'].filter(axis => bounds[axis][1] > -Infinity).map(axis => `${axis} ${bounds[axis][0].toFixed(2)}–${bounds[axis][1].toFixed(2)}`).join(' · ');
+    const motionText = ['G0', 'G1', 'G2', 'G3'].map(command => `${command}: ${stats[command.toLowerCase()].toLocaleString()}`).join(' · ');
+
+    return {
+        type, confidence, scores, signals: type === 'unknown' ? [] : signals[type],
+        details: [
+            [t('gcodeAnalysisGenerator'), generator || t('gcodeAnalysisNotDetected'), true],
+            [t('gcodeAnalysisFirmware'), firmware || t('gcodeAnalysisNotDetected')],
+            [t('gcodeAnalysisUnits'), units || t('gcodeAnalysisNotDeclared')],
+            [t('gcodeAnalysisCoordinates'), `${absolute ? t('gcodeCoordinatesAbsolute') : t('gcodeCoordinatesRelative')}${coordinateSystem ? ` · ${coordinateSystem}` : ''}${plane ? ` · ${plane}` : ''}`],
+            [t('gcodeAnalysisBounds'), declaredBounds || axisBounds || t('gcodeAnalysisNotDetected'), true],
+            [t('gcodeAnalysisFeed'), rangeText(ranges.feed) ? `${rangeText(ranges.feed)} /min` : declaredFeed || t('gcodeAnalysisNotDetected')],
+            [t('gcodeAnalysisPower'), `${rangeText(ranges.power) ? `S ${rangeText(ranges.power)}` : ''}${rangeText(ranges.power) && declaredPower ? ' · ' : ''}${declaredPower ? `${declaredPower} ${t('gcodeAnalysisDeclared')}` : ''}` || t('gcodeAnalysisNotDetected')],
+            [t('gcodeAnalysisTemperatures'), `${rangeText(ranges.nozzle) ? `${t('gcodeAnalysisNozzle')} ${rangeText(ranges.nozzle)} °C` : ''}${rangeText(ranges.nozzle) && rangeText(ranges.bed) ? ' · ' : ''}${rangeText(ranges.bed) ? `${t('gcodeAnalysisBed')} ${rangeText(ranges.bed)} °C` : ''}` || t('gcodeAnalysisNotDetected'), true],
+            [t('gcodeAnalysisLayersTools'), `${stats.layers.size ? `${stats.layers.size} ${t('gcodeAnalysisLayers')}` : ''}${stats.layers.size && stats.tools.size ? ' · ' : ''}${stats.tools.size ? `${t('gcodeAnalysisTools')}: ${[...stats.tools].join(', ')}` : ''}` || t('gcodeAnalysisNotDetected')],
+            [t('gcodeAnalysisPath'), pathDistance ? `${pathDistance.toFixed(1)} ${units === t('gcodeUnitsInches') ? 'in' : 'mm'}` : t('gcodeAnalysisNotDetected')],
+            [t('gcodeAnalysisCommands'), `${stats.executable.toLocaleString()} · ${stats.commands.size} ${t('gcodeAnalysisUnique')}`, true],
+            [t('gcodeAnalysisMovements'), motionText, true]
+        ]
+    };
+}
+
+function renderGcodeAnalysis() {
+    if (!gcodeEditorTextarea || !gcodeAnalysisType || !gcodeAnalysisSummary || !gcodeAnalysisDetails || !gcodeAnalysisSignals) return;
+    const content = gcodeEditorTextarea.value;
+    if (!content.trim()) {
+        gcodeAnalysisType.className = 'gcode-type-badge is-unknown';
+        gcodeAnalysisType.textContent = t('gcodeTypeUnknown');
+        gcodeAnalysisSummary.textContent = t('gcodeAnalysisEmpty');
+        gcodeAnalysisDetails.innerHTML = '';
+        gcodeAnalysisSignals.innerHTML = '';
+        return;
+    }
+    const analysis = analyzeGcodeContent(content);
+    const typeLabels = { print3d: t('gcodeTypePrint3d'), laser: t('gcodeTypeLaser'), cnc: t('gcodeTypeCnc'), unknown: t('gcodeTypeUnknown') };
+    gcodeAnalysisType.className = `gcode-type-badge is-${analysis.type}`;
+    gcodeAnalysisType.textContent = typeLabels[analysis.type];
+    gcodeAnalysisSummary.textContent = analysis.type === 'unknown'
+        ? t('gcodeAnalysisUndetermined')
+        : t('gcodeAnalysisClassification').replace('{type}', typeLabels[analysis.type]).replace('{confidence}', analysis.confidence);
+    gcodeAnalysisDetails.innerHTML = analysis.details.map(([label, value, wide]) => `
+        <div class="gcode-analysis-item${wide ? ' is-wide' : ''}">
+            <span>${escapeHtml(label)}</span><strong title="${escapeHtml(value)}">${escapeHtml(value)}</strong>
+        </div>`).join('');
+    gcodeAnalysisSignals.innerHTML = analysis.signals.map(signal => `<span class="gcode-analysis-signal">${escapeHtml(signal)}</span>`).join('');
+}
+
+function scheduleGcodeAnalysis(immediate = false) {
+    clearTimeout(gcodeAnalysisTimer);
+    if (immediate) renderGcodeAnalysis();
+    else gcodeAnalysisTimer = setTimeout(renderGcodeAnalysis, 250);
+}
+
+function updateGcodeEditorLineCount() {
+    if (!gcodeEditorTextarea || !gcodeEditorLineCount) return;
+    const content = gcodeEditorTextarea.value;
+    const count = content ? content.split(/\r?\n/).length : 0;
+    gcodeEditorLineCount.textContent = t('gcodeEditorLines').replace('{count}', count.toLocaleString());
+    scheduleGcodeAnalysis();
+}
+
+document.getElementById('gcode-editor-open-btn')?.addEventListener('click', () => {
+    gcodeEditorFileInput?.click();
+});
+
+gcodeEditorFileInput?.addEventListener('change', async () => {
+    const file = gcodeEditorFileInput.files?.[0];
+    if (!file || !gcodeEditorTextarea) return;
+    gcodeEditorTextarea.value = await file.text();
+    if (gcodeEditorFilename) gcodeEditorFilename.textContent = file.name;
+    updateGcodeEditorLineCount();
+    gcodeEditorTextarea.focus();
+    gcodeEditorFileInput.value = '';
+});
+
+document.getElementById('gcode-editor-new-btn')?.addEventListener('click', async () => {
+    if (!gcodeEditorTextarea) return;
+    if (gcodeEditorTextarea.value && !(await appConfirm(t('gcodeEditorNewConfirm'), t('gcodeEditorNew')))) return;
+    gcodeEditorTextarea.value = '';
+    if (gcodeEditorFilename) gcodeEditorFilename.textContent = t('gcodeEditorUntitled');
+    updateGcodeEditorLineCount();
+    gcodeEditorTextarea.focus();
+});
+
+document.getElementById('gcode-editor-download-btn')?.addEventListener('click', () => {
+    if (!gcodeEditorTextarea) return;
+    const filename = (gcodeEditorFilename?.textContent || t('gcodeEditorUntitled')).trim();
+    const blob = new Blob([gcodeEditorTextarea.value], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = /\.(gcode|gc|gco|nc|tap|cnc)$/i.test(filename) ? filename : `${filename}.gcode`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+});
+
+gcodeEditorTextarea?.addEventListener('input', updateGcodeEditorLineCount);
+gcodeEditorTextarea?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    const start = gcodeEditorTextarea.selectionStart;
+    const end = gcodeEditorTextarea.selectionEnd;
+    gcodeEditorTextarea.setRangeText('    ', start, end, 'end');
+    updateGcodeEditorLineCount();
+});
+updateGcodeEditorLineCount();
+scheduleGcodeAnalysis(true);
 
 const sidebarSettingsBtn = document.getElementById('sidebar-settings-btn');
 if (sidebarSettingsBtn) {
@@ -12186,6 +12693,7 @@ let pricingMaterials = [];
 let pricingExtraCosts = [];
 let pricingLastQuoteResult = null;
 let pricingLastSavedQuoteId = null;
+let pricingLastLoadedQuoteId = null;
 let pricingQuoteRequestTimer = null;
 let pricingQuoteDate = null;
 let pricingWired = false;
@@ -12327,6 +12835,7 @@ function setPricingJobType(type) {
     pricingSelectedFile = null;
     pricingLastQuoteResult = null;
     pricingLastSavedQuoteId = null;
+    pricingLastLoadedQuoteId = null;
     document.getElementById('pricing-selected-file-block').hidden = true;
     document.getElementById('pricing-file-empty').hidden = false;
     document.getElementById('pricing-file-info-card').hidden = true;
@@ -12504,6 +13013,7 @@ function selectPricingFile(file) {
     pricingSelectedFile = file;
     pricingLastQuoteResult = null;
     pricingLastSavedQuoteId = null;
+    pricingLastLoadedQuoteId = null;
 
     const emptyBox = document.getElementById('pricing-file-empty');
     if (emptyBox) emptyBox.hidden = true;
@@ -12534,6 +13044,8 @@ function selectPricingFile(file) {
             renderStandardModelPreview(thumb, file.file_url);
         }
     }
+    const replaceBtn = document.getElementById('pricing-replace-file-btn');
+    if (replaceBtn) replaceBtn.disabled = false;
 
     updatePricingBreadcrumbState();
     schedulePricingQuoteRefresh();
@@ -12790,12 +13302,16 @@ async function savePricingQuote() {
             client_name: document.getElementById('pricing-client-name-input')?.value.trim() || null,
             client_phone: document.getElementById('pricing-client-phone-input')?.value.trim() || null,
         };
+        const currentQuoteId = pricingLastLoadedQuoteId || pricingLastSavedQuoteId;
+        const url = currentQuoteId ? `/api/pricing/quotes/${encodeURIComponent(currentQuoteId)}` : '/api/pricing/quotes';
+        const method = currentQuoteId ? 'PUT' : 'POST';
         const formData = new FormData();
         formData.append('quote', JSON.stringify(quotePayload));
-        const response = await fetch('/api/pricing/quotes', { method: 'POST', body: formData });
+        const response = await fetch(url, { method, body: formData });
         if (!response.ok) throw new Error(t('pricingSaveError'));
         const saved = await response.json();
         pricingLastSavedQuoteId = saved.id;
+        pricingLastLoadedQuoteId = saved.id;
         showToast(`${t('pricingQuoteSaved')}: ${saved.id}`);
         updatePricingSaveGatedButtons();
         renderPricingAdditionalInfo(pricingLastQuoteResult);
@@ -12938,6 +13454,12 @@ function renderPricingQuotesTable(quotes) {
                     <button type="button" class="pricing-quote-print-btn" data-id="${escapeHtml(quote.id)}" title="${escapeHtml(t('pricingPrintPreview'))}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                     </button>
+                    <button type="button" class="pricing-quote-load-btn" data-id="${escapeHtml(quote.id)}" title="${escapeHtml(t('pricingLoadQuote'))}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 17l5-5-5-5"/><path d="M5 12h14"/></svg>
+                    </button>
+                    <button type="button" class="pricing-quote-delete-btn" data-id="${escapeHtml(quote.id)}" title="${escapeHtml(t('pricingDeleteQuote'))}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
                 </td>
             </tr>
         `;
@@ -12946,6 +13468,111 @@ function renderPricingQuotesTable(quotes) {
     tbody.querySelectorAll('.pricing-quote-print-btn').forEach(btn => {
         btn.addEventListener('click', () => openPricingPrintPreview(btn.dataset.id));
     });
+    tbody.querySelectorAll('.pricing-quote-load-btn').forEach(btn => {
+        btn.addEventListener('click', () => loadPricingQuote(btn.dataset.id));
+    });
+    tbody.querySelectorAll('.pricing-quote-delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => deletePricingQuote(btn.dataset.id));
+    });
+}
+
+async function loadPricingQuote(quoteId) {
+    if (!quoteId) return;
+    try {
+        const response = await fetch(`/api/pricing/quotes/${encodeURIComponent(quoteId)}`);
+        if (!response.ok) throw new Error(t('pricingLoadQuoteError'));
+        const quote = await response.json();
+        fillPricingQuoteWizard(quote);
+        showToast(`${t('pricingQuoteLoaded')}: ${quote.id}`);
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('pricingLoadQuoteError'), '', 'danger');
+    }
+}
+
+function fillPricingQuoteWizard(quote) {
+    if (!quote || !quote.file) return;
+    const jobType = quote.job_type || 'printer';
+    setPricingJobType(jobType);
+    pricingLastLoadedQuoteId = quote.id;
+    pricingLastSavedQuoteId = quote.id;
+    pricingQuoteDate = quote.created_at ? new Date(quote.created_at * 1000) : new Date();
+
+    const fileSection = quote.file.section === 'gcode' ? 'gcode' : 'model';
+    const sectionPrefix = fileSection === 'gcode' ? 'gcode' : 'models';
+    const relPath = quote.file.path || quote.file.name || '';
+    const fakeFile = {
+        id: `${sectionPrefix}/${relPath}`,
+        name: quote.file.name || relPath.split('/').pop(),
+        extension: `.${(quote.file.name || relPath).split('.').pop()}`,
+        size: 0,
+        file_url: `/uploads/${sectionPrefix}/${relPath}`,
+    };
+    pricingSelectedFile = fakeFile;
+    const emptyBox = document.getElementById('pricing-file-empty');
+    const block = document.getElementById('pricing-selected-file-block');
+    if (emptyBox) emptyBox.hidden = true;
+    if (block) block.hidden = false;
+    const nameEl = document.getElementById('pricing-selected-file-name');
+    if (nameEl) nameEl.textContent = fakeFile.name;
+    const subEl = document.getElementById('pricing-selected-file-sub');
+    if (subEl) subEl.textContent = `${(fakeFile.extension || '').replace('.', '').toUpperCase()} · ${fakeFile.size ? formatSize(fakeFile.size) : '—'}`;
+    const replaceBtn = document.getElementById('pricing-replace-file-btn');
+    if (replaceBtn) replaceBtn.disabled = true;
+
+    document.getElementById('pricing-color-select').value = quote.color || '';
+    const qtyInput = document.getElementById('pricing-quantity-input');
+    if (qtyInput) qtyInput.value = quote.quantity || 1;
+    document.querySelectorAll('#pricing-detail-level-switch .option-switch-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.value === (quote.detail_level || 'standard'));
+    });
+    const notesInput = document.getElementById('pricing-notes-input');
+    if (notesInput) notesInput.value = quote.notes || '';
+    const clientNameInput = document.getElementById('pricing-client-name-input');
+    if (clientNameInput) clientNameInput.value = quote.client_name || '';
+    const clientPhoneInput = document.getElementById('pricing-client-phone-input');
+    if (clientPhoneInput) clientPhoneInput.value = quote.client_phone || '';
+    const validUntilInput = document.getElementById('pricing-valid-until-input');
+    if (validUntilInput) validUntilInput.value = quote.valid_until || '';
+
+    pricingExtraCosts = [];
+    renderPricingExtraCosts();
+
+    const materialSelect = document.getElementById('pricing-material-select');
+    if (materialSelect && quote.material?.id) {
+        materialSelect.value = quote.material.id;
+    }
+    const machineSelect = document.getElementById('pricing-machine-select');
+    if (machineSelect && quote.machine?.id) {
+        machineSelect.value = quote.machine.id;
+    }
+
+    pricingLastQuoteResult = quote;
+    renderPricingCostSummary(quote);
+    renderPricingFileInfo(quote);
+    renderPricingAdditionalInfo(quote);
+    updatePricingBreadcrumbState();
+}
+
+async function deletePricingQuote(quoteId) {
+    if (!quoteId || !window.confirm(t('pricingDeleteQuoteConfirm'))) return;
+    try {
+        const response = await fetch(`/api/pricing/quotes/${encodeURIComponent(quoteId)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(t('pricingDeleteQuoteError'));
+        showToast(t('pricingDeleteQuoteSuccess'));
+        if (pricingLastLoadedQuoteId === quoteId) {
+            pricingLastLoadedQuoteId = null;
+            pricingLastSavedQuoteId = null;
+            pricingLastQuoteResult = null;
+            pricingQuoteDate = null;
+            renderPricingAdditionalInfo(null);
+            renderPricingCostSummary(null);
+        }
+        loadPricingQuotesHistory();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('pricingDeleteQuoteError'), '', 'danger');
+    }
 }
 
 // ── Cotizador > Catálogos (materiales/máquinas/ajustes) ──
