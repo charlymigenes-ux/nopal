@@ -38,6 +38,9 @@
                 <div class="topbar-menu-panel" id="topbar-lang-panel" hidden>
                     <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="es">Español</button>
                     <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="en">English</button>
+                    <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="pt-BR">Português</button>
+                    <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="fr">Français</button>
+                    <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="de">Deutsch</button>
                 </div>
             </div>
             <div class="topbar-user-wrap" id="topbar-user-wrap">
@@ -429,22 +432,22 @@
                         <section class="gcode-library-card">
                             <header class="gcode-library-header">
                                 <div>
-                                    <span class="library-page-eyebrow">BIBLIOTECA NOPAL</span>
+                                    <span class="library-page-eyebrow" data-i18n="libraryEyebrow">BIBLIOTECA NOPAL</span>
                                     <h1 data-i18n="gcode">G-code</h1>
-                                    <p>Explora, organiza y gestiona tus archivos G-code.</p>
+                                    <p data-i18n="libraryGcodeDescription">Explora, organiza y gestiona tus archivos G-code.</p>
                                 </div>
                                 <div class="gcode-library-actions">
                                     <div class="upload-wrapper">
                                         <button id="upload-btn-gcode" class="gcode-primary-action" type="button">
-                                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Subir archivo</span>
+                                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span data-i18n="libraryUploadFile">Subir archivo</span>
                                         </button>
                                         <input id="upload-input-gcode" type="file" accept=".gcode,.gc,.gco,.nc,.tap,.cnc" multiple hidden>
                                     </div>
                                     <button id="create-folder-btn-gcode" class="gcode-toolbar-action" type="button">
-                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span>Nueva carpeta</span>
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span data-i18n="libraryNewFolder">Nueva carpeta</span>
                                     </button>
                                     <button id="reload-btn-gcode" class="gcode-toolbar-action" type="button">
-                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg><span>Actualizar</span>
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg><span data-i18n="libraryRefresh">Actualizar</span>
                                     </button>
                                     <button id="settings-btn-gcode" class="gcode-icon-action" type="button" title="Más opciones">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
@@ -470,8 +473,8 @@
                                     <kbd>Ctrl K</kbd>
                                 </label>
                                 <div class="gcode-toolbar-spacer"></div>
-                                <label class="gcode-select-control"><span>Ordenar por:</span><select id="gcode-sort-select"><option value="name-asc">Nombre (A-Z)</option><option value="name-desc">Nombre (Z-A)</option><option value="date-desc">Más recientes</option><option value="date-asc">Más antiguos</option><option value="size-desc">Mayor tamaño</option></select></label>
-                                <label class="gcode-select-control gcode-filter-control"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10m-7 7h4"/></svg><select id="gcode-filter-select"><option value="all">Filtros</option><option value="favorites">Favoritos</option><option value="recent">Recientes</option></select></label>
+                                <label class="gcode-select-control"><span data-i18n="librarySortBy">Ordenar por:</span><select id="gcode-sort-select"><option value="name-asc" data-i18n="librarySortNameAsc">Nombre (A-Z)</option><option value="name-desc" data-i18n="librarySortNameDesc">Nombre (Z-A)</option><option value="date-desc" data-i18n="librarySortNewest">Más recientes</option><option value="date-asc" data-i18n="librarySortOldest">Más antiguos</option><option value="size-desc" data-i18n="librarySortLargest">Mayor tamaño</option></select></label>
+                                <label class="gcode-select-control gcode-filter-control"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10m-7 7h4"/></svg><select id="gcode-filter-select"><option value="all" data-i18n="libraryFilters">Filtros</option><option value="favorites" data-i18n="libraryFavorites">Favoritos</option><option value="recent" data-i18n="libraryRecent">Recientes</option></select></label>
                                 <div class="gcode-view-switch">
                                     <button id="gcode-view-grid" type="button" data-view="grid" title="Vista de cuadrícula"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
                                     <button id="gcode-view-list" class="active" type="button" data-view="list" title="Vista de lista"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
@@ -481,11 +484,11 @@
                             <div class="gcode-browser-layout">
                                 <aside class="gcode-inner-sidebar">
                                     <section>
-                                        <div class="gcode-sidebar-heading"><strong>★ Favoritos</strong><button id="gcode-favorites-all" type="button">Ver todos</button></div>
+                                        <div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="gcode-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div>
                                         <div id="gcode-favorites-list" class="gcode-sidebar-list"></div>
                                     </section>
                                     <section>
-                                        <div class="gcode-sidebar-heading"><strong>◷ Recientes</strong><button id="gcode-recents-all" type="button">Ver todos</button></div>
+                                        <div class="gcode-sidebar-heading"><strong>◷ <span data-i18n="libraryRecent">Recientes</span></strong><button id="gcode-recents-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div>
                                         <div id="gcode-recents-list" class="gcode-sidebar-list"></div>
                                     </section>
                                     <section>
@@ -510,10 +513,10 @@
 
                         <aside class="gcode-preview-card gcode-modern-preview">
                             <div class="preview-card-inner">
-                                <div class="preview-card-header"><div><span class="preview-label">VISTA PREVIA DE G-CODE</span></div></div>
+                                <div class="preview-card-header"><div><span class="preview-label" data-i18n="libraryGcodePreview">VISTA PREVIA DE G-CODE</span></div></div>
                                 <div class="preview-details-panel">
-                                    <div class="gcode-preview-name-row"><h2 id="gcode-preview-title">Selecciona un archivo G-code</h2><button id="gcode-preview-favorite" type="button" title="Favorito">☆</button></div>
-                                    <p id="gcode-preview-description">La vista previa se actualiza cuando seleccionas un archivo de la lista.</p>
+                                    <div class="gcode-preview-name-row"><h2 id="gcode-preview-title" data-i18n="librarySelectGcode">Selecciona un archivo G-code</h2><button id="gcode-preview-favorite" type="button" title="Favorito">☆</button></div>
+                                    <p id="gcode-preview-description" data-i18n="libraryGcodePreviewHelp">La vista previa se actualiza cuando seleccionas un archivo de la lista.</p>
                                     <div class="preview-meta-grid">
                                         <div><span data-i18n="previewMetaLines">Líneas</span><strong id="gcode-preview-lines">—</strong></div>
                                         <div><span data-i18n="columnSize">Tamaño</span><strong id="gcode-preview-size">—</strong></div>
@@ -533,8 +536,8 @@
                                     <div class="gcode-preview-ruler-x"><span>X</span><i>0</i><i>50</i><i>100</i></div>
                                 </div>
                                 <div class="gcode-preview-insights">
-                                    <div><span>Material sugerido</span><strong id="gcode-preview-material">—</strong></div>
-                                    <div><span>Tiempo estimado</span><strong id="gcode-preview-time">—</strong></div>
+                                    <div><span data-i18n="librarySuggestedMaterial">Material sugerido</span><strong id="gcode-preview-material">—</strong></div>
+                                    <div><span data-i18n="libraryEstimatedTime">Tiempo estimado</span><strong id="gcode-preview-time">—</strong></div>
                                 </div>
                             </div>
                         </aside>
@@ -1800,6 +1803,9 @@
                                 <div class="option-switch" id="settings-language-switch">
                                     <button type="button" class="option-switch-btn" data-value="es">Español</button>
                                     <button type="button" class="option-switch-btn" data-value="en">English</button>
+                                    <button type="button" class="option-switch-btn" data-value="pt-BR">Português</button>
+                                    <button type="button" class="option-switch-btn" data-value="fr">Français</button>
+                                    <button type="button" class="option-switch-btn" data-value="de">Deutsch</button>
                                 </div>
                             </div>
                             <div class="settings-field settings-field-switch">
@@ -2371,6 +2377,9 @@
             <div class="login-lang-switch" id="login-lang-switch">
                 <button type="button" class="lang-switch-btn" data-lang="es">ES</button>
                 <button type="button" class="lang-switch-btn" data-lang="en">EN</button>
+                <button type="button" class="lang-switch-btn" data-lang="pt-BR">PT</button>
+                <button type="button" class="lang-switch-btn" data-lang="fr">FR</button>
+                <button type="button" class="lang-switch-btn" data-lang="de">DE</button>
             </div>
             <img class="login-card-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
 
@@ -4047,7 +4056,10 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=18"></script>
-    <script src="/static/js/app.js?v=200"></script>
+    <script src="/static/js/translations.js?v=19"></script>
+    <script src="/static/js/translations-pt-BR.js?v=1"></script>
+    <script src="/static/js/translations-fr.js?v=1"></script>
+    <script src="/static/js/translations-de.js?v=1"></script>
+    <script src="/static/js/app.js?v=201"></script>
 </body>
 </html>

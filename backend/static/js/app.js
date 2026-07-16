@@ -217,7 +217,8 @@ wireTopbarDropdown('topbar-user-btn', 'topbar-user-panel');
 
 function updateTopbarLangLabel() {
     const el = document.getElementById('topbar-lang-current');
-    if (el) el.textContent = (typeof currentLanguage !== 'undefined' ? currentLanguage : 'es').toUpperCase();
+    const labels = { es: 'ES', en: 'EN', 'pt-BR': 'PT', fr: 'FR', de: 'DE' };
+    if (el) el.textContent = labels[typeof currentLanguage !== 'undefined' ? currentLanguage : 'es'] || 'ES';
 }
 
 document.querySelectorAll('#topbar-lang-panel .lang-switch-btn').forEach(btn => {
@@ -279,11 +280,11 @@ function installModernModelsLibraryMarkup() {
             <div class="gcode-library-shell models-library-shell">
                 <section class="gcode-library-card models-library-card">
                     <header class="gcode-library-header">
-                        <div><span class="library-page-eyebrow">BIBLIOTECA NOPAL</span><h1>Impresión 3D</h1><p>Explora, organiza y gestiona tus modelos y archivos listos para imprimir.</p></div>
+                        <div><span class="library-page-eyebrow" data-i18n="libraryEyebrow">BIBLIOTECA NOPAL</span><h1 data-i18n="navPrinting3d">Impresión 3D</h1><p data-i18n="libraryModelsDescription">Explora, organiza y gestiona tus modelos y archivos listos para imprimir.</p></div>
                         <div class="gcode-library-actions">
-                            <div class="upload-wrapper"><button id="upload-btn-models" class="gcode-primary-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Subir archivo</span></button><input id="upload-input-models" type="file" accept=".stl,.3mf,.obj,.gcode,.gc,.gco" multiple hidden></div>
-                            <button id="create-folder-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span>Nueva carpeta</span></button>
-                            <button id="reload-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg><span>Actualizar</span></button>
+                            <div class="upload-wrapper"><button id="upload-btn-models" class="gcode-primary-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span data-i18n="libraryUploadFile">Subir archivo</span></button><input id="upload-input-models" type="file" accept=".stl,.3mf,.obj,.gcode,.gc,.gco" multiple hidden></div>
+                            <button id="create-folder-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span data-i18n="libraryNewFolder">Nueva carpeta</span></button>
+                            <button id="reload-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg><span data-i18n="libraryRefresh">Actualizar</span></button>
                             <button id="settings-btn-models" class="gcode-icon-action" type="button" title="Más opciones"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
                         </div>
                     </header>
@@ -294,18 +295,18 @@ function installModernModelsLibraryMarkup() {
                     <div class="gcode-library-toolbar">
                         <label class="gcode-library-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.7" y2="16.7"/></svg><input id="search-models" type="search" placeholder="Buscar modelos..."><kbd>Ctrl K</kbd></label>
                         <div class="gcode-toolbar-spacer"></div>
-                        <label class="gcode-select-control"><span>Ordenar por:</span><select id="models-sort-select"><option value="name-asc">Nombre (A-Z)</option><option value="name-desc">Nombre (Z-A)</option><option value="date-desc">Más recientes</option><option value="date-asc">Más antiguos</option><option value="size-desc">Mayor tamaño</option></select></label>
-                        <label class="gcode-select-control gcode-filter-control"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10m-7 7h4"/></svg><select id="models-filter-select"><option value="all">Filtros</option><option value="favorites">Favoritos</option><option value="recent">Recientes</option><option value="models">Modelos 3D</option><option value="gcode">G-code</option></select></label>
+                        <label class="gcode-select-control"><span data-i18n="librarySortBy">Ordenar por:</span><select id="models-sort-select"><option value="name-asc" data-i18n="librarySortNameAsc">Nombre (A-Z)</option><option value="name-desc" data-i18n="librarySortNameDesc">Nombre (Z-A)</option><option value="date-desc" data-i18n="librarySortNewest">Más recientes</option><option value="date-asc" data-i18n="librarySortOldest">Más antiguos</option><option value="size-desc" data-i18n="librarySortLargest">Mayor tamaño</option></select></label>
+                        <label class="gcode-select-control gcode-filter-control"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10m-7 7h4"/></svg><select id="models-filter-select"><option value="all" data-i18n="libraryFilters">Filtros</option><option value="favorites" data-i18n="libraryFavorites">Favoritos</option><option value="recent" data-i18n="libraryRecent">Recientes</option><option value="models" data-i18n="libraryModelsOnly">Modelos 3D</option><option value="gcode">G-code</option></select></label>
                         <div class="gcode-view-switch"><button id="view-grid-full" type="button" data-view="grid" title="Vista de cuadrícula"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button><button id="view-list-full" class="active" type="button" data-view="list" title="Vista de lista"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button></div>
                     </div>
                     <div class="gcode-browser-layout">
-                        <aside class="gcode-inner-sidebar"><section><div class="gcode-sidebar-heading"><strong>★ Favoritos</strong><button id="models-favorites-all" type="button">Ver todos</button></div><div id="models-favorites-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◷ Recientes</strong><button id="models-recents-all" type="button">Ver todos</button></div><div id="models-recents-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◇ Formatos</strong></div><div id="models-tags-list" class="gcode-sidebar-list"></div></section></aside>
+                        <aside class="gcode-inner-sidebar"><section><div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="models-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-favorites-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◷ <span data-i18n="libraryRecent">Recientes</span></strong><button id="models-recents-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-recents-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◇ <span data-i18n="libraryFormats">Formatos</span></strong></div><div id="models-tags-list" class="gcode-sidebar-list"></div></section></aside>
                         <div class="gcode-browser-content"><div id="models-folder-strip" class="gcode-folder-strip"></div><div class="bulk-actions-bar" id="models-bulk-bar" hidden><span id="models-bulk-count">0</span><button type="button" class="btn-file-action" id="models-bulk-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="models-bulk-delete-btn">Eliminar</button><button type="button" class="bulk-actions-clear-btn" id="models-bulk-clear-btn">Cancelar selección</button></div><div id="models-full" class="models-table-wrapper gcode-modern-table models-modern-table"></div><footer class="gcode-pagination" id="models-pagination"></footer></div>
                     </div>
                 </section>
                 <aside class="models-preview-card gcode-modern-preview models-modern-preview"><div class="preview-card-inner">
-                    <div class="preview-card-header"><div><span class="preview-label">VISTA PREVIA DEL MODELO</span></div><button type="button" class="preview-expand-btn" id="preview-expand-btn" title="Ampliar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button></div>
-                    <div class="gcode-preview-name-row"><h2 id="preview-filename">Selecciona un modelo</h2><button type="button" class="preview-favorite-btn" id="preview-favorite-btn" title="Favorito">☆</button></div><p class="models-preview-description">Vista interactiva para modelos 3D y trayectorias G-code.</p>
+                    <div class="preview-card-header"><div><span class="preview-label" data-i18n="libraryModelPreview">VISTA PREVIA DEL MODELO</span></div><button type="button" class="preview-expand-btn" id="preview-expand-btn" title="Ampliar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button></div>
+                    <div class="gcode-preview-name-row"><h2 id="preview-filename" data-i18n="librarySelectModel">Selecciona un modelo</h2><button type="button" class="preview-favorite-btn" id="preview-favorite-btn" title="Favorito">☆</button></div><p class="models-preview-description" data-i18n="libraryModelPreviewHelp">Vista interactiva para modelos 3D y trayectorias G-code.</p>
                     <div class="preview-meta-grid"><div><span>Tipo</span><strong id="preview-type">—</strong><span id="preview-type-pill" hidden></span></div><div><span>Tamaño</span><strong id="preview-size">—</strong></div><div><span>Modificado</span><strong id="preview-date">—</strong></div></div>
                     <div class="preview-file-actions"><button type="button" class="btn-file-action btn-file-action-accent" id="preview-send-printer-btn" hidden>Enviar a impresora</button><button type="button" class="btn-file-action" id="preview-download-btn">Descargar</button><button type="button" class="btn-file-action" id="preview-rename-btn">Renombrar</button><button type="button" class="btn-file-action" id="preview-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="preview-delete-btn">Eliminar</button></div>
                     <div class="models-preview-stage" id="model-preview-box"><div class="preview-image" id="preview-image"><div class="preview-image-placeholder">3D</div></div></div>
@@ -531,7 +532,7 @@ function hashColor(name) {
 function formatDate(timestamp) {
     if (!timestamp) return '—';
     const date = new Date(timestamp * 1000);
-    const locale = currentLanguage === 'es' ? 'es-ES' : 'en-US';
+    const locale = { es: 'es-MX', en: 'en-US', 'pt-BR': 'pt-BR', fr: 'fr-FR', de: 'de-DE' }[currentLanguage] || 'es-MX';
     return date.toLocaleString(locale, {
         year: 'numeric',
         month: 'short',
@@ -1999,8 +2000,8 @@ function renderGcodeBreadcrumb() {
     if (!breadcrumb) return;
     const parts = currentGcodePath.split('/').filter(Boolean);
     const segments = [
-        { label: 'Raíz', path: '' },
-        { label: 'Biblioteca', path: '' },
+        { label: t('libraryRoot'), path: '' },
+        { label: t('librarySection'), path: '' },
         { label: 'G-code', path: '' },
     ];
     parts.forEach((part, index) => segments.push({ label: part, path: parts.slice(0, index + 1).join('/') }));
@@ -2014,7 +2015,7 @@ function renderGcodeBreadcrumb() {
     document.getElementById('gcode-nav-forward')?.toggleAttribute('disabled', gcodePathHistoryIndex >= gcodePathHistory.length - 1);
     document.getElementById('gcode-nav-up')?.toggleAttribute('disabled', !currentGcodePath);
     const disk = document.getElementById('gcode-disk-free');
-    if (disk) disk.textContent = `${currentGcodeData.folders.length} carpetas · ${currentGcodeData.files.length} archivos`;
+    if (disk) disk.textContent = t('libraryCounts').replace('{folders}', currentGcodeData.folders.length).replace('{files}', currentGcodeData.files.length);
 }
 
 function renderGcodeFolderStrip(folders) {
@@ -2024,7 +2025,7 @@ function renderGcodeFolderStrip(folders) {
     strip.innerHTML = folders.map(folder => `
         <button type="button" class="gcode-folder-card" data-folder-path="${escapeHtml(folder.path)}">
             <svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg>
-            <span><strong>${escapeHtml(folder.name)}</strong><small>${Number(folder.file_count || 0).toLocaleString()} elementos</small></span>
+            <span><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span>
             <span class="gcode-folder-menu" aria-hidden="true">›</span>
         </button>
     `).join('');
@@ -2062,8 +2063,8 @@ function renderGcodeSidebar() {
         </button>`;
     const favoriteList = document.getElementById('gcode-favorites-list');
     const recentList = document.getElementById('gcode-recents-list');
-    if (favoriteList) favoriteList.innerHTML = favorites.slice(0, 4).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin favoritos</span>';
-    if (recentList) recentList.innerHTML = recents.slice(0, 5).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin archivos recientes</span>';
+    if (favoriteList) favoriteList.innerHTML = favorites.slice(0, 4).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoFavorites')}</span>`;
+    if (recentList) recentList.innerHTML = recents.slice(0, 5).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoRecent')}</span>`;
     const tagCounts = new Map();
     currentGcodeData.files.forEach(model => {
         const tag = model.material || 'G-code';
@@ -2073,7 +2074,7 @@ function renderGcodeSidebar() {
     if (tags) tags.innerHTML = Array.from(tagCounts.entries()).map(([tag, count]) => `
         <button type="button" class="gcode-sidebar-item" data-gcode-tag="${escapeHtml(tag)}">
             <span class="gcode-sidebar-icon">◆</span><span>${escapeHtml(tag)}</span><b>${count}</b>
-        </button>`).join('') || '<span class="gcode-sidebar-empty">Sin etiquetas</span>';
+        </button>`).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoTags')}</span>`;
     document.querySelectorAll('[data-gcode-item]').forEach(button => {
         button.addEventListener('click', async () => {
             const snapshot = [...favorites, ...recents].find(item => item.id === button.dataset.gcodeItem);
@@ -2099,7 +2100,7 @@ function renderGcodePagination(totalItems, totalPages) {
     const pagination = document.getElementById('gcode-pagination');
     if (!pagination) return;
     if (!totalItems) {
-        pagination.innerHTML = '<span>0 resultados</span>';
+        pagination.innerHTML = `<span>${t('libraryZeroResults')}</span>`;
         return;
     }
     const start = (gcodePage - 1) * GCODE_PAGE_SIZE + 1;
@@ -2113,9 +2114,9 @@ function renderGcodePagination(totalItems, totalPages) {
         return `${gap}<button type="button" class="${page === gcodePage ? 'active' : ''}" data-gcode-page="${page}">${page}</button>`;
     }).join('');
     pagination.innerHTML = `
-        <span>Mostrando ${start} a ${end} de ${totalItems} resultados</span>
+        <span>${t('libraryResults').replace('{start}', start).replace('{end}', end).replace('{total}', totalItems)}</span>
         <div class="gcode-pagination-pages"><button type="button" data-gcode-page="${gcodePage - 1}" ${gcodePage === 1 ? 'disabled' : ''}>‹</button>${pageButtons}<button type="button" data-gcode-page="${gcodePage + 1}" ${gcodePage === totalPages ? 'disabled' : ''}>›</button></div>
-        <span>${GCODE_PAGE_SIZE} por página</span>`;
+        <span>${t('libraryPerPage').replace('{count}', GCODE_PAGE_SIZE)}</span>`;
     pagination.querySelectorAll('[data-gcode-page]').forEach(button => {
         button.addEventListener('click', () => {
             const page = Number(button.dataset.gcodePage);
@@ -2157,13 +2158,13 @@ function renderGcodeTable(filterQuery = gcodeSearchQuery) {
                 <td><span class="tag-pill">${escapeHtml(model.material || 'MDF')}</span></td>
                 <td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td>
                 <td class="gcode-dimensions">${cachedDimensions !== undefined ? formatGcodeDimensions(cachedDimensions) : '…'}</td>
-                <td><span class="gcode-status-ok" title="Disponible">✓</span></td>
-                <td><button type="button" class="gcode-row-menu" data-row-menu title="Acciones">•••</button></td>
+                <td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td>
+                <td><button type="button" class="gcode-row-menu" data-row-menu title="${t('libraryActions')}">•••</button></td>
             </tr>`;
     }).join('');
     gcodeTable.innerHTML = `<table class="models-table"><thead><tr>
         <th class="select-col"><input type="checkbox" class="select-all-checkbox" id="gcode-select-all"></th>
-        <th>${t('columnName')}</th><th>${t('material')}</th><th>${t('columnSize')}</th><th>${t('columnDate')}</th><th>${t('columnDimensions')}</th><th>Estado</th><th aria-label="Acciones">•••</th>
+        <th>${t('columnName')}</th><th>${t('material')}</th><th>${t('columnSize')}</th><th>${t('columnDate')}</th><th>${t('columnDimensions')}</th><th>${t('libraryStatus')}</th><th aria-label="${t('libraryActions')}">•••</th>
         </tr></thead><tbody>${fileRows}</tbody></table>`;
     wireBulkSelection('gcode', gcodeTable, pageFiles);
     gcodeTable.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
@@ -2196,7 +2197,7 @@ async function selectGcodePreview(model, rerender = true) {
     rememberRecentGcode(model);
     const fileUrl = model.file_url;
     if (gcodePreviewTitle) gcodePreviewTitle.textContent = model.name;
-    if (gcodePreviewDescription) gcodePreviewDescription.textContent = model.description || 'Vista previa en tiempo real para G-code.';
+    if (gcodePreviewDescription) gcodePreviewDescription.textContent = model.description || t('libraryGcodePreviewHelp');
     if (gcodePreviewSize) gcodePreviewSize.textContent = formatSize(model.size);
     if (gcodePreviewDate) gcodePreviewDate.textContent = formatDate(model.modified);
     const material = document.getElementById('gcode-preview-material');
@@ -12383,7 +12384,7 @@ function renderModelsBreadcrumb() {
     const breadcrumb = document.getElementById('models-breadcrumb');
     if (!breadcrumb) return;
     const parts = currentModelsPath.split('/').filter(Boolean);
-    const segments = [{ label: 'Raíz', path: '' }, { label: 'Biblioteca', path: '' }, { label: 'Impresión 3D', path: '' }];
+    const segments = [{ label: t('libraryRoot'), path: '' }, { label: t('librarySection'), path: '' }, { label: t('navPrinting3d'), path: '' }];
     parts.forEach((part, index) => segments.push({ label: part, path: parts.slice(0, index + 1).join('/') }));
     breadcrumb.innerHTML = segments.map(segment => `<button type="button" class="breadcrumb-segment" data-models-path="${escapeHtml(segment.path)}">${escapeHtml(segment.label)}</button>`).join('');
     breadcrumb.querySelectorAll('[data-models-path]').forEach(button => button.addEventListener('click', () => loadModelsFolder(button.dataset.modelsPath)));
@@ -12391,14 +12392,14 @@ function renderModelsBreadcrumb() {
     document.getElementById('models-nav-forward')?.toggleAttribute('disabled', modelsPathHistoryIndex >= modelsPathHistory.length - 1);
     document.getElementById('models-nav-up')?.toggleAttribute('disabled', !currentModelsPath);
     const disk = document.getElementById('models-disk-free');
-    if (disk) disk.textContent = `${currentModelsData.folders.length} carpetas · ${currentModelsData.files.length} archivos`;
+    if (disk) disk.textContent = t('libraryCounts').replace('{folders}', currentModelsData.folders.length).replace('{files}', currentModelsData.files.length);
 }
 
 function renderModelsFolderStrip(folders) {
     const strip = document.getElementById('models-folder-strip');
     if (!strip) return;
     strip.hidden = !folders.length;
-    strip.innerHTML = folders.map(folder => `<button type="button" class="gcode-folder-card" data-model-folder="${escapeHtml(folder.path)}"><svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg><span><strong>${escapeHtml(folder.name)}</strong><small>${Number(folder.file_count || 0).toLocaleString()} elementos</small></span><span class="gcode-folder-menu">›</span></button>`).join('');
+    strip.innerHTML = folders.map(folder => `<button type="button" class="gcode-folder-card" data-model-folder="${escapeHtml(folder.path)}"><svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg><span><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span><span class="gcode-folder-menu">›</span></button>`).join('');
     strip.querySelectorAll('[data-model-folder]').forEach(button => button.addEventListener('click', () => loadModelsFolder(button.dataset.modelFolder)));
 }
 
@@ -12431,15 +12432,15 @@ function renderModelsSidebar() {
     const itemHtml = item => `<button type="button" class="gcode-sidebar-item" data-model-library-item="${escapeHtml(item.id)}"><span class="gcode-sidebar-icon">◇</span><span>${escapeHtml(item.name)}</span><b>${escapeHtml(String(item.extension || '3D').replace('.', '').toUpperCase())}</b></button>`;
     const favoriteList = document.getElementById('models-favorites-list');
     const recentList = document.getElementById('models-recents-list');
-    if (favoriteList) favoriteList.innerHTML = favoriteModels.slice(0, 4).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin favoritos</span>';
-    if (recentList) recentList.innerHTML = recent.slice(0, 5).map(itemHtml).join('') || '<span class="gcode-sidebar-empty">Sin archivos recientes</span>';
+    if (favoriteList) favoriteList.innerHTML = favoriteModels.slice(0, 4).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoFavorites')}</span>`;
+    if (recentList) recentList.innerHTML = recent.slice(0, 5).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoRecent')}</span>`;
     const formats = new Map();
     currentModelsData.files.forEach(model => {
         const extension = String(model.extension || 'archivo').replace('.', '').toUpperCase();
         formats.set(extension, (formats.get(extension) || 0) + 1);
     });
     const tags = document.getElementById('models-tags-list');
-    if (tags) tags.innerHTML = Array.from(formats.entries()).map(([format, count]) => `<button type="button" class="gcode-sidebar-item" data-model-format="${escapeHtml(format.toLowerCase())}"><span class="gcode-sidebar-icon">◆</span><span>${escapeHtml(format)}</span><b>${count}</b></button>`).join('') || '<span class="gcode-sidebar-empty">Sin formatos</span>';
+    if (tags) tags.innerHTML = Array.from(formats.entries()).map(([format, count]) => `<button type="button" class="gcode-sidebar-item" data-model-format="${escapeHtml(format.toLowerCase())}"><span class="gcode-sidebar-icon">◆</span><span>${escapeHtml(format)}</span><b>${count}</b></button>`).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoFormats')}</span>`;
     document.querySelectorAll('[data-model-library-item]').forEach(button => button.addEventListener('click', async () => {
         const snapshot = [...favoriteModels.map(modelLibrarySnapshot), ...recent].find(item => item.id === button.dataset.modelLibraryItem);
         if (!snapshot) return;
@@ -12460,13 +12461,13 @@ function renderModelsSidebar() {
 function renderModelsPagination(totalItems, totalPages) {
     const pagination = document.getElementById('models-pagination');
     if (!pagination) return;
-    if (!totalItems) { pagination.innerHTML = '<span>0 resultados</span>'; return; }
+    if (!totalItems) { pagination.innerHTML = `<span>${t('libraryZeroResults')}</span>`; return; }
     const start = (modelsPage - 1) * MODELS_PAGE_SIZE + 1;
     const end = Math.min(modelsPage * MODELS_PAGE_SIZE, totalItems);
     const pages = Array.from({ length: totalPages }, (_, index) => index + 1).filter(page => page === 1 || page === totalPages || Math.abs(page - modelsPage) <= 1);
     let previous = 0;
     const controls = pages.map(page => { const gap = previous && page - previous > 1 ? '<span>…</span>' : ''; previous = page; return `${gap}<button type="button" class="${page === modelsPage ? 'active' : ''}" data-models-page="${page}">${page}</button>`; }).join('');
-    pagination.innerHTML = `<span>Mostrando ${start} a ${end} de ${totalItems} resultados</span><div class="gcode-pagination-pages"><button type="button" data-models-page="${modelsPage - 1}" ${modelsPage === 1 ? 'disabled' : ''}>‹</button>${controls}<button type="button" data-models-page="${modelsPage + 1}" ${modelsPage === totalPages ? 'disabled' : ''}>›</button></div><span>${MODELS_PAGE_SIZE} por página</span>`;
+    pagination.innerHTML = `<span>${t('libraryResults').replace('{start}', start).replace('{end}', end).replace('{total}', totalItems)}</span><div class="gcode-pagination-pages"><button type="button" data-models-page="${modelsPage - 1}" ${modelsPage === 1 ? 'disabled' : ''}>‹</button>${controls}<button type="button" data-models-page="${modelsPage + 1}" ${modelsPage === totalPages ? 'disabled' : ''}>›</button></div><span>${t('libraryPerPage').replace('{count}', MODELS_PAGE_SIZE)}</span>`;
     pagination.querySelectorAll('[data-models-page]').forEach(button => button.addEventListener('click', () => { const page = Number(button.dataset.modelsPage); if (page < 1 || page > totalPages || page === modelsPage) return; modelsPage = page; renderModelsFullPage(); }));
 }
 
@@ -12491,9 +12492,9 @@ function renderModelsFullPage(filterQuery = modelsSearchQuery) {
     const rows = pageFiles.map(model => {
         const extension = String(model.extension || '').replace('.', '').toUpperCase() || '—';
         const checked = getBulkSelection('model').has(model.id) ? 'checked' : '';
-        return `<tr class="${model.id === selectedModelId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}"><td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td><td class="model-name"><span class="model-format-icon">${escapeHtml(extension)}</span><strong>${escapeHtml(model.name)}</strong>${getFavoriteModelIds().has(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td><td>${isGcodeFile(model) ? 'G-code' : 'Modelo 3D'}</td><td><span class="tag-pill">${escapeHtml(extension)}</span></td><td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td><td>${escapeHtml(model.dimensions || '—')}</td><td><span class="gcode-status-ok" title="Disponible">✓</span></td><td><button type="button" class="gcode-row-menu" data-model-row-menu>•••</button></td></tr>`;
+        return `<tr class="${model.id === selectedModelId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}"><td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td><td class="model-name"><span class="model-format-icon">${escapeHtml(extension)}</span><strong>${escapeHtml(model.name)}</strong>${getFavoriteModelIds().has(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td><td>${isGcodeFile(model) ? 'G-code' : t('model3D')}</td><td><span class="tag-pill">${escapeHtml(extension)}</span></td><td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td><td>${escapeHtml(model.dimensions || '—')}</td><td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td><td><button type="button" class="gcode-row-menu" data-model-row-menu title="${t('libraryActions')}">•••</button></td></tr>`;
     }).join('');
-    container.innerHTML = `<table class="models-table"><thead><tr><th class="select-col"><input type="checkbox" class="select-all-checkbox" id="models-select-all"></th><th>Nombre</th><th>Tipo</th><th>Formato</th><th>Tamaño</th><th>Modificado</th><th>Dimensiones</th><th>Estado</th><th>•••</th></tr></thead><tbody>${rows}</tbody></table>`;
+    container.innerHTML = `<table class="models-table"><thead><tr><th class="select-col"><input type="checkbox" class="select-all-checkbox" id="models-select-all"></th><th>${t('columnName')}</th><th>${t('columnType')}</th><th>${t('libraryFormat')}</th><th>${t('columnSize')}</th><th>${t('previewMetaModified')}</th><th>${t('columnDimensions')}</th><th>${t('libraryStatus')}</th><th aria-label="${t('libraryActions')}">•••</th></tr></thead><tbody>${rows}</tbody></table>`;
     wireBulkSelection('model', container, pageFiles);
     container.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
         row.addEventListener('click', event => { if (event.target.closest('.row-select-checkbox')) return; const model = currentModelsData.files.find(item => item.id === row.dataset.modelId); if (model) selectPreviewModel(model); });
@@ -12518,6 +12519,8 @@ function selectPreviewModel(model, rerender = true) {
     if (previewDate) previewDate.textContent = formatDate(model.modified);
     const previewFormat = document.getElementById('models-preview-format');
     if (previewFormat) previewFormat.textContent = extension;
+    const previewStatus = document.getElementById('models-preview-status');
+    if (previewStatus) previewStatus.textContent = t('libraryReady');
     const favoriteBtn = document.getElementById('preview-favorite-btn');
     if (favoriteBtn) { const favorite = getFavoriteModelIds().has(model.id); favoriteBtn.textContent = favorite ? '★' : '☆'; favoriteBtn.classList.toggle('active', favorite); }
     const sendPrinterBtn = document.getElementById('preview-send-printer-btn');

@@ -1,6 +1,78 @@
-const translations = {
+const translations = window.NopalTranslations = window.NopalTranslations || {
   es: {
     dashboard: 'Panel de Control',
+    libraryEyebrow: 'BIBLIOTECA NOPAL',
+    libraryGcodeDescription: 'Explora, organiza y gestiona tus archivos G-code.',
+    libraryModelsDescription: 'Explora, organiza y gestiona tus modelos y archivos listos para imprimir.',
+    libraryUploadFile: 'Subir archivo',
+    libraryNewFolder: 'Nueva carpeta',
+    libraryRefresh: 'Actualizar',
+    libraryMoreOptions: 'Más opciones',
+    libraryBack: 'Atrás',
+    libraryForward: 'Adelante',
+    libraryUpLevel: 'Subir nivel',
+    libraryHome: 'Inicio',
+    libraryRoot: 'Raíz',
+    librarySection: 'Biblioteca',
+    librarySortBy: 'Ordenar por:',
+    librarySortNameAsc: 'Nombre (A-Z)',
+    librarySortNameDesc: 'Nombre (Z-A)',
+    librarySortNewest: 'Más recientes',
+    librarySortOldest: 'Más antiguos',
+    librarySortLargest: 'Mayor tamaño',
+    libraryFilters: 'Filtros',
+    libraryFavorites: 'Favoritos',
+    libraryRecent: 'Recientes',
+    libraryModelsOnly: 'Modelos 3D',
+    libraryFormats: 'Formatos',
+    libraryViewAll: 'Ver todos',
+    libraryNoFavorites: 'Sin favoritos',
+    libraryNoRecent: 'Sin archivos recientes',
+    libraryNoFormats: 'Sin formatos',
+    libraryNoTags: 'Sin etiquetas',
+    libraryItems: '{count} elementos',
+    libraryCounts: '{folders} carpetas · {files} archivos',
+    libraryResults: 'Mostrando {start} a {end} de {total} resultados',
+    libraryZeroResults: '0 resultados',
+    libraryPerPage: '{count} por página',
+    libraryStatus: 'Estado',
+    libraryAvailable: 'Disponible',
+    libraryActions: 'Acciones',
+    libraryFormat: 'Formato',
+    libraryReady: 'Listo',
+    librarySuggestedMaterial: 'Material sugerido',
+    libraryEstimatedTime: 'Tiempo estimado',
+    libraryGcodePreview: 'VISTA PREVIA DE G-CODE',
+    libraryModelPreview: 'VISTA PREVIA DEL MODELO',
+    librarySelectGcode: 'Selecciona un archivo G-code',
+    librarySelectModel: 'Selecciona un modelo',
+    libraryGcodePreviewHelp: 'La vista previa se actualiza cuando seleccionas un archivo de la lista.',
+    libraryModelPreviewHelp: 'Vista interactiva para modelos 3D y trayectorias G-code.',
+    accessoryArduinoDeviceLabel: 'Placa detectada',
+    accessoryArduinoDiscoverBody: 'Placas con firmware NOPAL conectadas por USB, con uno o más relés. Cada relé se registra como un accesorio independiente.',
+    accessoryArduinoDiscoverTitle: 'Placas Arduino/ESP32',
+    accessoryArduinoNoDevice: 'Elige una placa desde la lista de abajo en Configuración → Accesorios.',
+    accessoryArduinoNoDeviceError: 'Selecciona una placa y un relé.',
+    accessoryArduinoRelayLabel: 'Relé',
+    accessoryDriverArduino: 'Placa Arduino/ESP32',
+    cncSettingsNotAvailableMarlin: 'Esta configuración no está disponible para dispositivos Marlin.',
+    laserUnlockShort: 'Desbloquear',
+    marlinPrinterAddAction: 'Agregar impresora',
+    marlinPrinterAddGoSettingsHint: 'Agrega la impresora desde Configuración → Dispositivos.',
+    marlinPrinterBaudLabel: 'Velocidad (baudrate)',
+    marlinPrinterNoActiveJob: 'No hay trabajos activos.',
+    marlinPrinterNoPorts: 'No se detectaron puertos compatibles.',
+    marlinPrinterNoPrinters: 'No hay impresoras Marlin registradas.',
+    marlinPrinterPrintTitle: 'Imprimir archivo',
+    marlinPrinterRegisterSuccess: 'Impresora registrada correctamente.',
+    marlinPrinterRegisterTitle: 'Agregar impresora Marlin',
+    marlinPrinterRemoveConfirm: '¿Eliminar esta impresora Marlin?',
+    marlinPrintersDescription: 'Impresoras 3D con firmware Marlin puro conectadas por USB directo, sin Klipper/Moonraker.',
+    marlinPrintersPageDescription: 'Controla impresoras Marlin independientes: movimiento manual, temperaturas, consola e impresión.',
+    marlinPrintersRegisteredHeader: 'Impresoras registradas',
+    usbClassifyFirmwareFluidnc: 'FluidNC / GRBL',
+    usbClassifyFirmwareLabel: 'Firmware',
+    usbClassifyFirmwareMarlin: 'Marlin',
     navHome: 'Inicio',
     navGroupDevices: 'Dispositivos',
     navGroupLibrary: 'Biblioteca',
@@ -1075,6 +1147,78 @@ const translations = {
   },
   en: {
     dashboard: 'Dashboard',
+    libraryEyebrow: 'NOPAL LIBRARY',
+    libraryGcodeDescription: 'Browse, organize, and manage your G-code files.',
+    libraryModelsDescription: 'Browse, organize, and manage your models and print-ready files.',
+    libraryUploadFile: 'Upload file',
+    libraryNewFolder: 'New folder',
+    libraryRefresh: 'Refresh',
+    libraryMoreOptions: 'More options',
+    libraryBack: 'Back',
+    libraryForward: 'Forward',
+    libraryUpLevel: 'Up one level',
+    libraryHome: 'Home',
+    libraryRoot: 'Root',
+    librarySection: 'Library',
+    librarySortBy: 'Sort by:',
+    librarySortNameAsc: 'Name (A-Z)',
+    librarySortNameDesc: 'Name (Z-A)',
+    librarySortNewest: 'Newest',
+    librarySortOldest: 'Oldest',
+    librarySortLargest: 'Largest size',
+    libraryFilters: 'Filters',
+    libraryFavorites: 'Favorites',
+    libraryRecent: 'Recent',
+    libraryModelsOnly: '3D models',
+    libraryFormats: 'Formats',
+    libraryViewAll: 'View all',
+    libraryNoFavorites: 'No favorites',
+    libraryNoRecent: 'No recent files',
+    libraryNoFormats: 'No formats',
+    libraryNoTags: 'No tags',
+    libraryItems: '{count} items',
+    libraryCounts: '{folders} folders · {files} files',
+    libraryResults: 'Showing {start} to {end} of {total} results',
+    libraryZeroResults: '0 results',
+    libraryPerPage: '{count} per page',
+    libraryStatus: 'Status',
+    libraryAvailable: 'Available',
+    libraryActions: 'Actions',
+    libraryFormat: 'Format',
+    libraryReady: 'Ready',
+    librarySuggestedMaterial: 'Suggested material',
+    libraryEstimatedTime: 'Estimated time',
+    libraryGcodePreview: 'G-CODE PREVIEW',
+    libraryModelPreview: 'MODEL PREVIEW',
+    librarySelectGcode: 'Select a G-code file',
+    librarySelectModel: 'Select a model',
+    libraryGcodePreviewHelp: 'The preview updates when you select a file from the list.',
+    libraryModelPreviewHelp: 'Interactive preview for 3D models and G-code toolpaths.',
+    accessoryArduinoDeviceLabel: 'Detected board',
+    accessoryArduinoDiscoverBody: 'Boards running NOPAL firmware connected over USB, with one or more relays. Each relay is registered as an independent accessory.',
+    accessoryArduinoDiscoverTitle: 'Arduino/ESP32 boards',
+    accessoryArduinoNoDevice: 'Choose a board from the list below in Settings → Accessories.',
+    accessoryArduinoNoDeviceError: 'Select a board and a relay.',
+    accessoryArduinoRelayLabel: 'Relay',
+    accessoryDriverArduino: 'Arduino/ESP32 board',
+    cncSettingsNotAvailableMarlin: 'This setting is not available for Marlin devices.',
+    laserUnlockShort: 'Unlock',
+    marlinPrinterAddAction: 'Add printer',
+    marlinPrinterAddGoSettingsHint: 'Add the printer from Settings → Devices.',
+    marlinPrinterBaudLabel: 'Speed (baud rate)',
+    marlinPrinterNoActiveJob: 'No active jobs.',
+    marlinPrinterNoPorts: 'No compatible ports detected.',
+    marlinPrinterNoPrinters: 'No Marlin printers registered.',
+    marlinPrinterPrintTitle: 'Print file',
+    marlinPrinterRegisterSuccess: 'Printer registered successfully.',
+    marlinPrinterRegisterTitle: 'Add Marlin printer',
+    marlinPrinterRemoveConfirm: 'Remove this Marlin printer?',
+    marlinPrintersDescription: '3D printers with standalone Marlin firmware connected directly over USB, without Klipper/Moonraker.',
+    marlinPrintersPageDescription: 'Control standalone Marlin printers: manual movement, temperatures, console, and printing.',
+    marlinPrintersRegisteredHeader: 'Registered printers',
+    usbClassifyFirmwareFluidnc: 'FluidNC / GRBL',
+    usbClassifyFirmwareLabel: 'Firmware',
+    usbClassifyFirmwareMarlin: 'Marlin',
     navHome: 'Home',
     navGroupDevices: 'Devices',
     navGroupLibrary: 'Library',
@@ -2149,9 +2293,12 @@ const translations = {
   },
 };
 
+const supportedLanguages = ['es', 'en', 'pt-BR', 'fr', 'de'];
+
 function detectDefaultLanguage() {
-  const supported = ['es', 'en'];
+  const supported = ['es', 'en', 'fr', 'de'];
   const browserLang = ((navigator.language || navigator.userLanguage || '') + '').slice(0, 2).toLowerCase();
+  if (browserLang === 'pt') return 'pt-BR';
   return supported.includes(browserLang) ? browserLang : 'es';
 }
 
@@ -2159,15 +2306,18 @@ function detectDefaultLanguage() {
 // Ajustes), ese valor guardado siempre gana. Solo en la primerísima visita,
 // sin nada en localStorage todavía, se detecta el idioma del sistema.
 let currentLanguage = localStorage.getItem('language') || detectDefaultLanguage();
+if (!supportedLanguages.includes(currentLanguage)) currentLanguage = detectDefaultLanguage();
+document.documentElement.lang = currentLanguage;
 
 function t(key) {
-  return translations[currentLanguage][key] || translations['en'][key] || key;
+  return translations[currentLanguage]?.[key] || translations.en?.[key] || key;
 }
 
 function setLanguage(lang) {
   if (translations[lang]) {
     currentLanguage = lang;
     localStorage.setItem('language', lang);
+    document.documentElement.lang = lang === 'pt-BR' ? 'pt-BR' : lang;
     updatePageLanguage();
     // El texto generado dinámicamente (fichas de impresoras/láser, etc.) usa
     // t() al momento de renderizar, así que no se actualiza solo con el paso
@@ -2175,6 +2325,20 @@ function setLanguage(lang) {
     if (typeof renderPrinters === 'function' && typeof allPrinters !== 'undefined') {
       renderPrinters(allPrinters);
     }
+    if (typeof renderPluginsGallery === 'function' && typeof pluginsLoaded !== 'undefined' && pluginsLoaded) {
+      renderPluginsGallery();
+    }
+    if (typeof renderGcodeTable === 'function' && typeof currentGcodeData !== 'undefined') {
+      renderGcodeTable();
+    }
+    if (typeof renderModelsFullPage === 'function' && typeof currentModelsData !== 'undefined') {
+      renderModelsFullPage();
+    }
+    if (typeof renderPricingBreadcrumb === 'function') renderPricingBreadcrumb();
+    if (typeof renderPricingMaterialSelect === 'function') renderPricingMaterialSelect();
+    if (typeof renderPricingMachineSelect === 'function') renderPricingMachineSelect();
+    if (typeof renderPricingExtraCosts === 'function') renderPricingExtraCosts();
+    if (typeof updateTopbarLangLabel === 'function') updateTopbarLangLabel();
   }
 }
 
