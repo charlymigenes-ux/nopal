@@ -129,6 +129,61 @@ body {
 }
 
 body.light {
+    /* Paleta clara NOPAL. Estas variables solo existen en el tema blanco;
+       los temas oscuro, verde, rojo y personalizado conservan su paleta. */
+    --bg-app: #F4F7F6;
+    --bg-surface: #EEF3F1;
+    --bg-modal: #F8FBFA;
+    --bg-card: #FFFFFF;
+    --bg-control: #F2F5F7;
+
+    --text-primary: #1D2A32;
+    --text-secondary: #5E6C76;
+    --text-muted: #8A98A3;
+    --text-on-accent: #FFFFFF;
+
+    --border-soft: #D8E2DF;
+    --border-medium: #C7D4CF;
+
+    --accent-green: #2EB872;
+    --accent-green-hover: #28A565;
+    --accent-green-soft: #E8F7EF;
+    --accent-green-border: #B8E4C9;
+    --accent-green-strong: #1E9A5D;
+
+    --state-success: #27AE60;
+    --state-success-soft: #EAF8F0;
+    --state-warning: #E5A11A;
+    --state-warning-soft: #FFF6DF;
+    --state-danger: #E15656;
+    --state-danger-soft: #FDECEC;
+    --state-info: #3B82C4;
+    --state-info-soft: #EAF3FB;
+    --state-purple: #8A63D2;
+    --state-purple-soft: #F1ECFB;
+    --state-orange: #F08A24;
+    --state-orange-soft: #FFF1E4;
+
+    /* Compatibilidad con los componentes actuales. */
+    --bg: var(--bg-app);
+    --sidebar-bg: var(--bg-surface);
+    --card-bg: var(--bg-card);
+    --panel-bg: var(--bg-modal);
+    --border: var(--border-soft);
+    --text: var(--text-primary);
+    --green: var(--accent-green);
+    --green-rgb: 46, 184, 114;
+    --green-dark: var(--accent-green-strong);
+    --accent: var(--accent-green);
+    --accent-rgb: 46, 184, 114;
+    --accent-hover: var(--accent-green-hover);
+    --accent-active: var(--accent-green-strong);
+    --orange: var(--state-warning);
+    --orange-light: var(--state-orange);
+    --purple: var(--state-purple);
+    --purple-rgb: 138, 99, 210;
+    --black: var(--text-primary);
+
     background-image: url('/static/img/fondo_NOPAL_WHITE.png');
     background-size: cover;
     background-position: center;
