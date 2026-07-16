@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=262">
+    <link rel="stylesheet" href="/static/css/style.css?v=263">
 </head>
 <body>
     <div class="app-shell">
@@ -236,18 +236,21 @@
                             <button class="btn-view-toggle" id="toggle-offline-machines-btn" title="Ver máquinas sin conexión">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>
+                            <button class="btn-view-toggle" id="device-columns-customizer-btn" type="button" data-i18n-title="deviceOrganizerTitle" title="Organizar dispositivos">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2" fill="var(--panel-bg)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2" fill="var(--panel-bg)"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2" fill="var(--panel-bg)"/></svg>
+                            </button>
                         </div>
                     </div>
                     <div id="machines-columns" class="machines-columns">
-                        <div class="machines-column">
+                        <div class="machines-column" data-device-column="printer">
                             <h3 class="machines-column-title machines-column-title-printer" data-i18n="printerType3D">Impresora 3D</h3>
                             <div id="printers-grid" class="printers-grid"></div>
                         </div>
-                        <div class="machines-column">
+                        <div class="machines-column" data-device-column="laser">
                             <h3 class="machines-column-title machines-column-title-laser" data-i18n="laser">Láser</h3>
                             <div id="lasers-grid" class="printers-grid"></div>
                         </div>
-                        <div class="machines-column">
+                        <div class="machines-column" data-device-column="cnc">
                             <h3 class="machines-column-title machines-column-title-cnc" data-i18n="cnc">CNC</h3>
                             <div id="cnc-grid" class="printers-grid"></div>
                         </div>
@@ -2523,6 +2526,35 @@
         </div>
     </div>
 
+    <!-- Organizador exclusivo de las columnas del dashboard de dispositivos. -->
+    <div id="device-columns-customizer-modal" class="modal">
+        <div class="modal-backdrop" id="device-columns-customizer-modal-backdrop"></div>
+        <div class="modal-content module-customizer-modal-content device-columns-customizer-modal-content">
+            <button class="modal-close" id="device-columns-customizer-modal-close" type="button">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="module-customizer-header">
+                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <h2 data-i18n="deviceOrganizerTitle">Organizar dispositivos</h2>
+                <p class="module-customizer-subtitle" data-i18n="deviceOrganizerSubtitle">Elige qué tipos de máquina quieres ver y arrástralos para cambiar su orden.</p>
+            </div>
+            <div class="module-customizer-group device-columns-customizer-group">
+                <div class="module-customizer-group-header">
+                    <h3 data-i18n="deviceOrganizerVisibleTitle">Tipos de máquina</h3>
+                    <p data-i18n="deviceOrganizerDragHint">Arrastra para ordenar y desactiva lo que no utilizas.</p>
+                </div>
+                <div class="module-customizer-list" id="device-columns-customizer-list"></div>
+            </div>
+            <div class="module-customizer-footer">
+                <button type="button" class="module-customizer-reset-btn" id="device-columns-customizer-reset-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
+                </button>
+                <p class="module-customizer-reset-hint" data-i18n="deviceOrganizerResetHint">Vuelve a mostrar Impresoras 3D, Láser y CNC en el orden original.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Personalizar Módulos: reordenar y mostrar/ocultar los módulos del modal
          de impresora Klipper (Toolhead/Temperaturas/Cola), por breakpoint de
          pantalla, estilo Mainsail. "Estado" representa la topbar fija de arriba
@@ -4058,10 +4090,10 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=19"></script>
-    <script src="/static/js/translations-pt-BR.js?v=1"></script>
-    <script src="/static/js/translations-fr.js?v=1"></script>
-    <script src="/static/js/translations-de.js?v=1"></script>
-    <script src="/static/js/app.js?v=202"></script>
+    <script src="/static/js/translations.js?v=20"></script>
+    <script src="/static/js/translations-pt-BR.js?v=2"></script>
+    <script src="/static/js/translations-fr.js?v=2"></script>
+    <script src="/static/js/translations-de.js?v=2"></script>
+    <script src="/static/js/app.js?v=203"></script>
 </body>
 </html>

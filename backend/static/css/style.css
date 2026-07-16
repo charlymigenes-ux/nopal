@@ -12148,7 +12148,7 @@ body.green .option-switch {
 
 .machines-columns {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(var(--machines-visible-columns, 3), minmax(0, 1fr));
     align-items: start;
     gap: 16px;
 }
@@ -12184,6 +12184,157 @@ body.green .option-switch {
 
 .machines-column-title-cnc {
     color: #f59e0b;
+}
+
+/* Carga inicial de dispositivos. Se muestra solo durante el primer sondeo;
+   las actualizaciones periódicas conservan las fichas para evitar parpadeo. */
+.device-column-loading {
+    position: relative;
+    grid-column: 1 / -1;
+    min-height: 184px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    overflow: hidden;
+    padding: 22px;
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    border-radius: var(--radius-lg);
+    background: linear-gradient(145deg, var(--panel-bg), color-mix(in srgb, var(--card-bg) 82%, var(--accent-green-soft)));
+    color: var(--text-muted);
+    text-align: center;
+    isolation: isolate;
+}
+
+.device-column-loading::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: -60% -35%;
+    background: linear-gradient(110deg, transparent 38%, color-mix(in srgb, var(--accent) 16%, transparent) 50%, transparent 62%);
+    animation: deviceLoadingSweep 2.2s ease-in-out infinite;
+}
+
+.device-column-loading strong {
+    color: var(--text);
+    font-size: 0.82rem;
+}
+
+.device-column-loading > span {
+    font-size: 0.7rem;
+}
+
+.device-loading-orbit {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 3px;
+}
+
+.device-loading-orbit span {
+    position: absolute;
+    inset: 3px;
+    border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+    border-radius: 50%;
+    animation: deviceLoadingOrbit 2.1s linear infinite;
+}
+
+.device-loading-orbit span:nth-child(2) {
+    inset: 10px;
+    border-color: color-mix(in srgb, var(--purple) 48%, transparent);
+    animation-direction: reverse;
+    animation-duration: 1.45s;
+}
+
+.device-loading-orbit span::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+}
+
+.device-loading-orbit i {
+    position: absolute;
+    inset: 19px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.device-loading-lines {
+    width: min(150px, 72%);
+    display: grid;
+    gap: 5px;
+    margin-top: 4px;
+}
+
+.device-loading-lines i {
+    display: block;
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
+    background-size: 200% 100%;
+    animation: deviceLoadingLine 1.6s linear infinite;
+}
+
+.device-loading-lines i:nth-child(2) { width: 78%; animation-delay: -0.35s; }
+.device-loading-lines i:nth-child(3) { width: 54%; animation-delay: -0.7s; }
+
+@keyframes deviceLoadingOrbit {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes deviceLoadingSweep {
+    0%, 18% { transform: translateX(-40%) rotate(8deg); }
+    82%, 100% { transform: translateX(40%) rotate(8deg); }
+}
+
+@keyframes deviceLoadingLine {
+    from { background-position: 180% 0; }
+    to { background-position: -20% 0; }
+}
+
+/* Organizador de columnas: reutiliza las filas e interruptores del editor de
+   módulos, pero queda encapsulado al dashboard de dispositivos. */
+.device-columns-customizer-modal-content {
+    width: min(92%, 620px);
+    height: auto;
+    max-height: 88vh;
+}
+
+.device-columns-customizer-group {
+    margin-top: 4px;
+}
+
+.device-column-customizer-row {
+    min-height: 58px;
+}
+
+.device-column-customizer-accent {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    border-radius: 4px;
+    background: currentColor;
+    box-shadow: 0 0 12px currentColor;
+}
+
+.device-column-customizer-accent-printer { color: var(--accent); }
+.device-column-customizer-accent-laser { color: var(--purple); }
+.device-column-customizer-accent-cnc { color: var(--orange); }
+
+@media (prefers-reduced-motion: reduce) {
+    .device-column-loading::before,
+    .device-loading-orbit span,
+    .device-loading-lines i {
+        animation: none !important;
+    }
 }
 
 /* Cada columna es una lista vertical de una sola ficha por fila — nunca

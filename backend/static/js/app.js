@@ -324,6 +324,7 @@ const printersGrid = document.getElementById('printers-grid');
 const lasersGrid = document.getElementById('lasers-grid');
 const cncGrid = document.getElementById('cnc-grid');
 const machinesColumns = document.getElementById('machines-columns');
+const deviceColumnsCustomizerBtn = document.getElementById('device-columns-customizer-btn');
 const printQueue = document.getElementById('print-queue');
 const totalModelsEl = document.getElementById('total-models');
 const gcodeReadyEl = document.getElementById('gcode-ready');
@@ -4631,21 +4632,47 @@ function applyHelpModulesLayout() {
     helpModulesPageScope.apply();
 }
 
+let dashboardPrintersLoaded = false;
+let dashboardLaserDevicesLoaded = false;
+let dashboardPrintersLoadError = false;
+let dashboardLaserDevicesLoadError = false;
+
+function deviceColumnLoadingMarkup(labelKey) {
+    return `
+        <div class="device-column-loading" role="status" aria-live="polite">
+            <div class="device-loading-orbit" aria-hidden="true">
+                <span></span><span></span><i></i>
+            </div>
+            <strong>${escapeHtml(t('devicesLoading'))}</strong>
+            <span>${escapeHtml(t(labelKey))}</span>
+            <div class="device-loading-lines" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+    `;
+}
+
+function renderInitialDeviceLoaders() {
+    if (printersGrid && !dashboardPrintersLoaded) printersGrid.innerHTML = deviceColumnLoadingMarkup('printerType3D');
+    if (lasersGrid && !dashboardLaserDevicesLoaded) lasersGrid.innerHTML = deviceColumnLoadingMarkup('laser');
+    if (cncGrid && !dashboardLaserDevicesLoaded) cncGrid.innerHTML = deviceColumnLoadingMarkup('cnc');
+}
+
 async function loadPrinters() {
     try {
         const response = await fetch('/api/printers/status');
         if (!response.ok) throw new Error('No se pudo cargar el estado de impresoras');
         const data = await response.json();
         allPrinters = data.printers || [];
+        dashboardPrintersLoaded = true;
+        dashboardPrintersLoadError = false;
         renderPrinters(allPrinters);
         updateActivePrintersCount();
         renderPrintQueue();
         refreshModelsQueueBadge();
     } catch (error) {
         console.error(error);
-        [printersGrid, lasersGrid, cncGrid].forEach(grid => {
-            if (grid) grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
-        });
+        dashboardPrintersLoaded = true;
+        dashboardPrintersLoadError = true;
+        renderPrinters(allPrinters);
     }
 }
 
@@ -4798,10 +4825,13 @@ async function refreshDashboardLaserCard() {
                 return { host: laser.host, status: { connected: false }, kind: laser.kind || 'laser' };
             }
         }));
+        dashboardLaserDevicesLoadError = false;
     } catch (error) {
         console.error(error);
         dashboardLaserEntries = [];
+        dashboardLaserDevicesLoadError = true;
     }
+    dashboardLaserDevicesLoaded = true;
     renderPrinters(allPrinters);
 }
 
@@ -4883,6 +4913,134 @@ function updatePrintersViewMode(mode) {
     if (gridBtn) gridBtn.classList.toggle('btn-view-toggle-active', mode === 'grid');
     if (listBtn) listBtn.classList.toggle('btn-view-toggle-active', mode === 'list');
 }
+
+// Organizador local de las tres columnas del dashboard. No afecta otras
+// páginas ni el registro real de máquinas: solo orden y visibilidad visual.
+const DEVICE_COLUMNS_LAYOUT_KEY = 'dashboardDeviceColumnsLayout';
+const DEVICE_COLUMNS_DEFAULT_ORDER = ['printer', 'laser', 'cnc'];
+const DEVICE_COLUMN_DEFINITIONS = {
+    printer: { labelKey: 'printerType3D', accentClass: 'printer' },
+    laser: { labelKey: 'laser', accentClass: 'laser' },
+    cnc: { labelKey: 'cnc', accentClass: 'cnc' },
+};
+
+function getDeviceColumnsLayout() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(DEVICE_COLUMNS_LAYOUT_KEY) || 'null');
+    } catch (error) {
+        saved = null;
+    }
+    const savedOrder = Array.isArray(saved?.order) ? saved.order.filter(key => DEVICE_COLUMNS_DEFAULT_ORDER.includes(key)) : [];
+    const order = [...savedOrder, ...DEVICE_COLUMNS_DEFAULT_ORDER.filter(key => !savedOrder.includes(key))];
+    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(key => DEVICE_COLUMNS_DEFAULT_ORDER.includes(key)) : [];
+    if (hidden.length >= DEVICE_COLUMNS_DEFAULT_ORDER.length) hidden.pop();
+    return { order, hidden };
+}
+
+function saveDeviceColumnsLayout(layout) {
+    localStorage.setItem(DEVICE_COLUMNS_LAYOUT_KEY, JSON.stringify(layout));
+}
+
+function applyDeviceColumnsLayout() {
+    if (!machinesColumns) return;
+    const layout = getDeviceColumnsLayout();
+    const hiddenSet = new Set(layout.hidden);
+    layout.order.forEach(key => {
+        const column = machinesColumns.querySelector(`[data-device-column="${key}"]`);
+        if (!column) return;
+        column.hidden = hiddenSet.has(key);
+        machinesColumns.appendChild(column);
+    });
+    const visibleCount = Math.max(1, layout.order.filter(key => !hiddenSet.has(key)).length);
+    machinesColumns.style.setProperty('--machines-visible-columns', String(visibleCount));
+    const isCustomized = hiddenSet.size > 0 || layout.order.some((key, index) => key !== DEVICE_COLUMNS_DEFAULT_ORDER[index]);
+    deviceColumnsCustomizerBtn?.classList.toggle('btn-view-toggle-active', isCustomized);
+}
+
+function saveDeviceColumnsCustomizerState() {
+    const list = document.getElementById('device-columns-customizer-list');
+    if (!list) return;
+    const rows = Array.from(list.querySelectorAll(':scope > .module-customizer-row[data-device-column]'));
+    const order = rows.map(row => row.dataset.deviceColumn);
+    const hidden = rows.filter(row => !row.querySelector('input')?.checked).map(row => row.dataset.deviceColumn);
+    saveDeviceColumnsLayout({ order, hidden });
+    applyDeviceColumnsLayout();
+}
+
+function renderDeviceColumnsCustomizer() {
+    const list = document.getElementById('device-columns-customizer-list');
+    if (!list) return;
+    const layout = getDeviceColumnsLayout();
+    const hiddenSet = new Set(layout.hidden);
+    list.innerHTML = layout.order.map(key => {
+        const definition = DEVICE_COLUMN_DEFINITIONS[key];
+        return `
+            <div class="module-customizer-row device-column-customizer-row" data-device-column="${key}">
+                <span class="module-customizer-row-handle" draggable="true" title="${escapeHtml(t('deviceOrganizerDragHint'))}">${PRINTER_MODULE_DRAG_ICON}</span>
+                <span class="device-column-customizer-accent device-column-customizer-accent-${definition.accentClass}" aria-hidden="true"></span>
+                <span class="module-customizer-row-label">${escapeHtml(t(definition.labelKey))}</span>
+                <label class="module-customizer-row-toggle">
+                    <input type="checkbox" class="module-customizer-checkbox module-customizer-checkbox-green" data-device-column="${key}" ${hiddenSet.has(key) ? '' : 'checked'}>
+                    <span></span>
+                </label>
+            </div>
+        `;
+    }).join('');
+
+    let draggingRow = null;
+    list.querySelectorAll('.module-customizer-row-handle').forEach(handle => {
+        handle.addEventListener('dragstart', event => {
+            draggingRow = handle.closest('.device-column-customizer-row');
+            if (!draggingRow) return;
+            draggingRow.classList.add('module-customizer-row-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', draggingRow.dataset.deviceColumn);
+        });
+        handle.addEventListener('dragend', () => {
+            if (draggingRow) draggingRow.classList.remove('module-customizer-row-dragging');
+            draggingRow = null;
+            saveDeviceColumnsCustomizerState();
+        });
+    });
+    list.addEventListener('dragover', event => {
+        if (!draggingRow) return;
+        event.preventDefault();
+        const candidates = Array.from(list.querySelectorAll(':scope > .device-column-customizer-row:not(.module-customizer-row-dragging)'));
+        const nextRow = candidates.find(row => event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2);
+        list.insertBefore(draggingRow, nextRow || null);
+    });
+    list.querySelectorAll('input.module-customizer-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            const checkedCount = list.querySelectorAll('input.module-customizer-checkbox:checked').length;
+            if (!checkedCount) {
+                checkbox.checked = true;
+                showToast(t('deviceOrganizerAtLeastOne'), 'warning');
+                return;
+            }
+            saveDeviceColumnsCustomizerState();
+        });
+    });
+}
+
+function openDeviceColumnsCustomizer() {
+    renderDeviceColumnsCustomizer();
+    document.getElementById('device-columns-customizer-modal')?.classList.add('active');
+}
+
+function closeDeviceColumnsCustomizer() {
+    document.getElementById('device-columns-customizer-modal')?.classList.remove('active');
+}
+
+deviceColumnsCustomizerBtn?.addEventListener('click', openDeviceColumnsCustomizer);
+document.getElementById('device-columns-customizer-modal-close')?.addEventListener('click', closeDeviceColumnsCustomizer);
+document.getElementById('device-columns-customizer-modal-backdrop')?.addEventListener('click', closeDeviceColumnsCustomizer);
+document.getElementById('device-columns-customizer-reset-btn')?.addEventListener('click', () => {
+    localStorage.removeItem(DEVICE_COLUMNS_LAYOUT_KEY);
+    applyDeviceColumnsLayout();
+    renderDeviceColumnsCustomizer();
+    showToast(t('moduleCustomizerResetDone'));
+});
 
 const printerJobLastState = new Map(); // port -> último job.state visto, para detectar transiciones
 
@@ -5094,8 +5252,16 @@ function renderPrinters(printersInput) {
         };
     });
 
-    const renderColumn = (grid, entries, emptyKey) => {
+    const renderColumn = (grid, entries, emptyKey, isLoaded, hasLoadError, loadingLabelKey) => {
         if (!grid) return;
+        if (!isLoaded) {
+            grid.innerHTML = deviceColumnLoadingMarkup(loadingLabelKey);
+            return;
+        }
+        if (hasLoadError) {
+            grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
+            return;
+        }
         let filtered = showOffline ? entries : entries.filter(entry => entry.isOnline);
         filtered = [...filtered].sort((a, b) => a.sortPriority - b.sortPriority);
         grid.innerHTML = filtered.length
@@ -5103,9 +5269,9 @@ function renderPrinters(printersInput) {
             : `<div class="empty-state">${t(emptyKey)}</div>`;
     };
 
-    renderColumn(printersGrid, printerEntries, 'noPrintersFound');
-    renderColumn(lasersGrid, laserOnlyEntries, 'noLasersFound');
-    renderColumn(cncGrid, cncEntries, 'noCncFound');
+    renderColumn(printersGrid, printerEntries, 'noPrintersFound', dashboardPrintersLoaded, dashboardPrintersLoadError, 'printerType3D');
+    renderColumn(lasersGrid, laserOnlyEntries, 'noLasersFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'laser');
+    renderColumn(cncGrid, cncEntries, 'noCncFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'cnc');
 
     const columnsRoot = machinesColumns || printersGrid;
 
@@ -13464,12 +13630,14 @@ if (toggleOfflineMachinesBtn) {
     });
 }
 updateToggleOfflineMachinesBtn();
+applyDeviceColumnsLayout();
 
 // Update language display on load
 updateLangSwitchUI();
 updatePageLanguage();
 
 renderPrintQueue();
+renderInitialDeviceLoaders();
 loadModels();
 loadPrinters();
 loadRecentPrinterFiles();

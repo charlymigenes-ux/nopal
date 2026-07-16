@@ -453,6 +453,13 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     noPrintersFound: 'No se encontraron impresoras.',
     noLasersFound: 'No se encontraron láseres.',
     noCncFound: 'No se encontraron máquinas CNC.',
+    devicesLoading: 'Cargando dispositivos…',
+    deviceOrganizerTitle: 'Organizar dispositivos',
+    deviceOrganizerSubtitle: 'Elige qué tipos de máquina quieres ver y arrástralos para cambiar su orden.',
+    deviceOrganizerVisibleTitle: 'Tipos de máquina',
+    deviceOrganizerDragHint: 'Arrastra para ordenar y desactiva lo que no utilizas.',
+    deviceOrganizerResetHint: 'Vuelve a mostrar Impresoras 3D, Láser y CNC en el orden original.',
+    deviceOrganizerAtLeastOne: 'Debes mantener al menos un tipo de máquina visible.',
     configPath: 'Ruta',
     modelName: 'Nombre del Modelo',
     open: 'Abrir',
@@ -1598,6 +1605,13 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     noPrintersFound: 'No printers found.',
     noLasersFound: 'No laser cutters found.',
     noCncFound: 'No CNC machines found.',
+    devicesLoading: 'Loading devices…',
+    deviceOrganizerTitle: 'Organize devices',
+    deviceOrganizerSubtitle: 'Choose which machine types to display and drag them to change their order.',
+    deviceOrganizerVisibleTitle: 'Machine types',
+    deviceOrganizerDragHint: 'Drag to reorder and turn off anything you do not use.',
+    deviceOrganizerResetHint: 'Shows 3D printers, Laser and CNC again in their original order.',
+    deviceOrganizerAtLeastOne: 'At least one machine type must remain visible.',
     noFilesFound: 'No files found.',
     configPath: 'Path',
     modelName: 'Model Name',
@@ -2333,6 +2347,9 @@ function setLanguage(lang) {
     }
     if (typeof renderModelsFullPage === 'function' && typeof currentModelsData !== 'undefined') {
       renderModelsFullPage();
+    }
+    if (typeof renderDeviceColumnsCustomizer === 'function' && document.getElementById('device-columns-customizer-modal')?.classList.contains('active')) {
+      renderDeviceColumnsCustomizer();
     }
     if (typeof renderPricingBreadcrumb === 'function') renderPricingBreadcrumb();
     if (typeof renderPricingMaterialSelect === 'function') renderPricingMaterialSelect();
