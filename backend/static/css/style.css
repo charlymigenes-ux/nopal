@@ -1177,7 +1177,200 @@ body.green .topbar-search input::placeholder {
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    zoom: 0.7;
+    zoom: 1;
+}
+
+/* ── Biblioteca: mismo lenguaje visual de la galería de plugins ── */
+#models-section,
+#gcode-section {
+    --library-surface: rgba(15, 23, 42, 0.76);
+    --library-surface-strong: rgba(15, 23, 42, 0.9);
+    --library-surface-soft: rgba(30, 41, 59, 0.58);
+    --library-border: rgba(var(--accent-rgb), 0.3);
+}
+
+body.light #models-section,
+body.light #gcode-section {
+    --library-surface: rgba(255, 255, 255, 0.82);
+    --library-surface-strong: rgba(241, 245, 249, 0.94);
+    --library-surface-soft: rgba(226, 232, 240, 0.68);
+}
+
+#models-section .models-page-content,
+#gcode-section .models-page-content {
+    padding: 28px 32px 40px;
+}
+
+#models-section .models-page-layout,
+#gcode-section .models-page-layout {
+    gap: 18px;
+}
+
+#models-section .models-table-panel,
+#gcode-section .models-table-panel,
+#models-section .models-preview-card,
+#gcode-section .gcode-preview-card {
+    border: 1px solid var(--library-border);
+    background:
+        radial-gradient(circle at 88% 5%, rgba(var(--accent-rgb), 0.1), transparent 34%),
+        var(--library-surface);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+#models-section .models-table-panel:hover,
+#gcode-section .models-table-panel:hover,
+#models-section .models-preview-card:hover,
+#gcode-section .gcode-preview-card:hover {
+    border-color: rgba(var(--accent-rgb), 0.46);
+}
+
+.library-page-eyebrow {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--accent);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+}
+
+#models-section .models-list-header,
+#gcode-section .models-list-header {
+    padding: 22px 24px 16px;
+    border-bottom-color: rgba(148, 163, 184, 0.14);
+}
+
+#models-section .models-list-header h2,
+#gcode-section .models-list-header h2 {
+    font-size: 1.55rem;
+}
+
+#models-section .models-list-header p,
+#gcode-section .models-list-header p {
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+#models-section .models-list-actions .badge,
+#gcode-section .models-list-actions .badge {
+    padding: 7px 11px;
+    border: 1px solid rgba(var(--accent-rgb), 0.4);
+    background: rgba(var(--accent-rgb), 0.14);
+    color: var(--accent);
+    text-shadow: none;
+}
+
+#models-section .section-search,
+#gcode-section .section-search {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 11px;
+    background: var(--library-surface-strong);
+}
+
+#models-section .section-search:focus-within,
+#gcode-section .section-search:focus-within {
+    border-color: rgba(var(--accent-rgb), 0.68);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+}
+
+#models-section .btn-icon-dark,
+#gcode-section .btn-icon-dark,
+#models-section .btn-view-toggle,
+#gcode-section .btn-view-toggle {
+    border-color: rgba(var(--accent-rgb), 0.32);
+    background: rgba(var(--accent-rgb), 0.09);
+    color: var(--accent);
+}
+
+#models-section .btn-icon-dark:hover,
+#gcode-section .btn-icon-dark:hover,
+#models-section .btn-view-toggle:hover,
+#gcode-section .btn-view-toggle:hover,
+#models-section .btn-view-toggle-active,
+#gcode-section .btn-view-toggle-active {
+    border-color: rgba(var(--accent-rgb), 0.58);
+    background: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent-hover);
+}
+
+#models-section .models-breadcrumb-row,
+#gcode-section .models-breadcrumb-row {
+    padding: 11px 24px;
+    border-bottom-color: rgba(148, 163, 184, 0.13);
+}
+
+#models-section .models-table thead,
+#gcode-section .models-table thead {
+    background: rgba(148, 163, 184, 0.07);
+}
+
+#models-section .models-table tbody tr,
+#gcode-section .models-table tbody tr {
+    border-bottom-color: rgba(148, 163, 184, 0.11);
+}
+
+#models-section .models-table tbody tr:hover,
+#models-section .models-table tbody tr.selected,
+#gcode-section .models-table tbody tr:hover,
+#gcode-section .models-table tbody tr.selected {
+    background: rgba(var(--accent-rgb), 0.12);
+}
+
+#models-section .models-table td.model-name svg.green-bg,
+#gcode-section .models-table td.model-name svg.green-bg {
+    background: linear-gradient(135deg, var(--accent-active), var(--accent));
+}
+
+#models-section .models-table td.model-name svg.folder-icon,
+#gcode-section .models-table td.model-name svg.folder-icon {
+    color: var(--accent);
+}
+
+#models-section .models-preview-card,
+#gcode-section .gcode-preview-card {
+    padding: 22px;
+}
+
+#models-section .preview-image,
+#gcode-section .gcode-preview-scene,
+#gcode-section .preview-meta-grid div {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: var(--library-surface-strong);
+}
+
+#models-section .preview-label,
+#gcode-section .preview-label,
+#models-section .preview-meta-row svg {
+    color: var(--accent);
+}
+
+#models-section .preview-expand-btn,
+#gcode-section .preview-expand-btn,
+#models-section .btn-file-action:not(.btn-file-action-danger),
+#gcode-section .btn-file-action:not(.btn-file-action-danger) {
+    border-color: rgba(var(--accent-rgb), 0.34);
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--accent);
+}
+
+#models-section .btn-file-action:not(.btn-file-action-danger):hover,
+#gcode-section .btn-file-action:not(.btn-file-action-danger):hover {
+    border-color: rgba(var(--accent-rgb), 0.58);
+    background: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent-hover);
+}
+
+#models-section .preview-tip-card {
+    border-color: rgba(var(--accent-rgb), 0.28);
+    background: rgba(var(--accent-rgb), 0.09);
+}
+
+@media (max-width: 980px) {
+    #models-section .models-page-content,
+    #gcode-section .models-page-content {
+        padding: 20px 16px 32px;
+    }
 }
 
 .models-list-header {
