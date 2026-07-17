@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from backend.services.activity_log import log_event
+
 logger = logging.getLogger(__name__)
 
 REGISTRY_PATH = "accessory_registry.json"
@@ -192,7 +194,29 @@ def _arduino_send_command(config: Dict[str, Any], command: str) -> Optional[str]
     return raw.decode("utf-8", errors="ignore").strip() or None
 
 
+def release_arduino_connection(device: str) -> None:
+    """Cierra y descarta la conexión serie persistente sobre `device` si hay
+    una abierta (_arduino_connections). Usado por firmware_flash_service
+    antes de invocar esptool: éste necesita control exclusivo del puerto
+    para flashear, así que hay que soltarlo antes — y no se debe volver a
+    abrir hasta que el flasheo termine (nadie más llama a
+    _open_arduino_connection mientras tanto)."""
+    ser = _arduino_connections.pop(device, None)
+    if ser is not None:
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+
 def _arduino_get_state(config: Dict[str, Any]) -> Optional[bool]:
+    if "relay" not in config:
+        # Accesorio de tira LED: el firmware no tiene comando de lectura de
+        # color (NOPAL:LED?/WS? no existen), así que no hay forma de
+        # probear el estado en vivo. Se devuelve el último valor que se
+        # confirmó con éxito (persistido en el registro por
+        # _persist_led_state), no un dato inventado.
+        return config.get("led_on")
     response = _arduino_send_command(config, f"NOPAL:R{config.get('relay', 1)}?")
     if response is None:
         return None
@@ -202,6 +226,17 @@ def _arduino_get_state(config: Dict[str, Any]) -> Optional[bool]:
 def _arduino_set_state(config: Dict[str, Any], on: bool) -> bool:
     action = "ON" if on else "OFF"
     response = _arduino_send_command(config, f"NOPAL:R{config.get('relay', 1)}:{action}")
+    return response == "OK"
+
+
+def _arduino_set_led(config: Dict[str, Any], red: int, green: int, blue: int) -> bool:
+    """Capacidad adicional del driver "arduino", no parte de la interfaz
+    compartida get_state/set_state (que sigue siendo booleana para los
+    demás drivers). config["led_mode"] decide si la placa maneja una tira
+    PWM analógica ("pwm", comando NOPAL:LED) o WS2812 ("ws2812", comando
+    NOPAL:WS) — ver capacidades declaradas por discover_arduino_boards()."""
+    prefix = "LED" if config.get("led_mode") == "pwm" else "WS"
+    response = _arduino_send_command(config, f"NOPAL:{prefix}:{red},{green},{blue}")
     return response == "OK"
 
 
@@ -222,9 +257,13 @@ DRIVERS: Dict[str, Dict[str, Any]] = {
         "set_state": _relay_set_state,
     },
     "arduino": {
-        "required": ("device", "relay"),
+        # "relay" no está en required: los accesorios de tira LED
+        # (kind="led_strip") no lo llevan, solo "led_mode". Los de relé
+        # siempre lo mandan porque el formulario de alta lo exige.
+        "required": ("device",),
         "get_state": _arduino_get_state,
         "set_state": _arduino_set_state,
+        "set_color": _arduino_set_led,
     },
 }
 
@@ -248,9 +287,16 @@ def get_driver_names() -> List[str]:
 
 def _parse_nopal_identification(line: str) -> Optional[Dict[str, Any]]:
     """Parsea la línea que manda sendIdentification() en el firmware, ej.
-    'NOPAL,role=accessory,chip=ESP32-D0WD-V3,fw=1.0,relays=4,pwm_led=1,
-    ws2812=1,ws2812_count=30'. None si la línea no viene de una placa NOPAL
-    (puede ser ruido de arranque, u otro firmware que no es el nuestro)."""
+    'NOPAL,role=accessory,chip=ESP32-D0WD-V3,fw=1.3,relays=4,pwm_led=1,
+    ws2812=1,ws2812_count=30,uptime_ms=12345,free_heap=203000,wifi=1,
+    wifi_connected=1,wifi_mode=sta,hostname=nopal-accessory,ip=192.168.1.50,
+    ota=1,ota_path=/update'. None si la línea no viene de una placa NOPAL
+    (puede ser ruido de arranque, u otro firmware que no es el nuestro).
+    Todos los campos agregados después de la 1.0 (uptime_ms/free_heap desde
+    1.2, wifi*/hostname/ip/ota* desde 1.3) son opcionales con default
+    seguro — una placa con firmware viejo simplemente no los manda y no
+    debe romper el parseo. El frontend debe tratar uptime_ms/free_heap en 0
+    como "no reportado", no como un valor real."""
     if not line.startswith("NOPAL,"):
         return None
     fields: Dict[str, str] = {}
@@ -269,6 +315,15 @@ def _parse_nopal_identification(line: str) -> Optional[Dict[str, Any]]:
             "pwm_led": fields.get("pwm_led") == "1",
             "ws2812": fields.get("ws2812") == "1",
             "ws2812_count": int(fields.get("ws2812_count", 0)),
+            "uptime_ms": int(fields.get("uptime_ms", 0)),
+            "free_heap": int(fields.get("free_heap", 0)),
+            "wifi": fields.get("wifi") == "1",
+            "wifi_connected": fields.get("wifi_connected") == "1",
+            "wifi_mode": fields.get("wifi_mode", ""),
+            "hostname": fields.get("hostname", ""),
+            "ip": fields.get("ip", ""),
+            "ota": fields.get("ota") == "1",
+            "ota_path": fields.get("ota_path", ""),
         }
     except ValueError:
         return None
@@ -278,8 +333,9 @@ def _probe_nopal_board_sync(device: str, baud: int = NOPAL_BOARD_BAUD, timeout: 
     """Handshake autocontenido (mismo criterio que _probe_grbl_sync en
     laser_service.py): abre su propia conexión y la cierra al terminar, sin
     tocar ninguna conexión persistente. Manda NOPAL:ID? y devuelve las
-    capacidades declaradas, o None si el puerto no contestó como firmware
-    NOPAL dentro del timeout."""
+    capacidades declaradas más cuánto tardó en contestar (latency_ms, para
+    mostrar "tiempo de respuesta" real en vez de inventado), o None si el
+    puerto no contestó como firmware NOPAL dentro del timeout."""
     try:
         import serial
     except ImportError:
@@ -295,6 +351,7 @@ def _probe_nopal_board_sync(device: str, baud: int = NOPAL_BOARD_BAUD, timeout: 
         time.sleep(2)
         try:
             ser.reset_input_buffer()
+            request_sent_at = time.monotonic()
             ser.write(b"NOPAL:ID?\n")
         except Exception:
             return None
@@ -308,6 +365,7 @@ def _probe_nopal_board_sync(device: str, baud: int = NOPAL_BOARD_BAUD, timeout: 
                 continue
             parsed = _parse_nopal_identification(raw.decode("utf-8", errors="ignore").strip())
             if parsed:
+                parsed["latency_ms"] = round((time.monotonic() - request_sent_at) * 1000)
                 return parsed
         return None
     finally:
@@ -417,17 +475,32 @@ def register_accessory(name: str, kind: str, driver: str, config: Dict[str, Any]
     entries.append(entry)
     _save_registry(entries)
     logger.info(f"Accesorio registrado: {name} ({driver}, {entry['kind']})")
+    log_event(entry["id"], entry["name"], "registered", {"kind": entry["kind"], "driver": driver})
     return _public(entry)
 
 
 def unregister_accessory(accessory_id: str) -> bool:
     entries = _load_registry()
+    removed = next((e for e in entries if e.get("id") == accessory_id), None)
     filtered = [e for e in entries if e.get("id") != accessory_id]
     changed = len(filtered) != len(entries)
     if changed:
         _save_registry(filtered)
         logger.info(f"Accesorio eliminado: {accessory_id}")
+        log_event(accessory_id, removed["name"] if removed else accessory_id, "removed")
     return changed
+
+
+def rename_accessory(accessory_id: str, name: str) -> Optional[Dict[str, Any]]:
+    entries = _load_registry()
+    entry = next((e for e in entries if e.get("id") == accessory_id), None)
+    if entry is None:
+        return None
+    old_name = entry["name"]
+    entry["name"] = name
+    _save_registry(entries)
+    log_event(entry["id"], name, "renamed", {"from": old_name})
+    return _public(entry)
 
 
 def _get_accessories_status_sync() -> List[Dict[str, Any]]:
@@ -459,4 +532,34 @@ async def set_accessory_power(accessory_id: str, on: bool) -> Optional[bool]:
         return False
 
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, spec["set_state"], entry["config"], on)
+    ok = await loop.run_in_executor(None, spec["set_state"], entry["config"], on)
+    if ok:
+        log_event(entry["id"], entry["name"], "power_on" if on else "power_off")
+    return ok
+
+
+async def set_accessory_led_color(accessory_id: str, red: int, green: int, blue: int) -> Optional[bool]:
+    """None si el accesorio no existe o su driver no soporta color
+    ("set_color"); True/False según si la placa confirmó el cambio. A
+    diferencia de set_accessory_power, aquí SÍ se persiste el resultado en
+    accessory_registry.json (led_color/led_on) porque el firmware no tiene
+    forma de contestar "qué color tengo ahora" — sin esto, _arduino_get_state
+    no tendría de dónde sacar un estado no inventado para tiras LED."""
+    entries = _load_registry()
+    entry = next((e for e in entries if e.get("id") == accessory_id), None)
+    if entry is None:
+        return None
+
+    spec = DRIVERS.get(entry["driver"])
+    set_color = spec.get("set_color") if spec else None
+    if set_color is None:
+        return None
+
+    loop = asyncio.get_event_loop()
+    ok = await loop.run_in_executor(None, set_color, entry["config"], red, green, blue)
+    if ok:
+        entry["config"]["led_color"] = [red, green, blue]
+        entry["config"]["led_on"] = any((red, green, blue))
+        _save_registry(entries)
+        log_event(entry["id"], entry["name"], "led_color", {"color": [red, green, blue]})
+    return ok

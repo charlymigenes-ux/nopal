@@ -7,7 +7,7 @@
 
 let currentAuthUser = null;
 // Reflejado por checkAuth() vía /api/auth/setup-required. Sin esto, los
-// setInterval de polling (loadPrinters, loadTopbarServerStats, etc.) pegan
+// setInterval de polling (loadPrinters, loadDashboardPanel, etc.) pegan
 // a endpoints protegidos, reciben 401 y el interceptor de abajo tapa la
 // pantalla de configuración inicial con el login en loop, cada pocos
 // segundos — aunque el backend ya haya decidido correctamente que
@@ -56,6 +56,11 @@ function updateTopbarUser(user) {
     if (nameEl) nameEl.textContent = user.username;
     if (avatarEl) avatarEl.textContent = (user.username || '?').slice(0, 1);
     if (roleEl) roleEl.textContent = user.role === 'admin' ? t('roleAdmin') : t('roleOperator');
+
+    // La galería de plugins es una acción administrativa (instalar/desinstalar
+    // afecta a todo el equipo) — un operador no debe ni verla ni poder entrar.
+    const pluginsBtn = document.getElementById('nav-plugins-gallery-btn');
+    if (pluginsBtn) pluginsBtn.hidden = user.role !== 'admin';
 }
 
 function showFullscreenRecommendation() {
@@ -252,12 +257,16 @@ function renderTopbarNotifications(data) {
     `).join('');
 }
 
+let lastNotificationsData = { count: 0, items: [] };
+
 async function loadTopbarNotifications() {
     if (!currentAuthUser) return;
     try {
         const response = await fetch('/api/notifications');
         if (!response.ok) return;
-        renderTopbarNotifications(await response.json());
+        const data = await response.json();
+        lastNotificationsData = data;
+        renderTopbarNotifications(data);
     } catch (error) {
         console.error(error);
     }
@@ -324,7 +333,10 @@ const printersGrid = document.getElementById('printers-grid');
 const lasersGrid = document.getElementById('lasers-grid');
 const cncGrid = document.getElementById('cnc-grid');
 const machinesColumns = document.getElementById('machines-columns');
+const machinesMixedGrid = document.getElementById('machines-mixed-grid');
+const devicesGroupModeBtn = document.getElementById('devices-group-mode-btn');
 const deviceColumnsCustomizerBtn = document.getElementById('device-columns-customizer-btn');
+const printerCardCustomizerBtn = document.getElementById('printer-card-customizer-btn');
 const printQueue = document.getElementById('print-queue');
 const totalModelsEl = document.getElementById('total-models');
 const gcodeReadyEl = document.getElementById('gcode-ready');
@@ -378,6 +390,34 @@ if (sidebarToggleBtn) {
         applySidebarCollapsed(collapsed);
     });
 }
+
+// ── Cajón de navegación en mobile ──
+// El sidebar se convierte en un cajón deslizable por debajo de 768px (ver
+// CSS). Este botón/backdrop solo existen visualmente en ese breakpoint,
+// pero los listeners se registran siempre (no estorban en escritorio).
+const mobileNavToggleBtn = document.getElementById('mobile-nav-toggle-btn');
+const mobileNavBackdrop = document.getElementById('mobile-nav-backdrop');
+
+function setMobileNavOpen(open) {
+    const shell = document.querySelector('.app-shell');
+    if (shell) shell.classList.toggle('mobile-nav-open', open);
+    if (mobileNavToggleBtn) mobileNavToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+if (mobileNavToggleBtn) {
+    mobileNavToggleBtn.addEventListener('click', () => {
+        const shell = document.querySelector('.app-shell');
+        setMobileNavOpen(!shell?.classList.contains('mobile-nav-open'));
+    });
+}
+
+if (mobileNavBackdrop) {
+    mobileNavBackdrop.addEventListener('click', () => setMobileNavOpen(false));
+}
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setMobileNavOpen(false);
+});
 
 // ── Orden personalizable de los accesos del sidebar ──
 const SIDEBAR_ORDER_KEY = 'sidebarOrder';
@@ -2767,63 +2807,44 @@ function heatColor(percent) {
 /* Estado térmico decorativo de las fichas de impresora. Se deriva siempre de
    las temperaturas y objetivos que ya entrega cada controlador; no mantiene
    un estado paralelo ni crea temporizadores por impresora. */
-const PRINTER_THERMAL_COLOR_STOPS = [
-    { value: 0, color: [34, 211, 238] },
-    { value: 40, color: [34, 211, 238] },
-    { value: 80, color: [163, 230, 53] },
-    { value: 150, color: [245, 158, 11] },
-    { value: 215, color: [249, 115, 22] },
-    { value: 260, color: [244, 63, 94] },
-];
 
-function interpolatePrinterThermalColor(value) {
-    const thermalValue = Math.max(0, Math.min(260, value));
-    let lower = PRINTER_THERMAL_COLOR_STOPS[0];
-    let upper = PRINTER_THERMAL_COLOR_STOPS[PRINTER_THERMAL_COLOR_STOPS.length - 1];
-    for (let index = 0; index < PRINTER_THERMAL_COLOR_STOPS.length - 1; index++) {
-        const current = PRINTER_THERMAL_COLOR_STOPS[index];
-        const next = PRINTER_THERMAL_COLOR_STOPS[index + 1];
-        if (thermalValue >= current.value && thermalValue <= next.value) {
-            lower = current;
-            upper = next;
-            break;
-        }
-    }
-    const range = upper.value - lower.value || 1;
-    const ratio = (thermalValue - lower.value) / range;
-    const color = lower.color.map((channel, index) => Math.round(channel + (upper.color[index] - channel) * ratio));
+const PRINTER_THERMAL_IDLE_COLOR = 'rgb(34, 197, 94)';
+const PRINTER_THERMAL_ERROR_COLOR = 'rgb(239, 68, 68)';
+const PRINTER_THERMAL_OFFLINE_COLOR = 'rgb(148, 163, 184)';
+
+// Blanco→rojo en 10 escalones (no interpolación continua) — "cambia de tono
+// cada 10% de temperatura" en vez de un degradado liso.
+function interpolateHeatingWhiteToRed(percent) {
+    const stepped = Math.floor(Math.max(0, Math.min(100, percent)) / 10) * 10;
+    const ratio = stepped / 100;
+    const from = [255, 255, 255];
+    const to = [239, 68, 68];
+    const color = from.map((channel, index) => Math.round(channel + (to[index] - channel) * ratio));
     return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
 }
 
-function printerThermalWaves(bedActual, extruderActual, bedTarget, extruderTarget, printState, isOffline = false) {
-    const actualValues = [bedActual, extruderActual].filter(Number.isFinite);
-    if (!actualValues.length && !isOffline) return '';
-
-    let thermalColor = 'rgb(148, 163, 184)';
-    let strength = 0.32;
-    let modifierClasses = 'thermal-offline is-thermal-offline';
-    if (!isOffline) {
-        const thermalValue = Math.max(...actualValues);
-        const activeHeaters = [
-            { actual: bedActual, target: bedTarget },
-            { actual: extruderActual, target: extruderTarget },
-        ].filter(heater => Number.isFinite(heater.actual) && Number.isFinite(heater.target) && heater.target > 0);
-        const isActivelyHeating = activeHeaters.some(heater => heater.actual < heater.target - 3);
-        const isStable = activeHeaters.length > 0 && activeHeaters.every(heater => Math.abs(heater.actual - heater.target) <= 3);
-        const thermalPhase = thermalValue < 40 ? 'cold' : thermalValue < 80 ? 'warm' : thermalValue < 215 ? 'heating' : 'hot';
-        thermalColor = interpolatePrinterThermalColor(thermalValue);
-        strength = Math.min(0.5, 0.24 + (thermalValue / 260) * 0.22);
-        modifierClasses = [
-            `thermal-${thermalPhase}`,
-            isActivelyHeating ? 'is-actively-heating' : '',
-            isStable ? 'is-thermal-stable' : '',
-            printState === 'error' ? 'is-thermal-error' : '',
-        ].filter(Boolean).join(' ');
+// Semilla estable (puerto/host) para el retraso negativo de la animación —
+// sin esto, como renderPrinters() reconstruye toda la grilla en cada sondeo
+// (cada 5s) y las olas duran 9-15s, la animación nunca llega a completar un
+// ciclo: siempre vuelve al fotograma 0 y se ve como un "salto" repetido en
+// vez de un movimiento continuo. Con un delay negativo fijo por tarjeta, el
+// nuevo elemento nace ya "a mitad de camino" en el mismo punto de siempre,
+// que se percibe fluido aunque el nodo se haya recreado.
+function thermalDelaySeed(seed) {
+    if (seed == null) return 0;
+    const text = String(seed);
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+        hash = text.charCodeAt(i) + ((hash << 5) - hash);
     }
+    return -(Math.abs(hash) % 15);
+}
 
+function renderThermalLayer(modifierClasses, thermalColor, strength, seed) {
+    const delay = thermalDelaySeed(seed);
     return `
         <div class="printer-thermal-layer ${modifierClasses}" aria-hidden="true"
-             style="--thermal-color:${thermalColor};--thermal-strength:${strength.toFixed(3)}">
+             style="--thermal-color:${thermalColor};--thermal-strength:${strength.toFixed(3)};--thermal-delay:${delay}s">
             <svg class="printer-thermal-waves" viewBox="0 0 800 150" preserveAspectRatio="none" focusable="false">
                 <path class="printer-thermal-wave printer-thermal-wave-a" d="M-160 78 C-60 18 40 138 140 78 S340 18 440 78 S640 138 740 78 S940 18 1040 78"/>
                 <path class="printer-thermal-wave printer-thermal-wave-b" d="M-180 96 C-70 48 20 142 130 92 S330 42 430 94 S630 146 730 90 S930 42 1040 94"/>
@@ -2831,6 +2852,57 @@ function printerThermalWaves(bedActual, extruderActual, bedTarget, extruderTarge
             </svg>
         </div>
     `;
+}
+
+function printerThermalWaves(bedActual, extruderActual, bedTarget, extruderTarget, printState, isOffline = false, seed = null) {
+    const actualValues = [bedActual, extruderActual].filter(Number.isFinite);
+    if (!actualValues.length && !isOffline) return '';
+
+    if (isOffline) {
+        return renderThermalLayer('thermal-offline is-thermal-offline', PRINTER_THERMAL_OFFLINE_COLOR, 0.32, seed);
+    }
+
+    const thermalValue = Math.max(...actualValues);
+    const activeHeaters = [
+        { actual: bedActual, target: bedTarget },
+        { actual: extruderActual, target: extruderTarget },
+    ].filter(heater => Number.isFinite(heater.actual) && Number.isFinite(heater.target) && heater.target > 0);
+    const isActivelyHeating = activeHeaters.some(heater => heater.actual < heater.target - 3);
+    const isStable = activeHeaters.length > 0 && activeHeaters.every(heater => Math.abs(heater.actual - heater.target) <= 3);
+    const isError = printState === 'error';
+    const thermalPhase = thermalValue < 40 ? 'cold' : thermalValue < 80 ? 'warm' : thermalValue < 215 ? 'heating' : 'hot';
+
+    // Idle (sin target activo) = verde. Con un target activo (calentando o
+    // sosteniendo) = blanco→rojo según qué tan alta es la temperatura real.
+    let thermalColor;
+    if (isError) {
+        thermalColor = PRINTER_THERMAL_ERROR_COLOR;
+    } else if (activeHeaters.length > 0) {
+        thermalColor = interpolateHeatingWhiteToRed((thermalValue / 260) * 100);
+    } else {
+        thermalColor = PRINTER_THERMAL_IDLE_COLOR;
+    }
+    const strength = Math.min(0.5, 0.24 + (thermalValue / 260) * 0.22);
+    const modifierClasses = [
+        `thermal-${thermalPhase}`,
+        isActivelyHeating ? 'is-actively-heating' : '',
+        isStable ? 'is-thermal-stable' : '',
+        isError ? 'is-thermal-error' : '',
+    ].filter(Boolean).join(' ');
+
+    return renderThermalLayer(modifierClasses, thermalColor, strength, seed);
+}
+
+// Versión simple (sin temperatura) para láser/CNC: verde en reposo, rojo si
+// hay error, gris si está offline — mismo lenguaje visual que las impresoras.
+function deviceStateThermalWave(visualState, seed = null) {
+    if (visualState === 'offline') {
+        return renderThermalLayer('thermal-offline is-thermal-offline', PRINTER_THERMAL_OFFLINE_COLOR, 0.32, seed);
+    }
+    const isError = visualState === 'error';
+    const modifierClasses = isError ? 'thermal-hot is-thermal-error' : 'thermal-cold is-thermal-stable';
+    const color = isError ? PRINTER_THERMAL_ERROR_COLOR : PRINTER_THERMAL_IDLE_COLOR;
+    return renderThermalLayer(modifierClasses, color, 0.3, seed);
 }
 
 function heatColorForSensor(current, key) {
@@ -3132,128 +3204,447 @@ async function loadPrinterTemperatures(port) {
     }
 }
 
-const TOPBAR_GAUGE_RADIUS = 40;
-const TOPBAR_GAUGE_CIRCUMFERENCE = 2 * Math.PI * TOPBAR_GAUGE_RADIUS;
+const PANEL_GAUGE_RADIUS = 40;
+const PANEL_GAUGE_CIRCUMFERENCE = 2 * Math.PI * PANEL_GAUGE_RADIUS;
 
-// Íconos de línea (16px, stroke=currentColor) para las celdas de estadísticas
-// del host y las etiquetas de los gauges del topbar. Genéricos a propósito
-// (nada de logos de marca, ej. Debian).
-const TOPBAR_ICON_BRANCH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>';
-const TOPBAR_ICON_TERMINAL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+// Íconos de línea (16px, stroke=currentColor) para las celdas del panel de
+// control. Genéricos a propósito (nada de logos de marca, ej. Debian).
 const TOPBAR_ICON_ACTIVITY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>';
 const TOPBAR_ICON_CHIP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>';
-const TOPBAR_ICON_THERMOMETER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"/></svg>';
-const TOPBAR_ICON_LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
-const TOPBAR_ICON_NETWORK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="7" y2="6"/><polyline points="3 10 7 6 11 10"/><line x1="17" y1="7" x2="17" y2="18"/><polyline points="13 14 17 18 21 14"/></svg>';
-const TOPBAR_ICON_DOWNLOAD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
-const TOPBAR_ICON_UPLOAD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+const PANEL_ICON_SHIELD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+const PANEL_ICON_SERVER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="7" rx="1"/><rect x="2" y="14" width="20" height="7" rx="1"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>';
+const PANEL_ICON_CLOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+const PANEL_ICON_REFRESH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+const PANEL_ICON_DISK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="11" cy="5" rx="8" ry="3"/><path d="M3 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M3 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>';
+const PANEL_ICON_PRINTER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>';
+const PANEL_ICON_LASER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>';
+const PANEL_ICON_CNC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"/><path d="M12 6c0-2-2-3-2-3M12 8c0-2 2-3 2-3"/><path d="M8 12h8l-2 10h-4z"/></svg>';
+const PANEL_ICON_CAMERA = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
 
-function renderTopbarServerStats(data) {
-    const container = document.getElementById('topbar-server-stats');
-    if (!container) return;
+// Íconos ilustrados (PNG subidos por el usuario) para las tarjetas de
+// dispositivos conectados y de alertas — reemplazan los SVG de línea solo
+// en esos dos lugares; los SVG de arriba se conservan para los íconos
+// chicos de "Trabajos en curso", que no se tocaron.
+const PANEL_DEVICE_ICON_PRINTER = '<img src="/static/img/panel-icon-printer.png" alt="" class="panel-device-icon-img">';
+const PANEL_DEVICE_ICON_LASER = '<img src="/static/img/panel-icon-laser.png" alt="" class="panel-device-icon-img">';
+const PANEL_DEVICE_ICON_CNC = '<img src="/static/img/panel-icon-cnc.png" alt="" class="panel-device-icon-img">';
+const PANEL_DEVICE_ICON_CAMERA = '<img src="/static/img/panel-icon-camera.png" alt="" class="panel-device-icon-img">';
+const PANEL_ALERT_ICON_ERROR = '<img src="/static/img/panel-icon-alert-critical.png" alt="" class="panel-alert-icon-img">';
+const PANEL_ALERT_ICON_WARNING = '<img src="/static/img/panel-icon-alert-warning.png" alt="" class="panel-alert-icon-img">';
+const PANEL_ALERT_ICON_INFO = '<img src="/static/img/panel-icon-alert-info.png" alt="" class="panel-alert-icon-img">';
 
-    const host = data?.host;
-    if (!host) {
-        container.innerHTML = '';
-        return;
+const PANEL_DEVICE_TYPES = [
+    { key: 'printer', icon: PANEL_DEVICE_ICON_PRINTER, labelKey: 'printerType3D' },
+    { key: 'laser', icon: PANEL_DEVICE_ICON_LASER, labelKey: 'laser' },
+    { key: 'cnc', icon: PANEL_DEVICE_ICON_CNC, labelKey: 'cnc' },
+    { key: 'camera', icon: PANEL_DEVICE_ICON_CAMERA, labelKey: 'navCameras', soon: true },
+];
+
+function panelInfoRow(icon, label, value, valueClass) {
+    return `
+        <div class="panel-info-row">
+            ${icon}
+            <div class="panel-info-row-text">
+                <span class="panel-info-row-label">${label}</span>
+                <span class="panel-info-row-value${valueClass ? ` ${valueClass}` : ''}">${value}</span>
+            </div>
+        </div>`;
+}
+
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+}
+
+function panelHealthLabel(health) {
+    if (health === 'error') return t('panelHealthBad');
+    if (health === 'warning') return t('panelHealthWarning');
+    return t('panelHealthGood');
+}
+
+function renderPanelHealth(data) {
+    const system = data.system || {};
+    const grid = document.getElementById('panel-health-grid');
+    if (grid) {
+        const uptimeText = system.uptime_seconds != null ? formatUptime(system.uptime_seconds) : '—';
+        const updateText = system.update_status === 'update_available' ? t('panelUpdateAvailable') : t('panelUpdateUpToDate');
+        const healthValueClass = system.health === 'error' ? 'panel-info-row-value-error'
+            : system.health === 'warning' ? 'panel-info-row-value-warning'
+            : '';
+        grid.innerHTML = [
+            panelInfoRow(PANEL_ICON_SHIELD, t('panelHealthLabel'), panelHealthLabel(system.health), healthValueClass),
+            panelInfoRow(PANEL_ICON_SERVER, t('panelServicesLabel'), `${system.services_online ?? 0} / ${system.services_total ?? 0}`),
+            panelInfoRow(PANEL_ICON_CLOCK, t('panelUptimeLabel'), uptimeText),
+            panelInfoRow(PANEL_ICON_REFRESH, t('panelUpdatesLabel'), updateText),
+        ].join('');
     }
 
-    const cpuPercent = Math.max(0, Math.min(100, host.cpu_percent || 0));
-    const memPercent = Math.max(0, Math.min(100, host.mem_percent || 0));
-    const tempValue = host.temp != null ? host.temp : null;
-    const TEMP_GAUGE_MAX = 90;
-    const tempPercent = tempValue != null ? Math.max(0, Math.min(100, (tempValue / TEMP_GAUGE_MAX) * 100)) : 0;
-    const cpuOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (cpuPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
-    const memOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (memPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
-    const tempOffset = TOPBAR_GAUGE_CIRCUMFERENCE - (tempPercent / 100) * TOPBAR_GAUGE_CIRCUMFERENCE;
-    const cpuDesc = `${host.cpu_desc || ''}${host.cpu_bits ? `, ${host.cpu_bits}` : ''}`;
+    const pill = document.getElementById('panel-status-pill');
+    const pillText = document.getElementById('panel-status-text');
+    if (pill && pillText) {
+        pill.classList.remove('panel-status-ok', 'panel-status-warning', 'panel-status-error');
+        pill.classList.add(`panel-status-${system.health || 'ok'}`);
+        pillText.textContent = system.health === 'error' ? t('panelSystemError')
+            : system.health === 'warning' ? t('panelSystemWarning')
+            : t('panelSystemActive');
+        // Parpadea solo cuando hay algo crítico en impresoras/láser/CNC —
+        // "error" es la única severidad que esas fuentes usan hoy (ver
+        // notification_service.py), así que health==='error' ya implica eso.
+        pill.classList.toggle('panel-status-blink', system.health === 'error');
+    }
+}
 
-    const cell = (icon, label, value) => `
-                <div class="topbar-host-cell">
-                    ${icon}
-                    <div class="topbar-host-cell-text">
-                        <span class="topbar-host-cell-label">${label}</span>
-                        <span class="topbar-host-cell-value">${value}</span>
-                    </div>
-                </div>`;
+function getCriticalDeviceAlerts() {
+    return (lastNotificationsData.items || []).filter(item =>
+        item.severity === 'error' && (item.source === 'printer' || item.source === 'laser'));
+}
 
-    const cellsRow1 = [
-        cell(TOPBAR_ICON_BRANCH, t('hostVersion'), host.version || '—'),
-        cell(TOPBAR_ICON_TERMINAL, t('hostOs'), host.os || '—'),
-        cell(TOPBAR_ICON_ACTIVITY, t('hostLoad'), `${cpuPercent}%`),
-        cell(TOPBAR_ICON_CHIP, t('memory'), `${host.mem_used_gb} GB / ${host.mem_total_gb} GB`),
-        cell(TOPBAR_ICON_THERMOMETER, t('temperature'), tempValue != null ? `${tempValue.toFixed(1)}°C` : '—'),
-    ].join('');
+function closePanelStatusPopup() {
+    document.getElementById('panel-status-popup')?.remove();
+}
 
-    const cellsRow2 = [
-        cell(TOPBAR_ICON_LOCK, t('hostIp'), host.network_ip || '—'),
-        cell(TOPBAR_ICON_NETWORK, t('hostNetworkSpeed'), `${host.bandwidth_kbps} KB/s`),
-        cell(TOPBAR_ICON_DOWNLOAD, t('hostReceived'), `${host.rx_gb} GB`),
-        cell(TOPBAR_ICON_UPLOAD, t('hostTransmitted'), `${host.tx_gb} GB`),
-    ].join('');
+function openPanelStatusPopup(alerts) {
+    closePanelStatusPopup();
+    const pill = document.getElementById('panel-status-pill');
+    if (!pill) return;
+    const popup = document.createElement('div');
+    popup.id = 'panel-status-popup';
+    popup.className = 'panel-status-popup';
+    popup.innerHTML = `
+        <div class="panel-status-popup-header">${escapeHtml(t('panelCriticalPopupTitle'))}</div>
+        ${alerts.map(alert => `
+            <button type="button" class="panel-status-popup-item" data-section="${escapeHtml(alert.section || 'dashboard')}">
+                ${PANEL_ALERT_ICON_ERROR}
+                <span>${escapeHtml(alert.message)}</span>
+            </button>
+        `).join('')}`;
+    pill.appendChild(popup);
+    popup.querySelectorAll('.panel-status-popup-item').forEach(btn => {
+        btn.addEventListener('click', event => {
+            event.stopPropagation();
+            switchSection(btn.dataset.section);
+            closePanelStatusPopup();
+        });
+    });
+}
 
-    container.innerHTML = `
-        <div class="topbar-host-card">
-            <div class="topbar-host-header">
-                <span class="topbar-host-dot"></span>
-                <span class="topbar-host-title-text">Host</span>
-                <span class="topbar-host-desc">${cpuDesc}</span>
-                <span class="topbar-host-online-pill">${t('online')}</span>
+document.getElementById('panel-status-pill')?.addEventListener('click', event => {
+    event.stopPropagation();
+    const alerts = getCriticalDeviceAlerts();
+    if (!alerts.length) return;
+    if (alerts.length === 1) {
+        switchSection(alerts[0].section || 'dashboard');
+        return;
+    }
+    if (document.getElementById('panel-status-popup')) {
+        closePanelStatusPopup();
+    } else {
+        openPanelStatusPopup(alerts);
+    }
+});
+document.addEventListener('click', closePanelStatusPopup);
+
+function panelGaugeHtml(valuePercent, colorClass, icon, label, displayValue, subtext) {
+    const percent = Math.max(0, Math.min(100, valuePercent || 0));
+    // Con valores reales pero minúsculos (ej. 0.03% de disco usado en uploads/
+    // sobre un disco de 400+ GB) el anillo redondeaba a 0 y se veía igual que
+    // "sin configurar" — un piso visual mínimo deja claro que sí hay dato.
+    const visualPercent = percent > 0 && percent < 3 ? 3 : percent;
+    const offset = PANEL_GAUGE_CIRCUMFERENCE - (visualPercent / 100) * PANEL_GAUGE_CIRCUMFERENCE;
+    return `
+        <div class="panel-gauge">
+            <div class="panel-gauge-ring">
+                <svg viewBox="0 0 96 96">
+                    <circle class="gauge-track" cx="48" cy="48" r="${PANEL_GAUGE_RADIUS}"/>
+                    <circle class="gauge-fill ${colorClass}" cx="48" cy="48" r="${PANEL_GAUGE_RADIUS}" stroke-dasharray="${PANEL_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${offset}"/>
+                </svg>
+                <span class="gauge-value">${displayValue}</span>
             </div>
-            <div class="topbar-host-grid">
-                ${cellsRow1}
-                ${cellsRow2}
-            </div>
-        </div>
-        <div class="topbar-gauges-card">
-            <div class="topbar-gauge gauge-cpu">
-                <div class="topbar-gauge-ring">
-                    <svg viewBox="0 0 96 96">
-                        <circle class="gauge-track" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}"/>
-                        <circle class="gauge-fill gauge-fill-cpu" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${cpuOffset}"/>
-                    </svg>
-                    <span class="gauge-value">${cpuPercent}</span>
-                </div>
-                <div class="topbar-gauge-label">${TOPBAR_ICON_ACTIVITY}<span>CPU</span></div>
-            </div>
-            <div class="topbar-gauge gauge-mem">
-                <div class="topbar-gauge-ring">
-                    <svg viewBox="0 0 96 96">
-                        <circle class="gauge-track" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}"/>
-                        <circle class="gauge-fill gauge-fill-mem" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${memOffset}"/>
-                    </svg>
-                    <span class="gauge-value">${memPercent}</span>
-                </div>
-                <div class="topbar-gauge-label">${TOPBAR_ICON_CHIP}<span>${t('memory')}.</span></div>
-            </div>
-            <div class="topbar-gauge gauge-temp">
-                <div class="topbar-gauge-ring">
-                    <svg viewBox="0 0 96 96">
-                        <circle class="gauge-track" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}"/>
-                        <circle class="gauge-fill gauge-fill-temp" cx="48" cy="48" r="${TOPBAR_GAUGE_RADIUS}" stroke-dasharray="${TOPBAR_GAUGE_CIRCUMFERENCE}" stroke-dashoffset="${tempOffset}"/>
-                    </svg>
-                    <span class="gauge-value">${tempValue != null ? Math.round(tempValue) : '—'}</span>
-                </div>
-                <div class="topbar-gauge-label">${TOPBAR_ICON_THERMOMETER}<span>${t('temperature')}</span></div>
-            </div>
-        </div>
+            <div class="panel-gauge-label">${icon}<span>${label}</span></div>
+            ${subtext ? `<span class="panel-gauge-sub">${subtext}</span>` : ''}
+        </div>`;
+}
+
+function panelLoadChartHtml(history, loadAverage) {
+    const values = Array.isArray(history) ? history : [];
+    const width = 300;
+    const height = 56;
+    let pathSection = '';
+    if (values.length >= 2) {
+        const stepX = width / (values.length - 1);
+        const points = values.map((value, index) => {
+            const x = index * stepX;
+            const y = height - (Math.max(0, Math.min(100, value)) / 100) * height;
+            return [x, y];
+        });
+        const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point[0].toFixed(1)},${point[1].toFixed(1)}`).join(' ');
+        const areaPath = `${linePath} L${width},${height} L0,${height} Z`;
+        pathSection = `
+            <path class="panel-load-chart-area" d="${areaPath}"/>
+            <path class="panel-load-chart-line" d="${linePath}"/>`;
+    }
+    return `
+        <svg class="panel-load-chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${pathSection}</svg>
+        ${values.length < 2 ? `<span class="panel-load-chart-empty">${escapeHtml(t('panelLoadGathering'))}</span>` : ''}
+        ${loadAverage != null ? `<span class="panel-load-chart-avg">${escapeHtml(t('panelLoadAverage'))}: <strong>${loadAverage.toFixed(2)}</strong></span>` : ''}
     `;
 }
 
-async function loadTopbarServerStats() {
-    const container = document.getElementById('topbar-server-stats');
-    if (!container) return;
+function renderPanelHost(data) {
+    const host = data.host || {};
 
-    try {
-        const response = await fetch('/api/system/stats');
-        if (!response.ok) throw new Error('No se pudo cargar el estado del servidor');
-        const data = await response.json();
-        renderTopbarServerStats(data);
-    } catch (error) {
-        console.error(error);
-        container.innerHTML = '';
+    const gauges = document.getElementById('panel-host-gauges');
+    if (gauges) {
+        if (!host.online) {
+            gauges.innerHTML = `<div class="panel-empty-state">${escapeHtml(t('panelHostOffline'))}</div>`;
+        } else {
+            const diskSubtext = host.disk_used_bytes != null && host.disk_total_bytes != null
+                ? `${formatSize(host.disk_used_bytes)} / ${formatSize(host.disk_total_bytes)}`
+                : null;
+            // <1% (típico: uploads/ frente a un disco de cientos de GB) se
+            // muestra con 2 decimales — redondeado a entero siempre daba "0",
+            // indistinguible de "sin datos".
+            const diskDisplay = host.disk_percent == null ? '—'
+                : host.disk_percent > 0 && host.disk_percent < 1 ? host.disk_percent.toFixed(2)
+                : Math.round(host.disk_percent);
+            gauges.innerHTML = [
+                panelGaugeHtml(host.cpu_percent, 'gauge-fill-cpu', TOPBAR_ICON_ACTIVITY, 'CPU', host.cpu_percent != null ? host.cpu_percent : '—'),
+                panelGaugeHtml(host.mem_percent, 'gauge-fill-mem', TOPBAR_ICON_CHIP, t('memory'), host.mem_percent != null ? host.mem_percent : '—'),
+                panelGaugeHtml(host.disk_percent, 'gauge-fill-disk', PANEL_ICON_DISK, t('panelDiskLabel'), diskDisplay, diskSubtext),
+            ].join('');
+        }
+    }
+
+    const loadChart = document.getElementById('panel-load-chart');
+    if (loadChart) {
+        loadChart.innerHTML = host.online ? panelLoadChartHtml(host.cpu_history, host.load_average) : '';
+    }
+
+    const networkGrid = document.getElementById('panel-network-grid');
+    if (networkGrid) {
+        const networkCell = (label, value) => `
+            <div class="panel-network-cell">
+                <span class="panel-network-label">${label}</span>
+                <strong class="panel-network-value">${value}</strong>
+            </div>`;
+        networkGrid.innerHTML = `
+            <div class="panel-network-row">
+                ${networkCell(t('hostIp'), host.ip || '—')}
+                ${networkCell(t('hostNetworkSpeed'), host.bandwidth_kbps != null ? `${host.bandwidth_kbps} KB/s` : '—')}
+            </div>
+            <div class="panel-network-row">
+                ${networkCell(t('hostReceived'), host.rx_gb != null ? `${host.rx_gb} GB` : '—')}
+                ${networkCell(t('hostTransmitted'), host.tx_gb != null ? `${host.tx_gb} GB` : '—')}
+            </div>`;
     }
 }
+
+function renderPanelDevices(data) {
+    const row = document.getElementById('panel-devices-row');
+    if (!row) return;
+    const devices = data.devices || {};
+    row.innerHTML = PANEL_DEVICE_TYPES.map(typeDef => {
+        const counts = devices[typeDef.key] || { online: 0, total: 0 };
+        if (typeDef.soon) {
+            return `
+                <div class="panel-device-tile panel-device-tile-soon">
+                    <span class="panel-device-icon">${typeDef.icon}</span>
+                    <strong>—</strong>
+                    <span>${escapeHtml(t(typeDef.labelKey))}</span>
+                </div>`;
+        }
+        return `
+            <div class="panel-device-tile">
+                <span class="panel-device-icon">${typeDef.icon}</span>
+                <strong>${counts.total}</strong>
+                <span>${escapeHtml(t(typeDef.labelKey))}</span>
+            </div>`;
+    }).join('');
+}
+
+function panelJobMachineIcon(machineType) {
+    if (machineType === 'laser') return PANEL_ICON_LASER;
+    if (machineType === 'cnc') return PANEL_ICON_CNC;
+    return PANEL_ICON_PRINTER;
+}
+
+function formatTimeRemaining(seconds) {
+    if (seconds == null || seconds < 0) return null;
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function renderPanelJobs(data) {
+    const list = document.getElementById('panel-jobs-list');
+    if (!list) return;
+    const jobs = (data.jobs && data.jobs.active) || [];
+    if (!jobs.length) {
+        list.innerHTML = `<div class="panel-empty-state">${escapeHtml(t('panelNoActiveJobs'))}</div>`;
+        return;
+    }
+    list.innerHTML = jobs.map(job => {
+        const progress = Math.max(0, Math.min(100, job.progress || 0));
+        const remaining = formatTimeRemaining(job.time_remaining_s);
+        const layerText = job.current_layer != null && job.total_layer ? `${job.current_layer}/${job.total_layer}` : null;
+        return `
+            <div class="panel-job-row">
+                <span class="panel-job-icon panel-job-icon-${escapeHtml(job.machine_type || 'printer')}">${panelJobMachineIcon(job.machine_type)}</span>
+                <div class="panel-job-info">
+                    <strong>${escapeHtml(job.name || '—')}</strong>
+                    <span>${escapeHtml(job.filename || '—')}</span>
+                </div>
+                <div class="panel-job-progress-ring" style="--panel-job-progress:${progress}">
+                    <span>${progress}%</span>
+                </div>
+                <div class="panel-job-meta">
+                    ${remaining ? `<span>${escapeHtml(t('panelTimeRemaining'))}<strong>${remaining}</strong></span>` : ''}
+                    ${layerText ? `<span>${escapeHtml(t('panelLayer'))}<strong>${escapeHtml(layerText)}</strong></span>` : ''}
+                    <span class="panel-job-state">${escapeHtml(job.state || '—')}</span>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderPanelAlerts(data) {
+    const row = document.getElementById('panel-alerts-row');
+    if (!row) return;
+    const alerts = data.alerts || { error: 0, warning: 0, info: 0 };
+    row.innerHTML = `
+        <div class="panel-alert-tile panel-alert-tile-error">
+            ${PANEL_ALERT_ICON_ERROR}
+            <div class="panel-alert-tile-text">
+                <strong>${alerts.error || 0}</strong>
+                <span>${escapeHtml(t('panelAlertsCritical'))}</span>
+            </div>
+        </div>
+        <div class="panel-alert-tile panel-alert-tile-warning">
+            ${PANEL_ALERT_ICON_WARNING}
+            <div class="panel-alert-tile-text">
+                <strong>${alerts.warning || 0}</strong>
+                <span>${escapeHtml(t('panelAlertsWarning'))}</span>
+            </div>
+        </div>
+        <div class="panel-alert-tile panel-alert-tile-info">
+            ${PANEL_ALERT_ICON_INFO}
+            <div class="panel-alert-tile-text">
+                <strong>${alerts.info || 0}</strong>
+                <span>${escapeHtml(t('panelAlertsInfo'))}</span>
+            </div>
+        </div>`;
+}
+
+function renderPanelMiniCards(data) {
+    const ambientValue = document.getElementById('panel-ambient-value');
+    if (ambientValue) ambientValue.textContent = data.ambient != null ? `${data.ambient}°C` : t('panelNoSensor');
+
+    const powerValue = document.getElementById('panel-power-value');
+    if (powerValue) {
+        const power = data.power || {};
+        powerValue.textContent = power.active_watts != null ? `~${power.active_watts} W (${t('panelEstimated')})` : '—';
+    }
+
+    const maintenanceValue = document.getElementById('panel-maintenance-value');
+    if (maintenanceValue) maintenanceValue.textContent = data.maintenance != null ? data.maintenance : t('panelNoData');
+}
+
+function renderDashboardPanel(data) {
+    renderPanelHealth(data);
+    renderPanelHost(data);
+    renderPanelDevices(data);
+    renderPanelJobs(data);
+    renderPanelAlerts(data);
+    renderPanelMiniCards(data);
+}
+
+async function loadDashboardPanel() {
+    try {
+        const response = await fetch('/api/dashboard/summary');
+        if (!response.ok) throw new Error('No se pudo cargar el resumen del panel');
+        renderDashboardPanel(await response.json());
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function updatePanelClock() {
+    const timeEl = document.getElementById('panel-clock-time');
+    const dateEl = document.getElementById('panel-clock-date');
+    if (!timeEl && !dateEl) return;
+    const now = new Date();
+    const locale = (typeof currentLanguage !== 'undefined' ? currentLanguage : 'es') === 'es' ? 'es-MX' : currentLanguage;
+    if (timeEl) timeEl.textContent = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (dateEl) dateEl.textContent = now.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+document.getElementById('panel-devices-see-all')?.addEventListener('click', () => {
+    document.getElementById('machines-columns')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+document.getElementById('panel-jobs-see-all')?.addEventListener('click', () => switchSection('queue'));
+document.getElementById('panel-alerts-see-all')?.addEventListener('click', () => {
+    document.getElementById('topbar-notif-btn')?.click();
+});
+
+// Ocultar-al-pasar-el-mouse del panel superior (opcional, ver Configuración
+// > Apariencia y UI/UX > "Panel superior del Inicio"). Por defecto queda
+// siempre visible (comportamiento previo) — el modo "hover" es opt-in.
+const PANEL_AUTOHIDE_KEY = 'panelHeroAutoHideMode';
+let panelHeroCollapseTimer = null;
+let panelHeroPinned = false;
+
+function getPanelAutoHideMode() {
+    return localStorage.getItem(PANEL_AUTOHIDE_KEY) === 'hover' ? 'hover' : 'always';
+}
+
+function setPanelHeroCollapsed(collapsed) {
+    document.getElementById('panel-hero-collapsible')?.classList.toggle('collapsed', collapsed);
+}
+
+function schedulePanelHeroCollapse() {
+    if (panelHeroPinned || getPanelAutoHideMode() !== 'hover') return;
+    clearTimeout(panelHeroCollapseTimer);
+    panelHeroCollapseTimer = setTimeout(() => setPanelHeroCollapsed(true), 220);
+}
+
+function cancelPanelHeroCollapse() {
+    clearTimeout(panelHeroCollapseTimer);
+    if (getPanelAutoHideMode() === 'hover') setPanelHeroCollapsed(false);
+}
+
+function applyPanelAutoHideMode() {
+    const mode = getPanelAutoHideMode();
+    const select = document.getElementById('settings-panel-autohide');
+    if (select) select.value = mode;
+    panelHeroPinned = false;
+    clearTimeout(panelHeroCollapseTimer);
+    setPanelHeroCollapsed(mode === 'hover');
+}
+
+[document.querySelector('.global-topbar'), document.getElementById('panel-hero-collapsible')].forEach(zone => {
+    zone?.addEventListener('mouseenter', cancelPanelHeroCollapse);
+    zone?.addEventListener('mouseleave', schedulePanelHeroCollapse);
+});
+
+document.getElementById('global-topbar-panel-title')?.addEventListener('click', () => {
+    if (getPanelAutoHideMode() !== 'hover') return;
+    panelHeroPinned = !panelHeroPinned;
+    if (panelHeroPinned) {
+        cancelPanelHeroCollapse();
+    } else {
+        schedulePanelHeroCollapse();
+    }
+});
+
+document.getElementById('settings-panel-autohide')?.addEventListener('change', event => {
+    localStorage.setItem(PANEL_AUTOHIDE_KEY, event.target.value === 'hover' ? 'hover' : 'always');
+    applyPanelAutoHideMode();
+});
+
+applyPanelAutoHideMode();
 
 let toolheadJogStep = 25;
 let toolheadPort = null;
@@ -3945,7 +4336,7 @@ function persistModuleOrderFromDom() {
     applyPrinterModulesLayout();
 }
 
-function initModuleCustomizerDrag(list) {
+function initModuleCustomizerDrag(list, onReorder = persistModuleOrderFromDom) {
     let draggingRow = null;
 
     function onPointerMove(event) {
@@ -3973,7 +4364,7 @@ function initModuleCustomizerDrag(list) {
         document.removeEventListener('pointerup', endDrag);
         document.removeEventListener('pointercancel', endDrag);
         draggingRow = null;
-        persistModuleOrderFromDom();
+        onReorder();
     }
 
     list.querySelectorAll('.module-customizer-row-handle:not(.module-customizer-row-handle-disabled)').forEach(handle => {
@@ -4644,14 +5035,14 @@ let dashboardPrintersLoadError = false;
 let dashboardLaserDevicesLoadError = false;
 
 function deviceColumnLoadingMarkup(labelKey) {
+    const accentClass = labelKey === 'laser' ? 'device-loading-orbit-laser'
+        : labelKey === 'cnc' ? 'device-loading-orbit-cnc'
+        : 'device-loading-orbit-printer';
     return `
         <div class="device-column-loading" role="status" aria-live="polite">
-            <div class="device-loading-orbit" aria-hidden="true">
+            <div class="device-loading-orbit ${accentClass}" aria-hidden="true">
                 <span></span><span></span><i></i>
             </div>
-            <strong>${escapeHtml(t('devicesLoading'))}</strong>
-            <span>${escapeHtml(t(labelKey))}</span>
-            <div class="device-loading-lines" aria-hidden="true"><i></i><i></i><i></i></div>
         </div>
     `;
 }
@@ -4781,7 +5172,7 @@ function laserDashboardCardHtml(entry) {
 
     return `
         <div class="printer-card ${typeClass} laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
-            ${isOnline ? '' : printerThermalWaves(null, null, 0, 0, 'offline', true)}
+            ${deviceStateThermalWave(visualState, host)}
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
@@ -4931,6 +5322,23 @@ const DEVICE_COLUMN_DEFINITIONS = {
     cnc: { labelKey: 'cnc', accentClass: 'cnc' },
 };
 
+// Modo grupo (columnas por tipo, default) vs modo mixto (todos los
+// dispositivos juntos en una sola grilla, sin agrupar) — no cambia grid/list,
+// solo si hay o no separación por tipo de máquina.
+const DEVICES_GROUP_MODE_KEY = 'devicesGroupMode';
+
+function getDevicesGroupMode() {
+    return localStorage.getItem(DEVICES_GROUP_MODE_KEY) === 'mixed' ? 'mixed' : 'grouped';
+}
+
+function setDevicesGroupMode(mode) {
+    localStorage.setItem(DEVICES_GROUP_MODE_KEY, mode === 'mixed' ? 'mixed' : 'grouped');
+    devicesGroupModeBtn?.classList.toggle('btn-view-toggle-active', mode === 'mixed');
+    if (machinesColumns) machinesColumns.hidden = mode === 'mixed';
+    if (machinesMixedGrid) machinesMixedGrid.hidden = mode !== 'mixed';
+    renderPrinters(allPrinters);
+}
+
 function getDeviceColumnsLayout() {
     let saved = null;
     try {
@@ -4949,18 +5357,28 @@ function saveDeviceColumnsLayout(layout) {
     localStorage.setItem(DEVICE_COLUMNS_LAYOUT_KEY, JSON.stringify(layout));
 }
 
+// Conteo de dispositivos visibles por categoría, actualizado en cada
+// renderPrinters() — null significa "todavía no se sabe" (cargando o con
+// error), y a propósito no colapsa la columna en ese caso para no achicarla
+// de golpe y luego tener que volver a agrandarla cuando llegue el dato real.
+let lastDeviceCategoryCounts = { printer: null, laser: null, cnc: null };
+
 function applyDeviceColumnsLayout() {
     if (!machinesColumns) return;
     const layout = getDeviceColumnsLayout();
     const hiddenSet = new Set(layout.hidden);
+    let visibleCount = 0;
     layout.order.forEach(key => {
         const column = machinesColumns.querySelector(`[data-device-column="${key}"]`);
         if (!column) return;
-        column.hidden = hiddenSet.has(key);
+        const isManuallyHidden = hiddenSet.has(key);
+        const isDynamicallyEmpty = lastDeviceCategoryCounts[key] === 0;
+        const shouldHide = isManuallyHidden || isDynamicallyEmpty;
+        column.hidden = shouldHide;
+        if (!shouldHide) visibleCount++;
         machinesColumns.appendChild(column);
     });
-    const visibleCount = Math.max(1, layout.order.filter(key => !hiddenSet.has(key)).length);
-    machinesColumns.style.setProperty('--machines-visible-columns', String(visibleCount));
+    machinesColumns.style.setProperty('--machines-visible-columns', String(Math.max(1, visibleCount)));
     const isCustomized = hiddenSet.size > 0 || layout.order.some((key, index) => key !== DEVICE_COLUMNS_DEFAULT_ORDER[index]);
     deviceColumnsCustomizerBtn?.classList.toggle('btn-view-toggle-active', isCustomized);
 }
@@ -4984,7 +5402,7 @@ function renderDeviceColumnsCustomizer() {
         const definition = DEVICE_COLUMN_DEFINITIONS[key];
         return `
             <div class="module-customizer-row device-column-customizer-row" data-device-column="${key}">
-                <span class="module-customizer-row-handle" draggable="true" title="${escapeHtml(t('deviceOrganizerDragHint'))}">${PRINTER_MODULE_DRAG_ICON}</span>
+                <span class="module-customizer-row-handle" title="${escapeHtml(t('deviceOrganizerDragHint'))}">${PRINTER_MODULE_DRAG_ICON}</span>
                 <span class="device-column-customizer-accent device-column-customizer-accent-${definition.accentClass}" aria-hidden="true"></span>
                 <span class="module-customizer-row-label">${escapeHtml(t(definition.labelKey))}</span>
                 <label class="module-customizer-row-toggle">
@@ -4995,28 +5413,7 @@ function renderDeviceColumnsCustomizer() {
         `;
     }).join('');
 
-    let draggingRow = null;
-    list.querySelectorAll('.module-customizer-row-handle').forEach(handle => {
-        handle.addEventListener('dragstart', event => {
-            draggingRow = handle.closest('.device-column-customizer-row');
-            if (!draggingRow) return;
-            draggingRow.classList.add('module-customizer-row-dragging');
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', draggingRow.dataset.deviceColumn);
-        });
-        handle.addEventListener('dragend', () => {
-            if (draggingRow) draggingRow.classList.remove('module-customizer-row-dragging');
-            draggingRow = null;
-            saveDeviceColumnsCustomizerState();
-        });
-    });
-    list.addEventListener('dragover', event => {
-        if (!draggingRow) return;
-        event.preventDefault();
-        const candidates = Array.from(list.querySelectorAll(':scope > .device-column-customizer-row:not(.module-customizer-row-dragging)'));
-        const nextRow = candidates.find(row => event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2);
-        list.insertBefore(draggingRow, nextRow || null);
-    });
+    initModuleCustomizerDrag(list, saveDeviceColumnsCustomizerState);
     list.querySelectorAll('input.module-customizer-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', () => {
             const checkedCount = list.querySelectorAll('input.module-customizer-checkbox:checked').length;
@@ -5046,6 +5443,79 @@ document.getElementById('device-columns-customizer-reset-btn')?.addEventListener
     localStorage.removeItem(DEVICE_COLUMNS_LAYOUT_KEY);
     applyDeviceColumnsLayout();
     renderDeviceColumnsCustomizer();
+    showToast(t('moduleCustomizerResetDone'));
+});
+
+devicesGroupModeBtn?.addEventListener('click', () => {
+    setDevicesGroupMode(getDevicesGroupMode() === 'mixed' ? 'grouped' : 'mixed');
+});
+
+// Organizador de las secciones internas de la tarjeta de impresora 3D
+// (encabezado/estado/miniatura/temperaturas) — solo orden, sin ocultar
+// secciones (a diferencia del organizador de columnas de arriba).
+const PRINTER_CARD_LAYOUT_KEY = 'printerCardSectionsLayout';
+const PRINTER_CARD_SECTIONS_DEFAULT_ORDER = ['header', 'badge', 'thumbnail', 'temps'];
+const PRINTER_CARD_SECTION_LABEL_KEYS = {
+    header: 'printerCardSectionHeader',
+    badge: 'printerCardSectionBadge',
+    thumbnail: 'printerCardSectionThumbnail',
+    temps: 'printerCardSectionTemps',
+};
+
+function getPrinterCardLayout() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(PRINTER_CARD_LAYOUT_KEY) || 'null');
+    } catch (error) {
+        saved = null;
+    }
+    const savedOrder = Array.isArray(saved) ? saved.filter(key => PRINTER_CARD_SECTIONS_DEFAULT_ORDER.includes(key)) : [];
+    return [...savedOrder, ...PRINTER_CARD_SECTIONS_DEFAULT_ORDER.filter(key => !savedOrder.includes(key))];
+}
+
+function savePrinterCardLayout(order) {
+    localStorage.setItem(PRINTER_CARD_LAYOUT_KEY, JSON.stringify(order));
+}
+
+function printerCardSectionOrder(sectionKey) {
+    const index = getPrinterCardLayout().indexOf(sectionKey);
+    return index === -1 ? 0 : index;
+}
+
+function renderPrinterCardCustomizer() {
+    const list = document.getElementById('printer-card-customizer-list');
+    if (!list) return;
+    const layout = getPrinterCardLayout();
+    list.innerHTML = layout.map(key => `
+        <div class="module-customizer-row printer-card-customizer-row" data-printer-card-section="${key}">
+            <span class="module-customizer-row-handle" title="${escapeHtml(t('printerCardOrganizerDragHint'))}">${PRINTER_MODULE_DRAG_ICON}</span>
+            <span class="module-customizer-row-label">${escapeHtml(t(PRINTER_CARD_SECTION_LABEL_KEYS[key]))}</span>
+        </div>
+    `).join('');
+
+    initModuleCustomizerDrag(list, () => {
+        const rows = Array.from(list.querySelectorAll(':scope > .printer-card-customizer-row'));
+        savePrinterCardLayout(rows.map(row => row.dataset.printerCardSection));
+        renderPrinters(allPrinters);
+    });
+}
+
+function openPrinterCardCustomizer() {
+    renderPrinterCardCustomizer();
+    document.getElementById('printer-card-customizer-modal')?.classList.add('active');
+}
+
+function closePrinterCardCustomizer() {
+    document.getElementById('printer-card-customizer-modal')?.classList.remove('active');
+}
+
+printerCardCustomizerBtn?.addEventListener('click', openPrinterCardCustomizer);
+document.getElementById('printer-card-customizer-modal-close')?.addEventListener('click', closePrinterCardCustomizer);
+document.getElementById('printer-card-customizer-modal-backdrop')?.addEventListener('click', closePrinterCardCustomizer);
+document.getElementById('printer-card-customizer-reset-btn')?.addEventListener('click', () => {
+    localStorage.removeItem(PRINTER_CARD_LAYOUT_KEY);
+    renderPrinterCardCustomizer();
+    renderPrinters(allPrinters);
     showToast(t('moduleCustomizerResetDone'));
 });
 
@@ -5120,7 +5590,7 @@ function checkLaserConnectionTransitions(laserEntries) {
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
-    [printersGrid, lasersGrid, cncGrid].forEach(grid => {
+    [printersGrid, lasersGrid, cncGrid, machinesMixedGrid].forEach(grid => {
         if (grid) grid.classList.toggle('list-view', printersViewMode === 'list');
     });
     const showOffline = isShowOfflineMachinesEnabled();
@@ -5173,18 +5643,26 @@ function renderPrinters(printersInput) {
         }
         const themeMode = visualState === 'idle' ? dashboardPrinterThemeMode.get(portKey) : null;
         const themeModeClass = themeMode ? ` printer-card-${themeMode}` : '';
+        // En modo lista la miniatura queda anclada (position:absolute, "sangra"
+        // fuera de la fila) y el order de flexbox no la mueve — es la única de
+        // las 4 secciones sin una posición de flujo real. Como gesto mínimo de
+        // que sí responde al orden guardado, se ancla a la derecha cuando el
+        // usuario la arrastra hasta el final; si no, queda a la izquierda.
+        const thumbRightClass = getPrinterCardLayout().indexOf('thumbnail') === PRINTER_CARD_SECTIONS_DEFAULT_ORDER.length - 1
+            ? ' printer-card-thumb-right' : '';
 
         const html = `
-            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}" data-port="${printer.port}">
+            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}${thumbRightClass}" data-port="${printer.port}">
                 ${printerThermalWaves(
                     typeof bedTemp === 'number' ? bedTemp : null,
                     typeof extruderTemp === 'number' ? extruderTemp : null,
                     bedTarget,
                     extruderTarget,
                     displayState,
-                    !isOnline
+                    !isOnline,
+                    printer.port
                 )}
-                <div class="printer-card-top">
+                <div class="printer-card-top" data-printer-card-section="header" style="order:${printerCardSectionOrder('header')}">
                     <div>
                         <h3 class="printer-name">${escapeHtml(printerName)}</h3>
                         <p class="printer-name-sub">${t('printerType3D')}</p>
@@ -5206,16 +5684,16 @@ function renderPrinters(printersInput) {
                     </div>
                 </div>
 
-                <div class="printer-status-line ${displayState}">
+                <div class="printer-status-line ${displayState}" data-printer-card-section="badge" style="order:${printerCardSectionOrder('badge')}">
                     <span class="printer-status-dot ${displayState}"></span>${displayStateText}
                 </div>
 
-                <div class="printer-illustration printer-illustration-${displayState}">
+                <div class="printer-illustration printer-illustration-${displayState}" data-printer-card-section="thumbnail" style="order:${printerCardSectionOrder('thumbnail')}">
                     ${printerIllustrationImg(displayState)}
                 </div>
 
                 ${visualState === 'printing' || visualState === 'paused' || visualState === 'idle' ? `
-                    <div class="printer-temps">
+                    <div class="printer-temps" data-printer-card-section="temps" style="order:${printerCardSectionOrder('temps')}">
                         <div class="temp-item">
                             <div class="temp-label">${t('bedTemp')}</div>
                             <div class="temp-value" style="color:${heatColor(bedPercent)}">${bedTemp}<span class="temp-unit">°C</span></div>
@@ -5228,7 +5706,7 @@ function renderPrinters(printersInput) {
                 ` : ''}
 
                 ${visualState === 'printing' || visualState === 'paused' ? `
-                    <div class="printer-progress">
+                    <div class="printer-progress" style="order:99">
                         <div class="printer-progress-labels">
                             <span>${jobProgress}% ${t('printed')}</span>
                             <span>${jobRemainingMinutes != null ? formatEstimatedTime(jobRemainingMinutes) : '—'}</span>
@@ -5261,27 +5739,42 @@ function renderPrinters(printersInput) {
     });
 
     const renderColumn = (grid, entries, emptyKey, isLoaded, hasLoadError, loadingLabelKey) => {
-        if (!grid) return;
+        if (!grid) return null;
         if (!isLoaded) {
             grid.innerHTML = deviceColumnLoadingMarkup(loadingLabelKey);
-            return;
+            return null;
         }
         if (hasLoadError) {
             grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
-            return;
+            return null;
         }
         let filtered = showOffline ? entries : entries.filter(entry => entry.isOnline);
         filtered = [...filtered].sort((a, b) => a.sortPriority - b.sortPriority);
         grid.innerHTML = filtered.length
             ? filtered.map(entry => entry.html).join('')
             : `<div class="empty-state">${t(emptyKey)}</div>`;
+        return filtered.length;
     };
 
-    renderColumn(printersGrid, printerEntries, 'noPrintersFound', dashboardPrintersLoaded, dashboardPrintersLoadError, 'printerType3D');
-    renderColumn(lasersGrid, laserOnlyEntries, 'noLasersFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'laser');
-    renderColumn(cncGrid, cncEntries, 'noCncFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'cnc');
+    const groupMode = getDevicesGroupMode();
 
-    const columnsRoot = machinesColumns || printersGrid;
+    if (groupMode === 'mixed') {
+        if (machinesMixedGrid) {
+            const allEntries = [...printerEntries, ...laserOnlyEntries, ...cncEntries];
+            const isLoaded = dashboardPrintersLoaded && dashboardLaserDevicesLoaded;
+            const hasLoadError = dashboardPrintersLoadError || dashboardLaserDevicesLoadError;
+            renderColumn(machinesMixedGrid, allEntries, 'noPrintersFound', isLoaded, hasLoadError, 'printerType3D');
+        }
+    } else {
+        lastDeviceCategoryCounts = {
+            printer: renderColumn(printersGrid, printerEntries, 'noPrintersFound', dashboardPrintersLoaded, dashboardPrintersLoadError, 'printerType3D'),
+            laser: renderColumn(lasersGrid, laserOnlyEntries, 'noLasersFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'laser'),
+            cnc: renderColumn(cncGrid, cncEntries, 'noCncFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'cnc'),
+        };
+        applyDeviceColumnsLayout();
+    }
+
+    const columnsRoot = groupMode === 'mixed' ? (machinesMixedGrid || printersGrid) : (machinesColumns || printersGrid);
 
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         card.addEventListener('click', () => {
@@ -5743,30 +6236,65 @@ if (gcodeSendLaserBtn) {
 }
 
 // ── Enviar G-code a impresora 3D (imprimir ahora, cola nativa de Moonraker o programada) ──
+// El picker mezcla 3 fuentes (Klipper, Elegoo, FlashForge) en una sola lista.
+// Cada entrada se identifica con { type, id }: para Klipper `id` es el puerto
+// (número), para Elegoo/FlashForge es el `id` del registro (mainboard_id /
+// serial_number, string). Elegoo y FlashForge no tienen cola nativa ni usan
+// el scheduler propio de NOPAL (que además guarda todo por `port`), así que
+// para esas dos el modo queda forzado siempre a "now".
 let printerSendTarget = null;
-let printerSendSelectedPort = null;
+let printerSendSelected = null; // { type: 'klipper'|'elegoo'|'flashforge', id }
 let printerSendMode = 'now';
+let printerSendEntries = []; // lista fresca combinada, se recarga cada vez que se abre el modal
 
-function renderPrinterSendPicker(selectedPort) {
+function getPrinterSendSelectedEntry() {
+    if (!printerSendSelected) return null;
+    return printerSendEntries.find(entry => entry.type === printerSendSelected.type && String(entry.id) === String(printerSendSelected.id)) || null;
+}
+
+// Refresca Klipper (a través de loadPrinters(), que además actualiza el
+// dashboard) y hace fetch fresco de Elegoo/FlashForge en paralelo — a
+// propósito NO se reusan elegooPrintersRegistryCache/flashforgePrintersRegistryCache,
+// porque esos solo se llenan si el usuario ya visitó esas secciones antes.
+async function loadPrinterSendEntries() {
+    const [, elegooData, flashforgeData] = await Promise.all([
+        loadPrinters(),
+        fetch('/api/elegoo/printers').then(res => res.json()).catch(() => ({ printers: [] })),
+        fetch('/api/flashforge/printers').then(res => res.json()).catch(() => ({ printers: [] })),
+    ]);
+
+    const entries = allPrinters.map(printer => ({ type: 'klipper', id: printer.port, printer }));
+    (elegooData.printers || []).forEach(printer => entries.push({ type: 'elegoo', id: printer.id, printer }));
+    (flashforgeData.printers || []).forEach(printer => entries.push({ type: 'flashforge', id: printer.id, printer }));
+    return entries;
+}
+
+function renderPrinterSendPicker(selected) {
     const container = document.getElementById('printer-send-picker');
     if (!container) return;
-    if (!allPrinters.length) {
+    if (!printerSendEntries.length) {
         container.innerHTML = `<div class="empty-state-small">${t('noPrintersFound')}</div>`;
+        printerSendSelected = null;
+        updatePrinterSendModesAvailability();
         return;
     }
-    const validPorts = allPrinters.map(p => p.port);
-    const onlinePorts = allPrinters.filter(p => p.status === 'online').map(p => p.port);
-    // Preferir el puerto ya elegido, si sigue siendo válido; si no, la primera
-    // impresora en línea (evita mandar por defecto a una apagada/offline).
-    const nextPort = (selectedPort && validPorts.includes(selectedPort))
-        ? selectedPort
-        : (onlinePorts[0] ?? validPorts[0]);
-    printerSendSelectedPort = nextPort;
 
-    container.innerHTML = allPrinters.map(printer => {
+    const isValidSelection = selected && printerSendEntries.some(entry => entry.type === selected.type && String(entry.id) === String(selected.id));
+    // Preferir la impresora ya elegida, si sigue siendo válida; si no, la
+    // primera impresora en línea (evita mandar por defecto a una apagada/offline).
+    let nextSelected = isValidSelection ? selected : null;
+    if (!nextSelected) {
+        const onlineEntry = printerSendEntries.find(entry => entry.printer.status === 'online');
+        const fallbackEntry = onlineEntry || printerSendEntries[0];
+        nextSelected = { type: fallbackEntry.type, id: fallbackEntry.id };
+    }
+    printerSendSelected = nextSelected;
+
+    container.innerHTML = printerSendEntries.map(entry => {
+        const printer = entry.printer;
         const name = getPrinterDisplayName(printer);
         const isOnline = printer.status === 'online';
-        const active = printer.port === nextPort ? ' active' : '';
+        const active = (entry.type === printerSendSelected.type && String(entry.id) === String(printerSendSelected.id)) ? ' active' : '';
         const offlineClass = isOnline ? '' : ' offline';
         const stateValue = getPrinterEffectiveStateValue(printer);
         const isBusy = isOnline && (stateValue === 'printing' || stateValue === 'paused');
@@ -5775,7 +6303,7 @@ function renderPrinterSendPicker(selectedPort) {
         const stateDisplay = t(stateKey) !== stateKey ? t(stateKey) : (stateValue || t('idle'));
         const statusLine = isOnline ? `${t('online')} · ${stateDisplay}` : t('offline');
         return `
-            <button type="button" class="printer-send-row${active}${offlineClass}${busyClass}" data-port="${printer.port}" data-busy="${isBusy ? '1' : '0'}">
+            <button type="button" class="printer-send-row${active}${offlineClass}${busyClass}" data-type="${entry.type}" data-id="${escapeHtml(String(entry.id))}" data-busy="${isBusy ? '1' : '0'}">
                 <span class="printer-send-row-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                 </span>
@@ -5791,15 +6319,17 @@ function renderPrinterSendPicker(selectedPort) {
 
     container.querySelectorAll('.printer-send-row').forEach(btn => {
         btn.addEventListener('click', () => {
-            printerSendSelectedPort = parseInt(btn.dataset.port, 10);
+            printerSendSelected = { type: btn.dataset.type, id: btn.dataset.id };
             container.querySelectorAll('.printer-send-row').forEach(el => {
-                el.classList.toggle('active', parseInt(el.dataset.port, 10) === printerSendSelectedPort);
+                el.classList.toggle('active', el.dataset.type === printerSendSelected.type && el.dataset.id === String(printerSendSelected.id));
             });
             updatePrinterSendBusyWarning();
+            updatePrinterSendModesAvailability();
         });
     });
 
     updatePrinterSendBusyWarning();
+    updatePrinterSendModesAvailability();
 }
 
 function updatePrinterSendBusyWarning() {
@@ -5808,7 +6338,7 @@ function updatePrinterSendBusyWarning() {
     const primaryBtn = document.getElementById('printer-send-primary-btn');
     if (!warningEl) return;
 
-    const selectedPrinter = allPrinters.find(p => p.port === printerSendSelectedPort);
+    const selectedPrinter = getPrinterSendSelectedEntry()?.printer;
     const stateValue = selectedPrinter ? getPrinterEffectiveStateValue(selectedPrinter) : '';
     const isBusy = selectedPrinter?.status === 'online' && (stateValue === 'printing' || stateValue === 'paused');
 
@@ -5819,7 +6349,34 @@ function updatePrinterSendBusyWarning() {
     if (primaryBtn) primaryBtn.disabled = isBusy && printerSendMode === 'now';
 }
 
+// Elegoo/FlashForge no soportan "Agregar a la cola" ni "Programar impresión"
+// (ver comentario arriba) — se deshabilitan sus tarjetas de modo y el botón
+// rápido de cola del footer, y si el usuario tenía ese modo elegido se
+// vuelve a "now" automáticamente al cambiar de impresora.
+function updatePrinterSendModesAvailability() {
+    const selectedEntry = getPrinterSendSelectedEntry();
+    const isKlipper = !selectedEntry || selectedEntry.type === 'klipper';
+    const restrictedModeCards = document.querySelectorAll('.printer-send-mode-card[data-mode="queue"], .printer-send-mode-card[data-mode="schedule"]');
+    const queueFooterBtn = document.getElementById('printer-send-queue-btn');
+
+    restrictedModeCards.forEach(card => {
+        card.disabled = !isKlipper;
+        card.classList.toggle('disabled', !isKlipper);
+        const noteEl = card.querySelector('.printer-send-mode-unavailable');
+        if (noteEl) noteEl.hidden = isKlipper;
+    });
+    if (queueFooterBtn) queueFooterBtn.hidden = !isKlipper;
+
+    if (!isKlipper && printerSendMode !== 'now') {
+        setPrinterSendMode('now');
+    }
+}
+
 function setPrinterSendMode(mode) {
+    const selectedEntry = getPrinterSendSelectedEntry();
+    const isKlipper = !selectedEntry || selectedEntry.type === 'klipper';
+    if (!isKlipper && mode !== 'now') mode = 'now';
+
     printerSendMode = mode;
     document.querySelectorAll('.printer-send-mode-card').forEach(card => {
         card.classList.toggle('active', card.dataset.mode === mode);
@@ -5839,10 +6396,13 @@ function setPrinterSendMode(mode) {
 }
 
 document.querySelectorAll('.printer-send-mode-card').forEach(card => {
-    card.addEventListener('click', () => setPrinterSendMode(card.dataset.mode));
+    card.addEventListener('click', () => {
+        if (card.disabled) return;
+        setPrinterSendMode(card.dataset.mode);
+    });
 });
 
-function openPrinterSendModal(relPath, filename, section = 'model', model = null) {
+async function openPrinterSendModal(relPath, filename, section = 'model', model = null) {
     printerSendTarget = { path: relPath, filename, section };
     document.getElementById('printer-send-modal')?.classList.add('active');
     const filenameEl = document.getElementById('printer-send-filename');
@@ -5872,7 +6432,11 @@ function openPrinterSendModal(relPath, filename, section = 'model', model = null
     const scheduleInput = document.getElementById('printer-send-schedule-input');
     if (scheduleInput) scheduleInput.value = '';
 
-    renderPrinterSendPicker(printerSendSelectedPort);
+    const pickerContainer = document.getElementById('printer-send-picker');
+    if (pickerContainer) pickerContainer.innerHTML = `<div class="empty-state-small">${t('devicesLoading')}</div>`;
+
+    printerSendEntries = await loadPrinterSendEntries();
+    renderPrinterSendPicker(printerSendSelected);
 }
 
 function closePrinterSendModal() {
@@ -5880,8 +6444,9 @@ function closePrinterSendModal() {
 }
 
 async function submitPrinterSend(mode) {
-    if (!printerSendTarget || !printerSendSelectedPort) return;
-    const selectedPrinter = allPrinters.find(p => p.port === printerSendSelectedPort);
+    if (!printerSendTarget || !printerSendSelected) return;
+    const selectedEntry = getPrinterSendSelectedEntry();
+    const selectedPrinter = selectedEntry?.printer;
     if (selectedPrinter && selectedPrinter.status !== 'online') {
         appAlert(t('printerSendOfflineError'), '', 'warning');
         return;
@@ -5893,12 +6458,28 @@ async function submitPrinterSend(mode) {
             return;
         }
     }
+    if (!selectedEntry) return;
+    // Elegoo/FlashForge no tienen cola nativa — no debería poder llegar acá
+    // porque el botón/tarjeta de "queue" está deshabilitado para ellas, pero
+    // por las dudas no se manda nada si igual se invoca.
+    if (selectedEntry.type !== 'klipper' && mode !== 'print') return;
+
     try {
         const formData = new FormData();
         formData.append('path', printerSendTarget.path);
-        formData.append('mode', mode);
         formData.append('section', printerSendTarget.section || 'model');
-        const response = await fetch(`/api/printers/${printerSendSelectedPort}/send`, { method: 'POST', body: formData });
+
+        let url;
+        if (selectedEntry.type === 'klipper') {
+            formData.append('mode', mode);
+            url = `/api/printers/${selectedEntry.id}/send`;
+        } else if (selectedEntry.type === 'elegoo') {
+            url = `/api/elegoo/printers/${encodeURIComponent(selectedEntry.id)}/send`;
+        } else {
+            url = `/api/flashforge/printers/${encodeURIComponent(selectedEntry.id)}/send`;
+        }
+
+        const response = await fetch(url, { method: 'POST', body: formData });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             throw new Error(data.detail || 'No se pudo enviar el archivo.');
@@ -5906,6 +6487,8 @@ async function submitPrinterSend(mode) {
         closePrinterSendModal();
         showToast(mode === 'queue' ? t('printerSendQueued') : t('printerSendStarted'));
         loadPrinters();
+        if (selectedEntry.type === 'elegoo') refreshElegooPrintersGrid();
+        if (selectedEntry.type === 'flashforge') refreshFlashforgePrintersGrid();
     } catch (error) {
         console.error(error);
         appAlert(error.message || 'No se pudo enviar el archivo.', '', 'danger');
@@ -5913,7 +6496,11 @@ async function submitPrinterSend(mode) {
 }
 
 async function submitPrinterSendSchedule() {
-    if (!printerSendTarget || !printerSendSelectedPort) return;
+    if (!printerSendTarget || !printerSendSelected) return;
+    const selectedEntry = getPrinterSendSelectedEntry();
+    // El scheduler de NOPAL guarda todo por `port` de Klipper — no aplica a
+    // Elegoo/FlashForge (su tarjeta de modo ya está deshabilitada para ellas).
+    if (!selectedEntry || selectedEntry.type !== 'klipper') return;
     const scheduleInput = document.getElementById('printer-send-schedule-input');
     const value = scheduleInput?.value;
     if (!value) {
@@ -5926,7 +6513,7 @@ async function submitPrinterSendSchedule() {
     }
     try {
         const formData = new FormData();
-        formData.append('port', printerSendSelectedPort);
+        formData.append('port', selectedEntry.id);
         formData.append('path', printerSendTarget.path);
         formData.append('filename', printerSendTarget.filename);
         formData.append('scheduled_at', value);
@@ -11049,6 +11636,691 @@ document.getElementById('marlin-printers-add-btn')?.addEventListener('click', ()
     }, 200);
 });
 
+// ── Impresoras Elegoo standalone (SDCP por WebSocket, Centauri Carbon/Carbon
+// 2, Neptune 4, OrangeStorm Giga) ── Path paralelo a Marlin: acá tampoco hay
+// Moonraker, pero a diferencia de Marlin (puerto serie USB) el alta es por
+// red — mismo patrón que láser/CNC (escanear -> elegir -> nombrar ->
+// registrar, ver loadWifiDevices/openUsbClassifyModal), no el de puertos USB.
+// La ficha operativa es esta sección dedicada ("Impresoras Elegoo" en el
+// menú); a diferencia de Marlin/Klipper no hay modal de detalle porque SDCP
+// no expone jog/homing manual — pausar/reanudar/cancelar alcanza directo en
+// la tarjeta (ver elegooPrinterCardHtml).
+
+let elegooPrintersRegistryCache = [];
+
+function getElegooVisualState(printer) {
+    if (!printer || !printer.online) return 'offline';
+    const state = (printer.job && printer.job.state) || 'idle';
+    if (state === 'printing' || state === 'preparing' || state === 'resuming') return 'printing';
+    if (state === 'paused' || state === 'pausing') return 'paused';
+    // "stopping" (cancelación en curso) y "unknown" caen acá: son estados de
+    // transición hacia inactivo, no ameritan su propio color/animación.
+    return 'idle';
+}
+
+function elegooPrinterCardHtml(printer) {
+    const visualState = getElegooVisualState(printer);
+    const isOnline = visualState !== 'offline';
+    const statusText = isOnline ? t('online') : t('offline');
+    const stateLabel = isOnline ? t(visualState) : t('offline');
+    const name = printer.name || printer.model || printer.id;
+    const subLabel = [printer.model, printer.ip].filter(Boolean).join(' · ');
+    // PRINTER_STATE_IMAGES no tiene entrada "offline" (ver printerIllustrationImg)
+    // — se pisa por "idle" solo para elegir la imagen, el resto de la tarjeta
+    // sigue mostrando el estado real sin conexión.
+    const illustrationState = visualState === 'offline' ? 'idle' : visualState;
+
+    const temps = printer.temps || {};
+    const extruder = temps.extruder || {};
+    const bed = temps.heater_bed || {};
+    const extruderTemp = typeof extruder.current === 'number' ? Math.round(extruder.current * 10) / 10 : null;
+    const bedTemp = typeof bed.current === 'number' ? Math.round(bed.current * 10) / 10 : null;
+    const extruderTarget = typeof extruder.target === 'number' ? extruder.target : 0;
+    const bedTarget = typeof bed.target === 'number' ? bed.target : 0;
+
+    const job = printer.job || {};
+    const progress = typeof job.progress === 'number' ? job.progress : 0;
+    const layersLabel = (job.current_layer != null && job.total_layer != null)
+        ? `${job.current_layer} / ${job.total_layer}`
+        : '—';
+
+    const showActions = visualState === 'printing' || visualState === 'paused';
+    const isPaused = visualState === 'paused';
+
+    return `
+        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-elegoo-id="${escapeHtml(printer.id)}">
+            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline, printer.id)}
+            <div class="printer-card-top">
+                <div>
+                    <h3 class="printer-name">${escapeHtml(name)}</h3>
+                    <p class="printer-name-sub">${subLabel ? escapeHtml(subLabel) : 'Elegoo'}</p>
+                </div>
+                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                </div>
+            </div>
+
+            <div class="printer-status-line ${visualState}">
+                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
+            </div>
+
+            <div class="printer-illustration printer-illustration-${illustrationState}">
+                ${printerIllustrationImg(illustrationState)}
+            </div>
+
+            ${isOnline ? `
+                <div class="printer-temps">
+                    <div class="temp-item">
+                        <div class="temp-label">${t('bedTemp')}</div>
+                        <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
+                    </div>
+                    <div class="temp-item">
+                        <div class="temp-label">${t('extruderTemp')}</div>
+                        <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
+                    </div>
+                </div>
+            ` : ''}
+
+            ${showActions ? `
+                <div class="printer-progress">
+                    <div class="printer-progress-labels">
+                        <span>${progress}% ${t('printed')}</span>
+                        <span>${t('activePrintLayers')}: ${layersLabel}</span>
+                    </div>
+                    <div class="temp-progress"><div class="temp-progress-fill" style="width: ${progress}%"></div></div>
+                </div>
+                <div class="elegoo-card-actions">
+                    <button type="button" class="elegoo-card-action-btn elegoo-card-action-pause" data-action="${isPaused ? 'resume' : 'pause'}" data-elegoo-id="${escapeHtml(printer.id)}">
+                        ${isPaused
+                            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>'
+                            : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'}
+                        <span>${isPaused ? t('activePrintResume') : t('activePrintPause')}</span>
+                    </button>
+                    <button type="button" class="elegoo-card-action-btn elegoo-card-action-cancel" data-action="cancel" data-elegoo-id="${escapeHtml(printer.id)}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        <span>${t('activePrintCancel')}</span>
+                    </button>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function handleElegooPrinterAction(action, printerId) {
+    if (!printerId || !action) return;
+    if (action === 'cancel') {
+        const confirmed = await appConfirm(t('activePrintCancelConfirm'), t('activePrintStop'), 'danger');
+        if (!confirmed) return;
+    }
+    try {
+        const response = await fetch(`/api/elegoo/printers/${encodeURIComponent(printerId)}/${action}`, { method: 'POST' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('elegooActionFailed'));
+        }
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('elegooActionFailed'), 'error');
+    } finally {
+        refreshElegooPrintersGrid();
+    }
+}
+
+let elegooGridPollInterval = null;
+
+async function refreshElegooPrintersGrid() {
+    const grid = document.getElementById('elegoo-printers-grid');
+    if (!grid) return;
+    try {
+        const response = await fetch('/api/elegoo/printers');
+        const data = await response.json();
+        const printers = data.printers || [];
+        elegooPrintersRegistryCache = printers;
+        if (!printers.length) {
+            grid.innerHTML = `<div class="empty-state">${t('elegooPrinterNoPrinters')}</div>`;
+            return;
+        }
+        grid.innerHTML = printers.map(elegooPrinterCardHtml).join('');
+        grid.querySelectorAll('.elegoo-card-action-btn').forEach(btn => {
+            btn.addEventListener('click', event => {
+                event.stopPropagation();
+                handleElegooPrinterAction(btn.dataset.action, btn.dataset.elegooId);
+            });
+        });
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function loadElegooSection() {
+    refreshElegooPrintersGrid();
+    stopElegooPrintersPolling();
+    elegooGridPollInterval = setInterval(refreshElegooPrintersGrid, 3000);
+}
+
+function stopElegooPrintersPolling() {
+    if (elegooGridPollInterval) { clearInterval(elegooGridPollInterval); elegooGridPollInterval = null; }
+}
+
+document.getElementById('elegoo-printers-refresh-btn')?.addEventListener('click', refreshElegooPrintersGrid);
+
+// El alta (escanear red + nombrar) vive en Configuración, junto al resto de
+// dispositivos (mismo patrón que "Todos los dispositivos" para láser/CNC) —
+// este botón lleva ahí en vez de duplicar el flujo de alta acá.
+document.getElementById('elegoo-printers-add-btn')?.addEventListener('click', () => {
+    switchSection('settings');
+    showToast(t('elegooPrinterAddGoSettingsHint'));
+    setTimeout(() => {
+        document.getElementById('elegoo-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+});
+
+// ── Alta de impresoras Elegoo en Configuración (escaneo UDP + registro) ──
+
+async function loadElegooRegistryList() {
+    const container = document.getElementById('elegoo-printers-registry-list');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/elegoo/printers');
+        const data = await response.json();
+        elegooPrintersRegistryCache = data.printers || [];
+        renderElegooRegistryList(elegooPrintersRegistryCache);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderElegooRegistryList(printers) {
+    const container = document.getElementById('elegoo-printers-registry-list');
+    if (!container) return;
+    if (!printers.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('elegooPrinterNoPrinters')}</div>`;
+        return;
+    }
+    container.innerHTML = printers.map(printer => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(printer.name || printer.model || printer.id)}</strong>
+                <span>${escapeHtml(printer.ip || '')}${printer.model ? ' · ' + escapeHtml(printer.model) : ''}</span>
+            </div>
+            <span class="device-status-pill ${printer.online ? 'online' : 'offline'}">${printer.online ? t('online') : t('offline')}</span>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger elegoo-printer-remove-btn" data-id="${escapeHtml(printer.id)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.elegoo-printer-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            if (!(await appConfirm(t('elegooPrinterRemoveConfirm'), t('usbPortUnlink'), 'danger'))) return;
+            try {
+                const response = await fetch(`/api/elegoo/printers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.detail || t('elegooActionFailed'));
+                }
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || t('elegooActionFailed'), 'error');
+            } finally {
+                loadElegooRegistryList();
+                refreshElegooPrintersGrid();
+            }
+        });
+    });
+}
+
+// El escaneo (broadcast UDP) solo se dispara a mano — igual que
+// loadWifiDevices() para láser/CNC, no tiene sentido barrer la red cada vez
+// que se entra a Configuración.
+async function discoverElegooPrinters() {
+    const container = document.getElementById('elegoo-discover-list');
+    if (!container) return;
+    container.innerHTML = `<div class="empty-state-small">${t('laserWifiScanning')}</div>`;
+    try {
+        await loadElegooRegistryList();
+        const response = await fetch('/api/elegoo/printers/discover', { method: 'POST' });
+        const data = await response.json();
+        renderElegooDiscoverList(data.devices || []);
+    } catch (error) {
+        console.error(error);
+        renderElegooDiscoverList([]);
+    }
+}
+
+function renderElegooDiscoverList(devices) {
+    const container = document.getElementById('elegoo-discover-list');
+    if (!container) return;
+    const registeredIds = new Set(elegooPrintersRegistryCache.map(printer => printer.id));
+    const pending = devices.filter(device => !registeredIds.has(device.mainboard_id));
+    if (!pending.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('elegooDiscoverEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = pending.map(device => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(device.name || device.mainboard_id)}</strong>
+                <span>${escapeHtml(device.ip)}${device.model ? ' · ' + escapeHtml(device.model) : ''}</span>
+            </div>
+            <button type="button" class="btn-file-action elegoo-discover-add-btn"
+                data-ip="${escapeHtml(device.ip)}"
+                data-mainboard-id="${escapeHtml(device.mainboard_id)}"
+                data-name="${escapeHtml(device.name || '')}"
+                data-model="${escapeHtml(device.model || '')}">${escapeHtml(t('usbPortAdd'))}</button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.elegoo-discover-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openElegooRegisterModal({
+                ip: btn.dataset.ip,
+                mainboard_id: btn.dataset.mainboardId,
+                name: btn.dataset.name,
+                model: btn.dataset.model,
+            });
+        });
+    });
+}
+
+document.getElementById('elegoo-printers-discover-btn')?.addEventListener('click', discoverElegooPrinters);
+
+let elegooRegisterTarget = null;
+
+function openElegooRegisterModal(device) {
+    elegooRegisterTarget = device;
+    const label = document.getElementById('elegoo-printer-register-device-label');
+    if (label) label.textContent = [device.model, device.ip].filter(Boolean).join(' · ');
+    const nameInput = document.getElementById('elegoo-printer-register-name');
+    if (nameInput) nameInput.value = device.name || device.model || 'Elegoo';
+    document.getElementById('elegoo-printer-register-modal')?.classList.add('active');
+    if (nameInput) { nameInput.focus(); nameInput.select(); }
+}
+
+function closeElegooRegisterModal() {
+    document.getElementById('elegoo-printer-register-modal')?.classList.remove('active');
+    elegooRegisterTarget = null;
+}
+
+document.getElementById('elegoo-printer-register-close')?.addEventListener('click', closeElegooRegisterModal);
+document.getElementById('elegoo-printer-register-backdrop')?.addEventListener('click', closeElegooRegisterModal);
+document.getElementById('elegoo-printer-register-cancel-btn')?.addEventListener('click', closeElegooRegisterModal);
+
+document.getElementById('elegoo-printer-register-confirm-btn')?.addEventListener('click', async () => {
+    const device = elegooRegisterTarget;
+    const nameInput = document.getElementById('elegoo-printer-register-name');
+    const name = nameInput ? nameInput.value.trim() : '';
+    if (!device || !name) return;
+    closeElegooRegisterModal();
+    try {
+        const formData = new FormData();
+        formData.append('ip', device.ip);
+        formData.append('mainboard_id', device.mainboard_id);
+        formData.append('name', name);
+        formData.append('model', device.model || '');
+        const response = await fetch('/api/elegoo/printers', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('elegooActionFailed'));
+        }
+        showToast(`${name}: ${t('elegooPrinterRegisterSuccess')}`);
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('elegooActionFailed'), 'error');
+    } finally {
+        loadElegooRegistryList();
+        refreshElegooPrintersGrid();
+    }
+});
+
+// ── Impresoras FlashForge standalone (HTTP REST puro por puerto 8898,
+// Adventurer 5M/5M Pro/AD5X/Creator 5) ── Mismo patrón que Elegoo (sección
+// dedicada, tarjetas propias, alta por escaneo de red en Configuración) — la
+// única diferencia real es que FlashForge sí exige autenticación, así que el
+// alta pide un campo más (check code) además del nombre. El resto (shape de
+// datos, tarjeta, pausar/reanudar/cancelar) es idéntico, así que se reusan a
+// propósito las clases CSS .elegoo-card-actions/.elegoo-card-action-btn en
+// vez de duplicarlas con otro nombre.
+
+let flashforgePrintersRegistryCache = [];
+
+function getFlashforgeVisualState(printer) {
+    if (!printer || !printer.online) return 'offline';
+    // job.state documentado: idle | printing | paused | pausing | busy |
+    // error | unknown. "busy" (tareas que no son imprimir, ej. nivelación/
+    // calibración), "error" y "unknown" caen en "idle": son estados de
+    // transición sin color/animación propia, mismo criterio que
+    // getElegooVisualState con "stopping"/"unknown".
+    const state = (printer.job && printer.job.state) || 'idle';
+    if (state === 'printing') return 'printing';
+    if (state === 'paused' || state === 'pausing') return 'paused';
+    return 'idle';
+}
+
+function flashforgePrinterCardHtml(printer) {
+    const visualState = getFlashforgeVisualState(printer);
+    const isOnline = visualState !== 'offline';
+    const statusText = isOnline ? t('online') : t('offline');
+    const stateLabel = isOnline ? t(visualState) : t('offline');
+    const name = printer.name || printer.model || printer.id;
+    const subLabel = [printer.model, printer.ip].filter(Boolean).join(' · ');
+    // PRINTER_STATE_IMAGES no tiene entrada "offline" (ver printerIllustrationImg)
+    // — se pisa por "idle" solo para elegir la imagen, el resto de la tarjeta
+    // sigue mostrando el estado real sin conexión.
+    const illustrationState = visualState === 'offline' ? 'idle' : visualState;
+
+    const temps = printer.temps || {};
+    const extruder = temps.extruder || {};
+    const bed = temps.heater_bed || {};
+    const extruderTemp = typeof extruder.current === 'number' ? Math.round(extruder.current * 10) / 10 : null;
+    const bedTemp = typeof bed.current === 'number' ? Math.round(bed.current * 10) / 10 : null;
+    const extruderTarget = typeof extruder.target === 'number' ? extruder.target : 0;
+    const bedTarget = typeof bed.target === 'number' ? bed.target : 0;
+
+    const job = printer.job || {};
+    const progress = typeof job.progress === 'number' ? job.progress : 0;
+    const layersLabel = (job.current_layer != null && job.total_layer != null)
+        ? `${job.current_layer} / ${job.total_layer}`
+        : '—';
+
+    const showActions = visualState === 'printing' || visualState === 'paused';
+    const isPaused = visualState === 'paused';
+
+    return `
+        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-flashforge-id="${escapeHtml(printer.id)}">
+            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline, printer.id)}
+            <div class="printer-card-top">
+                <div>
+                    <h3 class="printer-name">${escapeHtml(name)}</h3>
+                    <p class="printer-name-sub">${subLabel ? escapeHtml(subLabel) : 'FlashForge'}</p>
+                </div>
+                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                </div>
+            </div>
+
+            <div class="printer-status-line ${visualState}">
+                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
+            </div>
+
+            <div class="printer-illustration printer-illustration-${illustrationState}">
+                ${printerIllustrationImg(illustrationState)}
+            </div>
+
+            ${isOnline ? `
+                <div class="printer-temps">
+                    <div class="temp-item">
+                        <div class="temp-label">${t('bedTemp')}</div>
+                        <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
+                    </div>
+                    <div class="temp-item">
+                        <div class="temp-label">${t('extruderTemp')}</div>
+                        <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
+                    </div>
+                </div>
+            ` : ''}
+
+            ${showActions ? `
+                <div class="printer-progress">
+                    <div class="printer-progress-labels">
+                        <span>${progress}% ${t('printed')}</span>
+                        <span>${t('activePrintLayers')}: ${layersLabel}</span>
+                    </div>
+                    <div class="temp-progress"><div class="temp-progress-fill" style="width: ${progress}%"></div></div>
+                </div>
+                <div class="elegoo-card-actions">
+                    <button type="button" class="elegoo-card-action-btn elegoo-card-action-pause" data-action="${isPaused ? 'resume' : 'pause'}" data-flashforge-id="${escapeHtml(printer.id)}">
+                        ${isPaused
+                            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>'
+                            : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'}
+                        <span>${isPaused ? t('activePrintResume') : t('activePrintPause')}</span>
+                    </button>
+                    <button type="button" class="elegoo-card-action-btn elegoo-card-action-cancel" data-action="cancel" data-flashforge-id="${escapeHtml(printer.id)}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        <span>${t('activePrintCancel')}</span>
+                    </button>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function handleFlashforgePrinterAction(action, printerId) {
+    if (!printerId || !action) return;
+    if (action === 'cancel') {
+        const confirmed = await appConfirm(t('activePrintCancelConfirm'), t('activePrintStop'), 'danger');
+        if (!confirmed) return;
+    }
+    try {
+        const response = await fetch(`/api/flashforge/printers/${encodeURIComponent(printerId)}/${action}`, { method: 'POST' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('flashforgeActionFailed'));
+        }
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('flashforgeActionFailed'), 'error');
+    } finally {
+        refreshFlashforgePrintersGrid();
+    }
+}
+
+let flashforgeGridPollInterval = null;
+
+async function refreshFlashforgePrintersGrid() {
+    const grid = document.getElementById('flashforge-printers-grid');
+    if (!grid) return;
+    try {
+        const response = await fetch('/api/flashforge/printers');
+        const data = await response.json();
+        const printers = data.printers || [];
+        flashforgePrintersRegistryCache = printers;
+        if (!printers.length) {
+            grid.innerHTML = `<div class="empty-state">${t('flashforgePrinterNoPrinters')}</div>`;
+            return;
+        }
+        grid.innerHTML = printers.map(flashforgePrinterCardHtml).join('');
+        grid.querySelectorAll('.elegoo-card-action-btn').forEach(btn => {
+            btn.addEventListener('click', event => {
+                event.stopPropagation();
+                handleFlashforgePrinterAction(btn.dataset.action, btn.dataset.flashforgeId);
+            });
+        });
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function loadFlashforgeSection() {
+    refreshFlashforgePrintersGrid();
+    stopFlashforgePrintersPolling();
+    flashforgeGridPollInterval = setInterval(refreshFlashforgePrintersGrid, 3000);
+}
+
+function stopFlashforgePrintersPolling() {
+    if (flashforgeGridPollInterval) { clearInterval(flashforgeGridPollInterval); flashforgeGridPollInterval = null; }
+}
+
+document.getElementById('flashforge-printers-refresh-btn')?.addEventListener('click', refreshFlashforgePrintersGrid);
+
+// El alta (escanear red + nombrar + check code) vive en Configuración, junto
+// al resto de dispositivos — este botón lleva ahí en vez de duplicar el
+// flujo de alta acá (mismo patrón que el botón equivalente de Elegoo).
+document.getElementById('flashforge-printers-add-btn')?.addEventListener('click', () => {
+    switchSection('settings');
+    showToast(t('flashforgePrinterAddGoSettingsHint'));
+    setTimeout(() => {
+        document.getElementById('flashforge-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+});
+
+// ── Alta de impresoras FlashForge en Configuración (escaneo UDP + registro) ──
+
+async function loadFlashforgeRegistryList() {
+    const container = document.getElementById('flashforge-printers-registry-list');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/flashforge/printers');
+        const data = await response.json();
+        flashforgePrintersRegistryCache = data.printers || [];
+        renderFlashforgeRegistryList(flashforgePrintersRegistryCache);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderFlashforgeRegistryList(printers) {
+    const container = document.getElementById('flashforge-printers-registry-list');
+    if (!container) return;
+    if (!printers.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('flashforgePrinterNoPrinters')}</div>`;
+        return;
+    }
+    container.innerHTML = printers.map(printer => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(printer.name || printer.model || printer.id)}</strong>
+                <span>${escapeHtml(printer.ip || '')}${printer.model ? ' · ' + escapeHtml(printer.model) : ''}</span>
+            </div>
+            <span class="device-status-pill ${printer.online ? 'online' : 'offline'}">${printer.online ? t('online') : t('offline')}</span>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger flashforge-printer-remove-btn" data-id="${escapeHtml(printer.id)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.flashforge-printer-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            if (!(await appConfirm(t('flashforgePrinterRemoveConfirm'), t('usbPortUnlink'), 'danger'))) return;
+            try {
+                const response = await fetch(`/api/flashforge/printers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.detail || t('flashforgeActionFailed'));
+                }
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || t('flashforgeActionFailed'), 'error');
+            } finally {
+                loadFlashforgeRegistryList();
+                refreshFlashforgePrintersGrid();
+            }
+        });
+    });
+}
+
+// El escaneo (broadcast UDP) solo se dispara a mano — igual que
+// discoverElegooPrinters(), no tiene sentido barrer la red cada vez que se
+// entra a Configuración.
+async function discoverFlashforgePrinters() {
+    const container = document.getElementById('flashforge-discover-list');
+    if (!container) return;
+    container.innerHTML = `<div class="empty-state-small">${t('laserWifiScanning')}</div>`;
+    try {
+        await loadFlashforgeRegistryList();
+        const response = await fetch('/api/flashforge/printers/discover', { method: 'POST' });
+        const data = await response.json();
+        renderFlashforgeDiscoverList(data.devices || []);
+    } catch (error) {
+        console.error(error);
+        renderFlashforgeDiscoverList([]);
+    }
+}
+
+function renderFlashforgeDiscoverList(devices) {
+    const container = document.getElementById('flashforge-discover-list');
+    if (!container) return;
+    const registeredIds = new Set(flashforgePrintersRegistryCache.map(printer => printer.id));
+    const pending = devices.filter(device => !registeredIds.has(device.serial_number));
+    if (!pending.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('flashforgeDiscoverEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = pending.map(device => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(device.name || device.serial_number)}</strong>
+                <span>${escapeHtml(device.ip)}${device.model ? ' · ' + escapeHtml(device.model) : ''}</span>
+            </div>
+            <button type="button" class="btn-file-action flashforge-discover-add-btn"
+                data-ip="${escapeHtml(device.ip)}"
+                data-serial-number="${escapeHtml(device.serial_number)}"
+                data-name="${escapeHtml(device.name || '')}"
+                data-model="${escapeHtml(device.model || '')}">${escapeHtml(t('usbPortAdd'))}</button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.flashforge-discover-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openFlashforgeRegisterModal({
+                ip: btn.dataset.ip,
+                serial_number: btn.dataset.serialNumber,
+                name: btn.dataset.name,
+                model: btn.dataset.model,
+            });
+        });
+    });
+}
+
+document.getElementById('flashforge-printers-discover-btn')?.addEventListener('click', discoverFlashforgePrinters);
+
+let flashforgeRegisterTarget = null;
+
+function openFlashforgeRegisterModal(device) {
+    flashforgeRegisterTarget = device;
+    const label = document.getElementById('flashforge-printer-register-device-label');
+    if (label) label.textContent = [device.model, device.ip].filter(Boolean).join(' · ');
+    const nameInput = document.getElementById('flashforge-printer-register-name');
+    if (nameInput) nameInput.value = device.name || device.model || 'FlashForge';
+    const checkCodeInput = document.getElementById('flashforge-printer-register-check-code');
+    if (checkCodeInput) checkCodeInput.value = '';
+    document.getElementById('flashforge-printer-register-modal')?.classList.add('active');
+    if (nameInput) { nameInput.focus(); nameInput.select(); }
+}
+
+function closeFlashforgeRegisterModal() {
+    document.getElementById('flashforge-printer-register-modal')?.classList.remove('active');
+    flashforgeRegisterTarget = null;
+}
+
+document.getElementById('flashforge-printer-register-close')?.addEventListener('click', closeFlashforgeRegisterModal);
+document.getElementById('flashforge-printer-register-backdrop')?.addEventListener('click', closeFlashforgeRegisterModal);
+document.getElementById('flashforge-printer-register-cancel-btn')?.addEventListener('click', closeFlashforgeRegisterModal);
+
+document.getElementById('flashforge-printer-register-confirm-btn')?.addEventListener('click', async () => {
+    const device = flashforgeRegisterTarget;
+    const nameInput = document.getElementById('flashforge-printer-register-name');
+    const checkCodeInput = document.getElementById('flashforge-printer-register-check-code');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const checkCode = checkCodeInput ? checkCodeInput.value.trim() : '';
+    if (!device || !name || !checkCode) return;
+    closeFlashforgeRegisterModal();
+    try {
+        const formData = new FormData();
+        formData.append('ip', device.ip);
+        formData.append('serial_number', device.serial_number);
+        formData.append('check_code', checkCode);
+        formData.append('name', name);
+        const response = await fetch('/api/flashforge/printers', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            // A diferencia de Elegoo, acá un 400 casi siempre es "check code
+            // incorrecto" -- se muestra tal cual el detail del backend en
+            // vez de un mensaje genérico (ver flashforge_register_endpoint).
+            throw new Error(data.detail || t('flashforgeActionFailed'));
+        }
+        showToast(`${name}: ${t('flashforgePrinterRegisterSuccess')}`);
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('flashforgeActionFailed'), 'error');
+    } finally {
+        loadFlashforgeRegistryList();
+        refreshFlashforgePrintersGrid();
+    }
+});
+
 async function sendMarlinPrinterJog(device, axis, distance, feed) {
     try {
         const formData = new FormData();
@@ -11859,7 +13131,17 @@ function switchSection(sectionName) {
             }
         }
     });
-    document.getElementById('topbar-plugins-btn')?.classList.toggle('active', sectionName === 'plugins');
+
+    // El título/subtítulo y el estado/reloj del Panel de Control viven en la
+    // topbar global (compartida por todas las secciones) pero solo tienen
+    // sentido en el dashboard — se ocultan en el resto de las páginas.
+    const isDashboard = sectionName === 'dashboard';
+    const topbarTitle = document.getElementById('global-topbar-panel-title');
+    const topbarMeta = document.getElementById('global-topbar-panel-meta');
+    const topbarClock = document.getElementById('global-topbar-clock');
+    if (topbarTitle) topbarTitle.hidden = !isDashboard;
+    if (topbarMeta) topbarMeta.hidden = !isDashboard;
+    if (topbarClock) topbarClock.hidden = !isDashboard;
 
     // Handle models section
     if (sectionName === 'models') {
@@ -11895,6 +13177,11 @@ function switchSection(sectionName) {
         renderGamepadBadge();
         loadUsersSettings();
         applySettingsModulesLayout();
+        // Solo la lista de registradas (GET local, sin costo) — el escaneo
+        // UDP de red queda para cuando el usuario aprieta "Actualizar", igual
+        // que loadWifiDevices() para láser/CNC.
+        loadElegooRegistryList();
+        loadFlashforgeRegistryList();
     } else {
         stopSystemLogPolling();
     }
@@ -11912,6 +13199,16 @@ function switchSection(sectionName) {
         loadMarlinSection();
     } else {
         stopMarlinPrintersPolling();
+    }
+    if (sectionName === 'elegoo') {
+        loadElegooSection();
+    } else {
+        stopElegooPrintersPolling();
+    }
+    if (sectionName === 'flashforge') {
+        loadFlashforgeSection();
+    } else {
+        stopFlashforgePrintersPolling();
     }
     maybeStartTour(sectionName);
 }
@@ -11946,11 +13243,10 @@ navItems.forEach(item => {
     item.addEventListener('click', () => {
         const section = item.dataset.section;
         switchSection(section);
+        // En mobile, navegar a una sección cierra el cajón lateral (no-op
+        // en escritorio, donde .mobile-nav-open nunca se activa).
+        setMobileNavOpen(false);
     });
-});
-
-document.getElementById('topbar-plugins-btn')?.addEventListener('click', () => {
-    switchSection('plugins');
 });
 
 // ── Galería de plugins ──
@@ -12019,7 +13315,8 @@ function pluginIconSvg(icon, size = 24) {
         route: '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h3a4 4 0 0 0 4-4V9a4 4 0 0 1 4-4"/>',
         vector: '<path d="m5 3 14 0 2 7-9 11-9-11Z"/><path d="M5 3l7 18L19 3M3 10h18"/>',
         type: '<path d="M4 5V3h16v2"/><path d="M9 21h6"/><path d="M12 3v18"/>',
-        layers: '<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>'
+        layers: '<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+        cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>'
     };
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[icon] || paths.shapes}</svg>`;
 }
@@ -12041,6 +13338,7 @@ function pluginCategoryText(category) {
         'Diseño': 'pluginCategoryDesign',
         'Producción': 'pluginCategoryProduction',
         'Utilidades': 'pluginCategoryUtilities',
+        'Accesorios': 'pluginCategoryHardware',
     };
     return keys[category] ? t(keys[category]) : category;
 }
@@ -13639,6 +14937,12 @@ if (toggleOfflineMachinesBtn) {
 }
 updateToggleOfflineMachinesBtn();
 applyDeviceColumnsLayout();
+(() => {
+    const mode = getDevicesGroupMode();
+    devicesGroupModeBtn?.classList.toggle('btn-view-toggle-active', mode === 'mixed');
+    if (machinesColumns) machinesColumns.hidden = mode === 'mixed';
+    if (machinesMixedGrid) machinesMixedGrid.hidden = mode !== 'mixed';
+})();
 
 // Update language display on load
 updateLangSwitchUI();
@@ -13650,7 +14954,8 @@ loadModels();
 loadPrinters();
 loadRecentPrinterFiles();
 loadLaserHistory();
-loadTopbarServerStats();
+loadDashboardPanel();
+updatePanelClock();
 refreshDashboardLaserCard();
 refreshUsbPorts();
 loadAccessories();
@@ -13658,7 +14963,8 @@ maybeStartTour('dashboard');
 
 // Refresh printers every 5 seconds
 setInterval(loadPrinters, 5000);
-setInterval(loadTopbarServerStats, 10000);
+setInterval(loadDashboardPanel, 10000);
+setInterval(updatePanelClock, 1000);
 setInterval(loadAccessories, 10000);
 // Antes cada 4s — con 6 dispositivos registrados en paralelo, cada uno
 // pudiendo tardar hasta ~8s en darse por vencido si está apagado/desconectado

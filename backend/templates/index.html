@@ -8,18 +8,36 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=264">
+    <link rel="stylesheet" href="/static/css/style.css?v=265">
 </head>
 <body>
     <div class="app-shell">
         <header class="global-topbar">
             <div class="global-topbar-left">
-                <button type="button" class="topbar-plugins-btn" id="topbar-plugins-btn" data-i18n-title="navPlugins" title="Galería de plugins">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 3H5a2 2 0 0 0-2 2v3.5a2.5 2.5 0 0 1 0 5V19a2 2 0 0 0 2 2h5.5a2.5 2.5 0 0 1 5 0H19a2 2 0 0 0 2-2v-3.5a2.5 2.5 0 0 1 0-5V5a2 2 0 0 0-2-2h-5.5a2.5 2.5 0 0 1-5 0Z"/></svg>
-                    <span data-i18n="navPlugins">Galería de plugins</span>
+                <button type="button" class="topbar-icon-btn mobile-nav-toggle-btn" id="mobile-nav-toggle-btn" aria-label="Menú" aria-expanded="false" data-i18n-aria-label="mobileNavToggleLabel" data-i18n-title="mobileNavToggleLabel" title="Menú">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
                 </button>
+                <div class="global-topbar-panel-title" id="global-topbar-panel-title">
+                    <h1 data-i18n="dashboard">Panel de Control</h1>
+                    <p data-i18n="panelSubtitle">Resumen en tiempo real de tu taller</p>
+                </div>
+            </div>
+            <div class="global-topbar-clock" id="global-topbar-clock">
+                <div class="panel-clock">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <div class="panel-clock-text">
+                        <strong id="panel-clock-time">--:--:--</strong>
+                        <span id="panel-clock-date">—</span>
+                    </div>
+                </div>
             </div>
             <div class="global-topbar-right">
+                <div class="panel-hero-meta" id="global-topbar-panel-meta">
+                    <div class="panel-status-pill" id="panel-status-pill">
+                        <span class="panel-status-dot" id="panel-status-dot"></span>
+                        <span class="panel-status-text" id="panel-status-text" data-i18n="panelSystemActive">Sistema activo</span>
+                    </div>
+                </div>
             <div class="topbar-notif-wrap" id="topbar-notif-wrap">
                 <button type="button" class="topbar-icon-btn" id="topbar-notif-btn" aria-label="Notificaciones" data-i18n-title="notificationsTitle" title="Notificaciones">
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -93,6 +111,14 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M12 22V12"/><path d="m3.5 6.5 8.5 5.5 8.5-5.5"/></svg>
                             <span data-i18n="navMarlinPrinters">Impresoras Marlin</span>
                         </button>
+                        <button class="nav-item" data-section="elegoo" data-i18n-title="navElegooPrinters" title="Impresoras Elegoo">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                            <span data-i18n="navElegooPrinters">Impresoras Elegoo</span>
+                        </button>
+                        <button class="nav-item" data-section="flashforge" data-i18n-title="navFlashforgePrinters" title="Impresoras FlashForge">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            <span data-i18n="navFlashforgePrinters">Impresoras FlashForge</span>
+                        </button>
                         <button type="button" class="nav-item nav-item-placeholder" disabled data-i18n-title="navCamerasSoonTitle" title="Cámaras (Próximamente)">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                             <span data-i18n="navCameras">Cámaras</span>
@@ -156,6 +182,19 @@
                         </button>
                     </div>
                 </div>
+
+                <div class="nav-category" data-group="plugins">
+                    <button type="button" class="nav-category-header" data-category-toggle>
+                        <span data-i18n="navGroupPlugins">Plugins</span>
+                        <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="nav-category-items" id="nav-plugins-items">
+                        <button class="nav-item" data-section="plugins" id="nav-plugins-gallery-btn" data-i18n-title="navPlugins" title="Galería de plugins" hidden>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 3H5a2 2 0 0 0-2 2v3.5a2.5 2.5 0 0 1 0 5V19a2 2 0 0 0 2 2h5.5a2.5 2.5 0 0 1 5 0H19a2 2 0 0 0 2-2v-3.5a2.5 2.5 0 0 1 0-5V5a2 2 0 0 0-2-2h-5.5a2.5 2.5 0 0 1-5 0Z"/></svg>
+                            <span data-i18n="navPlugins">Galería de plugins</span>
+                        </button>
+                    </div>
+                </div>
             </nav>
 
             <div class="sidebar-logo-gap">
@@ -172,55 +211,99 @@
             </div>
         </aside>
 
+        <div class="mobile-nav-backdrop" id="mobile-nav-backdrop"></div>
+
         <div class="content">
             <section id="dashboard-section" class="view-section active">
-            <header class="topbar">
-                <div class="topbar-server-stats" id="topbar-server-stats"></div>
-            </header>
-
             <main>
-                <section class="dashboard-header">
-                    <h1 data-i18n="dashboard">Dashboard</h1>
-                </section>
+                <section class="panel-hero">
+                    <div class="panel-hero-collapsible" id="panel-hero-collapsible">
+                    <div class="panel-hero-collapsible-inner">
+                    <div class="panel-row panel-row-3">
+                        <article class="panel-card">
+                            <h3 class="panel-card-title" data-i18n="panelHealthTitle">Estado del sistema</h3>
+                            <div class="panel-health-body">
+                                <div class="panel-health-logo">
+                                    <img src="/static/img/panel-health-logo.png" alt="">
+                                </div>
+                                <div class="panel-info-grid" id="panel-health-grid"></div>
+                            </div>
+                        </article>
 
-                <section class="stats-grid">
-                    <article class="stat-card stat-green">
-                        <div class="stat-info">
-                            <span data-i18n="totalModels">Total Models</span>
-                            <strong id="total-models">0</strong>
-                        </div>
-                        <span class="stat-icon">
-                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/><circle cx="18.5" cy="18.5" r="3.1"/><line x1="20.7" y1="20.7" x2="22.7" y2="22.7"/></svg>
-                        </span>
-                    </article>
-                    <article class="stat-card stat-green">
-                        <div class="stat-info">
-                            <span data-i18n="gcodeReady">G-code Ready</span>
-                            <strong id="gcode-ready">0</strong>
-                        </div>
-                        <span class="stat-icon">
-                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9.5 13.5 8 15 9.5 16.5"/><polyline points="14.5 13.5 16 15 14.5 16.5"/></svg>
-                        </span>
-                    </article>
-                    <article class="stat-card stat-orange">
-                        <div class="stat-info">
-                            <span data-i18n="storage">Almacenamiento</span>
-                            <strong id="storage-used">0 MB</strong>
-                            <span class="stat-substat" id="storage-total">/ — MB</span>
-                        </div>
-                        <span class="stat-icon">
-                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="11" cy="5" rx="8" ry="3"/><path d="M3 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M3 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/><circle cx="18.5" cy="18.5" r="3.1"/><line x1="20.7" y1="20.7" x2="22.7" y2="22.7"/></svg>
-                        </span>
-                    </article>
-                    <article class="stat-card stat-purple">
-                        <div class="stat-info">
-                            <span data-i18n="activePrinters">Active Printers</span>
-                            <strong id="active-printers">0</strong>
-                        </div>
-                        <span class="stat-icon">
-                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                        </span>
-                    </article>
+                        <article class="panel-card">
+                            <h3 class="panel-card-title" data-i18n="panelHostTitle">Rendimiento del host</h3>
+                            <div class="panel-host-gauges" id="panel-host-gauges"></div>
+                            <div class="panel-load-chart" id="panel-load-chart"></div>
+                        </article>
+
+                        <article class="panel-card">
+                            <div class="panel-card-header">
+                                <h3 class="panel-card-title" data-i18n="panelNetworkTitle">Red y conectividad</h3>
+                                <svg class="panel-network-wifi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                            </div>
+                            <div class="panel-network-grid" id="panel-network-grid"></div>
+                        </article>
+                    </div>
+
+                    <div class="panel-row panel-row-2">
+                        <article class="panel-card">
+                            <div class="panel-card-header">
+                                <h3 class="panel-card-title" data-i18n="panelDevicesConnectedTitle">Dispositivos conectados</h3>
+                                <button type="button" class="panel-see-all-btn" id="panel-devices-see-all" data-i18n="panelSeeAll">Ver todos</button>
+                            </div>
+                            <div class="panel-devices-row" id="panel-devices-row"></div>
+                        </article>
+
+                        <article class="panel-card">
+                            <div class="panel-card-header">
+                                <h3 class="panel-card-title" data-i18n="panelJobsTitle">Trabajos en curso</h3>
+                                <button type="button" class="panel-see-all-btn" id="panel-jobs-see-all" data-i18n="panelSeeAll">Ver todos</button>
+                            </div>
+                            <div class="panel-jobs-list" id="panel-jobs-list"></div>
+                        </article>
+                    </div>
+                    </div>
+                    </div>
+
+                    <div class="panel-row panel-row-bottom">
+                        <article class="panel-card panel-card-alerts">
+                            <div class="panel-card-header">
+                                <h3 class="panel-card-title" data-i18n="panelAlertsTitle">Alertas y notificaciones</h3>
+                                <button type="button" class="panel-see-all-btn" id="panel-alerts-see-all" data-i18n="panelSeeAll">Ver todos</button>
+                            </div>
+                            <div class="panel-alerts-row" id="panel-alerts-row"></div>
+                        </article>
+
+                        <article class="panel-card panel-card-mini">
+                            <span class="panel-mini-icon panel-mini-icon-ambient">
+                                <img src="/static/img/panel-icon-ambient.png" alt="" class="panel-mini-icon-img">
+                            </span>
+                            <div class="panel-mini-text">
+                                <span data-i18n="panelAmbientTitle">Temp. ambiente del taller</span>
+                                <strong id="panel-ambient-value">—</strong>
+                            </div>
+                        </article>
+
+                        <article class="panel-card panel-card-mini">
+                            <span class="panel-mini-icon panel-mini-icon-power">
+                                <img src="/static/img/panel-icon-power.png" alt="" class="panel-mini-icon-img">
+                            </span>
+                            <div class="panel-mini-text">
+                                <span data-i18n="panelPowerTitle">Consumo actual</span>
+                                <strong id="panel-power-value">—</strong>
+                            </div>
+                        </article>
+
+                        <article class="panel-card panel-card-mini">
+                            <span class="panel-mini-icon panel-mini-icon-maintenance">
+                                <img src="/static/img/panel-icon-maintenance.png" alt="" class="panel-mini-icon-img">
+                            </span>
+                            <div class="panel-mini-text">
+                                <span data-i18n="panelMaintenanceTitle">Próximo mantenimiento</span>
+                                <strong id="panel-maintenance-value">—</strong>
+                            </div>
+                        </article>
+                    </div>
                 </section>
 
                 <section class="printers-section">
@@ -239,6 +322,12 @@
                             <button class="btn-view-toggle" id="device-columns-customizer-btn" type="button" data-i18n-title="deviceOrganizerTitle" title="Organizar dispositivos">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2" fill="var(--panel-bg)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2" fill="var(--panel-bg)"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2" fill="var(--panel-bg)"/></svg>
                             </button>
+                            <button class="btn-view-toggle" id="printer-card-customizer-btn" type="button" data-i18n-title="printerCardOrganizerTitle" title="Organizar tarjeta de impresora">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="6" rx="1.5"/><rect x="4" y="11" width="7" height="10" rx="1.5"/><rect x="13" y="11" width="7" height="4" rx="1.5"/><rect x="13" y="17" width="7" height="4" rx="1.5"/></svg>
+                            </button>
+                            <button class="btn-view-toggle" id="devices-group-mode-btn" type="button" data-i18n-title="devicesGroupModeTitle" title="Modo grupo (agrupar por tipo)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="10" y="4" width="5" height="5" rx="1"/><rect x="17" y="4" width="4" height="5" rx="1"/><rect x="3" y="11" width="5" height="5" rx="1"/><rect x="10" y="11" width="5" height="5" rx="1"/><rect x="17" y="11" width="4" height="5" rx="1"/></svg>
+                            </button>
                         </div>
                     </div>
                     <div id="machines-columns" class="machines-columns">
@@ -255,6 +344,7 @@
                             <div id="cnc-grid" class="printers-grid"></div>
                         </div>
                     </div>
+                    <div id="machines-mixed-grid" class="printers-grid" hidden></div>
                 </section>
 
                 <section class="accessories-section">
@@ -1441,6 +1531,54 @@
                 </main>
             </section>
 
+            <section id="elegoo-section" class="view-section" style="display: none;">
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="navElegooPrinters">Impresoras Elegoo</h1>
+                        <p data-i18n="elegooPrintersPageDescription">Controla impresoras Elegoo (SDCP) por red: temperaturas, progreso de impresión y pausar/reanudar/cancelar.</p>
+                    </section>
+                    <section class="printers-section">
+                        <div class="section-title">
+                            <h2 data-i18n="devicesTitle">Dispositivos</h2>
+                            <div class="view-controls">
+                                <button class="btn-view-toggle" id="elegoo-printers-refresh-btn" title="Actualizar">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                </button>
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="elegoo-printers-add-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    <span data-i18n="elegooPrinterAddAction">Agregar impresora</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="elegoo-printers-grid" class="printers-grid"></div>
+                    </section>
+                </main>
+            </section>
+
+            <section id="flashforge-section" class="view-section" style="display: none;">
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="navFlashforgePrinters">Impresoras FlashForge</h1>
+                        <p data-i18n="flashforgePrintersPageDescription">Controla impresoras FlashForge por red: temperaturas, progreso de impresión y pausar/reanudar/cancelar.</p>
+                    </section>
+                    <section class="printers-section">
+                        <div class="section-title">
+                            <h2 data-i18n="devicesTitle">Dispositivos</h2>
+                            <div class="view-controls">
+                                <button class="btn-view-toggle" id="flashforge-printers-refresh-btn" title="Actualizar">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                </button>
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="flashforge-printers-add-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    <span data-i18n="flashforgePrinterAddAction">Agregar impresora</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="flashforge-printers-grid" class="printers-grid"></div>
+                    </section>
+                </main>
+            </section>
+
             <section id="queue-section" class="view-section" style="display: none;">
                 <main class="main-content history-split-main">
                     <div class="history-split-topbar">
@@ -2016,6 +2154,14 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="settings-uiux-subfield">
+                                    <span class="settings-field-label" data-i18n="panelAutoHideLabel">Panel superior del Inicio</span>
+                                    <p class="settings-field-hint" data-i18n="panelAutoHideDescription">Elige si las tarjetas del panel quedan siempre visibles o se ocultan solas hasta que pasas el mouse por la barra superior.</p>
+                                    <select id="settings-panel-autohide" class="settings-select">
+                                        <option value="always" data-i18n="panelAutoHideAlways">Siempre visible</option>
+                                        <option value="hover" data-i18n="panelAutoHideHover">Ocultar y mostrar al pasar el mouse</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div class="settings-card card-collapsible" data-settings-module="updates">
@@ -2195,6 +2341,36 @@
                                 <div class="usb-ports-list" id="marlin-discover-list"></div>
                                 <p class="devices-subcard-sublabel" data-i18n="marlinPrintersRegisteredHeader">Impresoras registradas</p>
                                 <div class="usb-ports-list" id="marlin-printers-registry-list"></div>
+                            </div>
+                            <div class="devices-subcard">
+                                <div class="devices-subcard-header">
+                                    <span class="card-header-std-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                    </span>
+                                    <h3 data-i18n="navElegooPrinters">Impresoras Elegoo</h3>
+                                    <button type="button" class="theme-option-icon-btn" id="elegoo-printers-discover-btn" title="Actualizar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
+                                <p data-i18n="elegooPrintersDescription">Impresoras Elegoo con protocolo SDCP (Centauri Carbon, Neptune, OrangeStorm Giga) detectadas por red.</p>
+                                <div class="usb-ports-list" id="elegoo-discover-list"></div>
+                                <p class="devices-subcard-sublabel" data-i18n="marlinPrintersRegisteredHeader">Impresoras registradas</p>
+                                <div class="usb-ports-list" id="elegoo-printers-registry-list"></div>
+                            </div>
+                            <div class="devices-subcard">
+                                <div class="devices-subcard-header">
+                                    <span class="card-header-std-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                    </span>
+                                    <h3 data-i18n="navFlashforgePrinters">Impresoras FlashForge</h3>
+                                    <button type="button" class="theme-option-icon-btn" id="flashforge-printers-discover-btn" title="Actualizar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
+                                <p data-i18n="flashforgePrintersDescription">Impresoras FlashForge modernas (Adventurer 5M, 5M Pro, AD5X, Creator 5) detectadas por red.</p>
+                                <div class="usb-ports-list" id="flashforge-discover-list"></div>
+                                <p class="devices-subcard-sublabel" data-i18n="marlinPrintersRegisteredHeader">Impresoras registradas</p>
+                                <div class="usb-ports-list" id="flashforge-printers-registry-list"></div>
                             </div>
                         </div>
                         <div class="settings-card card-collapsible" id="accessories-settings-card" data-settings-module="accessories">
@@ -2534,7 +2710,6 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="module-customizer-header">
-                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
                 <h2 data-i18n="deviceOrganizerTitle">Organizar dispositivos</h2>
                 <p class="module-customizer-subtitle" data-i18n="deviceOrganizerSubtitle">Elige qué tipos de máquina quieres ver y arrástralos para cambiar su orden.</p>
             </div>
@@ -2555,6 +2730,36 @@
         </div>
     </div>
 
+    <!-- Organizador de las secciones internas de la tarjeta de impresora 3D
+         (encabezado/estado/miniatura/temperaturas) — solo reordena, las 4
+         secciones siempre están visibles. -->
+    <div id="printer-card-customizer-modal" class="modal">
+        <div class="modal-backdrop" id="printer-card-customizer-modal-backdrop"></div>
+        <div class="modal-content module-customizer-modal-content device-columns-customizer-modal-content">
+            <button class="modal-close" id="printer-card-customizer-modal-close" type="button">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="module-customizer-header">
+                <h2 data-i18n="printerCardOrganizerTitle">Organizar tarjeta de impresora</h2>
+                <p class="module-customizer-subtitle" data-i18n="printerCardOrganizerSubtitle">Arrastra para cambiar el orden de las secciones dentro de cada tarjeta.</p>
+            </div>
+            <div class="module-customizer-group device-columns-customizer-group">
+                <div class="module-customizer-group-header">
+                    <h3 data-i18n="printerCardOrganizerSectionsTitle">Secciones</h3>
+                    <p data-i18n="printerCardOrganizerDragHint">Arrastra para ordenar. Las 4 secciones siempre están visibles.</p>
+                </div>
+                <div class="module-customizer-list" id="printer-card-customizer-list"></div>
+            </div>
+            <div class="module-customizer-footer">
+                <button type="button" class="module-customizer-reset-btn" id="printer-card-customizer-reset-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
+                </button>
+                <p class="module-customizer-reset-hint" data-i18n="printerCardOrganizerResetHint">Vuelve al orden original: encabezado, estado, miniatura y temperaturas.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Personalizar Módulos: reordenar y mostrar/ocultar los módulos del modal
          de impresora Klipper (Toolhead/Temperaturas/Cola), por breakpoint de
          pantalla, estilo Mainsail. "Estado" representa la topbar fija de arriba
@@ -2567,7 +2772,6 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="module-customizer-header">
-                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
                 <h2 data-i18n="moduleCustomizerTitle">Personalizar Módulos</h2>
                 <p class="module-customizer-subtitle" data-i18n="moduleCustomizerSubtitle">Elige qué información quieres ver en tu escritorio.</p>
             </div>
@@ -2635,7 +2839,6 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="module-customizer-header">
-                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
                 <h2 data-i18n="settingsModuleCustomizerTitle">Personalizar Página de Configuración</h2>
                 <p class="module-customizer-subtitle" data-i18n="settingsModuleCustomizerSubtitle">Crea tus propios grupos y elige qué tarjetas quieres ver en cada uno.</p>
             </div>
@@ -2688,7 +2891,6 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="module-customizer-header">
-                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
                 <h2 data-i18n="helpModuleCustomizerTitle">Personalizar Página de Ayuda</h2>
                 <p class="module-customizer-subtitle" data-i18n="settingsModuleCustomizerSubtitle">Crea tus propios grupos y elige qué tarjetas quieres ver en cada uno.</p>
             </div>
@@ -3304,11 +3506,13 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
                         <div class="printer-send-mode-title" data-i18n="printerSendModeQueueTitle">Agregar a la cola</div>
                         <div class="printer-send-mode-desc" data-i18n="printerSendModeQueueDesc">El archivo se agregará a la cola de impresión existente.</div>
+                        <div class="printer-send-mode-unavailable" data-i18n="printerSendModeUnavailableNote" hidden>No disponible para esta impresora.</div>
                     </button>
                     <button type="button" class="printer-send-mode-card" data-mode="schedule">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="16" r="2.5"/><line x1="13.8" y1="17.8" x2="15.5" y2="19.5"/></svg>
                         <div class="printer-send-mode-title" data-i18n="printerSendModeScheduleTitle">Programar impresión</div>
                         <div class="printer-send-mode-desc" data-i18n="printerSendModeScheduleDesc">Elige fecha y hora para iniciar la impresión automáticamente.</div>
+                        <div class="printer-send-mode-unavailable" data-i18n="printerSendModeUnavailableNote" hidden>No disponible para esta impresora.</div>
                     </button>
                 </div>
 
@@ -3589,6 +3793,67 @@
                     <span data-i18n="confirmAction">Confirmar</span>
                 </button>
                 <button type="button" class="btn-file-action btn-file-action-danger" id="marlin-printer-register-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alta de una impresora Elegoo (SDCP por red, encontrada por /discover) -->
+    <div id="elegoo-printer-register-modal" class="modal">
+        <div class="modal-backdrop" id="elegoo-printer-register-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="elegoo-printer-register-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            </div>
+            <h2 data-i18n="elegooPrinterRegisterTitle">Agregar impresora Elegoo</h2>
+            <p class="laser-card-subtitle" id="elegoo-printer-register-device-label"></p>
+            <div class="usb-classify-name-field">
+                <label for="elegoo-printer-register-name" data-i18n="usbRegisterNameLabel">Nombre del dispositivo</label>
+                <input type="text" id="elegoo-printer-register-name" autocomplete="off">
+            </div>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action" id="elegoo-printer-register-confirm-btn">
+                    <span data-i18n="confirmAction">Confirmar</span>
+                </button>
+                <button type="button" class="btn-file-action btn-file-action-danger" id="elegoo-printer-register-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alta de una impresora FlashForge (HTTP/8898 por red, encontrada por
+         /discover) -- a diferencia de Elegoo acá sí hace falta el check code
+         porque FlashForge exige autenticación contra la impresora real. -->
+    <div id="flashforge-printer-register-modal" class="modal">
+        <div class="modal-backdrop" id="flashforge-printer-register-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="flashforge-printer-register-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <h2 data-i18n="flashforgePrinterRegisterTitle">Agregar impresora FlashForge</h2>
+            <p class="laser-card-subtitle" id="flashforge-printer-register-device-label"></p>
+            <div class="usb-classify-name-field">
+                <label for="flashforge-printer-register-name" data-i18n="usbRegisterNameLabel">Nombre del dispositivo</label>
+                <input type="text" id="flashforge-printer-register-name" autocomplete="off">
+            </div>
+            <div class="usb-classify-name-field">
+                <label for="flashforge-printer-register-check-code" data-i18n="flashforgePrinterCheckCodeLabel">Check code</label>
+                <input type="text" id="flashforge-printer-register-check-code" autocomplete="off">
+                <p class="settings-field-hint" data-i18n="flashforgePrinterCheckCodeHint">Lo encuentras en la pantalla de la impresora, en Ajustes → Red o Información.</p>
+            </div>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action" id="flashforge-printer-register-confirm-btn">
+                    <span data-i18n="confirmAction">Confirmar</span>
+                </button>
+                <button type="button" class="btn-file-action btn-file-action-danger" id="flashforge-printer-register-cancel-btn">
                     <span data-i18n="cancelAction">Cancelar</span>
                 </button>
             </div>
@@ -4090,10 +4355,10 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=20"></script>
+    <script src="/static/js/translations.js?v=21"></script>
     <script src="/static/js/translations-pt-BR.js?v=2"></script>
     <script src="/static/js/translations-fr.js?v=2"></script>
     <script src="/static/js/translations-de.js?v=2"></script>
-    <script src="/static/js/app.js?v=204"></script>
+    <script src="/static/js/app.js?v=205"></script>
 </body>
 </html>

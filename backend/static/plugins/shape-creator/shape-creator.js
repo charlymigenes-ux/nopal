@@ -233,7 +233,7 @@
 
     function mount() {
         if (document.getElementById('shape-creator-section')) return;
-        const toolsContainer = document.querySelector('.nav-category[data-group="tools"] .nav-category-items');
+        const pluginsContainer = document.querySelector('.nav-category[data-group="plugins"] .nav-category-items');
         const navButton = document.createElement('button');
         navButton.type = 'button';
         navButton.className = 'nav-item';
@@ -242,7 +242,7 @@
         navButton.title = 'Creador de formas';
         navButton.innerHTML = `${icon('<rect x="3" y="3" width="7" height="7" rx="1"/><circle cx="17.5" cy="6.5" r="3.5"/><path d="m4 20 4-7 4 7Z"/><path d="M15 14h6v6h-6z"/>', 20)}<span>Creador de formas</span>`;
         navButton.addEventListener('click', () => window.switchSection?.('shape-creator'));
-        toolsContainer?.insertBefore(navButton, toolsContainer.querySelector('[data-section="console"]'));
+        pluginsContainer?.appendChild(navButton);
 
         const wrapper = document.createElement('div');
         wrapper.innerHTML = moduleHtml();

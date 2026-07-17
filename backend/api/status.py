@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import shutil
 import subprocess
 import time
 from typing import Optional
@@ -17,6 +16,7 @@ from backend.services.klipper_service import (
 )
 from backend.services.laser_service import get_active_job_hosts
 from backend.services.marlin_printer_service import get_active_job_devices
+from backend.services.dashboard_service import get_storage_snapshot
 from backend.utils import get_app_version
 
 logger = logging.getLogger(__name__)
@@ -107,28 +107,7 @@ async def status(user: dict = Depends(require_auth)):
 @router.get("/api/storage")
 async def get_storage(user: dict = Depends(require_auth)):
     """Get disk storage information"""
-    upload_folder = "uploads"
-
-    # Create uploads folder if it doesn't exist
-    if not os.path.exists(upload_folder):
-        os.makedirs(upload_folder)
-
-    # Get disk space info
-    stat = shutil.disk_usage(upload_folder)
-
-    # Calculate used space recursively (los archivos viven en uploads/models y uploads/gcode)
-    used_bytes = 0
-    for root, _dirs, files in os.walk(upload_folder):
-        for filename in files:
-            filepath = os.path.join(root, filename)
-            if os.path.isfile(filepath):
-                used_bytes += os.path.getsize(filepath)
-
-    return {
-        "used": used_bytes,
-        "free": stat.free,
-        "total": stat.total,
-    }
+    return get_storage_snapshot()
 
 
 @router.get("/api/system/stats")

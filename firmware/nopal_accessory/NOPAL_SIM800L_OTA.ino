@@ -1,44 +1,51 @@
 /*
- * NOPAL — Firmware genérico de accesorios
+ * NOPAL — Firmware genérico de accesorios + SIM800L + Wi-Fi + ElegantOTA
+ *
+ * Versión: 1.3
  *
  * Compatible con:
- *   - ESP8266
- *   - ESP32
+ *   - ESP32: todas las funciones, incluido SIM800L mediante Serial2.
+ *   - ESP8266: relés, RGB, WS2812, Wi-Fi y ElegantOTA.
+ *              SIM800L queda desactivado por defecto porque el mapa actual
+ *              utiliza prácticamente todos los GPIO y el puerto Serial.
  *
  * Funciones:
  *   - Relés
  *   - Tira RGB analógica por PWM
  *   - Tira WS2812 / NeoPixel
- *   - Wi-Fi STA con reconexión automática
+ *   - Wi-Fi STA con reconexión
  *   - Punto de acceso de recuperación si falla el Wi-Fi
- *   - ElegantOTA (actualización de firmware por red) con autenticación
- *   - mDNS (http://<hostname>.local/)
+ *   - ElegantOTA con autenticación
+ *   - mDNS: http://nopal-sim800l.local/
+ *   - Base SIM800L con comandos AT sobre UART2 en ESP32
  *
- * Comunicación NOPAL (USB):
- *   Serial a 115200 baudios
+ * Comunicación NOPAL:
+ *   Serial USB a 115200 baudios
  *   Un comando por línea terminado en \n
  *
- * Comandos:
+ * Comandos existentes:
  *   NOPAL:ID?
- *   NOPAL:NET?
  *   NOPAL:R1:ON
  *   NOPAL:R1:OFF
  *   NOPAL:R1?
  *   NOPAL:LED:255,0,0
  *   NOPAL:WS:0,255,0
  *
- * Respuesta de NOPAL:ID? (v1.3):
- *   NOPAL,role=accessory,chip=...,fw=1.3,relays=4,pwm_led=1,ws2812=1,
- *   ws2812_count=30,wifi=1,wifi_connected=...,wifi_mode=...,hostname=...,
- *   ip=...,ota=1,ota_path=/update,uptime_ms=...,free_heap=...
+ * Comandos nuevos:
+ *   NOPAL:NET?
+ *   NOPAL:SIM:AT
+ *   NOPAL:SIM:INFO?
+ *   NOPAL:SIM:CSQ?
+ *   NOPAL:SIM:CREG?
+ *   NOPAL:SIM:CCID?
+ *   NOPAL:SIM:IMEI?
+ *   NOPAL:SIM:OPERATOR?
+ *   NOPAL:SIM:RAW:AT+CPIN?
  *
- * Portal web (cuando hay Wi-Fi):
- *   http://IP/            -> redirige a /update
- *   http://IP/api/status  -> estado en JSON
- *   http://IP/update      -> panel de ElegantOTA (usuario/clave de secrets.h)
- *
- * Antes de compilar copia secrets.h.example a secrets.h y pon tus propios
- * datos (ver README.txt de esta carpeta).
+ * Portal web:
+ *   http://IP/
+ *   http://IP/api/status
+ *   http://IP/update
  */
 
 #include <Arduino.h>
@@ -67,8 +74,8 @@
 // ============================================================================
 
 #define FW_VERSION "1.3"
+#define DEVICE_ROLE "accessory-sim800l"
 
-// La mayoría de módulos de relés se activan con LOW.
 const bool RELAY_ACTIVE_LOW = true;
 
 const uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
@@ -78,104 +85,73 @@ const uint16_t HTTP_PORT = 80;
 
 
 // ============================================================================
-// CONFIGURACIÓN DE PINES
+// CONFIGURACIÓN DE PINES Y CAPACIDADES
 // ============================================================================
-//
-// Los ESP32 y ESP8266 no tienen la misma cantidad ni numeración de GPIO.
-// Por eso se utiliza una configuración distinta para cada plataforma.
-//
-// IMPORTANTE:
-// Ajusta estos pines según tu placa y tu cableado.
-//
 
 #if defined(ESP32)
 
-// --------------------------------------------------------------------------
-// ESP32
-// --------------------------------------------------------------------------
+  #define RELAY_COUNT 4
 
-#define RELAY_COUNT 4
+  const uint8_t RELAY_PINS[RELAY_COUNT] = {
+    16,
+    17,
+    18,
+    19
+  };
 
-const uint8_t RELAY_PINS[RELAY_COUNT] = {
-  16,
-  17,
-  18,
-  19
-};
+  #define PWM_LED_ENABLE 1
+  #define PWM_LED_PIN_R 25
+  #define PWM_LED_PIN_G 26
+  #define PWM_LED_PIN_B 27
 
-#define PWM_LED_ENABLE true
+  #define WS2812_ENABLE 1
+  #define WS2812_PIN 4
+  #define WS2812_COUNT 30
 
-#define PWM_LED_PIN_R 25
-#define PWM_LED_PIN_G 26
-#define PWM_LED_PIN_B 27
+  // SIM800L por UART2 del ESP32.
+  // ESP32 RX recibe del TX del SIM800L.
+  // ESP32 TX transmite al RX del SIM800L.
+  #define SIM800L_ENABLE 1
+  #define SIM800L_RX_PIN 32
+  #define SIM800L_TX_PIN 33
+  #define SIM800L_BAUD 9600
 
-#define WS2812_ENABLE true
-#define WS2812_PIN 4
-#define WS2812_COUNT 30
-
+  // Algunos módulos SIM800L arrancan al recibir alimentación.
+  // Si tu placa necesita PWRKEY, cambia a 1 y configura el pin.
+  #define SIM800L_PWRKEY_ENABLE 0
+  #define SIM800L_PWRKEY_PIN 23
+  #define SIM800L_PWRKEY_ACTIVE_LOW 1
 
 #elif defined(ESP8266)
 
-// --------------------------------------------------------------------------
-// ESP8266 / NodeMCU / Wemos D1 Mini
-// --------------------------------------------------------------------------
-//
-// Correspondencias habituales:
-//
-// D1 = GPIO5
-// D2 = GPIO4
-// D5 = GPIO14
-// D6 = GPIO12
-// D7 = GPIO13
-// D8 = GPIO15
-// D0 = GPIO16
-// D4 = GPIO2
-//
-// No uses los nombres D1, D2, etc. si deseas compatibilidad con placas
-// genéricas. Los GPIO numéricos son más universales.
-//
+  #define RELAY_COUNT 4
 
-#define RELAY_COUNT 4
+  const uint8_t RELAY_PINS[RELAY_COUNT] = {
+    5,   // D1
+    4,   // D2
+    14,  // D5
+    12   // D6
+  };
 
-const uint8_t RELAY_PINS[RELAY_COUNT] = {
-  5,   // D1
-  4,   // D2
-  14,  // D5
-  12   // D6
-};
+  #define PWM_LED_ENABLE 1
+  #define PWM_LED_PIN_R 13  // D7
+  #define PWM_LED_PIN_G 15  // D8
+  #define PWM_LED_PIN_B 16  // D0
 
-#define PWM_LED_ENABLE true
+  #define WS2812_ENABLE 1
+  #define WS2812_PIN 2      // D4
+  #define WS2812_COUNT 30
 
-#define PWM_LED_PIN_R 13  // D7
-#define PWM_LED_PIN_G 15  // D8
-#define PWM_LED_PIN_B 16  // D0
-
-#define WS2812_ENABLE true
-#define WS2812_PIN 2      // D4
-#define WS2812_COUNT 30
+  // Desactivado porque el mapa de pines actual y Serial USB no dejan
+  // una UART limpia y confiable para el módem.
+  #define SIM800L_ENABLE 0
+  #define SIM800L_BAUD 9600
 
 #endif
 
 
 // ============================================================================
-// CONFIGURACIÓN WS2812
-// ============================================================================
-
-#if WS2812_ENABLE
-
-#include <Adafruit_NeoPixel.h>
-
-Adafruit_NeoPixel strip(
-  WS2812_COUNT,
-  WS2812_PIN,
-  NEO_GRB + NEO_KHZ800
-);
-
-#endif
-
-
-// ============================================================================
-// SERVIDOR WEB / OTA
+// SERVIDOR WEB
 // ============================================================================
 
 #if defined(ESP32)
@@ -195,22 +171,59 @@ String recoveryApSsid;
 
 
 // ============================================================================
-// VARIABLES
+// WS2812
+// ============================================================================
+
+#if WS2812_ENABLE
+
+  #include <Adafruit_NeoPixel.h>
+
+  Adafruit_NeoPixel strip(
+    WS2812_COUNT,
+    WS2812_PIN,
+    NEO_GRB + NEO_KHZ800
+  );
+
+#endif
+
+
+// ============================================================================
+// SIM800L
+// ============================================================================
+
+#if defined(ESP32) && SIM800L_ENABLE
+
+  HardwareSerial sim800Serial(2);
+
+  String lastSimCommand;
+  String lastSimResponse;
+  uint32_t lastSimActivityMs = 0;
+
+#endif
+
+
+// ============================================================================
+// VARIABLES GENERALES
 // ============================================================================
 
 String inputLine;
 
-
-// En ESP32 Core 2.x, ledcWrite() utiliza el canal.
-// En ESP32 Core 3.x, ledcWrite() utiliza directamente el pin.
-
 #if defined(ESP32) && ESP_ARDUINO_VERSION_MAJOR < 3
 
-const uint8_t PWM_CHANNEL_R = 0;
-const uint8_t PWM_CHANNEL_G = 1;
-const uint8_t PWM_CHANNEL_B = 2;
+  const uint8_t PWM_CHANNEL_R = 0;
+  const uint8_t PWM_CHANNEL_G = 1;
+  const uint8_t PWM_CHANNEL_B = 2;
 
 #endif
+
+
+// ============================================================================
+// PROTOTIPOS
+// ============================================================================
+
+void serviceNetwork();
+void maintainWifiConnection();
+void handleCommand(String line);
 
 
 // ============================================================================
@@ -278,9 +291,6 @@ String chipSuffix() {
 bool wifiCredentialsConfigured() {
   const String ssid = String(NOPAL_WIFI_SSID);
 
-  // "TU_RED_WIFI" es el valor de ejemplo en secrets.h.example: si nadie lo
-  // cambió, no tiene caso intentar conectarse, mejor ir directo al punto de
-  // acceso de recuperación.
   return ssid.length() > 0 &&
          ssid != "TU_RED_WIFI";
 }
@@ -402,14 +412,12 @@ void setupPwmLed() {
 
     #if ESP_ARDUINO_VERSION_MAJOR >= 3
 
-      // Arduino-ESP32 Core 3.x
       ledcAttach(PWM_LED_PIN_R, 5000, 8);
       ledcAttach(PWM_LED_PIN_G, 5000, 8);
       ledcAttach(PWM_LED_PIN_B, 5000, 8);
 
     #else
 
-      // Arduino-ESP32 Core 2.x
       ledcSetup(PWM_CHANNEL_R, 5000, 8);
       ledcSetup(PWM_CHANNEL_G, 5000, 8);
       ledcSetup(PWM_CHANNEL_B, 5000, 8);
@@ -422,7 +430,6 @@ void setupPwmLed() {
 
   #elif defined(ESP8266)
 
-    // El ESP8266 utiliza PWM por software.
     analogWriteRange(255);
     analogWriteFreq(5000);
 
@@ -565,7 +572,12 @@ void setupWifi() {
   }
 
   WiFi.mode(WIFI_STA);
+
+#if defined(ESP32)
   WiFi.setAutoReconnect(true);
+#elif defined(ESP8266)
+  WiFi.setAutoReconnect(true);
+#endif
 
   Serial.print("NOPAL:WIFI_CONNECTING,ssid=");
   Serial.println(NOPAL_WIFI_SSID);
@@ -665,10 +677,12 @@ void maintainWifiConnection() {
 
 String buildStatusJson() {
   String json;
-  json.reserve(512);
+  json.reserve(640);
 
   json += "{";
-  json += "\"role\":\"accessory\",";
+  json += "\"role\":\"";
+  json += DEVICE_ROLE;
+  json += "\",";
 
   json += "\"firmware\":\"";
   json += FW_VERSION;
@@ -739,18 +753,116 @@ String buildStatusJson() {
   json += ",";
   json += "\"ws2812_count\":";
   json += String(WS2812_ENABLE ? WS2812_COUNT : 0);
-  json += "}";
+  json += "},";
 
+  json += "\"sim800l\":{";
+  json += "\"enabled\":";
+  json += SIM800L_ENABLE ? "true" : "false";
+  json += ",";
+  json += "\"baud\":";
+  json += String(SIM800L_BAUD);
+
+#if defined(ESP32) && SIM800L_ENABLE
+
+  json += ",";
+  json += "\"last_command\":\"";
+  json += jsonEscape(lastSimCommand);
+  json += "\",";
+  json += "\"last_response\":\"";
+  json += jsonEscape(lastSimResponse);
+  json += "\",";
+  json += "\"last_activity_ms\":";
+  json += String(lastSimActivityMs);
+
+#endif
+
+  json += "}";
   json += "}";
 
   return json;
 }
 
 
+String buildHomePage() {
+  String html;
+  html.reserve(3500);
+
+  html += F("<!doctype html><html lang='es'><head>");
+  html += F("<meta charset='utf-8'>");
+  html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
+  html += F("<title>NOPAL SIM800L</title>");
+  html += F("<style>");
+  html += F("body{margin:0;background:#101512;color:#eef6ef;font-family:Arial,sans-serif}");
+  html += F("main{max-width:760px;margin:0 auto;padding:28px}");
+  html += F("h1{margin:0 0 6px;color:#77d477}small{color:#9aa89d}");
+  html += F(".card{margin-top:20px;padding:18px;border:1px solid #304238;border-radius:16px;background:#172019}");
+  html += F(".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}");
+  html += F(".item{padding:12px;border-radius:12px;background:#202c23}");
+  html += F(".label{font-size:12px;color:#9eb1a2;text-transform:uppercase}.value{margin-top:5px;font-weight:bold;word-break:break-word}");
+  html += F("a{display:inline-block;margin-top:16px;padding:12px 16px;border-radius:10px;background:#2f8f46;color:white;text-decoration:none;font-weight:bold}");
+  html += F("code{color:#a6e7ac}");
+  html += F("</style></head><body><main>");
+  html += F("<h1>NOPAL · SIM800L</h1>");
+  html += F("<small>Firmware de accesorios con Wi-Fi y ElegantOTA</small>");
+  html += F("<section class='card'><div class='grid'>");
+
+  html += F("<div class='item'><div class='label'>Firmware</div><div class='value'>");
+  html += FW_VERSION;
+  html += F("</div></div>");
+
+  html += F("<div class='item'><div class='label'>Hostname</div><div class='value'>");
+  html += NOPAL_HOSTNAME;
+  html += F("</div></div>");
+
+  html += F("<div class='item'><div class='label'>Modo de red</div><div class='value'>");
+  html += wifiModeText();
+  html += F("</div></div>");
+
+  html += F("<div class='item'><div class='label'>IP activa</div><div class='value'>");
+  html += activeIpAddress();
+  html += F("</div></div>");
+
+  html += F("<div class='item'><div class='label'>Wi-Fi</div><div class='value'>");
+  html += WiFi.status() == WL_CONNECTED
+    ? "Conectado"
+    : "Sin conexión STA";
+  html += F("</div></div>");
+
+  html += F("<div class='item'><div class='label'>SIM800L</div><div class='value'>");
+  html += SIM800L_ENABLE
+    ? "Habilitado"
+    : "Deshabilitado";
+  html += F("</div></div>");
+
+  html += F("</div>");
+  html += F("<a href='/update'>Actualizar firmware</a>");
+  html += F(" <a href='/api/status'>Ver estado JSON</a>");
+  html += F("</section>");
+
+  html += F("<section class='card'><div class='label'>Acceso OTA</div>");
+  html += F("<p>Abre <code>/update</code> e ingresa las credenciales configuradas en <code>secrets.h</code>.</p>");
+
+  if (recoveryApActive) {
+    html += F("<p>Red de recuperación: <code>");
+    html += recoveryApSsid;
+    html += F("</code> · IP: <code>");
+    html += WiFi.softAPIP().toString();
+    html += F("</code></p>");
+  }
+
+  html += F("</section></main></body></html>");
+
+  return html;
+}
+
+
 void setupWebServer() {
   server.on("/", HTTP_GET, []() {
-    server.sendHeader("Location", "/update");
-    server.send(302, "text/plain", "");
+    server.send(
+      200,
+      "text/html; charset=utf-8",
+      buildHomePage()
+    );
   });
 
   server.on("/api/status", HTTP_GET, []() {
@@ -811,12 +923,165 @@ void serviceNetwork() {
 
 
 // ============================================================================
+// SIM800L: TRANSACCIONES AT
+// ============================================================================
+
+#if defined(ESP32) && SIM800L_ENABLE
+
+void pulseSim800lPowerKey() {
+
+#if SIM800L_PWRKEY_ENABLE
+
+  pinMode(SIM800L_PWRKEY_PIN, OUTPUT);
+
+  const uint8_t activeLevel =
+    SIM800L_PWRKEY_ACTIVE_LOW ? LOW : HIGH;
+
+  const uint8_t idleLevel =
+    SIM800L_PWRKEY_ACTIVE_LOW ? HIGH : LOW;
+
+  digitalWrite(SIM800L_PWRKEY_PIN, idleLevel);
+  delay(100);
+
+  digitalWrite(SIM800L_PWRKEY_PIN, activeLevel);
+  delay(1200);
+
+  digitalWrite(SIM800L_PWRKEY_PIN, idleLevel);
+  delay(3000);
+
+#endif
+}
+
+
+String sanitizeSimResponse(String response) {
+  response.replace("\r", "");
+  response.trim();
+  response.replace("\n", "|");
+  response.replace(",", ";");
+
+  while (response.indexOf("||") >= 0) {
+    response.replace("||", "|");
+  }
+
+  return response;
+}
+
+
+String transactSim800l(
+  const String& atCommand,
+  uint32_t timeoutMs = 1800
+) {
+  while (sim800Serial.available() > 0) {
+    sim800Serial.read();
+  }
+
+  sim800Serial.print(atCommand);
+  sim800Serial.print("\r\n");
+
+  String response;
+  response.reserve(256);
+
+  const uint32_t startedAt = millis();
+  uint32_t lastByteAt = startedAt;
+  bool receivedAnyByte = false;
+
+  while (millis() - startedAt < timeoutMs) {
+    while (sim800Serial.available() > 0) {
+      const char character =
+        static_cast<char>(sim800Serial.read());
+
+      if (response.length() < 511) {
+        response += character;
+      }
+
+      receivedAnyByte = true;
+      lastByteAt = millis();
+    }
+
+    const bool finalResponseSeen =
+      response.indexOf("\r\nOK\r\n") >= 0 ||
+      response.indexOf("\r\nERROR\r\n") >= 0 ||
+      response.indexOf("+CME ERROR:") >= 0 ||
+      response.indexOf("+CMS ERROR:") >= 0;
+
+    if (
+      receivedAnyByte &&
+      finalResponseSeen &&
+      millis() - lastByteAt > 80
+    ) {
+      break;
+    }
+
+    serviceNetwork();
+    delay(1);
+  }
+
+  lastSimCommand = atCommand;
+  lastSimResponse = sanitizeSimResponse(response);
+  lastSimActivityMs = millis();
+
+  if (lastSimResponse.length() == 0) {
+    lastSimResponse = "TIMEOUT";
+  }
+
+  return lastSimResponse;
+}
+
+
+void printSimTransaction(const String& atCommand) {
+  const String response = transactSim800l(atCommand);
+
+  Serial.print("SIM800L,cmd=");
+  Serial.print(atCommand);
+  Serial.print(",response=");
+  Serial.println(response);
+}
+
+
+void setupSim800l() {
+  pulseSim800lPowerKey();
+
+  sim800Serial.begin(
+    SIM800L_BAUD,
+    SERIAL_8N1,
+    SIM800L_RX_PIN,
+    SIM800L_TX_PIN
+  );
+
+  delay(500);
+
+  Serial.print("NOPAL:SIM800L_UART_READY,baud=");
+  Serial.print(SIM800L_BAUD);
+  Serial.print(",rx=");
+  Serial.print(SIM800L_RX_PIN);
+  Serial.print(",tx=");
+  Serial.println(SIM800L_TX_PIN);
+
+  const String atResponse = transactSim800l("AT", 1200);
+
+  if (atResponse.indexOf("OK") >= 0) {
+    Serial.println("NOPAL:SIM800L_READY");
+
+    transactSim800l("ATE0", 1200);
+    transactSim800l("AT+CMEE=2", 1200);
+  } else {
+    Serial.print("WARN:SIM800L_NO_RESPONSE,response=");
+    Serial.println(atResponse);
+  }
+}
+
+#endif
+
+
+// ============================================================================
 // IDENTIFICACIÓN PARA NOPAL
 // ============================================================================
 
 void sendIdentification() {
-  Serial.print("NOPAL,role=accessory,chip=");
+  Serial.print("NOPAL,role=");
+  Serial.print(DEVICE_ROLE);
 
+  Serial.print(",chip=");
   printChipIdentification();
 
   Serial.print(",fw=");
@@ -832,15 +1097,8 @@ void sendIdentification() {
   Serial.print(WS2812_ENABLE ? 1 : 0);
 
   Serial.print(",ws2812_count=");
-  Serial.print(
-    WS2812_ENABLE
-      ? WS2812_COUNT
-      : 0
-  );
+  Serial.print(WS2812_ENABLE ? WS2812_COUNT : 0);
 
-  // Campos opcionales agregados en 1.3: un backend viejo simplemente no los
-  // conoce y los ignora, mismo criterio que el resto de campos "extra" de
-  // esta línea.
   Serial.print(",wifi=1");
 
   Serial.print(",wifi_connected=");
@@ -858,10 +1116,12 @@ void sendIdentification() {
   Serial.print(",ota=1");
   Serial.print(",ota_path=/update");
 
-  // Telemetría real disponible en ambas plataformas sin sensores extra
-  // (no hay forma de medir voltaje/corriente/temperatura en este firmware
-  // genérico sin hardware adicional, así que no se reporta). Presente
-  // desde la 1.2.
+  Serial.print(",sim800l=");
+  Serial.print(SIM800L_ENABLE ? 1 : 0);
+
+  Serial.print(",sim_baud=");
+  Serial.print(SIM800L_BAUD);
+
   Serial.print(",uptime_ms=");
   Serial.print(millis());
 
@@ -916,7 +1176,6 @@ void sendNetworkIdentification() {
 // ============================================================================
 
 bool handleRelayCommand(const String& command) {
-
   if (
     command.length() < 2 ||
     command.charAt(0) != 'R'
@@ -924,21 +1183,12 @@ bool handleRelayCommand(const String& command) {
     return false;
   }
 
-  // ------------------------------------------------------------------------
-  // Consulta:
-  // R1?
-  // ------------------------------------------------------------------------
-
   if (command.endsWith("?")) {
-
     const String relayNumberText =
       command.substring(1, command.length() - 1);
 
-    const int relayNumber =
-      relayNumberText.toInt();
-
-    const int relayIndex =
-      relayNumber - 1;
+    const int relayNumber = relayNumberText.toInt();
+    const int relayIndex = relayNumber - 1;
 
     if (!validRelayIndex(relayIndex)) {
       Serial.println("ERR:INVALID_RELAY");
@@ -954,15 +1204,7 @@ bool handleRelayCommand(const String& command) {
     return true;
   }
 
-
-  // ------------------------------------------------------------------------
-  // Acción:
-  // R1:ON
-  // R1:OFF
-  // ------------------------------------------------------------------------
-
-  const int colonPosition =
-    command.indexOf(':');
+  const int colonPosition = command.indexOf(':');
 
   if (colonPosition <= 1) {
     return false;
@@ -971,20 +1213,15 @@ bool handleRelayCommand(const String& command) {
   const String relayNumberText =
     command.substring(1, colonPosition);
 
-  const int relayNumber =
-    relayNumberText.toInt();
-
-  const int relayIndex =
-    relayNumber - 1;
+  const int relayNumber = relayNumberText.toInt();
+  const int relayIndex = relayNumber - 1;
 
   if (!validRelayIndex(relayIndex)) {
     Serial.println("ERR:INVALID_RELAY");
     return true;
   }
 
-  String action =
-    command.substring(colonPosition + 1);
-
+  String action = command.substring(colonPosition + 1);
   action.trim();
   action.toUpperCase();
 
@@ -1007,26 +1244,92 @@ bool handleRelayCommand(const String& command) {
 
 
 // ============================================================================
-// PROCESAMIENTO DE COMANDOS
+// PROCESAMIENTO DE SIM800L
+// ============================================================================
+
+bool handleSim800lCommand(const String& command) {
+  if (!command.startsWith("SIM:")) {
+    return false;
+  }
+
+#if defined(ESP32) && SIM800L_ENABLE
+
+  if (command == "SIM:AT") {
+    printSimTransaction("AT");
+    return true;
+  }
+
+  if (command == "SIM:INFO?") {
+    printSimTransaction("ATI");
+    return true;
+  }
+
+  if (command == "SIM:CSQ?") {
+    printSimTransaction("AT+CSQ");
+    return true;
+  }
+
+  if (command == "SIM:CREG?") {
+    printSimTransaction("AT+CREG?");
+    return true;
+  }
+
+  if (command == "SIM:CCID?") {
+    printSimTransaction("AT+CCID");
+    return true;
+  }
+
+  if (command == "SIM:IMEI?") {
+    printSimTransaction("AT+GSN");
+    return true;
+  }
+
+  if (command == "SIM:OPERATOR?") {
+    printSimTransaction("AT+COPS?");
+    return true;
+  }
+
+  if (command.startsWith("SIM:RAW:")) {
+    String rawCommand = command.substring(8);
+    rawCommand.trim();
+
+    if (
+      !rawCommand.startsWith("AT") ||
+      rawCommand.length() > 100
+    ) {
+      Serial.println("ERR:INVALID_AT_COMMAND");
+      return true;
+    }
+
+    printSimTransaction(rawCommand);
+    return true;
+  }
+
+  Serial.println("ERR:UNKNOWN_SIM_COMMAND");
+  return true;
+
+#else
+
+  Serial.println("ERR:SIM800L_DISABLED_ON_THIS_BUILD");
+  return true;
+
+#endif
+}
+
+
+// ============================================================================
+// PROCESAMIENTO DE COMANDOS NOPAL
 // ============================================================================
 
 void handleCommand(String line) {
-
   line.trim();
 
   if (!line.startsWith("NOPAL:")) {
     return;
   }
 
-  String command =
-    line.substring(6);
-
+  String command = line.substring(6);
   command.trim();
-
-
-  // ------------------------------------------------------------------------
-  // Identificación
-  // ------------------------------------------------------------------------
 
   if (command == "ID?") {
     sendIdentification();
@@ -1038,24 +1341,17 @@ void handleCommand(String line) {
     return;
   }
 
-
-  // ------------------------------------------------------------------------
-  // Relés
-  // ------------------------------------------------------------------------
-
   if (handleRelayCommand(command)) {
     return;
   }
 
-
-  // ------------------------------------------------------------------------
-  // RGB PWM
-  // ------------------------------------------------------------------------
+  if (handleSim800lCommand(command)) {
+    return;
+  }
 
 #if PWM_LED_ENABLE
 
   if (command.startsWith("LED:")) {
-
     int red;
     int green;
     int blue;
@@ -1085,15 +1381,9 @@ void handleCommand(String line) {
 
 #endif
 
-
-  // ------------------------------------------------------------------------
-  // WS2812
-  // ------------------------------------------------------------------------
-
 #if WS2812_ENABLE
 
   if (command.startsWith("WS:")) {
-
     int red;
     int green;
     int blue;
@@ -1133,18 +1423,14 @@ void handleCommand(String line) {
 
 void setup() {
   Serial.begin(115200);
+  inputLine.reserve(160);
 
-  inputLine.reserve(128);
-
-  // Configuración segura de relés.
   for (uint8_t index = 0; index < RELAY_COUNT; index++) {
     pinMode(RELAY_PINS[index], OUTPUT);
     setRelay(index, false);
   }
 
   setupPwmLed();
-
-  // Apagar RGB al iniciar.
   setPwmLedColor(0, 0, 0);
 
 #if WS2812_ENABLE
@@ -1152,6 +1438,12 @@ void setup() {
   strip.begin();
   strip.clear();
   strip.show();
+
+#endif
+
+#if defined(ESP32) && SIM800L_ENABLE
+
+  setupSim800l();
 
 #endif
 
@@ -1169,19 +1461,16 @@ void setup() {
 // ============================================================================
 
 void loop() {
-
   serviceNetwork();
 
   while (Serial.available() > 0) {
-
     const char receivedCharacter =
       static_cast<char>(Serial.read());
 
     if (receivedCharacter == '\n') {
-
       inputLine.trim();
 
-      if (!inputLine.isEmpty()) {
+      if (inputLine.length() > 0) {
         handleCommand(inputLine);
       }
 
@@ -1189,8 +1478,7 @@ void loop() {
 
     } else if (receivedCharacter != '\r') {
 
-      // Evita que una entrada defectuosa consuma toda la memoria.
-      if (inputLine.length() < 127) {
+      if (inputLine.length() < 159) {
         inputLine += receivedCharacter;
       } else {
         inputLine = "";
@@ -1198,11 +1486,4 @@ void loop() {
       }
     }
   }
-
-#if defined(ESP8266)
-
-  // Permite que el ESP8266 atienda sus tareas internas.
-  yield();
-
-#endif
 }

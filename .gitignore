@@ -22,6 +22,23 @@ accessory_registry.json
 auth_users.json
 .session_secret
 
+# Credenciales reales de placas NOPAL (Wi-Fi/OTA) — usa secrets.h.example
+# como plantilla, secrets.h con los datos reales nunca se sube.
+firmware/nopal_accessory/secrets.h
+
+# Binarios .bin subidos para flashear placas NOPAL — se suben desde el
+# panel, no se versionan (pueden pesar varios MB y son específicos de cada
+# instalación).
+firmware/nopal_accessory/builds/
+
+# Estado de instancia (instalaciones de plugins, logs de actividad, etc.)
+# — no es código fuente, se genera en cada instalación.
+data/
+
+# Respaldos automáticos de otras herramientas (Codex, etc.), no son parte
+# del proyecto.
+.codex-backups/
+
 # Entorno / configuración local
 .env
 .claude/

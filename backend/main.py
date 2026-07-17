@@ -28,12 +28,15 @@ from backend.api.printers import router as printers_router
 from backend.api.console import router as console_router
 from backend.api.laser import router as laser_router
 from backend.api.marlin_printers import router as marlin_printers_router
+from backend.api.elegoo_printers import router as elegoo_printers_router
+from backend.api.flashforge_printers import router as flashforge_printers_router
 from backend.api.logs import router as logs_router
 from backend.api.accessories import router as accessories_router
 from backend.api.pricing import router as pricing_router
 from backend.api.auth import router as auth_router
 from backend.api.notifications import router as notifications_router
 from backend.api.plugins import router as plugins_router
+from backend.api.dashboard import router as dashboard_router
 from backend.services.pricing_service import get_quote
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
@@ -94,12 +97,15 @@ app.include_router(printers_router)
 app.include_router(console_router)
 app.include_router(laser_router)
 app.include_router(marlin_printers_router)
+app.include_router(elegoo_printers_router)
+app.include_router(flashforge_printers_router)
 app.include_router(logs_router)
 app.include_router(accessories_router)
 app.include_router(pricing_router)
 app.include_router(auth_router)
 app.include_router(notifications_router)
 app.include_router(plugins_router)
+app.include_router(dashboard_router)
 
 
 @app.on_event("startup")
