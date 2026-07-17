@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=254">
+    <link rel="stylesheet" href="/static/css/style.css?v=264">
 </head>
 <body>
     <div class="app-shell">
@@ -38,6 +38,9 @@
                 <div class="topbar-menu-panel" id="topbar-lang-panel" hidden>
                     <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="es">Español</button>
                     <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="en">English</button>
+                    <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="pt-BR">Português</button>
+                    <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="fr">Français</button>
+                    <button type="button" class="topbar-menu-item lang-switch-btn" data-lang="de">Deutsch</button>
                 </div>
             </div>
             <div class="topbar-user-wrap" id="topbar-user-wrap">
@@ -233,18 +236,21 @@
                             <button class="btn-view-toggle" id="toggle-offline-machines-btn" title="Ver máquinas sin conexión">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>
+                            <button class="btn-view-toggle" id="device-columns-customizer-btn" type="button" data-i18n-title="deviceOrganizerTitle" title="Organizar dispositivos">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2" fill="var(--panel-bg)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2" fill="var(--panel-bg)"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2" fill="var(--panel-bg)"/></svg>
+                            </button>
                         </div>
                     </div>
                     <div id="machines-columns" class="machines-columns">
-                        <div class="machines-column">
+                        <div class="machines-column" data-device-column="printer">
                             <h3 class="machines-column-title machines-column-title-printer" data-i18n="printerType3D">Impresora 3D</h3>
                             <div id="printers-grid" class="printers-grid"></div>
                         </div>
-                        <div class="machines-column">
+                        <div class="machines-column" data-device-column="laser">
                             <h3 class="machines-column-title machines-column-title-laser" data-i18n="laser">Láser</h3>
                             <div id="lasers-grid" class="printers-grid"></div>
                         </div>
-                        <div class="machines-column">
+                        <div class="machines-column" data-device-column="cnc">
                             <h3 class="machines-column-title machines-column-title-cnc" data-i18n="cnc">CNC</h3>
                             <div id="cnc-grid" class="printers-grid"></div>
                         </div>
@@ -424,116 +430,117 @@
             </section>
 
             <section id="gcode-section" class="view-section" style="display: none;">
-                <main class="main-content models-page-content">
-                    <div class="models-page-layout">
-                        <div class="models-table-panel">
-                            <div class="gcode-table-panel-inner">
-                            <div class="models-list-header">
-                                <div class="models-list-header-top">
-                                    <div>
-                                        <span class="library-page-eyebrow">BIBLIOTECA NOPAL</span>
-                                        <h2 data-i18n="gcode">G-code</h2>
-                                        <p>Revisa tus archivos de G-code en un formato limpio y ordenado.</p>
-                                    </div>
-                                    <div class="models-list-actions">
-                                        <span class="badge badge-alt" data-i18n="gcode">G-code</span>
-                                    </div>
+                <main class="main-content gcode-library-main">
+                    <div class="gcode-library-shell">
+                        <section class="gcode-library-card">
+                            <header class="gcode-library-header">
+                                <div>
+                                    <span class="library-page-eyebrow" data-i18n="libraryEyebrow">BIBLIOTECA NOPAL</span>
+                                    <h1 data-i18n="gcode">G-code</h1>
+                                    <p data-i18n="libraryGcodeDescription">Explora, organiza y gestiona tus archivos G-code.</p>
                                 </div>
-                                <div class="models-list-controls">
-                                    <div class="section-search">
-                                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                        <input id="search-gcode" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
-                                    </div>
+                                <div class="gcode-library-actions">
                                     <div class="upload-wrapper">
-                                        <button id="upload-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Subir G-code" title="Subir G-code">
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        <button id="upload-btn-gcode" class="gcode-primary-action" type="button">
+                                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span data-i18n="libraryUploadFile">Subir archivo</span>
                                         </button>
-                                        <input id="upload-input-gcode" type="file" accept=".gcode,.gc,.gco" multiple hidden>
+                                        <input id="upload-input-gcode" type="file" accept=".gcode,.gc,.gco,.nc,.tap,.cnc" multiple hidden>
                                     </div>
-                                    <button id="create-folder-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Crear carpeta" title="Crear carpeta">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                                    <button id="create-folder-btn-gcode" class="gcode-toolbar-action" type="button">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span data-i18n="libraryNewFolder">Nueva carpeta</span>
                                     </button>
-                                    <button id="reload-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Recargar" title="Recargar">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    <button id="reload-btn-gcode" class="gcode-toolbar-action" type="button">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg><span data-i18n="libraryRefresh">Actualizar</span>
                                     </button>
-                                    <button id="settings-btn-gcode" class="btn-icon btn-icon-dark" aria-label="Configuración" title="Configuración">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                    <button id="settings-btn-gcode" class="gcode-icon-action" type="button" title="Más opciones">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
                                     </button>
                                 </div>
+                            </header>
+
+                            <div class="gcode-navigation-row">
+                                <div class="gcode-navigation-buttons">
+                                    <button id="gcode-nav-back" type="button" title="Atrás"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
+                                    <button id="gcode-nav-forward" type="button" title="Adelante"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+                                    <button id="gcode-nav-up" type="button" title="Subir nivel"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg></button>
+                                    <button id="gcode-nav-home" type="button" title="Inicio"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg></button>
+                                </div>
+                                <nav class="gcode-breadcrumbs" id="gcode-breadcrumb" aria-label="Ruta actual"></nav>
+                                <span id="gcode-disk-free" class="gcode-disk-free">—</span>
                             </div>
-                            <div class="models-breadcrumb-row">
-                                <span id="gcode-breadcrumb">Ruta actual: /</span>
-                                <span id="gcode-disk-free">—</span>
+
+                            <div class="gcode-library-toolbar">
+                                <label class="gcode-library-search">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.7" y2="16.7"/></svg>
+                                    <input id="search-gcode" type="search" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
+                                    <kbd>Ctrl K</kbd>
+                                </label>
+                                <div class="gcode-toolbar-spacer"></div>
+                                <label class="gcode-select-control"><span data-i18n="librarySortBy">Ordenar por:</span><select id="gcode-sort-select"><option value="name-asc" data-i18n="librarySortNameAsc">Nombre (A-Z)</option><option value="name-desc" data-i18n="librarySortNameDesc">Nombre (Z-A)</option><option value="date-desc" data-i18n="librarySortNewest">Más recientes</option><option value="date-asc" data-i18n="librarySortOldest">Más antiguos</option><option value="size-desc" data-i18n="librarySortLargest">Mayor tamaño</option></select></label>
+                                <label class="gcode-select-control gcode-filter-control"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10m-7 7h4"/></svg><select id="gcode-filter-select"><option value="all" data-i18n="libraryFilters">Filtros</option><option value="favorites" data-i18n="libraryFavorites">Favoritos</option><option value="recent" data-i18n="libraryRecent">Recientes</option></select></label>
+                                <div class="gcode-view-switch">
+                                    <button id="gcode-view-grid" type="button" data-view="grid" title="Vista de cuadrícula"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+                                    <button id="gcode-view-list" class="active" type="button" data-view="list" title="Vista de lista"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+                                </div>
                             </div>
-                            <div class="bulk-actions-bar" id="gcode-bulk-bar" hidden>
-                                <span id="gcode-bulk-count">0</span>
-                                <button type="button" class="btn-file-action" id="gcode-bulk-move-btn">
-                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/></svg>
-                                    <span data-i18n="moveFile">Mover</span>
-                                </button>
-                                <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-bulk-delete-btn">
-                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                                    <span data-i18n="delete">Eliminar</span>
-                                </button>
-                                <button type="button" class="bulk-actions-clear-btn" id="gcode-bulk-clear-btn" data-i18n="clearSelection">Cancelar selección</button>
+
+                            <div class="gcode-browser-layout">
+                                <aside class="gcode-inner-sidebar">
+                                    <section>
+                                        <div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="gcode-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div>
+                                        <div id="gcode-favorites-list" class="gcode-sidebar-list"></div>
+                                    </section>
+                                    <section>
+                                        <div class="gcode-sidebar-heading"><strong>◷ <span data-i18n="libraryRecent">Recientes</span></strong><button id="gcode-recents-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div>
+                                        <div id="gcode-recents-list" class="gcode-sidebar-list"></div>
+                                    </section>
+                                    <section>
+                                        <div class="gcode-sidebar-heading"><strong>◇ Etiquetas</strong></div>
+                                        <div id="gcode-tags-list" class="gcode-sidebar-list gcode-tag-list"></div>
+                                    </section>
+                                </aside>
+
+                                <div class="gcode-browser-content">
+                                    <div id="gcode-folder-strip" class="gcode-folder-strip"></div>
+                                    <div class="bulk-actions-bar" id="gcode-bulk-bar" hidden>
+                                        <span id="gcode-bulk-count">0</span>
+                                        <button type="button" class="btn-file-action" id="gcode-bulk-move-btn"><span data-i18n="moveFile">Mover</span></button>
+                                        <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-bulk-delete-btn"><span data-i18n="delete">Eliminar</span></button>
+                                        <button type="button" class="bulk-actions-clear-btn" id="gcode-bulk-clear-btn" data-i18n="clearSelection">Cancelar selección</button>
+                                    </div>
+                                    <div id="gcode-table" class="models-table-wrapper gcode-modern-table"></div>
+                                    <footer class="gcode-pagination" id="gcode-pagination"></footer>
+                                </div>
                             </div>
-                            <div id="gcode-table" class="models-table-wrapper"></div>
-                            </div>
-                        </div>
-                        <aside class="gcode-preview-card">
+                        </section>
+
+                        <aside class="gcode-preview-card gcode-modern-preview">
                             <div class="preview-card-inner">
-                                <div class="preview-card-header">
-                                    <div>
-                                        <span class="preview-label" data-i18n="gcodePreviewRealtime">Realtime</span>
-                                        <h2 data-i18n="gcodePreviewHeading">G-code Preview</h2>
-                                    </div>
-                                </div>
+                                <div class="preview-card-header"><div><span class="preview-label" data-i18n="libraryGcodePreview">VISTA PREVIA DE G-CODE</span></div></div>
                                 <div class="preview-details-panel">
-                                    <div class="preview-title-row">
-                                        <div>
-                                            <h3 id="gcode-preview-title">Selecciona un archivo G-code</h3>
-                                            <p id="gcode-preview-description">La vista previa se actualiza cuando seleccionas un archivo de la lista.</p>
-                                        </div>
-                                    </div>
+                                    <div class="gcode-preview-name-row"><h2 id="gcode-preview-title" data-i18n="librarySelectGcode">Selecciona un archivo G-code</h2><button id="gcode-preview-favorite" type="button" title="Favorito">☆</button></div>
+                                    <p id="gcode-preview-description" data-i18n="libraryGcodePreviewHelp">La vista previa se actualiza cuando seleccionas un archivo de la lista.</p>
                                     <div class="preview-meta-grid">
-                                        <div>
-                                            <span data-i18n="previewMetaLines">Lines</span>
-                                            <strong id="gcode-preview-lines">—</strong>
-                                        </div>
-                                        <div>
-                                            <span data-i18n="columnSize">Size</span>
-                                            <strong id="gcode-preview-size">—</strong>
-                                        </div>
-                                        <div>
-                                            <span data-i18n="previewMetaModified">Modified</span>
-                                            <strong id="gcode-preview-date">—</strong>
-                                        </div>
+                                        <div><span data-i18n="previewMetaLines">Líneas</span><strong id="gcode-preview-lines">—</strong></div>
+                                        <div><span data-i18n="columnSize">Tamaño</span><strong id="gcode-preview-size">—</strong></div>
+                                        <div><span data-i18n="previewMetaModified">Modificado</span><strong id="gcode-preview-date">—</strong></div>
                                     </div>
                                     <div class="preview-file-actions">
-                                        <button type="button" class="btn-file-action btn-file-action-accent" id="gcode-send-laser-btn" title="Enviar a láser">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
-                                            <span data-i18n="sendToLaser">Enviar a láser</span>
-                                        </button>
-                                        <button type="button" class="btn-file-action" id="gcode-download-btn" title="Descargar">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                            <span data-i18n="downloadFile">Descargar</span>
-                                        </button>
-                                        <button type="button" class="btn-file-action" id="gcode-rename-btn" title="Renombrar">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                            <span data-i18n="rename">Renombrar</span>
-                                        </button>
-                                        <button type="button" class="btn-file-action" id="gcode-move-btn" title="Mover a carpeta">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8z"/><path d="M12 11v6"/><path d="M9.5 13.5 12 11l2.5 2.5"/></svg>
-                                            <span data-i18n="moveFile">Mover</span>
-                                        </button>
-                                        <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-delete-btn" title="Eliminar">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                                            <span data-i18n="delete">Eliminar</span>
-                                        </button>
+                                        <button type="button" class="btn-file-action btn-file-action-accent" id="gcode-send-laser-btn"><span data-i18n="sendToLaser">Enviar a láser</span></button>
+                                        <button type="button" class="btn-file-action" id="gcode-download-btn"><span data-i18n="downloadFile">Descargar</span></button>
+                                        <button type="button" class="btn-file-action" id="gcode-rename-btn"><span data-i18n="rename">Renombrar</span></button>
+                                        <button type="button" class="btn-file-action" id="gcode-move-btn"><span data-i18n="moveFile">Mover</span></button>
+                                        <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-delete-btn"><span data-i18n="delete">Eliminar</span></button>
                                     </div>
                                 </div>
-                                <div class="gcode-preview-scene" id="gcode-preview">
-                                    <div class="preview-image-placeholder">Selecciona un archivo para ver la trayectoria</div>
+                                <div class="gcode-preview-coordinate-frame">
+                                    <div class="gcode-preview-ruler-y"><span>Y</span><i>100</i><i>50</i><i>0</i></div>
+                                    <div class="gcode-preview-scene" id="gcode-preview"><div class="preview-image-placeholder">Selecciona un archivo para ver la trayectoria</div></div>
+                                    <div class="gcode-preview-ruler-x"><span>X</span><i>0</i><i>50</i><i>100</i></div>
+                                </div>
+                                <div class="gcode-preview-insights">
+                                    <div><span data-i18n="librarySuggestedMaterial">Material sugerido</span><strong id="gcode-preview-material">—</strong></div>
+                                    <div><span data-i18n="libraryEstimatedTime">Tiempo estimado</span><strong id="gcode-preview-time">—</strong></div>
                                 </div>
                             </div>
                         </aside>
@@ -1799,6 +1806,9 @@
                                 <div class="option-switch" id="settings-language-switch">
                                     <button type="button" class="option-switch-btn" data-value="es">Español</button>
                                     <button type="button" class="option-switch-btn" data-value="en">English</button>
+                                    <button type="button" class="option-switch-btn" data-value="pt-BR">Português</button>
+                                    <button type="button" class="option-switch-btn" data-value="fr">Français</button>
+                                    <button type="button" class="option-switch-btn" data-value="de">Deutsch</button>
                                 </div>
                             </div>
                             <div class="settings-field settings-field-switch">
@@ -2370,6 +2380,9 @@
             <div class="login-lang-switch" id="login-lang-switch">
                 <button type="button" class="lang-switch-btn" data-lang="es">ES</button>
                 <button type="button" class="lang-switch-btn" data-lang="en">EN</button>
+                <button type="button" class="lang-switch-btn" data-lang="pt-BR">PT</button>
+                <button type="button" class="lang-switch-btn" data-lang="fr">FR</button>
+                <button type="button" class="lang-switch-btn" data-lang="de">DE</button>
             </div>
             <img class="login-card-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
 
@@ -2462,12 +2475,14 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="printer-modal-topbar">
-                <img id="printer-modal-image" src="" alt="">
-                <div class="printer-modal-topbar-info">
-                    <h2 id="printer-modal-name">—</h2>
-                    <div class="printer-status-line" id="printer-modal-status-line">
-                        <span class="printer-status-dot" id="printer-modal-status-dot"></span>
-                        <span id="printer-modal-status-text">—</span>
+                <div class="printer-modal-topbar-identity">
+                    <img id="printer-modal-image" src="" alt="">
+                    <div class="printer-modal-topbar-info">
+                        <h2 id="printer-modal-name">—</h2>
+                        <div class="printer-status-line" id="printer-modal-status-line">
+                            <span class="printer-status-dot" id="printer-modal-status-dot"></span>
+                            <span id="printer-modal-status-text">—</span>
+                        </div>
                     </div>
                 </div>
                 <div class="printer-modal-topbar-mcu" id="printer-modal-stats"></div>
@@ -2507,6 +2522,35 @@
                 <div class="printer-modal-column" data-module="queue">
                     <div id="printer-modal-queue"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Organizador exclusivo de las columnas del dashboard de dispositivos. -->
+    <div id="device-columns-customizer-modal" class="modal">
+        <div class="modal-backdrop" id="device-columns-customizer-modal-backdrop"></div>
+        <div class="modal-content module-customizer-modal-content device-columns-customizer-modal-content">
+            <button class="modal-close" id="device-columns-customizer-modal-close" type="button">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="module-customizer-header">
+                <img class="login-card-logo module-customizer-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <h2 data-i18n="deviceOrganizerTitle">Organizar dispositivos</h2>
+                <p class="module-customizer-subtitle" data-i18n="deviceOrganizerSubtitle">Elige qué tipos de máquina quieres ver y arrástralos para cambiar su orden.</p>
+            </div>
+            <div class="module-customizer-group device-columns-customizer-group">
+                <div class="module-customizer-group-header">
+                    <h3 data-i18n="deviceOrganizerVisibleTitle">Tipos de máquina</h3>
+                    <p data-i18n="deviceOrganizerDragHint">Arrastra para ordenar y desactiva lo que no utilizas.</p>
+                </div>
+                <div class="module-customizer-list" id="device-columns-customizer-list"></div>
+            </div>
+            <div class="module-customizer-footer">
+                <button type="button" class="module-customizer-reset-btn" id="device-columns-customizer-reset-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
+                </button>
+                <p class="module-customizer-reset-hint" data-i18n="deviceOrganizerResetHint">Vuelve a mostrar Impresoras 3D, Láser y CNC en el orden original.</p>
             </div>
         </div>
     </div>
@@ -4019,10 +4063,37 @@
         </div>
     </div>
 
+    <div class="update-safety-modal" id="update-safety-modal" hidden>
+        <section class="update-safety-dialog" role="dialog" aria-modal="true" aria-labelledby="update-safety-title">
+            <div class="update-safety-icon" aria-hidden="true">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"/><path d="M12 8v5"/><path d="M12 17h.01"/></svg>
+            </div>
+            <div class="update-safety-eyebrow" data-i18n="updatesSafetyEyebrow">ACTUALIZACIÓN DEL SISTEMA</div>
+            <h2 id="update-safety-title" data-i18n="updatesSafetyTitle">Detén todas las máquinas antes de continuar</h2>
+            <p class="update-safety-intro" data-i18n="updatesSafetyBody">NOPAL se reiniciará para aplicar la actualización. Un reinicio durante un trabajo puede interrumpir el envío de comandos y dejar una máquina sin supervisión.</p>
+            <div class="update-safety-checks">
+                <div><span>01</span><strong data-i18n="updatesSafetyJobs">No hay impresiones, cortes, grabados ni trabajos CNC activos.</strong></div>
+                <div><span>02</span><strong data-i18n="updatesSafetyOutputs">El láser, husillo, aire asistido y calentadores están apagados.</strong></div>
+                <div><span>03</span><strong data-i18n="updatesSafetyIdle">Todas las máquinas están detenidas y en una posición segura.</strong></div>
+            </div>
+            <label class="update-safety-confirmation">
+                <input type="checkbox" id="update-safety-checkbox">
+                <span data-i18n="updatesSafetyConfirm">Confirmo que revisé físicamente las máquinas y es seguro reiniciar NOPAL.</span>
+            </label>
+            <div class="update-safety-actions">
+                <button type="button" class="update-safety-cancel" id="update-safety-cancel" data-i18n="updatesSafetyCancel">Cancelar</button>
+                <button type="button" class="update-safety-proceed" id="update-safety-proceed" disabled data-i18n="updatesSafetyProceed">Actualizar y reiniciar</button>
+            </div>
+        </section>
+    </div>
+
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=16"></script>
-    <script src="/static/js/app.js?v=196"></script>
+    <script src="/static/js/translations.js?v=20"></script>
+    <script src="/static/js/translations-pt-BR.js?v=2"></script>
+    <script src="/static/js/translations-fr.js?v=2"></script>
+    <script src="/static/js/translations-de.js?v=2"></script>
+    <script src="/static/js/app.js?v=204"></script>
 </body>
 </html>

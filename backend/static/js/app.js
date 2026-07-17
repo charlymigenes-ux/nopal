@@ -217,7 +217,8 @@ wireTopbarDropdown('topbar-user-btn', 'topbar-user-panel');
 
 function updateTopbarLangLabel() {
     const el = document.getElementById('topbar-lang-current');
-    if (el) el.textContent = (typeof currentLanguage !== 'undefined' ? currentLanguage : 'es').toUpperCase();
+    const labels = { es: 'ES', en: 'EN', 'pt-BR': 'PT', fr: 'FR', de: 'DE' };
+    if (el) el.textContent = labels[typeof currentLanguage !== 'undefined' ? currentLanguage : 'es'] || 'ES';
 }
 
 document.querySelectorAll('#topbar-lang-panel .lang-switch-btn').forEach(btn => {
@@ -271,11 +272,59 @@ checkAuth().then(user => {
 });
 setInterval(() => { if (currentAuthUser) loadTopbarNotifications(); }, 10000);
 
+function installModernModelsLibraryMarkup() {
+    const section = document.getElementById('models-section');
+    if (!section) return;
+    section.innerHTML = `
+        <main class="main-content gcode-library-main models-modern-main">
+            <div class="gcode-library-shell models-library-shell">
+                <section class="gcode-library-card models-library-card">
+                    <header class="gcode-library-header">
+                        <div><span class="library-page-eyebrow" data-i18n="libraryEyebrow">BIBLIOTECA NOPAL</span><h1 data-i18n="navPrinting3d">Impresión 3D</h1><p data-i18n="libraryModelsDescription">Explora, organiza y gestiona tus modelos y archivos listos para imprimir.</p></div>
+                        <div class="gcode-library-actions">
+                            <div class="upload-wrapper"><button id="upload-btn-models" class="gcode-primary-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span data-i18n="libraryUploadFile">Subir archivo</span></button><input id="upload-input-models" type="file" accept=".stl,.3mf,.obj,.gcode,.gc,.gco" multiple hidden></div>
+                            <button id="create-folder-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span data-i18n="libraryNewFolder">Nueva carpeta</span></button>
+                            <button id="reload-btn-models" class="gcode-toolbar-action" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg><span data-i18n="libraryRefresh">Actualizar</span></button>
+                            <button id="settings-btn-models" class="gcode-icon-action" type="button" title="Más opciones"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
+                        </div>
+                    </header>
+                    <div class="gcode-navigation-row">
+                        <div class="gcode-navigation-buttons"><button id="models-nav-back" type="button" title="Atrás"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button><button id="models-nav-forward" type="button" title="Adelante"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button><button id="models-nav-up" type="button" title="Subir nivel"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg></button><button id="models-nav-home" type="button" title="Inicio"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg></button></div>
+                        <nav class="gcode-breadcrumbs" id="models-breadcrumb" aria-label="Ruta actual"></nav><span id="models-disk-free" class="gcode-disk-free">—</span>
+                    </div>
+                    <div class="gcode-library-toolbar">
+                        <label class="gcode-library-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.7" y2="16.7"/></svg><input id="search-models" type="search" placeholder="Buscar modelos..."><kbd>Ctrl K</kbd></label>
+                        <div class="gcode-toolbar-spacer"></div>
+                        <label class="gcode-select-control"><span data-i18n="librarySortBy">Ordenar por:</span><select id="models-sort-select"><option value="name-asc" data-i18n="librarySortNameAsc">Nombre (A-Z)</option><option value="name-desc" data-i18n="librarySortNameDesc">Nombre (Z-A)</option><option value="date-desc" data-i18n="librarySortNewest">Más recientes</option><option value="date-asc" data-i18n="librarySortOldest">Más antiguos</option><option value="size-desc" data-i18n="librarySortLargest">Mayor tamaño</option></select></label>
+                        <label class="gcode-select-control gcode-filter-control"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10m-7 7h4"/></svg><select id="models-filter-select"><option value="all" data-i18n="libraryFilters">Filtros</option><option value="favorites" data-i18n="libraryFavorites">Favoritos</option><option value="recent" data-i18n="libraryRecent">Recientes</option><option value="models" data-i18n="libraryModelsOnly">Modelos 3D</option><option value="gcode">G-code</option></select></label>
+                        <div class="gcode-view-switch"><button id="view-grid-full" type="button" data-view="grid" title="Vista de cuadrícula"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button><button id="view-list-full" class="active" type="button" data-view="list" title="Vista de lista"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button></div>
+                    </div>
+                    <div class="gcode-browser-layout">
+                        <aside class="gcode-inner-sidebar"><section><div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="models-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-favorites-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◷ <span data-i18n="libraryRecent">Recientes</span></strong><button id="models-recents-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-recents-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◇ <span data-i18n="libraryFormats">Formatos</span></strong></div><div id="models-tags-list" class="gcode-sidebar-list"></div></section></aside>
+                        <div class="gcode-browser-content"><div id="models-folder-strip" class="gcode-folder-strip"></div><div class="bulk-actions-bar" id="models-bulk-bar" hidden><span id="models-bulk-count">0</span><button type="button" class="btn-file-action" id="models-bulk-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="models-bulk-delete-btn">Eliminar</button><button type="button" class="bulk-actions-clear-btn" id="models-bulk-clear-btn">Cancelar selección</button></div><div id="models-full" class="models-table-wrapper gcode-modern-table models-modern-table"></div><footer class="gcode-pagination" id="models-pagination"></footer></div>
+                    </div>
+                </section>
+                <aside class="models-preview-card gcode-modern-preview models-modern-preview"><div class="preview-card-inner">
+                    <div class="preview-card-header"><div><span class="preview-label" data-i18n="libraryModelPreview">VISTA PREVIA DEL MODELO</span></div><button type="button" class="preview-expand-btn" id="preview-expand-btn" title="Ampliar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button></div>
+                    <div class="gcode-preview-name-row"><h2 id="preview-filename" data-i18n="librarySelectModel">Selecciona un modelo</h2><button type="button" class="preview-favorite-btn" id="preview-favorite-btn" title="Favorito">☆</button></div><p class="models-preview-description" data-i18n="libraryModelPreviewHelp">Vista interactiva para modelos 3D y trayectorias G-code.</p>
+                    <div class="preview-meta-grid"><div><span>Tipo</span><strong id="preview-type">—</strong><span id="preview-type-pill" hidden></span></div><div><span>Tamaño</span><strong id="preview-size">—</strong></div><div><span>Modificado</span><strong id="preview-date">—</strong></div></div>
+                    <div class="preview-file-actions"><button type="button" class="btn-file-action btn-file-action-accent" id="preview-send-printer-btn" hidden>Enviar a impresora</button><button type="button" class="btn-file-action" id="preview-download-btn">Descargar</button><button type="button" class="btn-file-action" id="preview-rename-btn">Renombrar</button><button type="button" class="btn-file-action" id="preview-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="preview-delete-btn">Eliminar</button></div>
+                    <div class="models-preview-stage" id="model-preview-box"><div class="preview-image" id="preview-image"><div class="preview-image-placeholder">3D</div></div></div>
+                    <div class="gcode-preview-insights"><div><span>Formato</span><strong id="models-preview-format">—</strong></div><div><span>Estado</span><strong id="models-preview-status">Listo</strong></div></div>
+                    <button type="button" class="btn-file-action preview-goto-printer-btn models-goto-printer" id="preview-goto-printer-btn" hidden>Ir a la impresora</button>
+                </div></aside>
+            </div>
+        </main>`;
+}
+
+installModernModelsLibraryMarkup();
+
 const modelsGrid = document.getElementById('models');
 const printersGrid = document.getElementById('printers-grid');
 const lasersGrid = document.getElementById('lasers-grid');
 const cncGrid = document.getElementById('cnc-grid');
 const machinesColumns = document.getElementById('machines-columns');
+const deviceColumnsCustomizerBtn = document.getElementById('device-columns-customizer-btn');
 const printQueue = document.getElementById('print-queue');
 const totalModelsEl = document.getElementById('total-models');
 const gcodeReadyEl = document.getElementById('gcode-ready');
@@ -484,7 +533,7 @@ function hashColor(name) {
 function formatDate(timestamp) {
     if (!timestamp) return '—';
     const date = new Date(timestamp * 1000);
-    const locale = currentLanguage === 'es' ? 'es-ES' : 'en-US';
+    const locale = { es: 'es-MX', en: 'en-US', 'pt-BR': 'pt-BR', fr: 'fr-FR', de: 'de-DE' }[currentLanguage] || 'es-MX';
     return date.toLocaleString(locale, {
         year: 'numeric',
         month: 'short',
@@ -1715,6 +1764,17 @@ async function loadLaserHistory() {
 
 let currentGcodePath = '';
 let currentGcodeData = { folders: [], files: [] };
+let gcodeSearchQuery = '';
+let gcodeSortMode = localStorage.getItem('nopalGcodeSort') || 'name-asc';
+let gcodeFilterMode = 'all';
+let gcodeTagFilter = '';
+let gcodeViewMode = localStorage.getItem('nopalGcodeView') || 'list';
+let gcodePage = 1;
+let gcodePathHistory = [''];
+let gcodePathHistoryIndex = 0;
+const GCODE_PAGE_SIZE = 8;
+const GCODE_FAVORITES_KEY = 'nopalGcodeFavorites';
+const GCODE_RECENTS_KEY = 'nopalGcodeRecents';
 
 async function loadGcodeFolder(path = currentGcodePath) {
     currentGcodePath = path;
@@ -1856,6 +1916,393 @@ async function selectGcodePreview(model, rerender = true) {
 function updateGcodeSearch(query) {
     renderGcodeTable(query);
 }
+
+// Modern G-code library. It deliberately builds on the existing browse and
+// file-action endpoints so this UI remains a presentation-only refactor.
+function readGcodeLibraryItems(key) {
+    try {
+        const value = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(value) ? value : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function writeGcodeLibraryItems(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+}
+
+function gcodeSnapshot(model) {
+    return {
+        id: model.id,
+        name: model.name,
+        path: stripSectionPrefix(model.id, 'gcode'),
+        material: model.material || 'MDF',
+        modified: model.modified || 0,
+    };
+}
+
+function getGcodeFavorites() {
+    return readGcodeLibraryItems(GCODE_FAVORITES_KEY);
+}
+
+function isGcodeFavorite(id) {
+    return getGcodeFavorites().some(item => item.id === id);
+}
+
+function toggleGcodeFavorite(model) {
+    if (!model) return;
+    const favorites = getGcodeFavorites();
+    const index = favorites.findIndex(item => item.id === model.id);
+    if (index >= 0) favorites.splice(index, 1);
+    else favorites.unshift(gcodeSnapshot(model));
+    writeGcodeLibraryItems(GCODE_FAVORITES_KEY, favorites.slice(0, 50));
+    renderGcodeTable();
+}
+
+function rememberRecentGcode(model) {
+    const recent = readGcodeLibraryItems(GCODE_RECENTS_KEY).filter(item => item.id !== model.id);
+    recent.unshift(gcodeSnapshot(model));
+    writeGcodeLibraryItems(GCODE_RECENTS_KEY, recent.slice(0, 12));
+}
+
+function getGcodePathParent(path) {
+    const parts = String(path || '').split('/').filter(Boolean);
+    parts.pop();
+    return parts.join('/');
+}
+
+function recordGcodePath(path) {
+    if (gcodePathHistory[gcodePathHistoryIndex] === path) return;
+    gcodePathHistory = gcodePathHistory.slice(0, gcodePathHistoryIndex + 1);
+    gcodePathHistory.push(path);
+    gcodePathHistoryIndex = gcodePathHistory.length - 1;
+}
+
+async function loadGcodeFolder(path = currentGcodePath, options = {}) {
+    const normalizedPath = String(path || '').replace(/^\/+|\/+$/g, '');
+    if (options.recordHistory !== false) recordGcodePath(normalizedPath);
+    currentGcodePath = normalizedPath;
+    gcodePage = 1;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(normalizedPath)}&type=gcode`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        currentGcodeData = await response.json();
+    } catch (error) {
+        console.error(error);
+        currentGcodeData = { folders: [], files: [] };
+    }
+    renderGcodeBreadcrumb();
+    renderGcodeTable();
+}
+
+function renderGcodeBreadcrumb() {
+    const breadcrumb = document.getElementById('gcode-breadcrumb');
+    if (!breadcrumb) return;
+    const parts = currentGcodePath.split('/').filter(Boolean);
+    const segments = [
+        { label: t('libraryRoot'), path: '' },
+        { label: t('librarySection'), path: '' },
+        { label: 'G-code', path: '' },
+    ];
+    parts.forEach((part, index) => segments.push({ label: part, path: parts.slice(0, index + 1).join('/') }));
+    breadcrumb.innerHTML = segments.map(segment => `
+        <button type="button" class="breadcrumb-segment" data-gcode-path="${escapeHtml(segment.path)}">${escapeHtml(segment.label)}</button>
+    `).join('');
+    breadcrumb.querySelectorAll('[data-gcode-path]').forEach(button => {
+        button.addEventListener('click', () => loadGcodeFolder(button.dataset.gcodePath));
+    });
+    document.getElementById('gcode-nav-back')?.toggleAttribute('disabled', gcodePathHistoryIndex <= 0);
+    document.getElementById('gcode-nav-forward')?.toggleAttribute('disabled', gcodePathHistoryIndex >= gcodePathHistory.length - 1);
+    document.getElementById('gcode-nav-up')?.toggleAttribute('disabled', !currentGcodePath);
+    const disk = document.getElementById('gcode-disk-free');
+    if (disk) disk.textContent = t('libraryCounts').replace('{folders}', currentGcodeData.folders.length).replace('{files}', currentGcodeData.files.length);
+}
+
+function renderGcodeFolderStrip(folders) {
+    const strip = document.getElementById('gcode-folder-strip');
+    if (!strip) return;
+    strip.hidden = folders.length === 0;
+    strip.innerHTML = folders.map(folder => `
+        <button type="button" class="gcode-folder-card" data-folder-path="${escapeHtml(folder.path)}">
+            <svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg>
+            <span><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span>
+            <span class="gcode-folder-menu" aria-hidden="true">›</span>
+        </button>
+    `).join('');
+    strip.querySelectorAll('[data-folder-path]').forEach(button => {
+        button.addEventListener('click', () => loadGcodeFolder(button.dataset.folderPath));
+    });
+}
+
+function getFilteredGcodeFiles() {
+    const query = gcodeSearchQuery.trim().toLowerCase();
+    const favoriteIds = new Set(getGcodeFavorites().map(item => item.id));
+    const recentIds = new Set(readGcodeLibraryItems(GCODE_RECENTS_KEY).map(item => item.id));
+    const files = currentGcodeData.files.filter(model => {
+        if (query && !String(model.name || '').toLowerCase().includes(query)) return false;
+        if (gcodeTagFilter && String(model.material || 'G-code').toLowerCase() !== gcodeTagFilter) return false;
+        if (gcodeFilterMode === 'favorites' && !favoriteIds.has(model.id)) return false;
+        if (gcodeFilterMode === 'recent' && !recentIds.has(model.id)) return false;
+        return true;
+    });
+    return files.sort((a, b) => {
+        if (gcodeSortMode === 'name-desc') return String(b.name).localeCompare(String(a.name), undefined, { sensitivity: 'base' });
+        if (gcodeSortMode === 'date-desc') return Number(b.modified || 0) - Number(a.modified || 0);
+        if (gcodeSortMode === 'date-asc') return Number(a.modified || 0) - Number(b.modified || 0);
+        if (gcodeSortMode === 'size-desc') return Number(b.size || 0) - Number(a.size || 0);
+        return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+    });
+}
+
+function renderGcodeSidebar() {
+    const favorites = getGcodeFavorites();
+    const recents = readGcodeLibraryItems(GCODE_RECENTS_KEY);
+    const itemHtml = item => `
+        <button type="button" class="gcode-sidebar-item" data-gcode-item="${escapeHtml(item.id)}">
+            <span class="gcode-sidebar-icon">◇</span><span>${escapeHtml(item.name)}</span><b>GC</b>
+        </button>`;
+    const favoriteList = document.getElementById('gcode-favorites-list');
+    const recentList = document.getElementById('gcode-recents-list');
+    if (favoriteList) favoriteList.innerHTML = favorites.slice(0, 4).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoFavorites')}</span>`;
+    if (recentList) recentList.innerHTML = recents.slice(0, 5).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoRecent')}</span>`;
+    const tagCounts = new Map();
+    currentGcodeData.files.forEach(model => {
+        const tag = model.material || 'G-code';
+        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    });
+    const tags = document.getElementById('gcode-tags-list');
+    if (tags) tags.innerHTML = Array.from(tagCounts.entries()).map(([tag, count]) => `
+        <button type="button" class="gcode-sidebar-item" data-gcode-tag="${escapeHtml(tag)}">
+            <span class="gcode-sidebar-icon">◆</span><span>${escapeHtml(tag)}</span><b>${count}</b>
+        </button>`).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoTags')}</span>`;
+    document.querySelectorAll('[data-gcode-item]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const snapshot = [...favorites, ...recents].find(item => item.id === button.dataset.gcodeItem);
+            if (!snapshot) return;
+            const parent = getGcodePathParent(snapshot.path);
+            if (parent !== currentGcodePath) await loadGcodeFolder(parent);
+            const model = currentGcodeData.files.find(item => item.id === snapshot.id);
+            if (model) selectGcodePreview(model);
+        });
+    });
+    tags?.querySelectorAll('[data-gcode-tag]').forEach(button => {
+        button.addEventListener('click', () => {
+            gcodeTagFilter = button.dataset.gcodeTag.toLowerCase();
+            gcodeSearchQuery = '';
+            if (searchGcodeInput) searchGcodeInput.value = '';
+            gcodePage = 1;
+            renderGcodeTable();
+        });
+    });
+}
+
+function renderGcodePagination(totalItems, totalPages) {
+    const pagination = document.getElementById('gcode-pagination');
+    if (!pagination) return;
+    if (!totalItems) {
+        pagination.innerHTML = `<span>${t('libraryZeroResults')}</span>`;
+        return;
+    }
+    const start = (gcodePage - 1) * GCODE_PAGE_SIZE + 1;
+    const end = Math.min(gcodePage * GCODE_PAGE_SIZE, totalItems);
+    const pages = Array.from({ length: totalPages }, (_, index) => index + 1)
+        .filter(page => page === 1 || page === totalPages || Math.abs(page - gcodePage) <= 1);
+    let previousPage = 0;
+    const pageButtons = pages.map(page => {
+        const gap = previousPage && page - previousPage > 1 ? '<span>…</span>' : '';
+        previousPage = page;
+        return `${gap}<button type="button" class="${page === gcodePage ? 'active' : ''}" data-gcode-page="${page}">${page}</button>`;
+    }).join('');
+    pagination.innerHTML = `
+        <span>${t('libraryResults').replace('{start}', start).replace('{end}', end).replace('{total}', totalItems)}</span>
+        <div class="gcode-pagination-pages"><button type="button" data-gcode-page="${gcodePage - 1}" ${gcodePage === 1 ? 'disabled' : ''}>‹</button>${pageButtons}<button type="button" data-gcode-page="${gcodePage + 1}" ${gcodePage === totalPages ? 'disabled' : ''}>›</button></div>
+        <span>${t('libraryPerPage').replace('{count}', GCODE_PAGE_SIZE)}</span>`;
+    pagination.querySelectorAll('[data-gcode-page]').forEach(button => {
+        button.addEventListener('click', () => {
+            const page = Number(button.dataset.gcodePage);
+            if (page < 1 || page > totalPages || page === gcodePage) return;
+            gcodePage = page;
+            renderGcodeTable();
+        });
+    });
+}
+
+function renderGcodeTable(filterQuery = gcodeSearchQuery) {
+    const gcodeTable = document.getElementById('gcode-table');
+    if (!gcodeTable) return;
+    gcodeSearchQuery = filterQuery || '';
+    const folderQuery = gcodeSearchQuery.toLowerCase();
+    renderGcodeFolderStrip(currentGcodeData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    renderGcodeSidebar();
+    renderGcodeBreadcrumb();
+    const files = getFilteredGcodeFiles();
+    const totalPages = Math.max(1, Math.ceil(files.length / GCODE_PAGE_SIZE));
+    gcodePage = Math.min(gcodePage, totalPages);
+    const pageFiles = files.slice((gcodePage - 1) * GCODE_PAGE_SIZE, gcodePage * GCODE_PAGE_SIZE);
+    gcodeTable.classList.toggle('is-grid', gcodeViewMode === 'grid');
+    document.getElementById('gcode-view-list')?.classList.toggle('active', gcodeViewMode === 'list');
+    document.getElementById('gcode-view-grid')?.classList.toggle('active', gcodeViewMode === 'grid');
+    renderGcodePagination(files.length, totalPages);
+    if (!files.length) {
+        gcodeTable.innerHTML = `<div class="empty-state">${t('noFilesFound')}</div>`;
+        return;
+    }
+    if (!selectedGcodeId || !files.some(entry => entry.id === selectedGcodeId)) selectedGcodeId = pageFiles[0]?.id || null;
+    const fileRows = pageFiles.map(model => {
+        const cachedDimensions = gcodeDimensionsCache.get(model.file_url);
+        const checked = getBulkSelection('gcode').has(model.id) ? 'checked' : '';
+        return `
+            <tr class="${model.id === selectedGcodeId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}">
+                <td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td>
+                <td class="model-name"><img class="cnc-files-thumb" loading="lazy" alt="" src="/api/gcode/thumbnail?path=${encodeURIComponent(stripSectionPrefix(model.id, 'gcode'))}&kind=printer"><strong>${escapeHtml(model.name)}</strong>${isGcodeFavorite(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td>
+                <td><span class="tag-pill">${escapeHtml(model.material || 'MDF')}</span></td>
+                <td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td>
+                <td class="gcode-dimensions">${cachedDimensions !== undefined ? formatGcodeDimensions(cachedDimensions) : '…'}</td>
+                <td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td>
+                <td><button type="button" class="gcode-row-menu" data-row-menu title="${t('libraryActions')}">•••</button></td>
+            </tr>`;
+    }).join('');
+    gcodeTable.innerHTML = `<table class="models-table"><thead><tr>
+        <th class="select-col"><input type="checkbox" class="select-all-checkbox" id="gcode-select-all"></th>
+        <th>${t('columnName')}</th><th>${t('material')}</th><th>${t('columnSize')}</th><th>${t('columnDate')}</th><th>${t('columnDimensions')}</th><th>${t('libraryStatus')}</th><th aria-label="${t('libraryActions')}">•••</th>
+        </tr></thead><tbody>${fileRows}</tbody></table>`;
+    wireBulkSelection('gcode', gcodeTable, pageFiles);
+    gcodeTable.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
+        row.addEventListener('click', event => {
+            if (event.target.closest('.row-select-checkbox')) return;
+            const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
+            if (model) selectGcodePreview(model);
+        });
+        row.querySelector('[data-row-menu]')?.addEventListener('click', event => {
+            event.stopPropagation();
+            const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
+            if (model) selectGcodePreview(model);
+        });
+    });
+    pageFiles.forEach(model => {
+        if (gcodeDimensionsCache.has(model.file_url)) return;
+        getGcodeDimensions(model.file_url).then(dimensions => {
+            const row = Array.from(gcodeTable.querySelectorAll('tbody tr[data-model-id]')).find(item => item.dataset.modelId === model.id);
+            const cell = row?.querySelector('.gcode-dimensions');
+            if (cell) cell.textContent = formatGcodeDimensions(dimensions);
+        });
+    });
+    const selectedModel = files.find(entry => entry.id === selectedGcodeId);
+    if (selectedModel) selectGcodePreview(selectedModel, false);
+}
+
+async function selectGcodePreview(model, rerender = true) {
+    if (!model) return;
+    selectedGcodeId = model.id;
+    rememberRecentGcode(model);
+    const fileUrl = model.file_url;
+    if (gcodePreviewTitle) gcodePreviewTitle.textContent = model.name;
+    if (gcodePreviewDescription) gcodePreviewDescription.textContent = model.description || t('libraryGcodePreviewHelp');
+    if (gcodePreviewSize) gcodePreviewSize.textContent = formatSize(model.size);
+    if (gcodePreviewDate) gcodePreviewDate.textContent = formatDate(model.modified);
+    const material = document.getElementById('gcode-preview-material');
+    const estimatedTime = document.getElementById('gcode-preview-time');
+    const favoriteButton = document.getElementById('gcode-preview-favorite');
+    if (material) material.textContent = model.material || 'MDF';
+    if (estimatedTime) estimatedTime.textContent = model.estimated_time || formatEstimatedTime(model.estimated_time_minutes);
+    if (favoriteButton) {
+        const favorite = isGcodeFavorite(model.id);
+        favoriteButton.textContent = favorite ? '★' : '☆';
+        favoriteButton.classList.toggle('active', favorite);
+    }
+    if (gcodePreviewLines) {
+        const requestedId = model.id;
+        getGcodeLineCount(fileUrl).then(lineCount => {
+            if (selectedGcodeId === requestedId) gcodePreviewLines.textContent = lineCount.toLocaleString();
+        });
+    }
+    getGcodeDimensions(fileUrl).then(dimensions => {
+        if (!dimensions || selectedGcodeId !== model.id) return;
+        const xValues = [0, dimensions.width / 2, dimensions.width];
+        const yValues = [dimensions.height, dimensions.height / 2, 0];
+        document.querySelectorAll('.gcode-preview-ruler-x i').forEach((label, index) => { label.textContent = Math.round(xValues[index] || 0); });
+        document.querySelectorAll('.gcode-preview-ruler-y i').forEach((label, index) => { label.textContent = Math.round(yValues[index] || 0); });
+    });
+    if (gcodePreviewScene) {
+        gcodePreviewScene.innerHTML = '';
+        const img = document.createElement('img');
+        img.alt = model.name;
+        img.loading = 'lazy';
+        img.onerror = () => renderGcodePreview(gcodePreviewScene, fileUrl);
+        img.src = `/api/gcode/thumbnail?path=${encodeURIComponent(stripSectionPrefix(model.id, 'gcode'))}&kind=printer`;
+        gcodePreviewScene.appendChild(img);
+    }
+    if (rerender) renderGcodeTable();
+}
+
+function updateGcodeSearch(query) {
+    gcodeSearchQuery = query || '';
+    gcodeTagFilter = '';
+    gcodePage = 1;
+    renderGcodeTable();
+}
+
+document.getElementById('gcode-nav-back')?.addEventListener('click', () => {
+    if (gcodePathHistoryIndex <= 0) return;
+    gcodePathHistoryIndex -= 1;
+    loadGcodeFolder(gcodePathHistory[gcodePathHistoryIndex], { recordHistory: false });
+});
+document.getElementById('gcode-nav-forward')?.addEventListener('click', () => {
+    if (gcodePathHistoryIndex >= gcodePathHistory.length - 1) return;
+    gcodePathHistoryIndex += 1;
+    loadGcodeFolder(gcodePathHistory[gcodePathHistoryIndex], { recordHistory: false });
+});
+document.getElementById('gcode-nav-up')?.addEventListener('click', () => loadGcodeFolder(getGcodePathParent(currentGcodePath)));
+document.getElementById('gcode-nav-home')?.addEventListener('click', () => loadGcodeFolder(''));
+document.getElementById('gcode-sort-select')?.addEventListener('change', event => {
+    gcodeSortMode = event.target.value;
+    localStorage.setItem('nopalGcodeSort', gcodeSortMode);
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.getElementById('gcode-filter-select')?.addEventListener('change', event => {
+    gcodeFilterMode = event.target.value;
+    gcodeTagFilter = '';
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.querySelectorAll('[data-view]').forEach(button => {
+    if (!button.id.startsWith('gcode-view-')) return;
+    button.addEventListener('click', () => {
+        gcodeViewMode = button.dataset.view;
+        localStorage.setItem('nopalGcodeView', gcodeViewMode);
+        renderGcodeTable();
+    });
+});
+document.getElementById('gcode-favorites-all')?.addEventListener('click', () => {
+    gcodeFilterMode = 'favorites';
+    const select = document.getElementById('gcode-filter-select');
+    if (select) select.value = 'favorites';
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.getElementById('gcode-recents-all')?.addEventListener('click', () => {
+    gcodeFilterMode = 'recent';
+    const select = document.getElementById('gcode-filter-select');
+    if (select) select.value = 'recent';
+    gcodePage = 1;
+    renderGcodeTable();
+});
+document.getElementById('gcode-preview-favorite')?.addEventListener('click', () => {
+    toggleGcodeFavorite(currentGcodeData.files.find(entry => entry.id === selectedGcodeId));
+});
+const gcodeSortSelect = document.getElementById('gcode-sort-select');
+if (gcodeSortSelect) gcodeSortSelect.value = gcodeSortMode;
+document.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        const section = document.getElementById('gcode-section');
+        if (section?.classList.contains('active') || section?.style.display !== 'none') {
+            event.preventDefault();
+            searchGcodeInput?.focus();
+        }
+    }
+});
 
 function renderThumbPreview(thumb, fileUrl = '', isGcode = false) {
     if (!thumb || !window.THREE || typeof window.THREE.Scene !== 'function') return;
@@ -2315,6 +2762,75 @@ function heatColor(percent) {
     const g = Math.round(lower.c[1] + (upper.c[1] - lower.c[1]) * t);
     const b = Math.round(lower.c[2] + (upper.c[2] - lower.c[2]) * t);
     return `rgb(${r}, ${g}, ${b})`;
+}
+
+/* Estado térmico decorativo de las fichas de impresora. Se deriva siempre de
+   las temperaturas y objetivos que ya entrega cada controlador; no mantiene
+   un estado paralelo ni crea temporizadores por impresora. */
+const PRINTER_THERMAL_COLOR_STOPS = [
+    { value: 0, color: [34, 211, 238] },
+    { value: 40, color: [34, 211, 238] },
+    { value: 80, color: [163, 230, 53] },
+    { value: 150, color: [245, 158, 11] },
+    { value: 215, color: [249, 115, 22] },
+    { value: 260, color: [244, 63, 94] },
+];
+
+function interpolatePrinterThermalColor(value) {
+    const thermalValue = Math.max(0, Math.min(260, value));
+    let lower = PRINTER_THERMAL_COLOR_STOPS[0];
+    let upper = PRINTER_THERMAL_COLOR_STOPS[PRINTER_THERMAL_COLOR_STOPS.length - 1];
+    for (let index = 0; index < PRINTER_THERMAL_COLOR_STOPS.length - 1; index++) {
+        const current = PRINTER_THERMAL_COLOR_STOPS[index];
+        const next = PRINTER_THERMAL_COLOR_STOPS[index + 1];
+        if (thermalValue >= current.value && thermalValue <= next.value) {
+            lower = current;
+            upper = next;
+            break;
+        }
+    }
+    const range = upper.value - lower.value || 1;
+    const ratio = (thermalValue - lower.value) / range;
+    const color = lower.color.map((channel, index) => Math.round(channel + (upper.color[index] - channel) * ratio));
+    return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+}
+
+function printerThermalWaves(bedActual, extruderActual, bedTarget, extruderTarget, printState, isOffline = false) {
+    const actualValues = [bedActual, extruderActual].filter(Number.isFinite);
+    if (!actualValues.length && !isOffline) return '';
+
+    let thermalColor = 'rgb(148, 163, 184)';
+    let strength = 0.32;
+    let modifierClasses = 'thermal-offline is-thermal-offline';
+    if (!isOffline) {
+        const thermalValue = Math.max(...actualValues);
+        const activeHeaters = [
+            { actual: bedActual, target: bedTarget },
+            { actual: extruderActual, target: extruderTarget },
+        ].filter(heater => Number.isFinite(heater.actual) && Number.isFinite(heater.target) && heater.target > 0);
+        const isActivelyHeating = activeHeaters.some(heater => heater.actual < heater.target - 3);
+        const isStable = activeHeaters.length > 0 && activeHeaters.every(heater => Math.abs(heater.actual - heater.target) <= 3);
+        const thermalPhase = thermalValue < 40 ? 'cold' : thermalValue < 80 ? 'warm' : thermalValue < 215 ? 'heating' : 'hot';
+        thermalColor = interpolatePrinterThermalColor(thermalValue);
+        strength = Math.min(0.5, 0.24 + (thermalValue / 260) * 0.22);
+        modifierClasses = [
+            `thermal-${thermalPhase}`,
+            isActivelyHeating ? 'is-actively-heating' : '',
+            isStable ? 'is-thermal-stable' : '',
+            printState === 'error' ? 'is-thermal-error' : '',
+        ].filter(Boolean).join(' ');
+    }
+
+    return `
+        <div class="printer-thermal-layer ${modifierClasses}" aria-hidden="true"
+             style="--thermal-color:${thermalColor};--thermal-strength:${strength.toFixed(3)}">
+            <svg class="printer-thermal-waves" viewBox="0 0 800 150" preserveAspectRatio="none" focusable="false">
+                <path class="printer-thermal-wave printer-thermal-wave-a" d="M-160 78 C-60 18 40 138 140 78 S340 18 440 78 S640 138 740 78 S940 18 1040 78"/>
+                <path class="printer-thermal-wave printer-thermal-wave-b" d="M-180 96 C-70 48 20 142 130 92 S330 42 430 94 S630 146 730 90 S930 42 1040 94"/>
+                <path class="printer-thermal-wave printer-thermal-wave-c" d="M-140 58 C-45 108 55 16 155 62 S355 112 455 58 S655 12 755 64 S955 110 1050 58"/>
+            </svg>
+        </div>
+    `;
 }
 
 function heatColorForSensor(current, key) {
@@ -4122,21 +4638,47 @@ function applyHelpModulesLayout() {
     helpModulesPageScope.apply();
 }
 
+let dashboardPrintersLoaded = false;
+let dashboardLaserDevicesLoaded = false;
+let dashboardPrintersLoadError = false;
+let dashboardLaserDevicesLoadError = false;
+
+function deviceColumnLoadingMarkup(labelKey) {
+    return `
+        <div class="device-column-loading" role="status" aria-live="polite">
+            <div class="device-loading-orbit" aria-hidden="true">
+                <span></span><span></span><i></i>
+            </div>
+            <strong>${escapeHtml(t('devicesLoading'))}</strong>
+            <span>${escapeHtml(t(labelKey))}</span>
+            <div class="device-loading-lines" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+    `;
+}
+
+function renderInitialDeviceLoaders() {
+    if (printersGrid && !dashboardPrintersLoaded) printersGrid.innerHTML = deviceColumnLoadingMarkup('printerType3D');
+    if (lasersGrid && !dashboardLaserDevicesLoaded) lasersGrid.innerHTML = deviceColumnLoadingMarkup('laser');
+    if (cncGrid && !dashboardLaserDevicesLoaded) cncGrid.innerHTML = deviceColumnLoadingMarkup('cnc');
+}
+
 async function loadPrinters() {
     try {
         const response = await fetch('/api/printers/status');
         if (!response.ok) throw new Error('No se pudo cargar el estado de impresoras');
         const data = await response.json();
         allPrinters = data.printers || [];
+        dashboardPrintersLoaded = true;
+        dashboardPrintersLoadError = false;
         renderPrinters(allPrinters);
         updateActivePrintersCount();
         renderPrintQueue();
         refreshModelsQueueBadge();
     } catch (error) {
         console.error(error);
-        [printersGrid, lasersGrid, cncGrid].forEach(grid => {
-            if (grid) grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
-        });
+        dashboardPrintersLoaded = true;
+        dashboardPrintersLoadError = true;
+        renderPrinters(allPrinters);
     }
 }
 
@@ -4239,6 +4781,7 @@ function laserDashboardCardHtml(entry) {
 
     return `
         <div class="printer-card ${typeClass} laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
+            ${isOnline ? '' : printerThermalWaves(null, null, 0, 0, 'offline', true)}
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
@@ -4289,10 +4832,13 @@ async function refreshDashboardLaserCard() {
                 return { host: laser.host, status: { connected: false }, kind: laser.kind || 'laser' };
             }
         }));
+        dashboardLaserDevicesLoadError = false;
     } catch (error) {
         console.error(error);
         dashboardLaserEntries = [];
+        dashboardLaserDevicesLoadError = true;
     }
+    dashboardLaserDevicesLoaded = true;
     renderPrinters(allPrinters);
 }
 
@@ -4374,6 +4920,134 @@ function updatePrintersViewMode(mode) {
     if (gridBtn) gridBtn.classList.toggle('btn-view-toggle-active', mode === 'grid');
     if (listBtn) listBtn.classList.toggle('btn-view-toggle-active', mode === 'list');
 }
+
+// Organizador local de las tres columnas del dashboard. No afecta otras
+// páginas ni el registro real de máquinas: solo orden y visibilidad visual.
+const DEVICE_COLUMNS_LAYOUT_KEY = 'dashboardDeviceColumnsLayout';
+const DEVICE_COLUMNS_DEFAULT_ORDER = ['printer', 'laser', 'cnc'];
+const DEVICE_COLUMN_DEFINITIONS = {
+    printer: { labelKey: 'printerType3D', accentClass: 'printer' },
+    laser: { labelKey: 'laser', accentClass: 'laser' },
+    cnc: { labelKey: 'cnc', accentClass: 'cnc' },
+};
+
+function getDeviceColumnsLayout() {
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(DEVICE_COLUMNS_LAYOUT_KEY) || 'null');
+    } catch (error) {
+        saved = null;
+    }
+    const savedOrder = Array.isArray(saved?.order) ? saved.order.filter(key => DEVICE_COLUMNS_DEFAULT_ORDER.includes(key)) : [];
+    const order = [...savedOrder, ...DEVICE_COLUMNS_DEFAULT_ORDER.filter(key => !savedOrder.includes(key))];
+    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(key => DEVICE_COLUMNS_DEFAULT_ORDER.includes(key)) : [];
+    if (hidden.length >= DEVICE_COLUMNS_DEFAULT_ORDER.length) hidden.pop();
+    return { order, hidden };
+}
+
+function saveDeviceColumnsLayout(layout) {
+    localStorage.setItem(DEVICE_COLUMNS_LAYOUT_KEY, JSON.stringify(layout));
+}
+
+function applyDeviceColumnsLayout() {
+    if (!machinesColumns) return;
+    const layout = getDeviceColumnsLayout();
+    const hiddenSet = new Set(layout.hidden);
+    layout.order.forEach(key => {
+        const column = machinesColumns.querySelector(`[data-device-column="${key}"]`);
+        if (!column) return;
+        column.hidden = hiddenSet.has(key);
+        machinesColumns.appendChild(column);
+    });
+    const visibleCount = Math.max(1, layout.order.filter(key => !hiddenSet.has(key)).length);
+    machinesColumns.style.setProperty('--machines-visible-columns', String(visibleCount));
+    const isCustomized = hiddenSet.size > 0 || layout.order.some((key, index) => key !== DEVICE_COLUMNS_DEFAULT_ORDER[index]);
+    deviceColumnsCustomizerBtn?.classList.toggle('btn-view-toggle-active', isCustomized);
+}
+
+function saveDeviceColumnsCustomizerState() {
+    const list = document.getElementById('device-columns-customizer-list');
+    if (!list) return;
+    const rows = Array.from(list.querySelectorAll(':scope > .module-customizer-row[data-device-column]'));
+    const order = rows.map(row => row.dataset.deviceColumn);
+    const hidden = rows.filter(row => !row.querySelector('input')?.checked).map(row => row.dataset.deviceColumn);
+    saveDeviceColumnsLayout({ order, hidden });
+    applyDeviceColumnsLayout();
+}
+
+function renderDeviceColumnsCustomizer() {
+    const list = document.getElementById('device-columns-customizer-list');
+    if (!list) return;
+    const layout = getDeviceColumnsLayout();
+    const hiddenSet = new Set(layout.hidden);
+    list.innerHTML = layout.order.map(key => {
+        const definition = DEVICE_COLUMN_DEFINITIONS[key];
+        return `
+            <div class="module-customizer-row device-column-customizer-row" data-device-column="${key}">
+                <span class="module-customizer-row-handle" draggable="true" title="${escapeHtml(t('deviceOrganizerDragHint'))}">${PRINTER_MODULE_DRAG_ICON}</span>
+                <span class="device-column-customizer-accent device-column-customizer-accent-${definition.accentClass}" aria-hidden="true"></span>
+                <span class="module-customizer-row-label">${escapeHtml(t(definition.labelKey))}</span>
+                <label class="module-customizer-row-toggle">
+                    <input type="checkbox" class="module-customizer-checkbox module-customizer-checkbox-green" data-device-column="${key}" ${hiddenSet.has(key) ? '' : 'checked'}>
+                    <span></span>
+                </label>
+            </div>
+        `;
+    }).join('');
+
+    let draggingRow = null;
+    list.querySelectorAll('.module-customizer-row-handle').forEach(handle => {
+        handle.addEventListener('dragstart', event => {
+            draggingRow = handle.closest('.device-column-customizer-row');
+            if (!draggingRow) return;
+            draggingRow.classList.add('module-customizer-row-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', draggingRow.dataset.deviceColumn);
+        });
+        handle.addEventListener('dragend', () => {
+            if (draggingRow) draggingRow.classList.remove('module-customizer-row-dragging');
+            draggingRow = null;
+            saveDeviceColumnsCustomizerState();
+        });
+    });
+    list.addEventListener('dragover', event => {
+        if (!draggingRow) return;
+        event.preventDefault();
+        const candidates = Array.from(list.querySelectorAll(':scope > .device-column-customizer-row:not(.module-customizer-row-dragging)'));
+        const nextRow = candidates.find(row => event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2);
+        list.insertBefore(draggingRow, nextRow || null);
+    });
+    list.querySelectorAll('input.module-customizer-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            const checkedCount = list.querySelectorAll('input.module-customizer-checkbox:checked').length;
+            if (!checkedCount) {
+                checkbox.checked = true;
+                showToast(t('deviceOrganizerAtLeastOne'), 'warning');
+                return;
+            }
+            saveDeviceColumnsCustomizerState();
+        });
+    });
+}
+
+function openDeviceColumnsCustomizer() {
+    renderDeviceColumnsCustomizer();
+    document.getElementById('device-columns-customizer-modal')?.classList.add('active');
+}
+
+function closeDeviceColumnsCustomizer() {
+    document.getElementById('device-columns-customizer-modal')?.classList.remove('active');
+}
+
+deviceColumnsCustomizerBtn?.addEventListener('click', openDeviceColumnsCustomizer);
+document.getElementById('device-columns-customizer-modal-close')?.addEventListener('click', closeDeviceColumnsCustomizer);
+document.getElementById('device-columns-customizer-modal-backdrop')?.addEventListener('click', closeDeviceColumnsCustomizer);
+document.getElementById('device-columns-customizer-reset-btn')?.addEventListener('click', () => {
+    localStorage.removeItem(DEVICE_COLUMNS_LAYOUT_KEY);
+    applyDeviceColumnsLayout();
+    renderDeviceColumnsCustomizer();
+    showToast(t('moduleCustomizerResetDone'));
+});
 
 const printerJobLastState = new Map(); // port -> último job.state visto, para detectar transiciones
 
@@ -4502,6 +5176,14 @@ function renderPrinters(printersInput) {
 
         const html = `
             <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}" data-port="${printer.port}">
+                ${printerThermalWaves(
+                    typeof bedTemp === 'number' ? bedTemp : null,
+                    typeof extruderTemp === 'number' ? extruderTemp : null,
+                    bedTarget,
+                    extruderTarget,
+                    displayState,
+                    !isOnline
+                )}
                 <div class="printer-card-top">
                     <div>
                         <h3 class="printer-name">${escapeHtml(printerName)}</h3>
@@ -4578,8 +5260,16 @@ function renderPrinters(printersInput) {
         };
     });
 
-    const renderColumn = (grid, entries, emptyKey) => {
+    const renderColumn = (grid, entries, emptyKey, isLoaded, hasLoadError, loadingLabelKey) => {
         if (!grid) return;
+        if (!isLoaded) {
+            grid.innerHTML = deviceColumnLoadingMarkup(loadingLabelKey);
+            return;
+        }
+        if (hasLoadError) {
+            grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
+            return;
+        }
         let filtered = showOffline ? entries : entries.filter(entry => entry.isOnline);
         filtered = [...filtered].sort((a, b) => a.sortPriority - b.sortPriority);
         grid.innerHTML = filtered.length
@@ -4587,9 +5277,9 @@ function renderPrinters(printersInput) {
             : `<div class="empty-state">${t(emptyKey)}</div>`;
     };
 
-    renderColumn(printersGrid, printerEntries, 'noPrintersFound');
-    renderColumn(lasersGrid, laserOnlyEntries, 'noLasersFound');
-    renderColumn(cncGrid, cncEntries, 'noCncFound');
+    renderColumn(printersGrid, printerEntries, 'noPrintersFound', dashboardPrintersLoaded, dashboardPrintersLoadError, 'printerType3D');
+    renderColumn(lasersGrid, laserOnlyEntries, 'noLasersFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'laser');
+    renderColumn(cncGrid, cncEntries, 'noCncFound', dashboardLaserDevicesLoaded, dashboardLaserDevicesLoadError, 'cnc');
 
     const columnsRoot = machinesColumns || printersGrid;
 
@@ -4686,6 +5376,8 @@ if (searchGcodeInput) {
 
 if (searchModelsInput) {
     searchModelsInput.addEventListener('input', event => {
+        modelsTagFilter = '';
+        modelsPage = 1;
         renderModelsFullPage(event.target.value);
     });
 }
@@ -10259,13 +10951,16 @@ function marlinPrinterCardHtml(printer, status) {
     const stateLabel = isOnline ? t(visualState) : t('offline');
     const name = printer.name || printer.device;
 
-    let extruderTemp = '--';
-    let bedTemp = '--';
+    let extruderTemp = null;
+    let bedTemp = null;
     if (status?.extruder && typeof status.extruder.current === 'number') extruderTemp = Math.round(status.extruder.current * 10) / 10;
     if (status?.heater_bed && typeof status.heater_bed.current === 'number') bedTemp = Math.round(status.heater_bed.current * 10) / 10;
+    const extruderTarget = status?.extruder && typeof status.extruder.target === 'number' ? status.extruder.target : 0;
+    const bedTarget = status?.heater_bed && typeof status.heater_bed.target === 'number' ? status.heater_bed.target : 0;
 
     return `
         <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
+            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${escapeHtml(name)}</h3>
@@ -10288,11 +10983,11 @@ function marlinPrinterCardHtml(printer, status) {
                 <div class="printer-temps">
                     <div class="temp-item">
                         <div class="temp-label">${t('bedTemp')}</div>
-                        <div class="temp-value">${bedTemp}<span class="temp-unit">°C</span></div>
+                        <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
                     </div>
                     <div class="temp-item">
                         <div class="temp-label">${t('extruderTemp')}</div>
-                        <div class="temp-value">${extruderTemp}<span class="temp-unit">°C</span></div>
+                        <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
                     </div>
                 </div>
             ` : ''}
@@ -11334,6 +12029,31 @@ function pluginActionLabel(plugin) {
     return plugin.installed ? t('pluginsUninstall') : t('pluginsInstall');
 }
 
+function pluginCatalogText(plugin, field) {
+    const safeId = String(plugin.id || '').replace(/-/g, '_');
+    const key = `pluginCatalog_${safeId}_${field}`;
+    const translated = t(key);
+    return translated === key ? (plugin[field] || '') : translated;
+}
+
+function pluginCategoryText(category) {
+    const keys = {
+        'Diseño': 'pluginCategoryDesign',
+        'Producción': 'pluginCategoryProduction',
+        'Utilidades': 'pluginCategoryUtilities',
+    };
+    return keys[category] ? t(keys[category]) : category;
+}
+
+function pluginCompatibilityText(value) {
+    const keys = {
+        'Láser': 'pluginCompatibilityLaser',
+        'Impresión 3D': 'pluginCompatibilityPrint3d',
+        'CNC': 'pluginCompatibilityCnc',
+    };
+    return keys[value] ? t(keys[value]) : value;
+}
+
 function renderPluginCard(plugin) {
     const status = plugin.installed ? t('pluginsStatusInstalled') : plugin.availability === 'available' ? t('pluginsStatusAvailable') : t('pluginsComingSoon');
     const disabled = plugin.availability !== 'available';
@@ -11343,12 +12063,12 @@ function renderPluginCard(plugin) {
                 <div class="plugin-card-icon">${pluginIconSvg(plugin.icon)}</div>
                 <span class="plugin-card-status${plugin.installed ? ' is-installed' : ''}">${escapeHtml(status)}</span>
             </div>
-            <h3>${escapeHtml(plugin.name)}</h3>
+            <h3>${escapeHtml(pluginCatalogText(plugin, 'name'))}</h3>
             <span class="plugin-card-publisher">${escapeHtml(plugin.publisher)} · v${escapeHtml(plugin.version)}</span>
-            <p class="plugin-card-description">${escapeHtml(plugin.description)}</p>
-            <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(item)}</span>`).join('')}</div>
+            <p class="plugin-card-description">${escapeHtml(pluginCatalogText(plugin, 'description'))}</p>
+            <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
             <div class="plugin-card-footer">
-                <span class="plugin-card-meta">${escapeHtml(plugin.category)} · ${escapeHtml(plugin.size)}</span>
+                <span class="plugin-card-meta">${escapeHtml(pluginCategoryText(plugin.category))} · ${escapeHtml(plugin.size === 'Por definir' ? t('pluginsSizeTbd') : plugin.size)}</span>
                 <button type="button" class="plugin-install-btn${plugin.installed ? ' is-installed' : ''}" data-plugin-action="${plugin.installed ? 'uninstall' : 'install'}" data-plugin-id="${escapeHtml(plugin.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(pluginActionLabel(plugin))}</button>
             </div>
         </article>`;
@@ -11363,16 +12083,16 @@ function renderPluginsFeatured() {
     pluginsFeatured.innerHTML = `
         <div class="plugins-featured-copy" style="--plugin-accent:${escapeHtml(featured.accent)}">
             <span class="plugins-featured-label">${escapeHtml(t('pluginsFeatured'))}</span>
-            <h2>${escapeHtml(featured.name)}</h2>
-            <p>${escapeHtml(featured.long_description)}</p>
-            <div class="plugin-card-tags">${featured.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(item)}</span>`).join('')}</div>
+            <h2>${escapeHtml(pluginCatalogText(featured, 'name'))}</h2>
+            <p>${escapeHtml(pluginCatalogText(featured, 'long_description'))}</p>
+            <div class="plugin-card-tags">${featured.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
         </div>
         <div class="plugins-featured-visual"><div class="plugins-featured-icon">${pluginIconSvg(featured.icon, 58)}</div></div>`;
 }
 
 function renderPluginsFilters() {
     if (!pluginsCategoryFilters) return;
-    const filters = [{ id: 'all', label: t('pluginsFilterAll') }, ...pluginsCategories.map(category => ({ id: category, label: category }))];
+    const filters = [{ id: 'all', label: t('pluginsFilterAll') }, ...pluginsCategories.map(category => ({ id: category, label: pluginCategoryText(category) }))];
     pluginsCategoryFilters.innerHTML = filters.map(filter => `
         <button type="button" class="plugins-filter-chip${pluginsActiveCategory === filter.id ? ' active' : ''}" data-plugin-category="${escapeHtml(filter.id)}">${escapeHtml(filter.label)}</button>`).join('');
 }
@@ -11382,7 +12102,7 @@ function renderPluginsGallery() {
     const query = (pluginsSearchInput?.value || '').trim().toLocaleLowerCase();
     const filtered = pluginsCatalog.filter(plugin => {
         const inCategory = pluginsActiveCategory === 'all' || plugin.category === pluginsActiveCategory;
-        const haystack = `${plugin.name} ${plugin.description} ${plugin.publisher} ${plugin.category} ${plugin.compatibility.join(' ')}`.toLocaleLowerCase();
+        const haystack = `${pluginCatalogText(plugin, 'name')} ${pluginCatalogText(plugin, 'description')} ${plugin.publisher} ${pluginCategoryText(plugin.category)} ${plugin.compatibility.map(pluginCompatibilityText).join(' ')}`.toLocaleLowerCase();
         return inCategory && (!query || haystack.includes(query));
     });
     pluginsGrid.innerHTML = filtered.map(renderPluginCard).join('');
@@ -11413,7 +12133,8 @@ async function loadPluginsGallery(force = false) {
 async function changePluginInstallation(pluginId, action, button) {
     const plugin = pluginsCatalog.find(item => item.id === pluginId);
     if (!plugin) return;
-    if (action === 'uninstall' && !(await appConfirm(t('pluginsUninstallConfirm').replace('{name}', plugin.name), t('pluginsUninstall')))) return;
+    const localizedName = pluginCatalogText(plugin, 'name');
+    if (action === 'uninstall' && !(await appConfirm(t('pluginsUninstallConfirm').replace('{name}', localizedName), t('pluginsUninstall')))) return;
     button.disabled = true;
     button.textContent = t('pluginsWorking');
     try {
@@ -11423,7 +12144,7 @@ async function changePluginInstallation(pluginId, action, button) {
         if (action === 'uninstall') unloadPluginModule(pluginId);
         pluginsLoaded = false;
         await loadPluginsGallery(true);
-        showToast(action === 'install' ? t('pluginsInstalledSuccess').replace('{name}', plugin.name) : t('pluginsUninstalledSuccess').replace('{name}', plugin.name));
+        showToast(action === 'install' ? t('pluginsInstalledSuccess').replace('{name}', localizedName) : t('pluginsUninstalledSuccess').replace('{name}', localizedName));
     } catch (error) {
         showToast(error.message || t('pluginsActionError'), 'error');
         button.disabled = false;
@@ -11700,6 +12421,16 @@ if (sidebarHelpBtn) {
 
 let currentModelsPath = '';
 let currentModelsData = { folders: [], files: [] };
+let modelsSearchQuery = '';
+let modelsSortMode = localStorage.getItem('nopalModelsSort') || 'name-asc';
+let modelsFilterMode = 'all';
+let modelsTagFilter = '';
+let modelsViewMode = localStorage.getItem('nopalModelsView') || 'list';
+let modelsPage = 1;
+let modelsPathHistory = [''];
+let modelsPathHistoryIndex = 0;
+const MODELS_PAGE_SIZE = 8;
+const MODELS_RECENTS_KEY = 'nopalModelsRecents';
 
 async function loadModelsFolder(path = currentModelsPath) {
     currentModelsPath = path;
@@ -11862,6 +12593,204 @@ function selectPreviewModel(model, rerender = true) {
     }
 }
 
+function modelLibrarySnapshot(model) {
+    return { id: model.id, name: model.name, path: stripSectionPrefix(model.id, 'model'), extension: model.extension || '', modified: model.modified || 0 };
+}
+
+function rememberRecentModel(model) {
+    const recent = readGcodeLibraryItems(MODELS_RECENTS_KEY).filter(item => item.id !== model.id);
+    recent.unshift(modelLibrarySnapshot(model));
+    writeGcodeLibraryItems(MODELS_RECENTS_KEY, recent.slice(0, 12));
+}
+
+function recordModelsPath(path) {
+    if (modelsPathHistory[modelsPathHistoryIndex] === path) return;
+    modelsPathHistory = modelsPathHistory.slice(0, modelsPathHistoryIndex + 1);
+    modelsPathHistory.push(path);
+    modelsPathHistoryIndex = modelsPathHistory.length - 1;
+}
+
+async function loadModelsFolder(path = currentModelsPath, options = {}) {
+    const normalizedPath = String(path || '').replace(/^\/+|\/+$/g, '');
+    if (options.recordHistory !== false) recordModelsPath(normalizedPath);
+    currentModelsPath = normalizedPath;
+    modelsPage = 1;
+    try {
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(normalizedPath)}&type=model`);
+        if (!response.ok) throw new Error('No se pudo cargar la carpeta');
+        currentModelsData = await response.json();
+    } catch (error) {
+        console.error(error);
+        currentModelsData = { folders: [], files: [] };
+    }
+    renderModelsBreadcrumb();
+    renderModelsFullPage();
+}
+
+function renderModelsBreadcrumb() {
+    const breadcrumb = document.getElementById('models-breadcrumb');
+    if (!breadcrumb) return;
+    const parts = currentModelsPath.split('/').filter(Boolean);
+    const segments = [{ label: t('libraryRoot'), path: '' }, { label: t('librarySection'), path: '' }, { label: t('navPrinting3d'), path: '' }];
+    parts.forEach((part, index) => segments.push({ label: part, path: parts.slice(0, index + 1).join('/') }));
+    breadcrumb.innerHTML = segments.map(segment => `<button type="button" class="breadcrumb-segment" data-models-path="${escapeHtml(segment.path)}">${escapeHtml(segment.label)}</button>`).join('');
+    breadcrumb.querySelectorAll('[data-models-path]').forEach(button => button.addEventListener('click', () => loadModelsFolder(button.dataset.modelsPath)));
+    document.getElementById('models-nav-back')?.toggleAttribute('disabled', modelsPathHistoryIndex <= 0);
+    document.getElementById('models-nav-forward')?.toggleAttribute('disabled', modelsPathHistoryIndex >= modelsPathHistory.length - 1);
+    document.getElementById('models-nav-up')?.toggleAttribute('disabled', !currentModelsPath);
+    const disk = document.getElementById('models-disk-free');
+    if (disk) disk.textContent = t('libraryCounts').replace('{folders}', currentModelsData.folders.length).replace('{files}', currentModelsData.files.length);
+}
+
+function renderModelsFolderStrip(folders) {
+    const strip = document.getElementById('models-folder-strip');
+    if (!strip) return;
+    strip.hidden = !folders.length;
+    strip.innerHTML = folders.map(folder => `<button type="button" class="gcode-folder-card" data-model-folder="${escapeHtml(folder.path)}"><svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg><span><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span><span class="gcode-folder-menu">›</span></button>`).join('');
+    strip.querySelectorAll('[data-model-folder]').forEach(button => button.addEventListener('click', () => loadModelsFolder(button.dataset.modelFolder)));
+}
+
+function getFilteredModelsFiles() {
+    const query = modelsSearchQuery.trim().toLowerCase();
+    const favorites = getFavoriteModelIds();
+    const recentIds = new Set(readGcodeLibraryItems(MODELS_RECENTS_KEY).map(item => item.id));
+    return currentModelsData.files.filter(model => {
+        const extension = String(model.extension || '').replace('.', '').toLowerCase();
+        if (query && !String(model.name || '').toLowerCase().includes(query)) return false;
+        if (modelsTagFilter && extension !== modelsTagFilter) return false;
+        if (modelsFilterMode === 'favorites' && !favorites.has(model.id)) return false;
+        if (modelsFilterMode === 'recent' && !recentIds.has(model.id)) return false;
+        if (modelsFilterMode === 'gcode' && !isGcodeFile(model)) return false;
+        if (modelsFilterMode === 'models' && isGcodeFile(model)) return false;
+        return true;
+    }).sort((a, b) => {
+        if (modelsSortMode === 'name-desc') return String(b.name).localeCompare(String(a.name), undefined, { sensitivity: 'base' });
+        if (modelsSortMode === 'date-desc') return Number(b.modified || 0) - Number(a.modified || 0);
+        if (modelsSortMode === 'date-asc') return Number(a.modified || 0) - Number(b.modified || 0);
+        if (modelsSortMode === 'size-desc') return Number(b.size || 0) - Number(a.size || 0);
+        return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+    });
+}
+
+function renderModelsSidebar() {
+    const favorites = getFavoriteModelIds();
+    const recent = readGcodeLibraryItems(MODELS_RECENTS_KEY);
+    const favoriteModels = currentModelsData.files.filter(model => favorites.has(model.id));
+    const itemHtml = item => `<button type="button" class="gcode-sidebar-item" data-model-library-item="${escapeHtml(item.id)}"><span class="gcode-sidebar-icon">◇</span><span>${escapeHtml(item.name)}</span><b>${escapeHtml(String(item.extension || '3D').replace('.', '').toUpperCase())}</b></button>`;
+    const favoriteList = document.getElementById('models-favorites-list');
+    const recentList = document.getElementById('models-recents-list');
+    if (favoriteList) favoriteList.innerHTML = favoriteModels.slice(0, 4).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoFavorites')}</span>`;
+    if (recentList) recentList.innerHTML = recent.slice(0, 5).map(itemHtml).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoRecent')}</span>`;
+    const formats = new Map();
+    currentModelsData.files.forEach(model => {
+        const extension = String(model.extension || 'archivo').replace('.', '').toUpperCase();
+        formats.set(extension, (formats.get(extension) || 0) + 1);
+    });
+    const tags = document.getElementById('models-tags-list');
+    if (tags) tags.innerHTML = Array.from(formats.entries()).map(([format, count]) => `<button type="button" class="gcode-sidebar-item" data-model-format="${escapeHtml(format.toLowerCase())}"><span class="gcode-sidebar-icon">◆</span><span>${escapeHtml(format)}</span><b>${count}</b></button>`).join('') || `<span class="gcode-sidebar-empty">${t('libraryNoFormats')}</span>`;
+    document.querySelectorAll('[data-model-library-item]').forEach(button => button.addEventListener('click', async () => {
+        const snapshot = [...favoriteModels.map(modelLibrarySnapshot), ...recent].find(item => item.id === button.dataset.modelLibraryItem);
+        if (!snapshot) return;
+        const parent = getGcodePathParent(snapshot.path);
+        if (parent !== currentModelsPath) await loadModelsFolder(parent);
+        const model = currentModelsData.files.find(item => item.id === snapshot.id);
+        if (model) selectPreviewModel(model);
+    }));
+    tags?.querySelectorAll('[data-model-format]').forEach(button => button.addEventListener('click', () => {
+        modelsTagFilter = button.dataset.modelFormat;
+        modelsSearchQuery = '';
+        if (searchModelsInput) searchModelsInput.value = '';
+        modelsPage = 1;
+        renderModelsFullPage();
+    }));
+}
+
+function renderModelsPagination(totalItems, totalPages) {
+    const pagination = document.getElementById('models-pagination');
+    if (!pagination) return;
+    if (!totalItems) { pagination.innerHTML = `<span>${t('libraryZeroResults')}</span>`; return; }
+    const start = (modelsPage - 1) * MODELS_PAGE_SIZE + 1;
+    const end = Math.min(modelsPage * MODELS_PAGE_SIZE, totalItems);
+    const pages = Array.from({ length: totalPages }, (_, index) => index + 1).filter(page => page === 1 || page === totalPages || Math.abs(page - modelsPage) <= 1);
+    let previous = 0;
+    const controls = pages.map(page => { const gap = previous && page - previous > 1 ? '<span>…</span>' : ''; previous = page; return `${gap}<button type="button" class="${page === modelsPage ? 'active' : ''}" data-models-page="${page}">${page}</button>`; }).join('');
+    pagination.innerHTML = `<span>${t('libraryResults').replace('{start}', start).replace('{end}', end).replace('{total}', totalItems)}</span><div class="gcode-pagination-pages"><button type="button" data-models-page="${modelsPage - 1}" ${modelsPage === 1 ? 'disabled' : ''}>‹</button>${controls}<button type="button" data-models-page="${modelsPage + 1}" ${modelsPage === totalPages ? 'disabled' : ''}>›</button></div><span>${t('libraryPerPage').replace('{count}', MODELS_PAGE_SIZE)}</span>`;
+    pagination.querySelectorAll('[data-models-page]').forEach(button => button.addEventListener('click', () => { const page = Number(button.dataset.modelsPage); if (page < 1 || page > totalPages || page === modelsPage) return; modelsPage = page; renderModelsFullPage(); }));
+}
+
+function renderModelsFullPage(filterQuery = modelsSearchQuery) {
+    const container = document.getElementById('models-full');
+    if (!container) return;
+    modelsSearchQuery = filterQuery || '';
+    const folderQuery = modelsSearchQuery.toLowerCase();
+    renderModelsFolderStrip(currentModelsData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    renderModelsSidebar();
+    renderModelsBreadcrumb();
+    const files = getFilteredModelsFiles();
+    const totalPages = Math.max(1, Math.ceil(files.length / MODELS_PAGE_SIZE));
+    modelsPage = Math.min(modelsPage, totalPages);
+    const pageFiles = files.slice((modelsPage - 1) * MODELS_PAGE_SIZE, modelsPage * MODELS_PAGE_SIZE);
+    container.classList.toggle('is-grid', modelsViewMode === 'grid');
+    document.getElementById('view-list-full')?.classList.toggle('active', modelsViewMode === 'list');
+    document.getElementById('view-grid-full')?.classList.toggle('active', modelsViewMode === 'grid');
+    renderModelsPagination(files.length, totalPages);
+    if (!files.length) { container.innerHTML = `<div class="empty-state">${t('noFilesFound')}</div>`; return; }
+    if (!selectedModelId || !files.some(model => model.id === selectedModelId)) selectedModelId = pageFiles[0]?.id || null;
+    const rows = pageFiles.map(model => {
+        const extension = String(model.extension || '').replace('.', '').toUpperCase() || '—';
+        const checked = getBulkSelection('model').has(model.id) ? 'checked' : '';
+        return `<tr class="${model.id === selectedModelId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}"><td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td><td class="model-name"><span class="model-format-icon">${escapeHtml(extension)}</span><strong>${escapeHtml(model.name)}</strong>${getFavoriteModelIds().has(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td><td>${isGcodeFile(model) ? 'G-code' : t('model3D')}</td><td><span class="tag-pill">${escapeHtml(extension)}</span></td><td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td><td>${escapeHtml(model.dimensions || '—')}</td><td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td><td><button type="button" class="gcode-row-menu" data-model-row-menu title="${t('libraryActions')}">•••</button></td></tr>`;
+    }).join('');
+    container.innerHTML = `<table class="models-table"><thead><tr><th class="select-col"><input type="checkbox" class="select-all-checkbox" id="models-select-all"></th><th>${t('columnName')}</th><th>${t('columnType')}</th><th>${t('libraryFormat')}</th><th>${t('columnSize')}</th><th>${t('previewMetaModified')}</th><th>${t('columnDimensions')}</th><th>${t('libraryStatus')}</th><th aria-label="${t('libraryActions')}">•••</th></tr></thead><tbody>${rows}</tbody></table>`;
+    wireBulkSelection('model', container, pageFiles);
+    container.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
+        row.addEventListener('click', event => { if (event.target.closest('.row-select-checkbox')) return; const model = currentModelsData.files.find(item => item.id === row.dataset.modelId); if (model) selectPreviewModel(model); });
+        row.querySelector('[data-model-row-menu]')?.addEventListener('click', event => { event.stopPropagation(); const model = currentModelsData.files.find(item => item.id === row.dataset.modelId); if (model) selectPreviewModel(model); });
+    });
+    const selected = files.find(model => model.id === selectedModelId);
+    if (selected) selectPreviewModel(selected, false);
+}
+
+function selectPreviewModel(model, rerender = true) {
+    if (!model) return;
+    selectedModelId = model.id;
+    rememberRecentModel(model);
+    const extension = model.extension ? model.extension.replace('.', '').toUpperCase() : '—';
+    const previewTitle = document.getElementById('preview-filename');
+    if (previewTitle) previewTitle.textContent = model.name;
+    const previewType = document.getElementById('preview-type');
+    if (previewType) previewType.textContent = extension;
+    const previewSize = document.getElementById('preview-size');
+    if (previewSize) previewSize.textContent = formatSize(model.size);
+    const previewDate = document.getElementById('preview-date');
+    if (previewDate) previewDate.textContent = formatDate(model.modified);
+    const previewFormat = document.getElementById('models-preview-format');
+    if (previewFormat) previewFormat.textContent = extension;
+    const previewStatus = document.getElementById('models-preview-status');
+    if (previewStatus) previewStatus.textContent = t('libraryReady');
+    const favoriteBtn = document.getElementById('preview-favorite-btn');
+    if (favoriteBtn) { const favorite = getFavoriteModelIds().has(model.id); favoriteBtn.textContent = favorite ? '★' : '☆'; favoriteBtn.classList.toggle('active', favorite); }
+    const sendPrinterBtn = document.getElementById('preview-send-printer-btn');
+    if (sendPrinterBtn) sendPrinterBtn.hidden = !isGcodeFile(model);
+    const gotoPrinterBtn = document.getElementById('preview-goto-printer-btn');
+    if (gotoPrinterBtn) gotoPrinterBtn.hidden = false;
+    renderSelectedPreview(model);
+    if (rerender) renderModelsFullPage();
+}
+
+document.getElementById('models-nav-back')?.addEventListener('click', () => { if (modelsPathHistoryIndex <= 0) return; modelsPathHistoryIndex -= 1; loadModelsFolder(modelsPathHistory[modelsPathHistoryIndex], { recordHistory: false }); });
+document.getElementById('models-nav-forward')?.addEventListener('click', () => { if (modelsPathHistoryIndex >= modelsPathHistory.length - 1) return; modelsPathHistoryIndex += 1; loadModelsFolder(modelsPathHistory[modelsPathHistoryIndex], { recordHistory: false }); });
+document.getElementById('models-nav-up')?.addEventListener('click', () => loadModelsFolder(getGcodePathParent(currentModelsPath)));
+document.getElementById('models-nav-home')?.addEventListener('click', () => loadModelsFolder(''));
+document.getElementById('models-sort-select')?.addEventListener('change', event => { modelsSortMode = event.target.value; localStorage.setItem('nopalModelsSort', modelsSortMode); modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('models-filter-select')?.addEventListener('change', event => { modelsFilterMode = event.target.value; modelsTagFilter = ''; modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('models-favorites-all')?.addEventListener('click', () => { modelsFilterMode = 'favorites'; const select = document.getElementById('models-filter-select'); if (select) select.value = 'favorites'; modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('models-recents-all')?.addEventListener('click', () => { modelsFilterMode = 'recent'; const select = document.getElementById('models-filter-select'); if (select) select.value = 'recent'; modelsPage = 1; renderModelsFullPage(); });
+document.getElementById('view-grid-full')?.addEventListener('click', () => { modelsViewMode = 'grid'; localStorage.setItem('nopalModelsView', modelsViewMode); renderModelsFullPage(); });
+document.getElementById('view-list-full')?.addEventListener('click', () => { modelsViewMode = 'list'; localStorage.setItem('nopalModelsView', modelsViewMode); renderModelsFullPage(); });
+const modelsSortSelect = document.getElementById('models-sort-select');
+if (modelsSortSelect) modelsSortSelect.value = modelsSortMode;
+
 const previewSendPrinterBtn = document.getElementById('preview-send-printer-btn');
 if (previewSendPrinterBtn) {
     previewSendPrinterBtn.addEventListener('click', () => {
@@ -11878,6 +12807,8 @@ if (previewFavoriteBtn) {
         if (!selectedModelId) return;
         const isFavorite = toggleFavoriteModel(selectedModelId);
         previewFavoriteBtn.classList.toggle('active', isFavorite);
+        previewFavoriteBtn.textContent = isFavorite ? '★' : '☆';
+        renderModelsFullPage();
     });
 }
 
@@ -12163,11 +13094,70 @@ if (updatesPillWrap) {
         const tooltipEl = document.getElementById('updates-pill-tooltip');
         if (pillEl?.classList.contains('available') && tooltipEl?.innerHTML.trim()) {
             updatesPillWrap.classList.add('show-tooltip');
+            updatesPillWrap.closest('.settings-card')?.classList.add('updates-tooltip-open');
         }
     });
     updatesPillWrap.addEventListener('mouseleave', () => {
         updatesPillWrap.classList.remove('show-tooltip');
+        updatesPillWrap.closest('.settings-card')?.classList.remove('updates-tooltip-open');
     });
+}
+
+function confirmSafeSystemUpdate() {
+    const modal = document.getElementById('update-safety-modal');
+    const checkbox = document.getElementById('update-safety-checkbox');
+    const cancelBtn = document.getElementById('update-safety-cancel');
+    const proceedBtn = document.getElementById('update-safety-proceed');
+    if (!modal || !checkbox || !cancelBtn || !proceedBtn) return Promise.resolve(false);
+
+    modal.hidden = false;
+    checkbox.checked = false;
+    proceedBtn.disabled = true;
+    document.body.classList.add('modal-open');
+
+    return new Promise(resolve => {
+        const finish = confirmed => {
+            modal.hidden = true;
+            document.body.classList.remove('modal-open');
+            checkbox.removeEventListener('change', onCheckboxChange);
+            cancelBtn.removeEventListener('click', onCancel);
+            proceedBtn.removeEventListener('click', onProceed);
+            modal.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKeydown);
+            resolve(confirmed);
+        };
+        const onCheckboxChange = () => { proceedBtn.disabled = !checkbox.checked; };
+        const onCancel = () => finish(false);
+        const onProceed = () => { if (checkbox.checked) finish(true); };
+        const onBackdrop = event => { if (event.target === modal) finish(false); };
+        const onKeydown = event => { if (event.key === 'Escape') finish(false); };
+
+        checkbox.addEventListener('change', onCheckboxChange);
+        cancelBtn.addEventListener('click', onCancel);
+        proceedBtn.addEventListener('click', onProceed);
+        modal.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKeydown);
+        checkbox.focus();
+    });
+}
+
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function waitForNopalRestart(timeoutMs = 45000) {
+    await wait(1800);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(`/api/system/version?restartCheck=${Date.now()}`, {
+                cache: 'no-store',
+            });
+            if (response.ok) return true;
+        } catch (_error) {
+            // El corte de conexión es esperado mientras systemd levanta NOPAL.
+        }
+        await wait(1000);
+    }
+    return false;
 }
 
 const updatesApplyBtn = document.getElementById('updates-apply-btn');
@@ -12177,7 +13167,7 @@ if (updatesApplyBtn) {
         const label = updatesApplyBtn.querySelector('span');
         const originalLabel = label ? label.textContent : '';
 
-        if (!(await appConfirm(t('updatesApply') + '?', t('updatesApply'), 'warning'))) return;
+        if (!(await confirmSafeSystemUpdate())) return;
 
         updatesApplyBtn.disabled = true;
         if (label) label.textContent = t('updatesApplying');
@@ -12193,11 +13183,19 @@ if (updatesApplyBtn) {
                     changelogEl.innerHTML = `
                         <div class="updates-changelog-title">${escapeHtml(t('updatesAppliedTitle'))}</div>
                         <ul>${data.commits.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
-                        <div class="updates-changelog-title" style="margin-top:8px;">${escapeHtml(t('updatesReloadHint'))}</div>
+                        <div class="updates-changelog-title" style="margin-top:8px;">${escapeHtml(data.restart_scheduled ? t('updatesRestarting') : t('updatesManualRestart'))}</div>
                     `;
                 } else {
                     changelogEl.innerHTML = `<div class="updates-changelog-title">${escapeHtml(t('updatesAlreadyCurrent'))}</div>`;
                 }
+            }
+
+            if (data.updated && data.restart_scheduled) {
+                if (label) label.textContent = t('updatesRestarting');
+                const serviceReady = await waitForNopalRestart();
+                if (!serviceReady) throw new Error(t('updatesRestartTimeout'));
+                window.location.reload();
+                return;
             }
 
             loadUpdatesStatus();
@@ -12240,6 +13238,14 @@ function saveSettings() {
     if (languageValue) {
         setLanguage(languageValue);
         updateLangSwitchUI();
+        if (pluginsLoaded) renderPluginsGallery();
+        if (document.getElementById('pricing-section')?.classList.contains('active')) {
+            renderPricingExtraCosts();
+            renderPricingCostSummary(pricingLastQuoteResult);
+            renderPricingFileInfo(pricingLastQuoteResult);
+            updatePricingBreadcrumbState();
+            loadPricingQuotesHistory();
+        }
     }
     if (settingsPreviewQuality) {
         localStorage.setItem('previewQuality', settingsPreviewQuality.checked ? 'performance' : 'standard');
@@ -12632,12 +13638,14 @@ if (toggleOfflineMachinesBtn) {
     });
 }
 updateToggleOfflineMachinesBtn();
+applyDeviceColumnsLayout();
 
 // Update language display on load
 updateLangSwitchUI();
 updatePageLanguage();
 
 renderPrintQueue();
+renderInitialDeviceLoaders();
 loadModels();
 loadPrinters();
 loadRecentPrinterFiles();
@@ -13190,18 +14198,31 @@ function renderPricingCostSummary(result, errorMessage) {
     const rate = parseFloat(document.getElementById('pricing-exchange-rate-input')?.value) || 1;
     const fmt = (amount) => `${displayCurrency} ${(amount * rate).toFixed(2)}`;
 
-    linesContainer.innerHTML = result.cost_lines.map((line, index) => `
+    linesContainer.innerHTML = result.cost_lines.map((line, index) => {
+        const labelKey = `pricingCostLine_${line.key}`;
+        const localizedLabel = t(labelKey) === labelKey ? line.label : t(labelKey);
+        let localizedDetail = line.detail;
+        if (line.key === 'machine_usage' && result.machine && result.extracted?.estimated_time_minutes != null) {
+            const rate = String(line.detail || '').match(/\$([\d.,]+)/)?.[1] || '0';
+            localizedDetail = t('pricingMachineUsageDetail')
+                .replace('{time}', _formatMinutes(result.extracted.estimated_time_minutes))
+                .replace('{rate}', rate);
+        } else if (line.key === 'labor') {
+            const minutes = String(line.detail || '').match(/[\d.,]+/)?.[0] || '0';
+            localizedDetail = t('pricingLaborDetail').replace('{minutes}', minutes);
+        }
+        return `
         <div class="pricing-cost-line">
             <span class="pricing-cost-line-icon icon-${line.key}">${index + 1}</span>
             <span class="pricing-cost-line-body">
                 <span>
-                    <span class="pricing-cost-line-label">${escapeHtml(line.label)}</span>
-                    ${line.detail ? `<span class="pricing-cost-line-detail">${escapeHtml(line.detail)}</span>` : ''}
+                    <span class="pricing-cost-line-label">${escapeHtml(localizedLabel)}</span>
+                    ${localizedDetail ? `<span class="pricing-cost-line-detail">${escapeHtml(localizedDetail)}</span>` : ''}
                 </span>
                 <span class="pricing-cost-line-amount${line.missing ? ' missing' : ''}">${line.missing ? '—' : fmt(line.amount)}</span>
             </span>
         </div>
-    `).join('');
+    `; }).join('');
 
     const subtotalAmountEl = document.getElementById('pricing-cost-subtotal-amount');
     if (subtotalAmountEl) subtotalAmountEl.textContent = fmt(result.costs.subtotal);
