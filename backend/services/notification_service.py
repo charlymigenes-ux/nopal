@@ -20,30 +20,35 @@ async def get_notifications() -> Dict[str, Any]:
     )
 
     items: List[Dict[str, Any]] = []
+    # host -> "laser"/"cnc", para que el frontend sepa a qué sección de nav
+    # mandar al usuario al hacer click en un problema (ver campo "section").
+    laser_kind_by_host = {laser.get("host"): ("cnc" if laser.get("kind") == "cnc" else "laser") for laser in lasers}
 
     for printer in printers:
         name = printer.get("name", "Impresora")
         if printer.get("status") == "offline":
-            items.append({"severity": "error", "source": "printer", "message": f"{name} desconectada"})
+            items.append({"severity": "error", "source": "printer", "section": "dashboard", "message": f"{name} desconectada"})
         else:
             job_state = printer.get("job", {}).get("state")
             if job_state in ("paused", "error"):
-                items.append({"severity": "warning", "source": "printer", "message": f"{name}: {job_state}"})
+                items.append({"severity": "warning", "source": "printer", "section": "dashboard", "message": f"{name}: {job_state}"})
 
     for laser in lasers:
         if not laser.get("online"):
             label = laser.get("name") or laser.get("host", "Dispositivo")
-            items.append({"severity": "error", "source": "laser", "message": f"{label} desconectado"})
+            section = "cnc" if laser.get("kind") == "cnc" else "laser"
+            items.append({"severity": "error", "source": "laser", "section": section, "message": f"{label} desconectado"})
 
     for job in get_laser_jobs_with_errors():
-        items.append({"severity": "error", "source": "laser", "message": f"Trabajo en {job['host']} con error"})
+        section = laser_kind_by_host.get(job["host"], "laser")
+        items.append({"severity": "error", "source": "laser", "section": section, "message": f"Trabajo en {job['host']} con error"})
 
     for accessory in accessories:
         if accessory.get("on") is None:
             label = accessory.get("name", "Accesorio")
-            items.append({"severity": "warning", "source": "accessory", "message": f"{label} no responde"})
+            items.append({"severity": "warning", "source": "accessory", "section": "dashboard", "message": f"{label} no responde"})
 
     if update_available:
-        items.append({"severity": "info", "source": "update", "message": "Actualización disponible"})
+        items.append({"severity": "info", "source": "update", "section": "settings", "message": "Actualización disponible"})
 
     return {"count": len(items), "items": items}

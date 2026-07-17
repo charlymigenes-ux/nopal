@@ -15,7 +15,7 @@ from threading import Lock
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.auth_deps import require_auth
+from backend.auth_deps import require_auth, require_role
 
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
@@ -110,6 +110,27 @@ CATALOG = (
         "featured": False,
         "availability": "coming_soon",
     },
+    {
+        "id": "arduino-accessories",
+        "name": "Accesorios Arduino/ESP32",
+        "version": "1.0.0",
+        "publisher": "NOPAL Labs",
+        "category": "Accesorios",
+        "description": "Controla relés y tiras LED conectadas a una placa Arduino/ESP32 propia, sin depender de enchufes WiFi de terceros.",
+        "long_description": "Firmware genérico para ESP32/ESP8266 con detección automática por USB: relés on/off, color de tiras PWM/WS2812, macros/escenas y actividad reciente, todo desde NOPAL.",
+        "icon": "cpu",
+        "accent": "#00979d",
+        "compatibility": ["Láser", "Impresión 3D", "CNC"],
+        "permissions": ["Detectar puertos USB", "Enviar comandos a la placa"],
+        "size": "48 KB",
+        "featured": False,
+        "availability": "available",
+        "frontend": {
+            "style": "/static/plugins/arduino-accessories/arduino-accessories.css",
+            "script": "/static/plugins/arduino-accessories/arduino-accessories.js",
+            "section": "arduino-accessories",
+        },
+    },
 )
 
 
@@ -162,7 +183,7 @@ def list_plugins(_user: dict = Depends(require_auth)):
 
 
 @router.post("/{plugin_id}/install")
-def install_plugin(plugin_id: str, _user: dict = Depends(require_auth)):
+def install_plugin(plugin_id: str, _user: dict = Depends(require_role("admin"))):
     plugin = _catalog_item(plugin_id)
     if plugin["availability"] != "available":
         raise HTTPException(status_code=409, detail="Este plugin todavía no está disponible")
@@ -179,7 +200,7 @@ def install_plugin(plugin_id: str, _user: dict = Depends(require_auth)):
 
 
 @router.delete("/{plugin_id}")
-def uninstall_plugin(plugin_id: str, _user: dict = Depends(require_auth)):
+def uninstall_plugin(plugin_id: str, _user: dict = Depends(require_role("admin"))):
     _catalog_item(plugin_id)
     with _state_lock:
         installed = _read_installed()
