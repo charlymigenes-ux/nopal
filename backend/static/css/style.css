@@ -3344,6 +3344,22 @@ body.green .settings-card {
     }
 }
 
+/* ── Ayuda: layout en grid (como .plugins-grid, línea ~4549) en vez del
+   masonry por columnas de arriba. Se scopea con el id real del contenedor
+   (#help-modules-groups) para no tocar #settings-modules-groups ni ninguna
+   otra página que reuse .settings-module-group-body/.settings-card — solo
+   afecta a Ayuda. auto-fill/minmax ya es responsive por sí solo (baja a 1
+   columna en pantallas angostas), no hace falta un @media extra. ── */
+#help-modules-groups .settings-module-group-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+    gap: 14px;
+}
+
+#help-modules-groups .settings-module-group-body > .help-card {
+    margin-bottom: 0;
+}
+
 /* ── Editor "Personalizar Página de Configuración": grupos dinámicos ── */
 
 .settings-module-customizer-modal-content {
@@ -8786,6 +8802,230 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     min-height: 260px;
 }
 
+/* ── Modal "Control del sistema" (servicios systemd + host): mismo lenguaje
+   visual verde/glass oscuro que ya usan la Galería de plugins (.plugin-card,
+   línea ~4566) y las fichas de Ayuda (#help-modules-groups .help-card, línea
+   ~9946) — elegido a pedido explícito del usuario en vez del modal decorado
+   con mascotas (cactus1/cactus2.png) que usa "Enviar a impresora". El fondo
+   queda vidrio oscuro fijo sin importar el tema activo, así que el texto
+   (título, nombres de servicio, subtítulos) se fija a un tono claro fijo acá
+   en vez de var(--text) — mismo criterio que #help-modules-groups .help-card
+   .card-header-std-title (línea ~9973), si no en tema claro quedaría casi
+   invisible sobre este fondo oscuro. ── */
+
+.modal-content.system-control-modal-content {
+    width: 92%;
+    max-width: 640px;
+    height: auto;
+    max-height: 88vh;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 15px;
+    box-shadow: none;
+}
+
+.system-control-modal-content .card-header-std {
+    margin-bottom: 6px;
+}
+
+.system-control-modal-content .card-header-std-title {
+    color: #fff;
+}
+
+.system-control-modal-content .card-header-std-icon {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--green) 45%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--green) 15%, transparent);
+    color: var(--green);
+    flex-shrink: 0;
+}
+
+.system-control-subtitle {
+    margin: 0 0 18px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.system-control-section + .system-control-section {
+    margin-top: 22px;
+}
+
+.system-control-section-title {
+    margin: 0 0 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.system-control-services-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.system-control-empty {
+    margin: 0;
+    padding: 16px 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.system-control-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.06);
+}
+
+.system-control-status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.55);
+    flex-shrink: 0;
+}
+
+/* Verde/rojo fijos (no ligados al tema) por lo mismo que .btn-file-action-danger
+   más abajo: son colores semánticos de estado systemd (activo/con error), no
+   decoración que deba seguir el acento del tema. */
+.system-control-status-dot.is-active {
+    background: var(--green);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--green) 60%, transparent);
+}
+
+.system-control-status-dot.is-failed {
+    background: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+.system-control-row-name {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.system-control-row-name strong {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.system-control-row-name small {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: capitalize;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.system-control-icon-btn {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 8px;
+    background: rgba(148, 163, 184, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.system-control-icon-btn:hover {
+    background: color-mix(in srgb, var(--green) 20%, transparent);
+    border-color: color-mix(in srgb, var(--green) 45%, transparent);
+    color: var(--green);
+}
+
+.system-control-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Toggle pill — mismo patrón que .aa-switch del plugin de accesorios Arduino
+   (arduino-accessories.css), copiado con su propio nombre de clase para no
+   depender del CSS de un plugin desde el núcleo de la app. */
+.system-control-switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.system-control-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.system-control-switch span {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.35);
+    transition: background 0.15s ease;
+}
+
+.system-control-switch span::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 3px;
+    top: 3px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.15s ease;
+}
+
+.system-control-switch input:checked + span {
+    background: var(--green);
+}
+
+.system-control-switch input:checked + span::before {
+    transform: translateX(18px);
+}
+
+.system-control-switch input:disabled + span {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.system-control-host-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.system-control-host-actions .btn-file-action {
+    flex: 1;
+    justify-content: center;
+    min-width: 160px;
+}
+
 /* ── Tipos semánticos (ícono + acento de color) ── */
 
 .app-confirm-type-danger .app-confirm-icon {
@@ -9927,11 +10167,61 @@ body.green .laser-start-confirm-copies input {
     color: var(--text);
 }
 
+/* ── Fichas de "Ayuda" con la misma apariencia que .plugin-card de la
+   Galería de plugins (línea ~4550): fondo vidrio oscuro fijo, borde sutil
+   con acento verde, ícono en caja tintada y layout en grid (ver
+   #help-modules-groups .settings-module-group-body más arriba). Igual que
+   .plugin-card, el fondo queda oscuro fijo independientemente del tema —
+   por eso el título y los párrafos también se fijan a un tono claro fijo
+   acá (no var(--text): en tema claro es un color oscuro pensado para fondo
+   claro y quedaría casi ilegible sobre este fondo oscuro), mismo criterio
+   que ya usa .laser-card-accent con su propio fondo fijo (línea ~6034).
+   Selector con el id real del contenedor (#help-modules-groups) para pisar
+   con seguridad "body.dark .settings-card"/"body.green .settings-card"
+   (línea ~2832) sin depender del orden de la hoja — scopeado SOLO a Ayuda,
+   el resto de usos de .settings-card (Configuración, etc.) no cambia. ── */
+#help-modules-groups .help-card {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 15px;
+    box-shadow: none;
+    transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+#help-modules-groups .help-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--green) 55%, transparent);
+    background: rgba(20, 30, 50, 0.88);
+}
+
+#help-modules-groups .help-card .card-header-std-title {
+    color: #fff;
+}
+
+#help-modules-groups .help-card p {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+#help-modules-groups .help-card .card-header-std-icon {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--green) 45%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--green) 15%, transparent);
+    color: var(--green);
+}
+
 .help-about-row {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+}
+
+.help-card-goto-btn {
+    margin-top: 10px;
 }
 
 .help-version-badge {

@@ -30,8 +30,11 @@ from backend.api.laser import router as laser_router
 from backend.api.marlin_printers import router as marlin_printers_router
 from backend.api.elegoo_printers import router as elegoo_printers_router
 from backend.api.flashforge_printers import router as flashforge_printers_router
+from backend.api.bambu_printers import router as bambu_printers_router
 from backend.api.logs import router as logs_router
 from backend.api.accessories import router as accessories_router
+from backend.api.cameras import router as cameras_router
+from backend.api.system import router as system_router
 from backend.api.pricing import router as pricing_router
 from backend.api.auth import router as auth_router
 from backend.api.notifications import router as notifications_router
@@ -99,8 +102,11 @@ app.include_router(laser_router)
 app.include_router(marlin_printers_router)
 app.include_router(elegoo_printers_router)
 app.include_router(flashforge_printers_router)
+app.include_router(bambu_printers_router)
 app.include_router(logs_router)
 app.include_router(accessories_router)
+app.include_router(cameras_router)
+app.include_router(system_router)
 app.include_router(pricing_router)
 app.include_router(auth_router)
 app.include_router(notifications_router)

@@ -4,6 +4,7 @@ import shutil
 from collections import deque
 from typing import Any, Dict, List, Optional
 
+from backend.services.bambu_service import get_registered_printers_with_status as get_bambu_printers
 from backend.services.elegoo_service import get_registered_printers_with_status as get_elegoo_printers
 from backend.services.flashforge_service import get_registered_printers_with_status as get_flashforge_printers
 from backend.services.klipper_service import get_all_printers_status, get_system_stats
@@ -65,6 +66,7 @@ def _device_counts(
     marlin: List[Dict[str, Any]],
     elegoo: List[Dict[str, Any]],
     flashforge: List[Dict[str, Any]],
+    bambu: List[Dict[str, Any]],
     laser_cnc: List[Dict[str, Any]],
 ) -> Dict[str, Dict[str, int]]:
     counts = {
@@ -92,6 +94,10 @@ def _device_counts(
         counts["printer"]["total"] += 1
         if printer.get("online"):
             counts["printer"]["online"] += 1
+    for printer in bambu:
+        counts["printer"]["total"] += 1
+        if printer.get("online"):
+            counts["printer"]["online"] += 1
     for entry in laser_cnc:
         kind = "cnc" if entry.get("kind") == "cnc" else "laser"
         counts[kind]["total"] += 1
@@ -104,6 +110,7 @@ def _active_jobs(
     klipper: List[Dict[str, Any]],
     elegoo: List[Dict[str, Any]],
     flashforge: List[Dict[str, Any]],
+    bambu: List[Dict[str, Any]],
     marlin_jobs: List[Dict[str, Any]],
     marlin_registry: List[Dict[str, Any]],
     laser_cnc_jobs: List[Dict[str, Any]],
@@ -148,6 +155,23 @@ def _active_jobs(
                 "filename": job.get("filename"),
                 "state": job.get("state"),
                 "progress": job.get("progress"),
+                "time_remaining_s": None,
+                "current_layer": job.get("current_layer"),
+                "total_layer": job.get("total_layer"),
+            })
+
+    for printer in bambu:
+        job = printer.get("job") or {}
+        if job.get("state") in ("printing", "paused"):
+            jobs.append({
+                "machine_type": "printer",
+                "name": printer.get("name"),
+                "filename": job.get("filename"),
+                "state": job.get("state"),
+                "progress": job.get("progress"),
+                # mc_remaining_time de Bambu viene en minutos, no segundos --
+                # se prefiere omitirlo a convertir a ciegas sin poder
+                # confirmar la unidad contra hardware real.
                 "time_remaining_s": None,
                 "current_layer": job.get("current_layer"),
                 "total_layer": job.get("total_layer"),
@@ -202,6 +226,7 @@ async def get_dashboard_summary() -> Dict[str, Any]:
         klipper,
         marlin_registry,
         flashforge,
+        bambu,
         laser_cnc_registry,
         notifications,
         update_available,
@@ -211,6 +236,11 @@ async def get_dashboard_summary() -> Dict[str, Any]:
         loop.run_in_executor(None, get_all_printers_status),
         loop.run_in_executor(None, get_registered_printers_with_status),
         loop.run_in_executor(None, get_flashforge_printers),
+        # A diferencia de Elegoo (ver más abajo), get_bambu_printers() sí
+        # entra en el batch de executor: _ensure_client() usa hilos propios
+        # de paho-mqtt (Client.loop_start()), no asyncio.create_task, así
+        # que no depende del event loop de este hilo para arrancar.
+        loop.run_in_executor(None, get_bambu_printers),
         get_registered_lasers_status(),
         get_notifications(),
         loop.run_in_executor(None, is_git_update_available),
@@ -224,8 +254,8 @@ async def get_dashboard_summary() -> Dict[str, Any]:
     # event loop de este mismo hilo (asyncio.create_task) para registrarse.
     elegoo = get_elegoo_printers()
 
-    device_counts = _device_counts(klipper, marlin_registry, elegoo, flashforge, laser_cnc_registry)
-    jobs = _active_jobs(klipper, elegoo, flashforge, marlin_jobs, marlin_registry, laser_cnc_jobs, laser_cnc_registry)
+    device_counts = _device_counts(klipper, marlin_registry, elegoo, flashforge, bambu, laser_cnc_registry)
+    jobs = _active_jobs(klipper, elegoo, flashforge, bambu, marlin_jobs, marlin_registry, laser_cnc_jobs, laser_cnc_registry)
 
     services_total = sum(v["total"] for key, v in device_counts.items() if key != "camera")
     services_online = sum(v["online"] for key, v in device_counts.items() if key != "camera")

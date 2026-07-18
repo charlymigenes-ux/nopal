@@ -131,6 +131,27 @@ CATALOG = (
             "section": "arduino-accessories",
         },
     },
+    {
+        "id": "camera-viewer",
+        "name": "Cámaras",
+        "version": "1.0.0",
+        "publisher": "NOPAL Labs",
+        "category": "Producción",
+        "description": "Agrega cámaras por URL de stream MJPEG y míralas en vivo desde el panel.",
+        "long_description": "Compatible con cualquier fuente que exponga un stream MJPEG: Crowsnest, mjpg-streamer, go2rtc, ustreamer o una cámara IP. Sin protocolo propio ni marca específica: solo nombre + URL.",
+        "icon": "camera",
+        "accent": "#38bdf8",
+        "compatibility": ["Impresión 3D", "Láser", "CNC"],
+        "permissions": ["Guardar direcciones de cámaras"],
+        "size": "24 KB",
+        "featured": False,
+        "availability": "available",
+        "frontend": {
+            "style": "/static/plugins/camera-viewer/camera-viewer.css?v=3",
+            "script": "/static/plugins/camera-viewer/camera-viewer.js?v=3",
+            "section": "camera-viewer",
+        },
+    },
 )
 
 
