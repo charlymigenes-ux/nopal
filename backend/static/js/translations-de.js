@@ -419,6 +419,7 @@ window.NopalTranslations["de"] = {
   "helpMacrosBody": "Listet die in Ihrer Printer.cfg (Klipper) konfigurierten Makros auf und ermöglicht Ihnen, sie mit einem Fingertipp auszuführen, ohne dass eine Konsole erforderlich ist.",
   "helpSettingsTitle": "Einstellungen",
   "helpSettingsBody": "Design (hell/dunkel/NOPAL/benutzerdefiniert), Sprache, Schnittstellengröße, App-Updates und erkannte Laser-USB-Ports.",
+  "helpGotoSection": "Zum Abschnitt",
   "searchFiles": "Dateien durchsuchen...",
   "upload": "Datei hochladen",
   "download": "Herunterladen",

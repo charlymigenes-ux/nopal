@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=265">
+    <link rel="stylesheet" href="/static/css/style.css?v=266">
 </head>
 <body>
     <div class="app-shell">
@@ -48,6 +48,9 @@
                     <div class="topbar-notif-list" id="topbar-notif-list"></div>
                 </div>
             </div>
+            <button type="button" class="topbar-icon-btn" id="topbar-system-btn" aria-label="Control del sistema" data-i18n-title="systemControlTitle" title="Control del sistema" hidden>
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            </button>
             <div class="topbar-lang-wrap" id="topbar-lang-wrap">
                 <button type="button" class="topbar-icon-btn topbar-lang-btn" id="topbar-lang-btn" aria-label="Idioma" data-i18n-title="languageLabel" title="Idioma">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
@@ -119,10 +122,9 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                             <span data-i18n="navFlashforgePrinters">Impresoras FlashForge</span>
                         </button>
-                        <button type="button" class="nav-item nav-item-placeholder" disabled data-i18n-title="navCamerasSoonTitle" title="Cámaras (Próximamente)">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                            <span data-i18n="navCameras">Cámaras</span>
-                            <span class="nav-item-soon-badge" data-i18n="navComingSoonBadge">Pronto</span>
+                        <button class="nav-item" data-section="bambu" data-i18n-title="navBambuPrinters" title="Impresoras Bambu Lab">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                            <span data-i18n="navBambuPrinters">Impresoras Bambu Lab</span>
                         </button>
                     </div>
                 </div>
@@ -1579,6 +1581,30 @@
                 </main>
             </section>
 
+            <section id="bambu-section" class="view-section" style="display: none;">
+                <main class="main-content">
+                    <section class="page-header">
+                        <h1 data-i18n="navBambuPrinters">Impresoras Bambu Lab</h1>
+                        <p data-i18n="bambuPrintersPageDescription">Controla impresoras Bambu Lab por red local (LAN): temperaturas, progreso de impresión y pausar/reanudar/cancelar.</p>
+                    </section>
+                    <section class="printers-section">
+                        <div class="section-title">
+                            <h2 data-i18n="devicesTitle">Dispositivos</h2>
+                            <div class="view-controls">
+                                <button class="btn-view-toggle" id="bambu-printers-refresh-btn" title="Actualizar">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                </button>
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="bambu-printers-add-btn">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    <span data-i18n="bambuPrinterAddAction">Agregar impresora</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="bambu-printers-grid" class="printers-grid"></div>
+                    </section>
+                </main>
+            </section>
+
             <section id="queue-section" class="view-section" style="display: none;">
                 <main class="main-content history-split-main">
                     <div class="history-split-topbar">
@@ -2372,6 +2398,21 @@
                                 <p class="devices-subcard-sublabel" data-i18n="marlinPrintersRegisteredHeader">Impresoras registradas</p>
                                 <div class="usb-ports-list" id="flashforge-printers-registry-list"></div>
                             </div>
+                            <div class="devices-subcard">
+                                <div class="devices-subcard-header">
+                                    <span class="card-header-std-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                                    </span>
+                                    <h3 data-i18n="navBambuPrinters">Impresoras Bambu Lab</h3>
+                                    <button type="button" class="theme-option-icon-btn" id="bambu-printers-discover-btn" title="Actualizar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
+                                <p data-i18n="bambuPrintersDescription">Impresoras Bambu Lab en modo LAN local (X1 Carbon, X1, X1E, P1P, P1S, A1, A1 mini) detectadas por red.</p>
+                                <div class="usb-ports-list" id="bambu-discover-list"></div>
+                                <p class="devices-subcard-sublabel" data-i18n="marlinPrintersRegisteredHeader">Impresoras registradas</p>
+                                <div class="usb-ports-list" id="bambu-printers-registry-list"></div>
+                            </div>
                         </div>
                         <div class="settings-card card-collapsible" id="accessories-settings-card" data-settings-module="accessories">
                             <div class="card-header-std">
@@ -2429,7 +2470,7 @@
                          localStorage: nunca se mezclan entre sí. -->
                     <div class="settings-modules-groups" id="help-modules-groups"></div>
                     <div class="settings-modules-pool" id="help-modules-pool" hidden>
-                        <div class="settings-card card-collapsible" data-settings-module="about">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="about">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -2454,7 +2495,7 @@
                             <p data-i18n="helpReplayTourHint">Vuelve a mostrar el recorrido guiado de todas las secciones del panel.</p>
                         </div>
 
-                        <div class="settings-card card-collapsible" data-settings-module="models">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="models">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
@@ -2465,9 +2506,10 @@
                                 </button>
                             </div>
                             <p data-i18n="helpModelsBody">Sube archivos STL/3MF, organízalos en carpetas y previsualízalos en 3D antes de imprimir. Desde aquí generas el G-code o envías el modelo directo a una impresora.</p>
+                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="models"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                         </div>
 
-                        <div class="settings-card card-collapsible" data-settings-module="gcode">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="gcode">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -2478,9 +2520,10 @@
                                 </button>
                             </div>
                             <p data-i18n="helpGcodeBody">Biblioteca de archivos G-code ya listos (de impresión 3D o de láser). Previsualiza la trayectoria y envíalos directo a una impresora o a la cola del láser.</p>
+                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="gcode"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                         </div>
 
-                        <div class="settings-card card-collapsible" data-settings-module="dashboardHelp">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="dashboardHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -2491,9 +2534,10 @@
                                 </button>
                             </div>
                             <p data-i18n="helpDashboardBody">Muestra todas tus impresoras y láseres detectados, ordenados por estado. Toca una ficha para abrir sus controles: temperaturas, movimiento del cabezal (Toolhead) y progreso en vivo.</p>
+                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="dashboard"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                         </div>
 
-                        <div class="settings-card card-collapsible" data-settings-module="laserHelp">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="laserHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
@@ -2504,9 +2548,10 @@
                                 </button>
                             </div>
                             <p data-i18n="helpLaserBody">Controla tus láseres GRBL por red o USB: movimiento manual, encendido (doble clic para armar), aire asistido, tarjeta SD y consola de comandos. Puedes tener varios láseres registrados y cambiar entre ellos.</p>
+                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="laser"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                         </div>
 
-                        <div class="settings-card card-collapsible" data-settings-module="queueHelp">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="queueHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -2517,9 +2562,10 @@
                                 </button>
                             </div>
                             <p data-i18n="helpQueueBody">Historial de impresión (archivos ya impresos por cada impresora) y la cola de trabajos activos con progreso y tiempo restante reales.</p>
+                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="queue"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                         </div>
 
-                        <div class="settings-card card-collapsible" data-settings-module="macrosHelp">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="macrosHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -2530,9 +2576,10 @@
                                 </button>
                             </div>
                             <p data-i18n="helpMacrosBody">Lista los macros configurados en tu `printer.cfg` (Klipper) y te deja ejecutarlos con un toque, sin usar la consola.</p>
+                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="console"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                         </div>
 
-                        <div class="settings-card card-collapsible" data-settings-module="settingsHelp">
+                        <div class="settings-card card-collapsible help-card" data-settings-module="settingsHelp">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -2543,6 +2590,7 @@
                                 </button>
                             </div>
                             <p data-i18n="helpSettingsBody">Tema (claro/oscuro/NOPAL/personalizado), idioma, tamaño de interfaz, actualizaciones de la app y los puertos USB de láser detectados.</p>
+                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="settings"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                         </div>
                     </div>
                 </main>
@@ -3335,6 +3383,60 @@
         </div>
     </div>
 
+    <!-- System Control Modal: servicios systemd (Klipper/Moonraker/Crowsnest)
+         + control del host (reiniciar/apagar equipo). Popup con el mismo
+         lenguaje visual verde/glass oscuro que la Galería de plugins y las
+         fichas de Ayuda (.system-control-modal-content, style.css) — no el
+         modal decorado con cactus1/cactus2.png que usa "Enviar a impresora".
+         Solo admin: el botón que lo abre (#topbar-system-btn) viene oculto
+         para operadores desde updateTopbarUser() en app.js. -->
+    <div id="system-control-modal" class="modal">
+        <div class="modal-backdrop" id="system-control-modal-backdrop"></div>
+        <div class="modal-content system-control-modal-content">
+            <button class="modal-close" id="system-control-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="card-header-std">
+                <span class="card-header-std-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                </span>
+                <h2 class="card-header-std-title" data-i18n="systemControlTitle">Control del sistema</h2>
+            </div>
+            <p class="system-control-subtitle" data-i18n="systemControlSubtitle">Reinicia o detén los servicios de Klipper, Moonraker y Crowsnest, o reinicia/apaga el equipo host.</p>
+
+            <div class="system-control-section">
+                <h3 class="system-control-section-title" data-i18n="systemControlServicesSection">Control de servicios</h3>
+                <div class="system-control-services-list" id="system-control-services-list">
+                    <p class="system-control-empty" data-i18n="systemControlEmpty">No hay servicios disponibles.</p>
+                </div>
+            </div>
+
+            <div class="system-control-section">
+                <h3 class="system-control-section-title" data-i18n="systemControlNopalSection">Panel NOPAL</h3>
+                <div class="system-control-host-actions">
+                    <button type="button" class="btn-file-action" id="system-control-nopal-restart-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        <span data-i18n="systemControlRestartNopal">Reiniciar NOPAL</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="system-control-section">
+                <h3 class="system-control-section-title" data-i18n="systemControlHostSection">Control del host</h3>
+                <div class="system-control-host-actions">
+                    <button type="button" class="btn-file-action" id="system-control-host-reboot-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        <span data-i18n="systemControlRestartHost">Reiniciar equipo</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-danger" id="system-control-host-shutdown-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                        <span data-i18n="systemControlShutdownHost">Apagar equipo</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Move File Modal -->
     <div id="move-file-modal" class="modal">
         <div class="modal-backdrop" id="move-file-modal-backdrop"></div>
@@ -3860,6 +3962,53 @@
         </div>
     </div>
 
+    <!-- Alta de una impresora Bambu Lab (MQTT+FTPS modo LAN por red, encontrada
+         por /discover) -- a diferencia de FlashForge/Elegoo acá el modelo no se
+         puede detectar por protocolo (el SSDP de Bambu casi nunca lo reporta),
+         así que lo elige el usuario a mano en el select. -->
+    <div id="bambu-printer-register-modal" class="modal">
+        <div class="modal-backdrop" id="bambu-printer-register-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="bambu-printer-register-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </div>
+            <h2 data-i18n="bambuPrinterRegisterTitle">Agregar impresora Bambu Lab</h2>
+            <p class="laser-card-subtitle" id="bambu-printer-register-device-label"></p>
+            <div class="usb-classify-name-field">
+                <label for="bambu-printer-register-name" data-i18n="usbRegisterNameLabel">Nombre del dispositivo</label>
+                <input type="text" id="bambu-printer-register-name" autocomplete="off">
+            </div>
+            <div class="usb-classify-name-field">
+                <label for="bambu-printer-register-access-code" data-i18n="bambuPrinterAccessCodeLabel">Access code</label>
+                <input type="text" id="bambu-printer-register-access-code" autocomplete="off">
+                <p class="settings-field-hint" data-i18n="bambuPrinterAccessCodeHint">Lo encuentras en la pantalla de la impresora, en Configuración → Red → Modo LAN.</p>
+            </div>
+            <div class="usb-classify-name-field">
+                <label for="bambu-printer-register-model" data-i18n="bambuPrinterModelLabel">Modelo</label>
+                <select id="bambu-printer-register-model">
+                    <option value="X1 Carbon">X1 Carbon</option>
+                    <option value="X1">X1</option>
+                    <option value="X1E">X1E</option>
+                    <option value="P1P">P1P</option>
+                    <option value="P1S">P1S</option>
+                    <option value="A1">A1</option>
+                    <option value="A1 mini">A1 mini</option>
+                </select>
+            </div>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action" id="bambu-printer-register-confirm-btn">
+                    <span data-i18n="confirmAction">Confirmar</span>
+                </button>
+                <button type="button" class="btn-file-action btn-file-action-danger" id="bambu-printer-register-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Alta de accesorios IoT (extractor/ventilador/bomba/compresor) -->
     <div id="accessory-modal" class="modal">
         <div class="modal-backdrop" id="accessory-modal-backdrop"></div>
@@ -4355,10 +4504,10 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=21"></script>
+    <script src="/static/js/translations.js?v=22"></script>
     <script src="/static/js/translations-pt-BR.js?v=2"></script>
     <script src="/static/js/translations-fr.js?v=2"></script>
     <script src="/static/js/translations-de.js?v=2"></script>
-    <script src="/static/js/app.js?v=205"></script>
+    <script src="/static/js/app.js?v=206"></script>
 </body>
 </html>

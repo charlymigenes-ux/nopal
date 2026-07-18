@@ -419,6 +419,7 @@ window.NopalTranslations["pt-BR"] = {
   "helpMacrosBody": "Lista as macros configuradas em seu Printer.cfg (Klipper) e permite executá-las com um toque, sem necessidade de console.",
   "helpSettingsTitle": "Configurações",
   "helpSettingsBody": "Tema (claro/escuro/NOPAL/personalizado), idioma, tamanho da interface, atualizações de aplicativos e portas USB de laser detectadas.",
+  "helpGotoSection": "Ir para a seção",
   "searchFiles": "Pesquisar arquivos...",
   "upload": "Carregar arquivo",
   "download": "Baixar",

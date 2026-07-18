@@ -14,6 +14,10 @@ logs/
 laser_registry.json
 laser_history.json
 marlin_printer_registry.json
+elegoo_printer_registry.json
+flashforge_printer_registry.json
+bambu_printer_registry.json
+camera_registry.json
 temperature_presets.json
 scheduled_prints.json
 pricing_config.json

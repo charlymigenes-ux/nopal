@@ -61,6 +61,11 @@ function updateTopbarUser(user) {
     // afecta a todo el equipo) — un operador no debe ni verla ni poder entrar.
     const pluginsBtn = document.getElementById('nav-plugins-gallery-btn');
     if (pluginsBtn) pluginsBtn.hidden = user.role !== 'admin';
+
+    // El Control del sistema (servicios systemd + reiniciar/apagar el host)
+    // es igual de sensible — solo admin lo debe ver u operar.
+    const systemBtn = document.getElementById('topbar-system-btn');
+    if (systemBtn) systemBtn.hidden = user.role !== 'admin';
 }
 
 function showFullscreenRecommendation() {
@@ -6253,19 +6258,22 @@ function getPrinterSendSelectedEntry() {
 }
 
 // Refresca Klipper (a través de loadPrinters(), que además actualiza el
-// dashboard) y hace fetch fresco de Elegoo/FlashForge en paralelo — a
-// propósito NO se reusan elegooPrintersRegistryCache/flashforgePrintersRegistryCache,
-// porque esos solo se llenan si el usuario ya visitó esas secciones antes.
+// dashboard) y hace fetch fresco de Elegoo/FlashForge/Bambu en paralelo — a
+// propósito NO se reusan elegooPrintersRegistryCache/flashforgePrintersRegistryCache/
+// bambuPrintersRegistryCache, porque esos solo se llenan si el usuario ya
+// visitó esas secciones antes.
 async function loadPrinterSendEntries() {
-    const [, elegooData, flashforgeData] = await Promise.all([
+    const [, elegooData, flashforgeData, bambuData] = await Promise.all([
         loadPrinters(),
         fetch('/api/elegoo/printers').then(res => res.json()).catch(() => ({ printers: [] })),
         fetch('/api/flashforge/printers').then(res => res.json()).catch(() => ({ printers: [] })),
+        fetch('/api/bambu/printers').then(res => res.json()).catch(() => ({ printers: [] })),
     ]);
 
     const entries = allPrinters.map(printer => ({ type: 'klipper', id: printer.port, printer }));
     (elegooData.printers || []).forEach(printer => entries.push({ type: 'elegoo', id: printer.id, printer }));
     (flashforgeData.printers || []).forEach(printer => entries.push({ type: 'flashforge', id: printer.id, printer }));
+    (bambuData.printers || []).forEach(printer => entries.push({ type: 'bambu', id: printer.id, printer }));
     return entries;
 }
 
@@ -6475,6 +6483,8 @@ async function submitPrinterSend(mode) {
             url = `/api/printers/${selectedEntry.id}/send`;
         } else if (selectedEntry.type === 'elegoo') {
             url = `/api/elegoo/printers/${encodeURIComponent(selectedEntry.id)}/send`;
+        } else if (selectedEntry.type === 'bambu') {
+            url = `/api/bambu/printers/${encodeURIComponent(selectedEntry.id)}/send`;
         } else {
             url = `/api/flashforge/printers/${encodeURIComponent(selectedEntry.id)}/send`;
         }
@@ -6489,6 +6499,7 @@ async function submitPrinterSend(mode) {
         loadPrinters();
         if (selectedEntry.type === 'elegoo') refreshElegooPrintersGrid();
         if (selectedEntry.type === 'flashforge') refreshFlashforgePrintersGrid();
+        if (selectedEntry.type === 'bambu') refreshBambuPrintersGrid();
     } catch (error) {
         console.error(error);
         appAlert(error.message || 'No se pudo enviar el archivo.', '', 'danger');
@@ -7275,6 +7286,58 @@ function renderAccessories(accessories) {
         });
     });
 }
+
+async function loadAccessoryArduinoDiscoverList() {
+    const container = document.getElementById('accessory-arduino-discover-list');
+    if (!container) return;
+    container.innerHTML = `<div class="empty-state-small">${t('accessoryArduinoDiscoverScanning')}</div>`;
+    try {
+        const response = await fetch('/api/accessories/arduino/discover');
+        if (!response.ok) throw new Error(`discover failed: ${response.status}`);
+        const data = await response.json();
+        renderAccessoryArduinoDiscoverList(data.boards || []);
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = `<div class="empty-state-small">${t('accessoryArduinoDiscoverError')}</div>`;
+    }
+}
+
+function renderAccessoryArduinoDiscoverList(boards) {
+    const container = document.getElementById('accessory-arduino-discover-list');
+    if (!container) return;
+    if (!boards.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('accessoryArduinoDiscoverEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = boards.map(board => {
+        const relayCount = parseInt(board.relays, 10) || 0;
+        const relayInfo = relayCount ? ` · ${t('accessoryArduinoDiscoverRelays').replace('{count}', relayCount)}` : '';
+        return `
+            <div class="usb-port-item">
+                <div class="usb-port-item-info">
+                    <strong>${escapeHtml(board.chip || board.device)}</strong>
+                    <span>${escapeHtml(board.device)}${relayInfo}</span>
+                </div>
+                <span class="usb-port-vidpid">${board.latency_ms != null ? `${board.latency_ms} ms` : '—'}</span>
+                <button type="button" class="btn-file-action accessory-arduino-discover-add-btn" data-device="${escapeHtml(board.device || '')}" data-location="${escapeHtml(board.location || '')}" data-chip="${escapeHtml(board.chip || '')}" data-relays="${escapeHtml(String(relayCount || 1))}">${escapeHtml(t('usbPortAdd'))}</button>
+            </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.accessory-arduino-discover-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openAccessoryModal({
+                device: btn.dataset.device,
+                location: btn.dataset.location,
+                chip: btn.dataset.chip,
+                relays: parseInt(btn.dataset.relays, 10) || 1,
+                relay: 1,
+            });
+        });
+    });
+}
+
+document.getElementById('accessory-arduino-discover-btn')?.addEventListener('click', loadAccessoryArduinoDiscoverList);
 
 function updateAccessoryArduinoConfigUI() {
     const label = document.getElementById('accessory-arduino-device-label');
@@ -12321,6 +12384,386 @@ document.getElementById('flashforge-printer-register-confirm-btn')?.addEventList
     }
 });
 
+// ── Impresoras Bambu Lab standalone (X1C/X1/X1E/P1P/P1S/A1/A1 mini, modo LAN
+// local vía MQTT+FTPS) ── Mismo patrón que Elegoo/FlashForge (sección
+// dedicada, tarjetas propias, alta por escaneo de red en Configuración) — el
+// shape de datos, la tarjeta y pausar/reanudar/cancelar son idénticos, así
+// que se reusan a propósito las clases CSS .elegoo-card-actions/
+// .elegoo-card-action-btn en vez de duplicarlas. Dos diferencias reales frente
+// a FlashForge: 1) el modelo no se puede detectar por protocolo (el SSDP de
+// Bambu casi nunca lo reporta), así que el alta pide un <select> además del
+// nombre y el access code; 2) el registro hace un handshake MQTT real contra
+// la impresora que puede tardar hasta 5s, así que el modal de alta se queda
+// abierto con el botón de confirmar deshabilitado mientras espera, en vez de
+// cerrarse optimistamente como el de FlashForge.
+
+let bambuPrintersRegistryCache = [];
+
+function getBambuVisualState(printer) {
+    if (!printer || !printer.online) return 'offline';
+    // job.state documentado: idle | printing | paused | preparing | error |
+    // unknown (ver _JOB_STATE_MAP en bambu_service.py). "preparing"
+    // (nivelación de cama/calibración antes de imprimir), "error" y "unknown"
+    // caen en "idle": son estados de transición sin color/animación propia,
+    // mismo criterio que getFlashforgeVisualState con "busy"/"error"/"unknown".
+    const state = (printer.job && printer.job.state) || 'idle';
+    if (state === 'printing') return 'printing';
+    if (state === 'paused') return 'paused';
+    return 'idle';
+}
+
+function bambuPrinterCardHtml(printer) {
+    const visualState = getBambuVisualState(printer);
+    const isOnline = visualState !== 'offline';
+    const statusText = isOnline ? t('online') : t('offline');
+    const stateLabel = isOnline ? t(visualState) : t('offline');
+    const name = printer.name || printer.model || printer.id;
+    const subLabel = [printer.model, printer.ip].filter(Boolean).join(' · ');
+    // PRINTER_STATE_IMAGES no tiene entrada "offline" (ver printerIllustrationImg)
+    // — se pisa por "idle" solo para elegir la imagen, el resto de la tarjeta
+    // sigue mostrando el estado real sin conexión.
+    const illustrationState = visualState === 'offline' ? 'idle' : visualState;
+
+    const temps = printer.temps || {};
+    const extruder = temps.extruder || {};
+    const bed = temps.heater_bed || {};
+    const extruderTemp = typeof extruder.current === 'number' ? Math.round(extruder.current * 10) / 10 : null;
+    const bedTemp = typeof bed.current === 'number' ? Math.round(bed.current * 10) / 10 : null;
+    const extruderTarget = typeof extruder.target === 'number' ? extruder.target : 0;
+    const bedTarget = typeof bed.target === 'number' ? bed.target : 0;
+
+    const job = printer.job || {};
+    const progress = typeof job.progress === 'number' ? job.progress : 0;
+    const layersLabel = (job.current_layer != null && job.total_layer != null)
+        ? `${job.current_layer} / ${job.total_layer}`
+        : '—';
+
+    const showActions = visualState === 'printing' || visualState === 'paused';
+    const isPaused = visualState === 'paused';
+
+    return `
+        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-bambu-id="${escapeHtml(printer.id)}">
+            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline, printer.id)}
+            <div class="printer-card-top">
+                <div>
+                    <h3 class="printer-name">${escapeHtml(name)}</h3>
+                    <p class="printer-name-sub">${subLabel ? escapeHtml(subLabel) : 'Bambu Lab'}</p>
+                </div>
+                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                </div>
+            </div>
+
+            <div class="printer-status-line ${visualState}">
+                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
+            </div>
+
+            <div class="printer-illustration printer-illustration-${illustrationState}">
+                ${printerIllustrationImg(illustrationState)}
+            </div>
+
+            ${isOnline ? `
+                <div class="printer-temps">
+                    <div class="temp-item">
+                        <div class="temp-label">${t('bedTemp')}</div>
+                        <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
+                    </div>
+                    <div class="temp-item">
+                        <div class="temp-label">${t('extruderTemp')}</div>
+                        <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
+                    </div>
+                </div>
+            ` : ''}
+
+            ${showActions ? `
+                <div class="printer-progress">
+                    <div class="printer-progress-labels">
+                        <span>${progress}% ${t('printed')}</span>
+                        <span>${t('activePrintLayers')}: ${layersLabel}</span>
+                    </div>
+                    <div class="temp-progress"><div class="temp-progress-fill" style="width: ${progress}%"></div></div>
+                </div>
+                <div class="elegoo-card-actions">
+                    <button type="button" class="elegoo-card-action-btn elegoo-card-action-pause" data-action="${isPaused ? 'resume' : 'pause'}" data-bambu-id="${escapeHtml(printer.id)}">
+                        ${isPaused
+                            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>'
+                            : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'}
+                        <span>${isPaused ? t('activePrintResume') : t('activePrintPause')}</span>
+                    </button>
+                    <button type="button" class="elegoo-card-action-btn elegoo-card-action-cancel" data-action="cancel" data-bambu-id="${escapeHtml(printer.id)}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        <span>${t('activePrintCancel')}</span>
+                    </button>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function handleBambuPrinterAction(action, printerId) {
+    if (!printerId || !action) return;
+    if (action === 'cancel') {
+        const confirmed = await appConfirm(t('activePrintCancelConfirm'), t('activePrintStop'), 'danger');
+        if (!confirmed) return;
+    }
+    try {
+        const response = await fetch(`/api/bambu/printers/${encodeURIComponent(printerId)}/${action}`, { method: 'POST' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('bambuActionFailed'));
+        }
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('bambuActionFailed'), 'error');
+    } finally {
+        refreshBambuPrintersGrid();
+    }
+}
+
+let bambuGridPollInterval = null;
+
+async function refreshBambuPrintersGrid() {
+    const grid = document.getElementById('bambu-printers-grid');
+    if (!grid) return;
+    try {
+        const response = await fetch('/api/bambu/printers');
+        const data = await response.json();
+        const printers = data.printers || [];
+        bambuPrintersRegistryCache = printers;
+        if (!printers.length) {
+            grid.innerHTML = `<div class="empty-state">${t('bambuPrinterNoPrinters')}</div>`;
+            return;
+        }
+        grid.innerHTML = printers.map(bambuPrinterCardHtml).join('');
+        grid.querySelectorAll('.elegoo-card-action-btn').forEach(btn => {
+            btn.addEventListener('click', event => {
+                event.stopPropagation();
+                handleBambuPrinterAction(btn.dataset.action, btn.dataset.bambuId);
+            });
+        });
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function loadBambuSection() {
+    refreshBambuPrintersGrid();
+    stopBambuPrintersPolling();
+    bambuGridPollInterval = setInterval(refreshBambuPrintersGrid, 3000);
+}
+
+function stopBambuPrintersPolling() {
+    if (bambuGridPollInterval) { clearInterval(bambuGridPollInterval); bambuGridPollInterval = null; }
+}
+
+document.getElementById('bambu-printers-refresh-btn')?.addEventListener('click', refreshBambuPrintersGrid);
+
+// El alta (escanear red + nombrar + access code + modelo) vive en
+// Configuración, junto al resto de dispositivos — este botón lleva ahí en vez
+// de duplicar el flujo de alta acá (mismo patrón que el botón equivalente de
+// Elegoo/FlashForge).
+document.getElementById('bambu-printers-add-btn')?.addEventListener('click', () => {
+    switchSection('settings');
+    showToast(t('bambuPrinterAddGoSettingsHint'));
+    setTimeout(() => {
+        document.getElementById('bambu-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+});
+
+// ── Alta de impresoras Bambu Lab en Configuración (escaneo SSDP + registro) ──
+
+async function loadBambuRegistryList() {
+    const container = document.getElementById('bambu-printers-registry-list');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/bambu/printers');
+        const data = await response.json();
+        bambuPrintersRegistryCache = data.printers || [];
+        renderBambuRegistryList(bambuPrintersRegistryCache);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderBambuRegistryList(printers) {
+    const container = document.getElementById('bambu-printers-registry-list');
+    if (!container) return;
+    if (!printers.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('bambuPrinterNoPrinters')}</div>`;
+        return;
+    }
+    container.innerHTML = printers.map(printer => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(printer.name || printer.model || printer.id)}</strong>
+                <span>${escapeHtml(printer.ip || '')}${printer.model ? ' · ' + escapeHtml(printer.model) : ''}</span>
+            </div>
+            <span class="device-status-pill ${printer.online ? 'online' : 'offline'}">${printer.online ? t('online') : t('offline')}</span>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger bambu-printer-remove-btn" data-id="${escapeHtml(printer.id)}" title="${escapeHtml(t('usbPortUnlink'))}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.bambu-printer-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            if (!(await appConfirm(t('bambuPrinterRemoveConfirm'), t('usbPortUnlink'), 'danger'))) return;
+            try {
+                const response = await fetch(`/api/bambu/printers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.detail || t('bambuActionFailed'));
+                }
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || t('bambuActionFailed'), 'error');
+            } finally {
+                loadBambuRegistryList();
+                refreshBambuPrintersGrid();
+            }
+        });
+    });
+}
+
+// El escaneo (multicast SSDP pasivo) solo se dispara a mano — igual que
+// discoverFlashforgePrinters(), no tiene sentido barrer la red cada vez que
+// se entra a Configuración. A diferencia de Elegoo/FlashForge (probe activo
+// con respuesta inmediata), acá solo se escucha un NOTIFY periódico que la
+// impresora emite sola, así que puede no encontrar nada si el escaneo cae
+// entre dos anuncios — el usuario puede reintentar apretando de nuevo.
+async function discoverBambuPrinters() {
+    const container = document.getElementById('bambu-discover-list');
+    if (!container) return;
+    container.innerHTML = `<div class="empty-state-small">${t('laserWifiScanning')}</div>`;
+    try {
+        await loadBambuRegistryList();
+        const response = await fetch('/api/bambu/printers/discover', { method: 'POST' });
+        const data = await response.json();
+        renderBambuDiscoverList(data.devices || []);
+    } catch (error) {
+        console.error(error);
+        renderBambuDiscoverList([]);
+    }
+}
+
+function renderBambuDiscoverList(devices) {
+    const container = document.getElementById('bambu-discover-list');
+    if (!container) return;
+    const registeredIds = new Set(bambuPrintersRegistryCache.map(printer => printer.id));
+    const pending = devices.filter(device => !registeredIds.has(device.serial));
+    if (!pending.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('bambuDiscoverEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = pending.map(device => `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(device.name || device.serial)}</strong>
+                <span>${escapeHtml(device.ip)}${device.model ? ' · ' + escapeHtml(device.model) : ''}</span>
+            </div>
+            <button type="button" class="btn-file-action bambu-discover-add-btn"
+                data-ip="${escapeHtml(device.ip)}"
+                data-serial="${escapeHtml(device.serial)}"
+                data-name="${escapeHtml(device.name || '')}"
+                data-model="${escapeHtml(device.model || '')}">${escapeHtml(t('usbPortAdd'))}</button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.bambu-discover-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openBambuRegisterModal({
+                ip: btn.dataset.ip,
+                serial: btn.dataset.serial,
+                name: btn.dataset.name,
+                model: btn.dataset.model,
+            });
+        });
+    });
+}
+
+document.getElementById('bambu-printers-discover-btn')?.addEventListener('click', discoverBambuPrinters);
+
+let bambuRegisterTarget = null;
+
+function openBambuRegisterModal(device) {
+    bambuRegisterTarget = device;
+    const label = document.getElementById('bambu-printer-register-device-label');
+    if (label) label.textContent = [device.model, device.ip].filter(Boolean).join(' · ');
+    const nameInput = document.getElementById('bambu-printer-register-name');
+    if (nameInput) nameInput.value = device.name || device.model || 'Bambu Lab';
+    const accessCodeInput = document.getElementById('bambu-printer-register-access-code');
+    if (accessCodeInput) accessCodeInput.value = '';
+    const modelSelect = document.getElementById('bambu-printer-register-model');
+    if (modelSelect) {
+        // El SSDP de Bambu casi nunca reporta el modelo (ver scan_network en
+        // bambu_service.py) -- si no coincide con ninguna opción del select
+        // se deja la primera por defecto y el usuario lo elige a mano.
+        const hasMatch = device.model && Array.from(modelSelect.options).some(opt => opt.value === device.model);
+        modelSelect.value = hasMatch ? device.model : modelSelect.options[0].value;
+    }
+    document.getElementById('bambu-printer-register-modal')?.classList.add('active');
+    if (nameInput) { nameInput.focus(); nameInput.select(); }
+}
+
+function closeBambuRegisterModal() {
+    document.getElementById('bambu-printer-register-modal')?.classList.remove('active');
+    bambuRegisterTarget = null;
+}
+
+document.getElementById('bambu-printer-register-close')?.addEventListener('click', closeBambuRegisterModal);
+document.getElementById('bambu-printer-register-backdrop')?.addEventListener('click', closeBambuRegisterModal);
+document.getElementById('bambu-printer-register-cancel-btn')?.addEventListener('click', closeBambuRegisterModal);
+
+document.getElementById('bambu-printer-register-confirm-btn')?.addEventListener('click', async () => {
+    const device = bambuRegisterTarget;
+    const nameInput = document.getElementById('bambu-printer-register-name');
+    const accessCodeInput = document.getElementById('bambu-printer-register-access-code');
+    const modelSelect = document.getElementById('bambu-printer-register-model');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const accessCode = accessCodeInput ? accessCodeInput.value.trim() : '';
+    const model = modelSelect ? modelSelect.value : '';
+    if (!device || !name || !accessCode) return;
+
+    const confirmBtn = document.getElementById('bambu-printer-register-confirm-btn');
+    const confirmLabel = confirmBtn?.querySelector('span');
+    const originalLabel = confirmLabel ? confirmLabel.textContent : '';
+    // El registro hace un handshake MQTT real contra la impresora (hasta 5s,
+    // ver register_printer() en bambu_service.py) -- se deshabilita el botón
+    // y se muestra un estado de carga en vez de cerrar el modal
+    // optimistamente, mismo criterio que addCameraOnvif() en
+    // camera-viewer.js. El modal solo se cierra si el registro confirma OK,
+    // así el usuario puede corregir el access code sin tener que reabrirlo.
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (confirmLabel) confirmLabel.textContent = t('bambuPrinterConnecting');
+    try {
+        const formData = new FormData();
+        formData.append('ip', device.ip);
+        formData.append('serial', device.serial);
+        formData.append('access_code', accessCode);
+        formData.append('name', name);
+        formData.append('model', model);
+        const response = await fetch('/api/bambu/printers', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            // Un 400 acá casi siempre es "access code incorrecto" -- se
+            // muestra tal cual el detail del backend en vez de un mensaje
+            // genérico (ver bambu_register_endpoint).
+            throw new Error(data.detail || t('bambuActionFailed'));
+        }
+        closeBambuRegisterModal();
+        showToast(`${name}: ${t('bambuPrinterRegisterSuccess')}`);
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('bambuActionFailed'), 'error');
+    } finally {
+        if (confirmBtn) confirmBtn.disabled = false;
+        if (confirmLabel) confirmLabel.textContent = originalLabel;
+        loadBambuRegistryList();
+        refreshBambuPrintersGrid();
+    }
+});
+
 async function sendMarlinPrinterJog(device, axis, distance, feed) {
     try {
         const formData = new FormData();
@@ -13182,6 +13625,7 @@ function switchSection(sectionName) {
         // que loadWifiDevices() para láser/CNC.
         loadElegooRegistryList();
         loadFlashforgeRegistryList();
+        loadBambuRegistryList();
     } else {
         stopSystemLogPolling();
     }
@@ -13209,6 +13653,11 @@ function switchSection(sectionName) {
         loadFlashforgeSection();
     } else {
         stopFlashforgePrintersPolling();
+    }
+    if (sectionName === 'bambu') {
+        loadBambuSection();
+    } else {
+        stopBambuPrintersPolling();
     }
     maybeStartTour(sectionName);
 }
@@ -13247,6 +13696,17 @@ navItems.forEach(item => {
         // en escritorio, donde .mobile-nav-open nunca se activa).
         setMobileNavOpen(false);
     });
+});
+
+// Fichas de Ayuda: cada una describe una sección puntual del panel (Modelos,
+// G-code, Láser, etc.) y su botón "Ir a la sección" navega directo a ella.
+// Delegado en document porque las fichas viven en #help-modules-pool (oculto)
+// hasta que createModulePageScope las mueve a #help-modules-groups.
+document.addEventListener('click', event => {
+    const gotoBtn = event.target.closest('.help-card-goto-btn');
+    if (!gotoBtn) return;
+    switchSection(gotoBtn.dataset.helpGoto);
+    setMobileNavOpen(false);
 });
 
 // ── Galería de plugins ──
@@ -13316,7 +13776,8 @@ function pluginIconSvg(icon, size = 24) {
         vector: '<path d="m5 3 14 0 2 7-9 11-9-11Z"/><path d="M5 3l7 18L19 3M3 10h18"/>',
         type: '<path d="M4 5V3h16v2"/><path d="M9 21h6"/><path d="M12 3v18"/>',
         layers: '<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
-        cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>'
+        cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
+        camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'
     };
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[icon] || paths.shapes}</svg>`;
 }
@@ -14240,6 +14701,177 @@ if (systemLogOpenBtn) systemLogOpenBtn.addEventListener('click', openSystemLogsM
 if (systemLogsModalBackdrop) systemLogsModalBackdrop.addEventListener('click', closeSystemLogsModal);
 if (systemLogsModalClose) systemLogsModalClose.addEventListener('click', closeSystemLogsModal);
 
+// ── Modal "Control del sistema": servicios systemd (Klipper/Moonraker/
+// Crowsnest) + control del host (reiniciar/apagar equipo). Backend en
+// backend/api/system.py, rol admin requerido — el botón que abre este
+// modal (#topbar-system-btn) ya viene oculto para operadores desde
+// updateTopbarUser(). Deja afuera a propósito "Control de Klipper"
+// (reiniciar Klipper/firmware): eso ya vive atado a cada impresora
+// registrada (ver printerRestartConfirm/printerFirmwareRestartConfirm
+// más arriba), no es parte de este popup a nivel host. ──
+let systemControlPollInterval = null;
+
+function systemControlServiceLabel(unit) {
+    if (!unit) return unit;
+    return unit.charAt(0).toUpperCase() + unit.slice(1);
+}
+
+function renderSystemControlServices(services) {
+    const container = document.getElementById('system-control-services-list');
+    if (!container) return;
+    if (!services.length) {
+        container.innerHTML = `<p class="system-control-empty">${t('systemControlEmpty')}</p>`;
+        return;
+    }
+    container.innerHTML = services.map(service => {
+        const isActive = service.active === 'active';
+        const isFailed = service.active === 'failed';
+        const dotClass = isActive ? 'is-active' : (isFailed ? 'is-failed' : '');
+        const unit = escapeHtml(service.unit || '');
+        const statusText = [service.active, service.sub].filter(Boolean).join(' · ');
+        const disabled = service.controllable === false;
+        return `
+            <div class="system-control-row" data-service="${unit}">
+                <span class="system-control-status-dot ${dotClass}"></span>
+                <div class="system-control-row-name">
+                    <strong>${escapeHtml(systemControlServiceLabel(service.unit))}</strong>
+                    <small>${escapeHtml(statusText)}</small>
+                </div>
+                <button type="button" class="system-control-icon-btn" data-sysctl-restart="${unit}" title="${escapeHtml(t('systemControlServiceRestartTitle'))}" ${disabled ? 'disabled' : ''}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
+                <label class="system-control-switch">
+                    <input type="checkbox" data-sysctl-toggle="${unit}" ${isActive ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+                    <span></span>
+                </label>
+            </div>`;
+    }).join('');
+}
+
+async function loadSystemControlServices() {
+    const container = document.getElementById('system-control-services-list');
+    try {
+        const response = await fetch('/api/system/services');
+        if (!response.ok) throw new Error('No se pudo cargar los servicios');
+        const data = await response.json();
+        renderSystemControlServices(data.services || []);
+    } catch (error) {
+        console.error(error);
+        if (container) container.innerHTML = `<p class="system-control-empty">${t('systemControlEmpty')}</p>`;
+    }
+}
+
+async function runSystemServiceAction(action, service) {
+    if (!service) return;
+    try {
+        const response = await fetch(`/api/system/services/${action}`, {
+            method: 'POST',
+            body: new URLSearchParams({ service }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+            showToast(data.detail || t('systemControlActionError'), 'error');
+            return;
+        }
+    } catch (error) {
+        console.error(error);
+        showToast(t('systemControlActionError'), 'error');
+    } finally {
+        // systemd no aplica el cambio de estado al instante — se espera un
+        // poco antes de refrescar para no pintar el estado viejo encima.
+        setTimeout(loadSystemControlServices, 1500);
+    }
+}
+
+document.getElementById('system-control-services-list')?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-sysctl-restart]');
+    if (!btn || btn.disabled) return;
+    runSystemServiceAction('restart', btn.dataset.sysctlRestart);
+});
+
+document.getElementById('system-control-services-list')?.addEventListener('change', (event) => {
+    const input = event.target.closest('[data-sysctl-toggle]');
+    if (!input) return;
+    runSystemServiceAction(input.checked ? 'start' : 'stop', input.dataset.sysctlToggle);
+});
+
+const systemControlModal = document.getElementById('system-control-modal');
+const systemControlModalBackdrop = document.getElementById('system-control-modal-backdrop');
+const systemControlModalClose = document.getElementById('system-control-modal-close');
+const systemControlOpenBtn = document.getElementById('topbar-system-btn');
+
+function openSystemControlModal() {
+    if (!systemControlModal) return;
+    systemControlModal.classList.add('active');
+    loadSystemControlServices();
+    if (systemControlPollInterval) clearInterval(systemControlPollInterval);
+    systemControlPollInterval = setInterval(loadSystemControlServices, 5000);
+}
+
+function closeSystemControlModal() {
+    if (systemControlModal) systemControlModal.classList.remove('active');
+    if (systemControlPollInterval) { clearInterval(systemControlPollInterval); systemControlPollInterval = null; }
+}
+
+if (systemControlOpenBtn) systemControlOpenBtn.addEventListener('click', openSystemControlModal);
+if (systemControlModalBackdrop) systemControlModalBackdrop.addEventListener('click', closeSystemControlModal);
+if (systemControlModalClose) systemControlModalClose.addEventListener('click', closeSystemControlModal);
+
+document.getElementById('system-control-nopal-restart-btn')?.addEventListener('click', async () => {
+    if (!(await appConfirm(t('systemControlRestartNopalConfirm'), t('systemControlRestartNopal'), 'warning'))) return;
+    try {
+        const response = await fetch('/api/system/nopal/restart', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+            showToast(data.detail || t('systemControlActionError'), 'error');
+            return;
+        }
+        showToast(t('systemControlRestartNopalToast'));
+        // El proceso se reinicia solo del lado del servidor (systemd lo
+        // vuelve a levantar en ~5s) -- se recarga la página sola después de
+        // darle tiempo, así el usuario no tiene que refrescar a mano.
+        setTimeout(() => window.location.reload(), 8000);
+    } catch (error) {
+        console.error(error);
+        showToast(t('systemControlActionError'), 'error');
+    }
+});
+
+document.getElementById('system-control-host-reboot-btn')?.addEventListener('click', async () => {
+    if (!(await appConfirm(t('systemControlRestartHostConfirm'), t('systemControlRestartHost'), 'warning'))) return;
+    try {
+        const response = await fetch('/api/system/host/reboot', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+            showToast(data.detail || t('systemControlActionError'), 'error');
+            return;
+        }
+        showToast(t('systemControlRestartHost'));
+    } catch (error) {
+        console.error(error);
+        showToast(t('systemControlActionError'), 'error');
+    }
+});
+
+document.getElementById('system-control-host-shutdown-btn')?.addEventListener('click', async () => {
+    // Doble confirmación a propósito: esta acción apaga físicamente el
+    // equipo, no queda forma de revertirla sin acceso físico a la máquina.
+    if (!(await appConfirm(t('systemControlShutdownHostConfirm1'), t('systemControlShutdownHost'), 'danger'))) return;
+    if (!(await appConfirm(t('systemControlShutdownHostConfirm2'), t('systemControlShutdownHost'), 'danger'))) return;
+    try {
+        const response = await fetch('/api/system/host/shutdown', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+            showToast(data.detail || t('systemControlActionError'), 'error');
+            return;
+        }
+        showToast(t('systemControlShutdownHost'));
+    } catch (error) {
+        console.error(error);
+        showToast(t('systemControlActionError'), 'error');
+    }
+});
+
 function applyUiScale(scale) {
     document.documentElement.style.fontSize = `${scale}%`;
 }
@@ -14959,6 +15591,7 @@ updatePanelClock();
 refreshDashboardLaserCard();
 refreshUsbPorts();
 loadAccessories();
+loadAccessoryArduinoDiscoverList();
 maybeStartTour('dashboard');
 
 // Refresh printers every 5 seconds
