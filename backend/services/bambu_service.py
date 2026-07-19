@@ -98,6 +98,7 @@ _mqtt_clients: Dict[str, mqtt.Client] = {}
 _cache_lock = threading.Lock()
 _status_cache: Dict[str, Dict[str, Any]] = {}
 _connected: Dict[str, bool] = {}
+_last_message_at: Dict[str, float] = {}
 
 
 def _build_client(serial: str, access_code: str) -> mqtt.Client:
@@ -157,6 +158,7 @@ def _on_message(client, userdata, msg):
         # vez de reemplazar el dict entero, o se perderían campos que no
         # vienen repetidos en cada mensaje intermedio.
         _status_cache.setdefault(serial, {}).update(print_fields)
+        _last_message_at[serial] = time.time()
 
 
 def _on_disconnect(client, userdata, flags, reason_code, properties):
@@ -194,6 +196,7 @@ def _drop_client(serial: str) -> None:
     with _cache_lock:
         _status_cache.pop(serial, None)
         _connected.pop(serial, None)
+        _last_message_at.pop(serial, None)
 
 
 # ── Validación de access code al registrar (con MQTT real) ──
@@ -202,16 +205,23 @@ def _validate_credentials_sync(ip: str, serial: str, access_code: str, timeout: 
     """Abre una conexión MQTT descartable solo para confirmar el access code
     -- no se reusa como listener persistente (ver _ensure_client), para no
     dejar un cliente a medio configurar si la validación falla a mitad de
-    camino."""
+    camino. `error_code` se fija en el punto exacto donde se conoce la causa
+    real (no se adivina después por substring)."""
     done = threading.Event()
-    outcome: Dict[str, Any] = {"ok": False, "error": "Tiempo de espera agotado conectando con la impresora"}
+    outcome: Dict[str, Any] = {
+        "ok": False,
+        "error": "Tiempo de espera agotado conectando con la impresora",
+        "error_code": "CONNECTION_FAILED",
+    }
 
     def on_connect(client, userdata, flags, reason_code, properties):
         if _reason_code_ok(reason_code):
             outcome["ok"] = True
             outcome["error"] = None
+            outcome["error_code"] = None
         else:
             outcome["error"] = f"Access code rechazado (reason_code={reason_code})"
+            outcome["error_code"] = "CREDENTIAL_REJECTED"
         done.set()
 
     def on_disconnect(client, userdata, flags, reason_code, properties):
@@ -225,7 +235,7 @@ def _validate_credentials_sync(ip: str, serial: str, access_code: str, timeout: 
     try:
         client.connect(ip, MQTT_PORT, keepalive=10)
     except (OSError, ssl.SSLError) as e:
-        return {"ok": False, "error": f"No se pudo conectar a {ip}:{MQTT_PORT}: {e}"}
+        return {"ok": False, "error": f"No se pudo conectar a {ip}:{MQTT_PORT}: {e}", "error_code": "CONNECTION_FAILED"}
 
     client.loop_start()
     done.wait(timeout)
@@ -244,7 +254,11 @@ async def register_printer(ip: str, serial: str, access_code: str, name: str, mo
     loop = asyncio.get_event_loop()
     check = await loop.run_in_executor(None, _validate_credentials_sync, ip, serial, access_code)
     if not check["ok"]:
-        return {"success": False, "error": check["error"] or "No se pudo conectar con la impresora"}
+        return {
+            "success": False,
+            "error": check["error"] or "No se pudo conectar con la impresora",
+            "error_code": check.get("error_code", "UNKNOWN"),
+        }
 
     entries = [e for e in _load_registry() if e.get("serial") != serial]
     entry = {
@@ -259,6 +273,28 @@ async def register_printer(ip: str, serial: str, access_code: str, name: str, mo
     _save_registry(entries)
     logger.info(f"Impresora Bambu registrada: {name} ({ip}, {serial})")
     return {"success": True, "printer": entry}
+
+
+async def test_connection(serial: str) -> Dict[str, Any]:
+    """Diagnóstico bajo demanda para una impresora ya registrada -- reusa
+    _validate_credentials_sync en vez de reimplementar el handshake."""
+    entry = _find_entry(serial)
+    if entry is None:
+        return {"success": False, "error": "Impresora no encontrada"}
+
+    loop = asyncio.get_event_loop()
+    started = time.monotonic()
+    check = await loop.run_in_executor(None, _validate_credentials_sync, entry["ip"], serial, entry["access_code"])
+    latency_ms = round((time.monotonic() - started) * 1000)
+    with _cache_lock:
+        last_message_at = _last_message_at.get(serial)
+    return {
+        "success": check["ok"],
+        "error": check.get("error"),
+        "latency_ms": latency_ms if check["ok"] else None,
+        "mqtt_listener_connected": _connected.get(serial, False),
+        "last_communication_at": last_message_at,
+    }
 
 
 def unregister_printer(serial: str) -> bool:

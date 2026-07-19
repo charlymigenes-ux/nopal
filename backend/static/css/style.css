@@ -10167,50 +10167,229 @@ body.green .laser-start-confirm-copies input {
     color: var(--text);
 }
 
-/* ── Fichas de "Ayuda" con la misma apariencia que .plugin-card de la
-   Galería de plugins (línea ~4550): fondo vidrio oscuro fijo, borde sutil
-   con acento verde, ícono en caja tintada y layout en grid (ver
-   #help-modules-groups .settings-module-group-body más arriba). Igual que
-   .plugin-card, el fondo queda oscuro fijo independientemente del tema —
-   por eso el título y los párrafos también se fijan a un tono claro fijo
-   acá (no var(--text): en tema claro es un color oscuro pensado para fondo
-   claro y quedaría casi ilegible sobre este fondo oscuro), mismo criterio
-   que ya usa .laser-card-accent con su propio fondo fijo (línea ~6034).
-   Selector con el id real del contenedor (#help-modules-groups) para pisar
-   con seguridad "body.dark .settings-card"/"body.green .settings-card"
-   (línea ~2832) sin depender del orden de la hoja — scopeado SOLO a Ayuda,
-   el resto de usos de .settings-card (Configuración, etc.) no cambia. ── */
-#help-modules-groups .help-card {
+/* ── Centro de ayuda: sidebar de categorías + buscador a la izquierda,
+   panel de tarjetas grandes a la derecha (ver renderHelpCenter() en app.js
+   -- reemplaza el layout viejo de tarjetas personalizables por arrastre).
+   Grid de 2 columnas en escritorio, colapsa a 1 columna (sidebar arriba)
+   en pantallas angostas. ── */
+.help-center-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+@media (max-width: 860px) {
+    .help-center-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.help-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+}
+
+@media (max-width: 860px) {
+    .help-sidebar {
+        position: static;
+    }
+}
+
+.help-sidebar-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+}
+
+.help-sidebar-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.help-category-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.help-category-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    min-height: 44px;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease;
+}
+
+.help-category-item:hover {
+    background: var(--card-bg);
+}
+
+.help-category-item.active {
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--text);
+}
+
+.help-category-item-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: var(--accent);
+}
+
+.help-category-item.coming-soon .help-category-item-icon {
+    color: var(--text-muted);
+}
+
+.help-category-item-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.help-category-item-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.help-category-item-sub {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.help-community-box {
+    padding: 14px;
+    border-radius: var(--radius-md);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+}
+
+.help-community-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+}
+
+.help-community-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.help-community-link:hover {
+    text-decoration: underline;
+}
+
+.help-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.help-panel-empty {
+    color: var(--text-muted);
+    padding: 24px 0;
+}
+
+/* Tarjeta grande por categoría -- misma apariencia "vidrio oscuro fijo" que
+   .plugin-card de la Galería de plugins (línea ~4550), independiente del
+   tema (mismo criterio que .laser-card-accent, línea ~6034). */
+.help-feature-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
     background: rgba(15, 23, 42, 0.72);
     border: 1px solid rgba(148, 163, 184, 0.17);
     border-radius: 15px;
-    box-shadow: none;
     transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
-#help-modules-groups .help-card:hover {
+.help-feature-card:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--green) 55%, transparent);
     background: rgba(20, 30, 50, 0.88);
 }
 
-#help-modules-groups .help-card .card-header-std-title {
-    color: #fff;
+.help-feature-card-coming-soon {
+    opacity: 0.7;
 }
 
-#help-modules-groups .help-card p {
-    color: rgba(255, 255, 255, 0.75);
+.help-feature-card-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
 }
 
-#help-modules-groups .help-card .card-header-std-icon {
+.help-feature-card-icon {
     display: grid;
     width: 46px;
     height: 46px;
+    flex-shrink: 0;
     place-items: center;
     border: 1px solid color-mix(in srgb, var(--green) 45%, transparent);
-    border-radius: 12px;
+    border-radius: 50%;
     background: color-mix(in srgb, var(--green) 15%, transparent);
     color: var(--green);
+}
+
+.help-feature-card-heading h2 {
+    margin: 0 0 4px;
+    font-size: 1.02rem;
+    color: #fff;
+}
+
+.help-feature-card-heading p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.help-feature-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.help-tag-pill {
+    padding: 4px 10px;
+    font-size: 0.72rem;
+}
+
+.help-feature-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
 }
 
 .help-about-row {
@@ -10218,10 +10397,6 @@ body.green .laser-start-confirm-copies input {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-}
-
-.help-card-goto-btn {
-    margin-top: 10px;
 }
 
 .help-version-badge {

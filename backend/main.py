@@ -7,10 +7,12 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+
+from backend.errors import PrinterRegistrationError
 
 from backend.config import (
     LOG_BACKUP_COUNT,
@@ -32,8 +34,6 @@ from backend.api.elegoo_printers import router as elegoo_printers_router
 from backend.api.flashforge_printers import router as flashforge_printers_router
 from backend.api.bambu_printers import router as bambu_printers_router
 from backend.api.logs import router as logs_router
-from backend.api.accessories import router as accessories_router
-from backend.api.cameras import router as cameras_router
 from backend.api.system import router as system_router
 from backend.api.pricing import router as pricing_router
 from backend.api.auth import router as auth_router
@@ -46,6 +46,7 @@ from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
 from backend.services.laser_service import set_main_event_loop
 from backend.services.marlin_printer_service import set_main_event_loop as set_marlin_printer_event_loop
+from backend.services.plugin_loader_service import load_installed_plugin_routers
 from backend.utils import get_app_version
 
 # Log a archivo (con rotación) + consola — antes NOPAL no persistía nada,
@@ -91,7 +92,22 @@ async def log_unhandled_exceptions(request: Request, call_next):
         raise
 
 
+@app.exception_handler(PrinterRegistrationError)
+async def printer_registration_error_handler(request: Request, exc: PrinterRegistrationError):
+    """`detail` sigue siendo string puro (compatibilidad con las modales de
+    registro ya existentes); `error_code` es un campo hermano nuevo que solo
+    lee el asistente guiado de instalación de impresoras."""
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "error_code": exc.error_code})
+
+
 app.mount("/static", StaticFiles(directory="backend/static"), name="static")
+
+# Carpeta de plugins clonados por git (ver plugin_installer_service.py) --
+# fuera del control de versiones de NOPAL (.gitignore), se crea vacía si
+# todavía no se instaló ningún plugin para que el mount no falle al
+# arrancar en una instalación nueva.
+os.makedirs("plugins", exist_ok=True)
+app.mount("/plugins-static", StaticFiles(directory="plugins"), name="plugins-static")
 
 app.include_router(status_router)
 app.include_router(upload_router)
@@ -104,8 +120,6 @@ app.include_router(elegoo_printers_router)
 app.include_router(flashforge_printers_router)
 app.include_router(bambu_printers_router)
 app.include_router(logs_router)
-app.include_router(accessories_router)
-app.include_router(cameras_router)
 app.include_router(system_router)
 app.include_router(pricing_router)
 app.include_router(auth_router)
@@ -117,6 +131,15 @@ app.include_router(dashboard_router)
 @app.on_event("startup")
 async def _log_startup():
     logger.info("NOPAL iniciado")
+
+
+@app.on_event("startup")
+async def _load_plugin_routers():
+    """Backend de cámaras/accesorios Arduino/etc. ya no vive en NOPAL core
+    -- se carga acá dinámicamente si el plugin correspondiente está
+    instalado (ver backend/services/plugin_loader_service.py). Un plugin
+    roto no debe impedir que el resto de NOPAL arranque."""
+    load_installed_plugin_routers(app)
 
 
 @app.on_event("shutdown")

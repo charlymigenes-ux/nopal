@@ -66,6 +66,14 @@ function updateTopbarUser(user) {
     // es igual de sensible — solo admin lo debe ver u operar.
     const systemBtn = document.getElementById('topbar-system-btn');
     if (systemBtn) systemBtn.hidden = user.role !== 'admin';
+
+    // El asistente guiado de instalación de impresoras termina en un POST
+    // admin-only (require_role("admin") en cada *_printers.py) -- un
+    // operador no debería ni ver el punto de entrada (ver
+    // guided-printer-setup.js:openGuidedPrinterSetup, que además revalida
+    // el rol por las dudas si igual se llegara a invocar).
+    const guidedSetupBtn = document.getElementById('guided-printer-setup-open-btn');
+    if (guidedSetupBtn) guidedSetupBtn.hidden = user.role !== 'admin';
 }
 
 function showFullscreenRecommendation() {
@@ -3242,7 +3250,7 @@ const PANEL_DEVICE_TYPES = [
     { key: 'printer', icon: PANEL_DEVICE_ICON_PRINTER, labelKey: 'printerType3D' },
     { key: 'laser', icon: PANEL_DEVICE_ICON_LASER, labelKey: 'laser' },
     { key: 'cnc', icon: PANEL_DEVICE_ICON_CNC, labelKey: 'cnc' },
-    { key: 'camera', icon: PANEL_DEVICE_ICON_CAMERA, labelKey: 'navCameras', soon: true },
+    { key: 'camera', icon: PANEL_DEVICE_ICON_CAMERA, labelKey: 'navCameras' },
 ];
 
 function panelInfoRow(icon, label, value, valueClass) {
@@ -3570,7 +3578,12 @@ async function loadDashboardPanel() {
     try {
         const response = await fetch('/api/dashboard/summary');
         if (!response.ok) throw new Error('No se pudo cargar el resumen del panel');
-        renderDashboardPanel(await response.json());
+        const data = await response.json();
+        renderDashboardPanel(data);
+        // Definida en guided-printer-setup.js (carga después de app.js) --
+        // el guard typeof es defensivo nomás: para cuando este await se
+        // resuelve, esa etiqueta <script> ya terminó de parsearse siempre.
+        if (typeof maybeAutoOpenGuidedSetup === 'function') maybeAutoOpenGuidedSetup(data);
     } catch (error) {
         console.error(error);
     }
@@ -4516,17 +4529,9 @@ const SETTINGS_MODULE_DEFS = [
     { key: 'devices', labelKey: 'devicesTitle', iconSvg: SETTINGS_MODULE_ICON_DEVICES },
     { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
 ];
-// Las 8 tarjetas reales de #help-modules-pool.
-const HELP_MODULE_DEFS = [
-    { key: 'about', labelKey: 'helpAboutTitle', iconSvg: SETTINGS_MODULE_ICON_ABOUT },
-    { key: 'models', labelKey: 'helpModelsTitle', iconSvg: SETTINGS_MODULE_ICON_MODELS },
-    { key: 'gcode', labelKey: 'helpGcodeTitle', iconSvg: SETTINGS_MODULE_ICON_GCODE },
-    { key: 'dashboardHelp', labelKey: 'helpDashboardTitle', iconSvg: SETTINGS_MODULE_ICON_DASHBOARD },
-    { key: 'laserHelp', labelKey: 'helpLaserTitle', iconSvg: SETTINGS_MODULE_ICON_LASER },
-    { key: 'queueHelp', labelKey: 'helpQueueTitle', iconSvg: SETTINGS_MODULE_ICON_QUEUE },
-    { key: 'macrosHelp', labelKey: 'helpMacrosTitle', iconSvg: SETTINGS_MODULE_ICON_MACROS },
-    { key: 'settingsHelp', labelKey: 'helpSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_SETTINGS_HELP },
-];
+// Centro de ayuda (layout fijo, sin personalización por arrastre -- ver
+// renderHelpCenter() más abajo en este archivo) reusa estos mismos íconos
+// lineales ya definidos arriba para SETTINGS_MODULE_DEFS.
 
 // Mismos 4 breakpoints que PRINTER_MODULE_BREAKPOINTS más arriba, compartidos
 // por ambas páginas.
@@ -4550,9 +4555,12 @@ function generateSettingsModuleGroupId() {
 
 // Motor genérico: una instancia = una página con su propio pool de
 // tarjetas, su propio contenedor de grupos y su propio modal "Personalizar".
+// Hoy solo Configuración lo usa (Ayuda tiene su propio layout fijo, ver
+// renderHelpCenter()), pero se mantiene parametrizado por si otra página
+// necesita personalización por arrastre en el futuro.
 // config = {
-//   storagePrefix,               // 'settingsModulesLayout_' | 'helpModulesLayout_'
-//   moduleDefs,                  // SETTINGS_MODULE_DEFS | HELP_MODULE_DEFS
+//   storagePrefix,               // 'settingsModulesLayout_'
+//   moduleDefs,                  // SETTINGS_MODULE_DEFS
 //   groupsElementId,             // contenedor real de la página (fuera del modal)
 //   modalId, modalTabsId, modalGroupsId, modalCloseId, modalBackdropId,
 //   customizeBtnId, addGroupBtnId, resetBtnId,
@@ -5008,31 +5016,127 @@ const settingsModulesPageScope = createModulePageScope({
     ],
 });
 
-const helpModulesPageScope = createModulePageScope({
-    storagePrefix: 'helpModulesLayout_',
-    moduleDefs: HELP_MODULE_DEFS,
-    groupsElementId: 'help-modules-groups',
-    modalId: 'help-module-customizer-modal',
-    modalTabsId: 'help-module-customizer-tabs',
-    modalGroupsId: 'help-module-customizer-groups',
-    customizeBtnId: 'help-customize-btn',
-    modalCloseId: 'help-module-customizer-modal-close',
-    modalBackdropId: 'help-module-customizer-modal-backdrop',
-    addGroupBtnId: 'help-module-customizer-add-group-btn',
-    resetBtnId: 'help-module-customizer-reset-btn',
-    defaultGroups: [
-        { id: 'ayuda', nameKey: 'settingsModuleGroupDefaultHelp', keys: HELP_MODULE_DEFS.map(mod => mod.key) },
-    ],
-});
-
-// Wrappers con el mismo nombre que usaba la versión fusionada — switchSection()
-// los sigue llamando por nombre al entrar a cada sección.
+// Wrapper con el mismo nombre que usaba la versión fusionada — switchSection()
+// lo sigue llamando por nombre al entrar a Configuración.
 function applySettingsModulesLayout() {
     settingsModulesPageScope.apply();
 }
-function applyHelpModulesLayout() {
-    helpModulesPageScope.apply();
+
+// ── Centro de ayuda ── Sidebar de categorías + buscador + panel de tarjetas
+// grandes, layout fijo (sin drag & drop ni grupos personalizables -- eso se
+// retiró a propósito, era el diseño viejo de #help-modules-pool). Solo 4
+// categorías tienen contenido/destino real hoy (home/printers3d/laserCnc/
+// library); el resto queda "Próximamente" de forma honesta en vez de
+// simular un artículo que no existe.
+const HELP_CAT_ICON_DEVICES = '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>';
+const HELP_CAT_ICON_NETWORK = '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>';
+const HELP_CAT_ICON_MAINTENANCE = '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>';
+const HELP_CAT_ICON_TROUBLESHOOTING = '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
+const HELP_CAT_ICON_FAQ = '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
+
+const HELP_CATEGORIES = [
+    { key: 'home', iconSvg: SETTINGS_MODULE_ICON_ABOUT, titleKey: 'helpCatHomeTitle', descKey: 'helpAboutDescription', tags: [], status: 'available', gotoSection: null },
+    { key: 'printers3d', iconSvg: SETTINGS_MODULE_ICON_DASHBOARD, titleKey: 'helpCatPrintersTitle', descKey: 'helpCatPrintersDesc', tags: ['Klipper', 'Marlin', 'Bambu Lab', 'Elegoo', 'FlashForge'], status: 'available', gotoSection: 'dashboard' },
+    { key: 'laserCnc', iconSvg: SETTINGS_MODULE_ICON_LASER, titleKey: 'helpCatLaserTitle', descKey: 'helpLaserBody', tags: ['GRBL', 'FluidNC', 'DLC32', 'GCode'], status: 'available', gotoSection: 'laser' },
+    { key: 'library', iconSvg: SETTINGS_MODULE_ICON_MODELS, titleKey: 'helpCatLibraryTitle', descKey: 'helpCatLibraryDesc', tags: ['STL', '3MF', 'GCode'], status: 'available', gotoSection: 'models' },
+    { key: 'devices', iconSvg: HELP_CAT_ICON_DEVICES, titleKey: 'helpCatDevicesTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
+    { key: 'network', iconSvg: HELP_CAT_ICON_NETWORK, titleKey: 'helpCatNetworkTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
+    { key: 'automation', iconSvg: SETTINGS_MODULE_ICON_MACROS, titleKey: 'helpCatAutomationTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
+    { key: 'maintenance', iconSvg: HELP_CAT_ICON_MAINTENANCE, titleKey: 'helpCatMaintenanceTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
+    { key: 'troubleshooting', iconSvg: HELP_CAT_ICON_TROUBLESHOOTING, titleKey: 'helpCatTroubleshootingTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
+    { key: 'faq', iconSvg: HELP_CAT_ICON_FAQ, titleKey: 'helpCatFaqTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
+];
+
+let helpCenterActiveKey = 'home';
+
+function helpCenterIcon(pathMarkup) {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${pathMarkup}</svg>`;
 }
+
+function helpCenterMatchesQuery(cat, query) {
+    if (!query) return true;
+    const haystack = [t(cat.titleKey), t(cat.descKey), ...cat.tags].join(' ').toLowerCase();
+    return haystack.includes(query);
+}
+
+function helpCenterCardActionsHtml(cat) {
+    if (cat.key === 'home') {
+        return `
+            <div class="help-about-row">
+                <span class="help-version-badge" id="help-version-badge">—</span>
+                <a href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener" class="btn-file-action">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.09 3.29 9.4 7.86 10.93.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.87-1.36-3.87-1.36-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.78 1.19 1.78 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 5.73 0c2.18-1.49 3.14-1.18 3.14-1.18.63 1.59.23 2.76.12 3.05.73.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.68.8.56A10.99 10.99 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+                    <span data-i18n="helpGithub">Repositorio en GitHub</span>
+                </a>
+                <button type="button" class="btn-file-action btn-file-action-accent" id="help-replay-tour-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span data-i18n="helpReplayTour">Repetir recorrido guiado</span>
+                </button>
+            </div>`;
+    }
+    if (cat.status === 'coming_soon') {
+        return `<button type="button" class="btn-file-action help-feature-card-btn" disabled><span data-i18n="helpComingSoonBadge">Próximamente</span></button>`;
+    }
+    let extra = '';
+    if (cat.key === 'printers3d' && currentAuthUser?.role === 'admin' && typeof openGuidedPrinterSetup === 'function') {
+        extra = `<button type="button" class="btn-file-action btn-file-action-accent help-feature-card-guided-btn" id="help-open-guided-setup-btn"><span data-i18n="guidedSetupAddWizardBtn">Agregar impresora (asistente guiado)</span></button>`;
+    }
+    return `<button type="button" class="btn-file-action help-feature-card-btn" data-help-goto="${cat.gotoSection}"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>${extra}`;
+}
+
+function renderHelpCenter() {
+    const listEl = document.getElementById('help-category-list');
+    const panelEl = document.getElementById('help-panel');
+    if (!listEl || !panelEl) return;
+    const query = (document.getElementById('help-search-input')?.value || '').trim().toLowerCase();
+    const visible = HELP_CATEGORIES.filter(cat => helpCenterMatchesQuery(cat, query));
+
+    listEl.innerHTML = HELP_CATEGORIES.map(cat => `
+        <button type="button" class="help-category-item ${cat.key === helpCenterActiveKey ? 'active' : ''} ${cat.status === 'coming_soon' ? 'coming-soon' : ''}" data-help-cat="${cat.key}">
+            <span class="help-category-item-icon">${helpCenterIcon(cat.iconSvg)}</span>
+            <span class="help-category-item-text">
+                <span class="help-category-item-title">${escapeHtml(t(cat.titleKey))}</span>
+                <span class="help-category-item-sub">${cat.status === 'coming_soon' ? escapeHtml(t('helpComingSoonBadge')) : escapeHtml(t(cat.descKey)).slice(0, 40)}</span>
+            </span>
+        </button>`).join('');
+
+    panelEl.innerHTML = visible.length ? visible.map(cat => `
+        <div class="help-feature-card ${cat.status === 'coming_soon' ? 'help-feature-card-coming-soon' : ''}" id="help-card-${cat.key}">
+            <div class="help-feature-card-top">
+                <span class="help-feature-card-icon">${helpCenterIcon(cat.iconSvg)}</span>
+                <div class="help-feature-card-heading">
+                    <h2>${escapeHtml(t(cat.titleKey))}</h2>
+                    <p>${escapeHtml(t(cat.descKey))}</p>
+                </div>
+            </div>
+            ${cat.tags.length ? `<div class="help-feature-card-tags">${cat.tags.map(tag => `<span class="badge badge-alt help-tag-pill">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+            <div class="help-feature-card-actions">${helpCenterCardActionsHtml(cat)}</div>
+        </div>`).join('') : `<p class="help-panel-empty">${escapeHtml(t('noFilesFound'))}</p>`;
+
+    updatePageLanguage();
+    if (typeof loadHelpVersion === 'function') loadHelpVersion();
+}
+
+document.addEventListener('click', event => {
+    const catBtn = event.target.closest('.help-category-item');
+    if (catBtn) {
+        helpCenterActiveKey = catBtn.dataset.helpCat;
+        renderHelpCenter();
+        document.getElementById(`help-card-${helpCenterActiveKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+    }
+    const gotoBtn = event.target.closest('.help-feature-card-btn:not([disabled])');
+    if (gotoBtn && gotoBtn.dataset.helpGoto) {
+        switchSection(gotoBtn.dataset.helpGoto);
+        setMobileNavOpen(false);
+        return;
+    }
+    if (event.target.closest('#help-open-guided-setup-btn') && typeof openGuidedPrinterSetup === 'function') {
+        openGuidedPrinterSetup();
+    }
+});
+
+document.getElementById('help-search-input')?.addEventListener('input', () => renderHelpCenter());
 
 let dashboardPrintersLoaded = false;
 let dashboardLaserDevicesLoaded = false;
@@ -11805,6 +11909,7 @@ function elegooPrinterCardHtml(printer) {
                     </button>
                 </div>
             ` : ''}
+            ${printerDiagToggleHtml('elegoo', printer.id)}
         </div>
     `;
 }
@@ -11867,10 +11972,15 @@ function stopElegooPrintersPolling() {
 
 document.getElementById('elegoo-printers-refresh-btn')?.addEventListener('click', refreshElegooPrintersGrid);
 
-// El alta (escanear red + nombrar) vive en Configuración, junto al resto de
-// dispositivos (mismo patrón que "Todos los dispositivos" para láser/CNC) —
-// este botón lleva ahí en vez de duplicar el flujo de alta acá.
+// Admin: abre el asistente guiado nuevo pre-seleccionando Elegoo (salta el
+// paso 1). Operador: sin acceso al asistente (termina en un POST admin-only),
+// se mantiene el comportamiento previo de ir a Configuración a solo mirar la
+// lista de descubrimiento -- ver guided-printer-setup.js:openGuidedPrinterSetup.
 document.getElementById('elegoo-printers-add-btn')?.addEventListener('click', () => {
+    if (currentAuthUser?.role === 'admin' && typeof openGuidedPrinterSetup === 'function') {
+        openGuidedPrinterSetup('elegoo');
+        return;
+    }
     switchSection('settings');
     showToast(t('elegooPrinterAddGoSettingsHint'));
     setTimeout(() => {
@@ -12145,6 +12255,7 @@ function flashforgePrinterCardHtml(printer) {
                     </button>
                 </div>
             ` : ''}
+            ${printerDiagToggleHtml('flashforge', printer.id)}
         </div>
     `;
 }
@@ -12207,10 +12318,13 @@ function stopFlashforgePrintersPolling() {
 
 document.getElementById('flashforge-printers-refresh-btn')?.addEventListener('click', refreshFlashforgePrintersGrid);
 
-// El alta (escanear red + nombrar + check code) vive en Configuración, junto
-// al resto de dispositivos — este botón lleva ahí en vez de duplicar el
-// flujo de alta acá (mismo patrón que el botón equivalente de Elegoo).
+// Admin: abre el asistente guiado nuevo pre-seleccionando FlashForge (salta
+// el paso 1). Operador: mismo fallback que el botón equivalente de Elegoo.
 document.getElementById('flashforge-printers-add-btn')?.addEventListener('click', () => {
+    if (currentAuthUser?.role === 'admin' && typeof openGuidedPrinterSetup === 'function') {
+        openGuidedPrinterSetup('flashforge');
+        return;
+    }
     switchSection('settings');
     showToast(t('flashforgePrinterAddGoSettingsHint'));
     setTimeout(() => {
@@ -12496,6 +12610,7 @@ function bambuPrinterCardHtml(printer) {
                     </button>
                 </div>
             ` : ''}
+            ${printerDiagToggleHtml('bambu', printer.id)}
         </div>
     `;
 }
@@ -12558,11 +12673,13 @@ function stopBambuPrintersPolling() {
 
 document.getElementById('bambu-printers-refresh-btn')?.addEventListener('click', refreshBambuPrintersGrid);
 
-// El alta (escanear red + nombrar + access code + modelo) vive en
-// Configuración, junto al resto de dispositivos — este botón lleva ahí en vez
-// de duplicar el flujo de alta acá (mismo patrón que el botón equivalente de
-// Elegoo/FlashForge).
+// Admin: abre el asistente guiado nuevo pre-seleccionando Bambu Lab (salta
+// el paso 1). Operador: mismo fallback que el botón equivalente de Elegoo.
 document.getElementById('bambu-printers-add-btn')?.addEventListener('click', () => {
+    if (currentAuthUser?.role === 'admin' && typeof openGuidedPrinterSetup === 'function') {
+        openGuidedPrinterSetup('bambu');
+        return;
+    }
     switchSection('settings');
     showToast(t('bambuPrinterAddGoSettingsHint'));
     setTimeout(() => {
@@ -12762,6 +12879,96 @@ document.getElementById('bambu-printer-register-confirm-btn')?.addEventListener(
         loadBambuRegistryList();
         refreshBambuPrintersGrid();
     }
+});
+
+// ── Diagnóstico de conexión (Bambu Lab/Elegoo/FlashForge) ── Botón "Probar
+// conexión" + panel colapsable en cada tarjeta ya registrada, agregado junto
+// con el asistente guiado (ver guided-printer-setup.js) pero compartido por
+// las 3 marcas porque las 3 exponen el mismo endpoint de solo lectura
+// (POST /api/{brand}/printers/{id}/test-connection, no admin). El estado de
+// "abierto/cerrado" vive en un objeto module-level en vez de en el DOM
+// porque refreshElegooPrintersGrid()/refreshFlashforgePrintersGrid()/
+// refreshBambuPrintersGrid() reconstruyen el grid entero cada ~3s (polling)
+// -- sin esto, cualquier panel abierto se cerraría solo en el próximo poll.
+const printerDiagState = {};
+
+function printerDiagKey(brand, id) {
+    return `${brand}:${id}`;
+}
+
+function printerDiagPanelHtml(brand, id) {
+    const state = printerDiagState[printerDiagKey(brand, id)];
+    if (!state || !state.open) return '';
+    if (state.status === 'checking') {
+        return `<div class="printer-diag-panel"><div class="printer-diag-panel-status checking"><span class="gps-spinner"></span> ${escapeHtml(t('printerDiagTesting'))}</div></div>`;
+    }
+    const data = state.data || {};
+    const rows = [];
+    if (data.latency_ms != null) rows.push([t('printerDiagLatency'), `${data.latency_ms} ms`]);
+    if (brand === 'bambu') {
+        rows.push([t('printerDiagMqttListener'), data.mqtt_listener_connected ? t('printerDiagConnected') : t('printerDiagDisconnected')]);
+        if (data.last_communication_at) rows.push([t('printerDiagLastComm'), String(data.last_communication_at)]);
+    }
+    if (brand === 'elegoo') {
+        rows.push([t('printerDiagConfirmedId'), data.confirmed_id ? t('printerDiagYes') : t('printerDiagNo')]);
+        rows.push([t('printerDiagListener'), data.listener_connected ? t('printerDiagConnected') : t('printerDiagDisconnected')]);
+    }
+    const dl = rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
+    return `
+        <div class="printer-diag-panel">
+            <div class="printer-diag-panel-status ${state.status === 'ok' ? 'ok' : 'fail'}">
+                ${state.status === 'ok'
+                    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(t('printerDiagSuccess'))}`
+                    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ${escapeHtml(t('printerDiagFailed'))}`}
+            </div>
+            ${data.error ? `<div>${escapeHtml(data.error)}</div>` : ''}
+            ${rows.length ? `<dl class="printer-diag-panel-grid">${dl}</dl>` : ''}
+        </div>`;
+}
+
+function printerDiagToggleHtml(brand, id) {
+    return `
+        <button type="button" class="printer-diag-toggle-btn" data-diag-brand="${brand}" data-diag-id="${escapeHtml(id)}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>${escapeHtml(t('printerDiagTestConnection'))}</span>
+        </button>
+        ${printerDiagPanelHtml(brand, id)}`;
+}
+
+function refreshPrinterGridForBrand(brand) {
+    if (brand === 'elegoo') refreshElegooPrintersGrid();
+    if (brand === 'flashforge') refreshFlashforgePrintersGrid();
+    if (brand === 'bambu') refreshBambuPrintersGrid();
+}
+
+async function testPrinterConnection(brand, printerId) {
+    const key = printerDiagKey(brand, printerId);
+    printerDiagState[key] = { open: true, status: 'checking', data: null };
+    refreshPrinterGridForBrand(brand);
+    try {
+        const response = await fetch(`/api/${brand}/printers/${encodeURIComponent(printerId)}/test-connection`, { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        printerDiagState[key] = { open: true, status: data.success ? 'ok' : 'fail', data };
+    } catch (error) {
+        console.error(error);
+        printerDiagState[key] = { open: true, status: 'fail', data: { error: error.message || String(error) } };
+    }
+    refreshPrinterGridForBrand(brand);
+}
+
+document.addEventListener('click', event => {
+    const btn = event.target.closest('.printer-diag-toggle-btn');
+    if (!btn) return;
+    event.stopPropagation();
+    const brand = btn.dataset.diagBrand;
+    const id = btn.dataset.diagId;
+    const key = printerDiagKey(brand, id);
+    if (printerDiagState[key]?.open) {
+        delete printerDiagState[key];
+        refreshPrinterGridForBrand(brand);
+        return;
+    }
+    testPrinterConnection(brand, id);
 });
 
 async function sendMarlinPrinterJog(device, axis, distance, feed) {
@@ -13630,8 +13837,7 @@ function switchSection(sectionName) {
         stopSystemLogPolling();
     }
     if (sectionName === 'help') {
-        loadHelpVersion();
-        applyHelpModulesLayout();
+        renderHelpCenter();
     }
     if (sectionName === 'pricing') {
         loadPricingSection();
@@ -13676,15 +13882,16 @@ async function loadHelpVersion() {
     }
 }
 
-const helpReplayTourBtn = document.getElementById('help-replay-tour-btn');
-if (helpReplayTourBtn) {
-    helpReplayTourBtn.addEventListener('click', () => {
-        Object.keys(localStorage)
-            .filter(key => key.startsWith('tourSeen_'))
-            .forEach(key => localStorage.removeItem(key));
-        switchSection('dashboard');
-    });
-}
+// Delegado (no bind directo) -- #help-replay-tour-btn ahora lo inyecta
+// renderHelpCenter() dinámicamente dentro de la tarjeta "Inicio", no existe
+// en el HTML estático en el momento en que este script corre.
+document.addEventListener('click', event => {
+    if (!event.target.closest('#help-replay-tour-btn')) return;
+    Object.keys(localStorage)
+        .filter(key => key.startsWith('tourSeen_'))
+        .forEach(key => localStorage.removeItem(key));
+    switchSection('dashboard');
+});
 
 // Add click listeners to nav items
 const navItems = document.querySelectorAll('.nav-item');
@@ -13696,17 +13903,6 @@ navItems.forEach(item => {
         // en escritorio, donde .mobile-nav-open nunca se activa).
         setMobileNavOpen(false);
     });
-});
-
-// Fichas de Ayuda: cada una describe una sección puntual del panel (Modelos,
-// G-code, Láser, etc.) y su botón "Ir a la sección" navega directo a ella.
-// Delegado en document porque las fichas viven en #help-modules-pool (oculto)
-// hasta que createModulePageScope las mueve a #help-modules-groups.
-document.addEventListener('click', event => {
-    const gotoBtn = event.target.closest('.help-card-goto-btn');
-    if (!gotoBtn) return;
-    switchSection(gotoBtn.dataset.helpGoto);
-    setMobileNavOpen(false);
 });
 
 // ── Galería de plugins ──

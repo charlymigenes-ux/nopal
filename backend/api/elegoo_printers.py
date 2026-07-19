@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Form, HTTPException
 
 from backend.auth_deps import require_auth, require_role
+from backend.errors import PrinterRegistrationError
 from backend.services.elegoo_service import (
     cancel_printer,
     get_registered_printers_with_status,
@@ -9,8 +10,10 @@ from backend.services.elegoo_service import (
     resume_printer,
     scan_network,
     send_gcode_to_printer,
+    test_connection,
     unregister_printer,
 )
+from backend.utils import sanitize_device_name, validate_printer_ip
 
 router = APIRouter()
 
@@ -37,8 +40,24 @@ async def elegoo_register_endpoint(
     model: str = Form(""),
     user: dict = Depends(require_role("admin")),
 ):
-    """Registra una impresora Elegoo encontrada por /discover."""
-    return register_printer(ip, mainboard_id, name, model)
+    """Registra una impresora Elegoo -- valida que responda por SDCP real
+    antes de guardar (ver elegoo_service._verify_connection)."""
+    ip = validate_printer_ip(ip)
+    name = sanitize_device_name(name)
+    result = await register_printer(ip, mainboard_id, name, model)
+    if not result.get("success"):
+        raise PrinterRegistrationError(
+            result.get("error_code", "UNKNOWN"),
+            result.get("error") or "No se pudo registrar la impresora",
+        )
+    return result["printer"]
+
+
+@router.post("/api/elegoo/printers/{printer_id}/test-connection")
+async def elegoo_test_connection_endpoint(printer_id: str, user: dict = Depends(require_auth)):
+    """Diagnóstico bajo demanda de una impresora ya registrada -- de solo
+    lectura, no requiere admin."""
+    return await test_connection(printer_id)
 
 
 @router.delete("/api/elegoo/printers/{printer_id}")

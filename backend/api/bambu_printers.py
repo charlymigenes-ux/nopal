@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Form, HTTPException
 
 from backend.auth_deps import require_auth, require_role
+from backend.errors import PrinterRegistrationError
 from backend.services.bambu_service import (
     cancel_printer,
     get_registered_printers_with_status,
@@ -9,8 +10,10 @@ from backend.services.bambu_service import (
     resume_printer,
     scan_network,
     send_gcode_to_printer,
+    test_connection,
     unregister_printer,
 )
+from backend.utils import sanitize_device_name, validate_printer_ip
 
 router = APIRouter()
 
@@ -41,10 +44,25 @@ async def bambu_register_endpoint(
 ):
     """Registra una impresora Bambu Lab -- valida el access code contra la
     impresora real (handshake MQTT) antes de guardar."""
+    ip = validate_printer_ip(ip)
+    name = sanitize_device_name(name)
     result = await register_printer(ip, serial, access_code, name, model)
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "No se pudo registrar la impresora"))
-    return result["printer"]
+        raise PrinterRegistrationError(
+            result.get("error_code", "UNKNOWN"),
+            result.get("error", "No se pudo registrar la impresora"),
+        )
+    # No devolver access_code en texto plano en la respuesta -- el GET de
+    # listado ya lo filtra vía normalize_bambu_status, esto cierra el mismo
+    # hueco en la respuesta del POST de alta.
+    return {k: v for k, v in result["printer"].items() if k != "access_code"}
+
+
+@router.post("/api/bambu/printers/{printer_id}/test-connection")
+async def bambu_test_connection_endpoint(printer_id: str, user: dict = Depends(require_auth)):
+    """Diagnóstico bajo demanda de una impresora ya registrada -- de solo
+    lectura, no requiere admin."""
+    return await test_connection(printer_id)
 
 
 @router.delete("/api/bambu/printers/{printer_id}")

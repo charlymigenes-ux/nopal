@@ -251,7 +251,15 @@ class FlashForgeClient:
 def register_printer(ip: str, serial_number: str, check_code: str, name: str) -> Dict[str, Any]:
     response = FlashForgeClient(ip, serial_number, check_code).check_auth()
     if response.get("code") != 0:
-        return {"success": False, "error": response.get("message") or "No se pudo conectar con la impresora"}
+        # response == {} significa que _post() nunca obtuvo respuesta real
+        # (ConnectionError/timeout/excepción) -- distinto de que el firmware
+        # sí respondió y rechazó el checkCode con su propio código/mensaje.
+        error_code = "CREDENTIAL_REJECTED" if response else "CONNECTION_FAILED"
+        return {
+            "success": False,
+            "error": response.get("message") or "No se pudo conectar con la impresora",
+            "error_code": error_code,
+        }
 
     model = _MODEL_BY_PID.get(_parse_pid(response.get("detail", {}).get("pid")), "")
     entries = [e for e in _load_registry() if e.get("serial_number") != serial_number]
@@ -267,6 +275,24 @@ def register_printer(ip: str, serial_number: str, check_code: str, name: str) ->
     _save_registry(entries)
     logger.info(f"Impresora FlashForge registrada: {name} ({ip}, {serial_number})")
     return {"success": True, "printer": entry}
+
+
+def test_connection(serial_number: str) -> Dict[str, Any]:
+    """Diagnóstico bajo demanda para una impresora ya registrada -- reusa
+    check_auth() en vez de reimplementar la llamada HTTP."""
+    entry = _find_entry(serial_number)
+    if entry is None:
+        return {"success": False, "error": "Impresora no encontrada"}
+
+    started = time.monotonic()
+    response = FlashForgeClient(entry["ip"], serial_number, entry["check_code"]).check_auth()
+    latency_ms = round((time.monotonic() - started) * 1000)
+    ok = response.get("code") == 0
+    return {
+        "success": ok,
+        "error": None if ok else (response.get("message") or "No se pudo conectar con la impresora"),
+        "latency_ms": latency_ms if ok else None,
+    }
 
 
 # ── Control ──
