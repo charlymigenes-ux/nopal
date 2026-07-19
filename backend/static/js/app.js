@@ -15110,10 +15110,13 @@ if (updatesApplyBtn) {
             if (changelogEl) {
                 changelogEl.hidden = false;
                 if (data.updated && data.commits && data.commits.length) {
+                    const statusMessage = data.dependency_install_failed
+                        ? t('updatesDependencyInstallFailed')
+                        : (data.restart_scheduled ? t('updatesRestarting') : t('updatesManualRestart'));
                     changelogEl.innerHTML = `
                         <div class="updates-changelog-title">${escapeHtml(t('updatesAppliedTitle'))}</div>
                         <ul>${data.commits.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
-                        <div class="updates-changelog-title" style="margin-top:8px;">${escapeHtml(data.restart_scheduled ? t('updatesRestarting') : t('updatesManualRestart'))}</div>
+                        <div class="updates-changelog-title" style="margin-top:8px;">${escapeHtml(statusMessage)}</div>
                     `;
                 } else {
                     changelogEl.innerHTML = `<div class="updates-changelog-title">${escapeHtml(t('updatesAlreadyCurrent'))}</div>`;

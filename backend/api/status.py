@@ -95,6 +95,33 @@ def _restart_after_response() -> None:
     os._exit(75)
 
 
+def _install_dependencies(timeout: int = 180) -> bool:
+    """Corre pip install -r requirements.txt después de un git pull -- sin
+    esto, un update que agrega una dependencia nueva (ej. paho-mqtt para
+    Bambu Lab) deja el proceso sin poder arrancar tras el reinicio: el
+    código nuevo ya está en disco pero el paquete que importa nunca se
+    instaló. Ruta del pip relativa al cwd del proceso (WorkingDirectory del
+    servicio systemd es la raíz del repo, mismo criterio que _run_git)."""
+    pip_path = os.path.join(".venv", "bin", "pip")
+    if not os.path.isfile(pip_path):
+        # Entorno sin venv estándar (ej. desarrollo) -- no bloquea el update,
+        # pero tampoco instala nada por su cuenta.
+        return True
+    try:
+        result = subprocess.run(
+            [pip_path, "install", "-q", "-r", "requirements.txt"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            logger.error(f"pip install falló tras el update: {result.stderr[-2000:]}")
+        return result.returncode == 0
+    except Exception:
+        logger.exception("No se pudieron instalar las dependencias tras la actualización")
+        return False
+
+
 @router.get("/api/status")
 async def status(user: dict = Depends(require_auth)):
     return {
@@ -262,7 +289,16 @@ async def update_app_endpoint(
     log_output = _run_git(["log", "--oneline", f"{before_sha}..{after_sha}"]) or ""
     commits = [line for line in log_output.splitlines() if line.strip()]
 
-    restart_scheduled = _is_systemd_managed()
+    # Si requirements.txt no cambió, no vale la pena esperar el pip install
+    # (~segundos) para nada -- solo se corre cuando el pull realmente lo tocó.
+    requirements_changed = bool(_run_git(["diff", "--name-only", before_sha, after_sha, "--", "requirements.txt"]))
+    deps_installed = _install_dependencies() if requirements_changed else True
+
+    # Si la instalación de dependencias falla, NO se programa el reinicio:
+    # el proceso viejo (que sigue corriendo, todavía con el código anterior
+    # cargado en memoria) sigue sirviendo mientras tanto -- reiniciar ahora
+    # solo produciría el mismo crash-loop por ImportError que esto previene.
+    restart_scheduled = _is_systemd_managed() and deps_installed
     if restart_scheduled:
         background_tasks.add_task(_restart_after_response)
 
@@ -272,4 +308,5 @@ async def update_app_endpoint(
         "commits": commits,
         "app_version": get_app_version(),
         "restart_scheduled": restart_scheduled,
+        "dependency_install_failed": requirements_changed and not deps_installed,
     }
