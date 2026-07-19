@@ -50,7 +50,11 @@ def write_installed_state(installed: Dict[str, Dict[str, Any]]) -> None:
     temporary.replace(INSTALLED_FILE)
 
 
-def _run_git(args: List[str], cwd: Optional[Path] = None, timeout: int = GIT_TIMEOUT) -> Optional[str]:
+def _run_git_verbose(args: List[str], cwd: Optional[Path] = None, timeout: int = GIT_TIMEOUT) -> tuple[Optional[str], str]:
+    """Como _run_git pero siempre devuelve también el stderr -- para
+    cuando el llamador necesita mostrarle al usuario la razón real de un
+    fallo (ej. clone() en la Galería de Plugins) en vez de solo
+    logguearla y devolver un genérico "revisá la URL y la conexión"."""
     try:
         result = subprocess.run(
             ["git"] + args,
@@ -58,12 +62,17 @@ def _run_git(args: List[str], cwd: Optional[Path] = None, timeout: int = GIT_TIM
             cwd=str(cwd) if cwd else None,
         )
         if result.returncode != 0:
-            logger.warning(f"git {' '.join(args)} falló: {result.stderr.strip()}")
-            return None
-        return result.stdout.strip()
+            return None, result.stderr.strip()
+        return result.stdout.strip(), ""
     except Exception as e:
-        logger.warning(f"git {' '.join(args)} falló: {e}")
-        return None
+        return None, str(e)
+
+
+def _run_git(args: List[str], cwd: Optional[Path] = None, timeout: int = GIT_TIMEOUT) -> Optional[str]:
+    output, stderr = _run_git_verbose(args, cwd=cwd, timeout=timeout)
+    if output is None:
+        logger.warning(f"git {' '.join(args)} falló: {stderr}")
+    return output
 
 
 def read_manifest(plugin_id: str) -> Optional[Dict[str, Any]]:
@@ -88,9 +97,11 @@ def clone(plugin_id: str, repo_url: str) -> Dict[str, Any]:
     if target.exists():
         return {"success": False, "error": "Ya existe una carpeta para este plugin -- desinstalalo primero"}
 
-    output = _run_git(["clone", "--depth", "1", repo_url, str(target)], timeout=CLONE_TIMEOUT)
+    output, stderr = _run_git_verbose(["clone", "--depth", "1", repo_url, str(target)], timeout=CLONE_TIMEOUT)
     if output is None:
-        return {"success": False, "error": f"No se pudo clonar {repo_url} -- revisá la URL y la conexión"}
+        logger.warning(f"git clone {repo_url} falló: {stderr}")
+        detail = stderr or "revisá la URL y la conexión"
+        return {"success": False, "error": f"No se pudo clonar {repo_url}: {detail}"}
 
     manifest = read_manifest(plugin_id)
     if manifest is None:
