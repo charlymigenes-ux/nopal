@@ -165,6 +165,7 @@
 .cv-add-tab.active { border-color: var(--cv-accent); background: rgba(var(--cv-accent-rgb), .16); color: var(--cv-accent); }
 
 .cv-add-form { display: flex; flex-direction: column; gap: 12px; }
+.cv-onvif-or { margin: -4px 0 0; font-size: .74rem; color: var(--text-muted); text-align: center; }
 .cv-panel-dialog label { display: flex; flex-direction: column; gap: 5px; font-size: .8rem; color: var(--text-muted); }
 .cv-panel-dialog input {
     padding: 8px 10px;
@@ -216,6 +217,66 @@
     border-radius: 10px;
     background: #0b0f16;
 }
+
+/* ── Pestaña "USB" del panel de alta (detectar → propósito → confirmar) ── */
+.cv-add-tab span { margin-left: 4px; }
+
+.cv-usb-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: .78rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.cv-usb-device-list { display: flex; flex-direction: column; gap: 8px; }
+
+.cv-usb-device-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    min-height: 44px;
+    border: 1px solid var(--cv-border);
+    border-radius: 10px;
+    background: var(--cv-control);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+.cv-usb-device-item:hover { border-color: rgba(var(--cv-accent-rgb), .5); }
+.cv-usb-device-item.selected { border-color: var(--cv-accent); background: rgba(var(--cv-accent-rgb), .14); }
+.cv-usb-device-item.registered,
+.cv-usb-device-item[disabled] { opacity: .55; cursor: default; }
+.cv-usb-device-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cv-usb-device-item-text strong { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-usb-device-item-text small { color: var(--text-muted); font-size: .74rem; }
+.cv-usb-badge {
+    margin-left: auto;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+    color: var(--text-muted);
+    font-size: .7rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.cv-usb-purpose { display: flex; flex-direction: column; gap: 6px; font-size: .8rem; color: var(--text-muted); }
+.cv-usb-radio {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    color: var(--text);
+    font-size: .85rem;
+    cursor: pointer;
+}
+.cv-usb-radio input { width: 16px; height: 16px; accent-color: var(--cv-accent); }
+
+.cv-usb-hint { font-size: .74rem; color: var(--text-muted); margin: 2px 0 0; }
 
 @media (max-width: 600px) {
     .cv-grid { grid-template-columns: 1fr; }

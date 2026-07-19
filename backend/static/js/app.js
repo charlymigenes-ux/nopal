@@ -3250,7 +3250,7 @@ const PANEL_DEVICE_TYPES = [
     { key: 'printer', icon: PANEL_DEVICE_ICON_PRINTER, labelKey: 'printerType3D' },
     { key: 'laser', icon: PANEL_DEVICE_ICON_LASER, labelKey: 'laser' },
     { key: 'cnc', icon: PANEL_DEVICE_ICON_CNC, labelKey: 'cnc' },
-    { key: 'camera', icon: PANEL_DEVICE_ICON_CAMERA, labelKey: 'navCameras', soon: true },
+    { key: 'camera', icon: PANEL_DEVICE_ICON_CAMERA, labelKey: 'navCameras' },
 ];
 
 function panelInfoRow(icon, label, value, valueClass) {

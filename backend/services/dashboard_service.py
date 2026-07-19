@@ -5,6 +5,7 @@ from collections import deque
 from typing import Any, Dict, List, Optional
 
 from backend.services.bambu_service import get_registered_printers_with_status as get_bambu_printers
+from backend.services.camera_service import get_camera_health_counts
 from backend.services.elegoo_service import get_registered_printers_with_status as get_elegoo_printers
 from backend.services.flashforge_service import get_registered_printers_with_status as get_flashforge_printers
 from backend.services.klipper_service import get_all_printers_status, get_system_stats
@@ -68,15 +69,13 @@ def _device_counts(
     flashforge: List[Dict[str, Any]],
     bambu: List[Dict[str, Any]],
     laser_cnc: List[Dict[str, Any]],
+    camera: Dict[str, int],
 ) -> Dict[str, Dict[str, int]]:
     counts = {
         "printer": {"online": 0, "total": 0},
         "laser": {"online": 0, "total": 0},
         "cnc": {"online": 0, "total": 0},
-        # Sin hardware de cámaras en NOPAL todavía (ver nav-item-placeholder
-        # "Cámaras (Próximamente)" en el sidebar) — se deja en cero a
-        # propósito, no es un dato inventado.
-        "camera": {"online": 0, "total": 0},
+        "camera": dict(camera),
     }
     for printer in klipper:
         counts["printer"]["total"] += 1
@@ -249,16 +248,20 @@ async def get_dashboard_summary() -> Dict[str, Any]:
     )
     marlin_jobs = await loop.run_in_executor(None, get_active_job_devices)
     laser_cnc_jobs = await loop.run_in_executor(None, get_active_job_hosts)
+    camera_counts = await loop.run_in_executor(None, get_camera_health_counts)
     # Sin executor a propósito: arranca (si hace falta) las tareas asyncio de
     # los listeners WS persistentes de elegoo_service.py, que necesitan el
     # event loop de este mismo hilo (asyncio.create_task) para registrarse.
     elegoo = get_elegoo_printers()
 
-    device_counts = _device_counts(klipper, marlin_registry, elegoo, flashforge, bambu, laser_cnc_registry)
+    device_counts = _device_counts(klipper, marlin_registry, elegoo, flashforge, bambu, laser_cnc_registry, camera_counts)
     jobs = _active_jobs(klipper, elegoo, flashforge, bambu, marlin_jobs, marlin_registry, laser_cnc_jobs, laser_cnc_registry)
 
-    services_total = sum(v["total"] for key, v in device_counts.items() if key != "camera")
-    services_online = sum(v["online"] for key, v in device_counts.items() if key != "camera")
+    # Cámaras ya suman al total/salud general -- antes se excluían a
+    # propósito porque el bucket era un placeholder fijo en 0/0, ahora viene
+    # de un conteo real (ver get_camera_health_counts en camera_service.py).
+    services_total = sum(v["total"] for v in device_counts.values())
+    services_online = sum(v["online"] for v in device_counts.values())
 
     alert_counts = {"error": 0, "warning": 0, "info": 0}
     for item in notifications.get("items", []):

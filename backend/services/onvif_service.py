@@ -84,12 +84,20 @@ def _port_open(host: str, port: int, timeout: float = 1.5) -> bool:
 
 
 def resolve_rtsp_uri(host: str, port: int, username: str, password: str, timeout: float = HTTP_TIMEOUT) -> str:
-    """Devuelve la URL RTSP real del primer perfil de video (el de mayor
-    calidad) que reporta el dispositivo. Lanza ValueError con un mensaje
-    entendible si algo falla -- host inalcanzable, credenciales rechazadas,
-    o el dispositivo no habla ONVIF."""
-    device_url = f"http://{host}:{port}/onvif/device_service"
+    """Arma la URL del device_service con el path estándar (/onvif/device_service)
+    a partir de host+puerto -- devuelve la URL RTSP real del primer perfil de
+    video (el de mayor calidad) que reporta el dispositivo. Ver
+    resolve_rtsp_uri_from_url() para cuando el fabricante no usa ese path
+    estándar y hace falta la URL completa a mano."""
+    return resolve_rtsp_uri_from_url(f"http://{host}:{port}/onvif/device_service", username, password, timeout)
 
+
+def resolve_rtsp_uri_from_url(device_url: str, username: str, password: str, timeout: float = HTTP_TIMEOUT) -> str:
+    """Igual que resolve_rtsp_uri, pero con la URL completa del
+    device_service ya armada por el usuario -- algunos fabricantes no
+    publican ONVIF en el path estándar /onvif/device_service que asume el
+    autoscan (ver COMMON_ONVIF_PORTS), y no hay forma de adivinar el path
+    correcto sin que el usuario lo diga."""
     try:
         capabilities = _soap_call(
             device_url,
@@ -98,7 +106,7 @@ def resolve_rtsp_uri(host: str, port: int, username: str, password: str, timeout
             username, password, timeout,
         )
     except requests.exceptions.RequestException as e:
-        raise ValueError(f"No se pudo conectar a {host}:{port} — {e}")
+        raise ValueError(f"No se pudo conectar a {device_url} — {e}")
 
     if _find_one(capabilities, "Fault") is not None:
         raise ValueError("El dispositivo rechazó las credenciales ONVIF")

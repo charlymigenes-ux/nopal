@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.services.bambu_service as bambu_service
+import backend.services.camera_service as camera_service
 import backend.services.elegoo_service as elegoo_service
 import backend.services.flashforge_service as flashforge_service
 from backend.auth_deps import require_auth
@@ -46,4 +47,5 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     monkeypatch.setattr(bambu_service, "REGISTRY_PATH", str(tmp_path / "bambu_printer_registry.json"))
     monkeypatch.setattr(elegoo_service, "REGISTRY_PATH", str(tmp_path / "elegoo_printer_registry.json"))
     monkeypatch.setattr(flashforge_service, "REGISTRY_PATH", str(tmp_path / "flashforge_printer_registry.json"))
+    monkeypatch.setattr(camera_service, "REGISTRY_PATH", str(tmp_path / "camera_registry.json"))
     yield tmp_path
