@@ -15,7 +15,7 @@
     "featured": true,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "git@github.com:charlymigenes-ux/nopal-plugin-shape-creator.git"
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-shape-creator.git"
   },
   {
     "id": "gcode-optimizer",
@@ -105,7 +105,7 @@
     "featured": false,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "git@github.com:charlymigenes-ux/nopal-plugin-arduino-accessories.git"
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-arduino-accessories.git"
   },
   {
     "id": "camera-viewer",
@@ -123,6 +123,6 @@
     "featured": false,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "git@github.com:charlymigenes-ux/nopal-plugin-camera-viewer.git"
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-camera-viewer.git"
   }
 ]
