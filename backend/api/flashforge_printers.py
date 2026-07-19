@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Form, HTTPException
 
 from backend.auth_deps import require_auth, require_role
+from backend.errors import PrinterRegistrationError
 from backend.services.flashforge_service import (
     cancel_printer,
     get_registered_printers_with_status,
@@ -9,8 +10,10 @@ from backend.services.flashforge_service import (
     resume_printer,
     scan_network,
     send_gcode_to_printer,
+    test_connection,
     unregister_printer,
 )
+from backend.utils import sanitize_device_name, validate_printer_ip
 
 router = APIRouter()
 
@@ -39,10 +42,25 @@ async def flashforge_register_endpoint(
 ):
     """Registra una impresora FlashForge -- valida serialNumber/checkCode contra
     la impresora real antes de guardar (a diferencia de Elegoo, acá sí hace falta)."""
+    ip = validate_printer_ip(ip)
+    name = sanitize_device_name(name)
     result = register_printer(ip, serial_number, check_code, name)
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "No se pudo registrar la impresora"))
-    return result["printer"]
+        raise PrinterRegistrationError(
+            result.get("error_code", "UNKNOWN"),
+            result.get("error", "No se pudo registrar la impresora"),
+        )
+    # No devolver check_code en texto plano en la respuesta -- el GET de
+    # listado ya lo filtra vía normalize_flashforge_status, esto cierra el
+    # mismo hueco en la respuesta del POST de alta.
+    return {k: v for k, v in result["printer"].items() if k != "check_code"}
+
+
+@router.post("/api/flashforge/printers/{printer_id}/test-connection")
+async def flashforge_test_connection_endpoint(printer_id: str, user: dict = Depends(require_auth)):
+    """Diagnóstico bajo demanda de una impresora ya registrada -- de solo
+    lectura, no requiere admin."""
+    return test_connection(printer_id)
 
 
 @router.delete("/api/flashforge/printers/{printer_id}")

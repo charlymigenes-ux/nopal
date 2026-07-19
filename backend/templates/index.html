@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css?v=266">
+    <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
     <div class="app-shell">
@@ -1950,8 +1951,9 @@
                          partir del layout guardado en localStorage, moviendo las
                          tarjetas de #settings-modules-pool a su grupo correspondiente.
                          Ver createModulePageScope()/settingsModulesPageScope en
-                         app.js — página independiente de #help-section: nunca
-                         comparten grupos ni localStorage entre sí. -->
+                         app.js — motor exclusivo de Configuración (#help-section
+                         tiene su propio layout fijo de Centro de ayuda, sin
+                         personalización por arrastre, ver renderHelpCenter()). -->
                     <div class="settings-modules-groups" id="settings-modules-groups"></div>
                     <div class="settings-modules-pool" id="settings-modules-pool" hidden>
                         <div class="settings-card card-collapsible settings-general-card" data-settings-module="general">
@@ -2288,6 +2290,11 @@
                             </div>
                             <p class="devices-subtitle" data-i18n="devicesDescription">Controladoras láser detectadas por USB o por red, listas para agregarse a NOPAL.</p>
 
+                            <button type="button" class="btn-file-action btn-file-action-accent guided-printer-setup-open-btn" id="guided-printer-setup-open-btn" hidden>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                <span data-i18n="guidedSetupAddWizardBtn">Agregar impresora (asistente guiado)</span>
+                            </button>
+
                             <div class="devices-subcard">
                                 <div class="devices-subcard-header">
                                     <span class="card-header-std-icon">
@@ -2450,149 +2457,34 @@
             <section id="help-section" class="view-section" style="display: none;">
                 <header class="topbar settings-topbar">
                     <div class="settings-topbar-title">
-                        <h1 data-i18n="help">Ayuda</h1>
-                        <p class="settings-topbar-subtitle" data-i18n="helpDescription">Información sobre NOPAL, contacto y guía rápida de cada sección.</p>
-                    </div>
-                    <div class="settings-topbar-actions">
-                        <button type="button" class="btn-file-action" id="help-customize-btn" data-i18n-title="settingsModuleCustomizerButtonHint" title="Personaliza el orden y los grupos de esta página">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-                            <span data-i18n="settingsModuleCustomizerButton">Personalizar</span>
-                        </button>
+                        <h1 data-i18n="helpCenterTitle">Centro de ayuda</h1>
+                        <p class="settings-topbar-subtitle" data-i18n="helpCenterSubtitle">Encuentra guías, tutoriales y respuestas para aprovechar al máximo NOPAL.</p>
                     </div>
                 </header>
-                <main class="main-content">
-                    <!-- Los grupos reales (creados por el usuario) se arman en JS a
-                         partir del layout guardado en localStorage, moviendo las
-                         tarjetas de #help-modules-pool a su grupo correspondiente.
-                         Ver createModulePageScope()/helpModulesPageScope en app.js
-                         — misma lógica que #settings-modules-pool, pero con su
-                         propio pool, sus propios grupos y su propio namespace de
-                         localStorage: nunca se mezclan entre sí. -->
-                    <div class="settings-modules-groups" id="help-modules-groups"></div>
-                    <div class="settings-modules-pool" id="help-modules-pool" hidden>
-                        <div class="settings-card card-collapsible help-card" data-settings-module="about">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpAboutTitle">Acerca de NOPAL</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpAboutDescription">NOPAL es un panel de control unificado para impresoras 3D (Klipper/Moonraker) y cortadoras/grabadoras láser GRBL, todo desde un mismo lugar.</p>
-                            <div class="help-about-row">
-                                <span class="help-version-badge" id="help-version-badge">—</span>
-                                <a href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener" class="btn-file-action">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.09 3.29 9.4 7.86 10.93.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.87-1.36-3.87-1.36-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.78 1.19 1.78 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 5.73 0c2.18-1.49 3.14-1.18 3.14-1.18.63 1.59.23 2.76.12 3.05.73.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.68.8.56A10.99 10.99 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
-                                    <span data-i18n="helpGithub">Repositorio en GitHub</span>
-                                </a>
-                                <button type="button" class="btn-file-action btn-file-action-accent" id="help-replay-tour-btn">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                                    <span data-i18n="helpReplayTour">Repetir recorrido guiado</span>
-                                </button>
-                            </div>
-                            <p data-i18n="helpReplayTourHint">Vuelve a mostrar el recorrido guiado de todas las secciones del panel.</p>
+                <main class="main-content help-center-layout">
+                    <!-- Sidebar de categorías + buscador -- el contenido real (nav +
+                         panel derecho) lo pinta renderHelpCenter() en app.js desde
+                         el array HELP_CATEGORIES, no hay nada hardcodeado acá salvo
+                         el esqueleto. Reemplaza el layout viejo de tarjetas
+                         personalizables por arrastre (createModulePageScope) -- esa
+                         personalización se retiró a propósito, el layout nuevo es
+                         fijo. Configuración conserva su propio customizer intacto,
+                         es una página completamente aparte. -->
+                    <aside class="help-sidebar">
+                        <div class="help-sidebar-search">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="help-search-input" data-i18n-placeholder="helpSearchPlaceholder" placeholder="Buscar ayuda...">
                         </div>
-
-                        <div class="settings-card card-collapsible help-card" data-settings-module="models">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpModelsTitle">Modelos</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpModelsBody">Sube archivos STL/3MF, organízalos en carpetas y previsualízalos en 3D antes de imprimir. Desde aquí generas el G-code o envías el modelo directo a una impresora.</p>
-                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="models"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+                        <nav class="help-category-list" id="help-category-list"></nav>
+                        <div class="help-community-box">
+                            <p class="help-community-title" data-i18n="helpCommunityTitle">¿Necesitas más ayuda?</p>
+                            <a href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener" class="help-community-link">
+                                <span data-i18n="helpCommunityLink">Únete a la comunidad de NOPAL</span>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            </a>
                         </div>
-
-                        <div class="settings-card card-collapsible help-card" data-settings-module="gcode">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpGcodeTitle">G-code</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpGcodeBody">Biblioteca de archivos G-code ya listos (de impresión 3D o de láser). Previsualiza la trayectoria y envíalos directo a una impresora o a la cola del láser.</p>
-                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="gcode"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                        </div>
-
-                        <div class="settings-card card-collapsible help-card" data-settings-module="dashboardHelp">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpDashboardTitle">Dashboard e impresoras 3D</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpDashboardBody">Muestra todas tus impresoras y láseres detectados, ordenados por estado. Toca una ficha para abrir sus controles: temperaturas, movimiento del cabezal (Toolhead) y progreso en vivo.</p>
-                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="dashboard"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                        </div>
-
-                        <div class="settings-card card-collapsible help-card" data-settings-module="laserHelp">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpLaserTitle">Láser</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpLaserBody">Controla tus láseres GRBL por red o USB: movimiento manual, encendido (doble clic para armar), aire asistido, tarjeta SD y consola de comandos. Puedes tener varios láseres registrados y cambiar entre ellos.</p>
-                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="laser"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                        </div>
-
-                        <div class="settings-card card-collapsible help-card" data-settings-module="queueHelp">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpQueueTitle">Cola de impresión</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpQueueBody">Historial de impresión (archivos ya impresos por cada impresora) y la cola de trabajos activos con progreso y tiempo restante reales.</p>
-                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="queue"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                        </div>
-
-                        <div class="settings-card card-collapsible help-card" data-settings-module="macrosHelp">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpMacrosTitle">Macros</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpMacrosBody">Lista los macros configurados en tu `printer.cfg` (Klipper) y te deja ejecutarlos con un toque, sin usar la consola.</p>
-                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="console"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                        </div>
-
-                        <div class="settings-card card-collapsible help-card" data-settings-module="settingsHelp">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="helpSettingsTitle">Configuración</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="helpSettingsBody">Tema (claro/oscuro/NOPAL/personalizado), idioma, tamaño de interfaz, actualizaciones de la app y los puertos USB de láser detectados.</p>
-                            <button type="button" class="btn-file-action help-card-goto-btn" data-help-goto="settings"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                        </div>
-                    </div>
+                    </aside>
+                    <div class="help-panel" id="help-panel"></div>
                 </main>
             </section>
         </div>
@@ -2876,10 +2768,9 @@
          viven en #settings-modules-pool. Mismos 4 breakpoints, mismo patrón de
          Pointer Events a mano, extendido para permitir soltar una tarjeta en
          un grupo distinto al que la contenía (ver createModulePageScope() en
-         app.js, instanciada como settingsModulesPageScope). #help-section más
-         abajo tiene su propio modal gemelo (#help-module-customizer-modal)
-         para sus 8 tarjetas — misma lógica, pools y grupos completamente
-         independientes. -->
+         app.js, instanciada como settingsModulesPageScope). Único uso de este
+         motor hoy: #help-section (Centro de ayuda) tiene su propio layout fijo
+         sin personalización por arrastre, ver renderHelpCenter() en app.js. -->
     <div id="settings-module-customizer-modal" class="modal">
         <div class="modal-backdrop" id="settings-module-customizer-modal-backdrop"></div>
         <div class="modal-content module-customizer-modal-content settings-module-customizer-modal-content">
@@ -2923,58 +2814,6 @@
                     <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
                 </button>
                 <p class="module-customizer-reset-hint" data-i18n="settingsModuleCustomizerResetHint">Restaura el grupo predeterminado (General) de este tamaño de pantalla.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Personalizar Página de Ayuda: modal gemelo del de Configuración de
-         arriba (mismas clases CSS, misma lógica de createModulePageScope() en
-         app.js, instanciada como helpModulesPageScope), pero apuntando a las
-         8 tarjetas de #help-modules-pool. Nunca comparte grupos ni
-         localStorage con el de Configuración. -->
-    <div id="help-module-customizer-modal" class="modal">
-        <div class="modal-backdrop" id="help-module-customizer-modal-backdrop"></div>
-        <div class="modal-content module-customizer-modal-content settings-module-customizer-modal-content">
-            <button class="modal-close" id="help-module-customizer-modal-close">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-            <div class="module-customizer-header">
-                <h2 data-i18n="helpModuleCustomizerTitle">Personalizar Página de Ayuda</h2>
-                <p class="module-customizer-subtitle" data-i18n="settingsModuleCustomizerSubtitle">Crea tus propios grupos y elige qué tarjetas quieres ver en cada uno.</p>
-            </div>
-
-            <div class="module-customizer-tabs" id="help-module-customizer-tabs">
-                <button type="button" class="module-customizer-tab" data-breakpoint="mobile">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
-                    <span data-i18n="moduleCustomizerBreakpointMobile">Celular</span>
-                </button>
-                <button type="button" class="module-customizer-tab" data-breakpoint="tablet">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                    <span data-i18n="moduleCustomizerBreakpointTablet">Tableta</span>
-                </button>
-                <button type="button" class="module-customizer-tab" data-breakpoint="desktop">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                    <span data-i18n="moduleCustomizerBreakpointDesktop">Escritorio</span>
-                </button>
-                <button type="button" class="module-customizer-tab" data-breakpoint="wide">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="11" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                    <span data-i18n="moduleCustomizerBreakpointWide">Pantalla ancha</span>
-                </button>
-            </div>
-
-            <div class="settings-module-customizer-groups" id="help-module-customizer-groups"></div>
-
-            <button type="button" class="settings-module-customizer-add-group-btn" id="help-module-customizer-add-group-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span data-i18n="settingsModuleCustomizerAddGroup">Nuevo grupo</span>
-            </button>
-
-            <div class="module-customizer-footer">
-                <button type="button" class="module-customizer-reset-btn" id="help-module-customizer-reset-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                    <span data-i18n="moduleCustomizerReset">Restablecer diseño</span>
-                </button>
-                <p class="module-customizer-reset-hint" data-i18n="helpModuleCustomizerResetHint">Restaura el grupo predeterminado (Ayuda) de este tamaño de pantalla.</p>
             </div>
         </div>
     </div>
@@ -4384,6 +4223,37 @@
         </div>
     </div>
 
+    <!-- Asistente guiado de instalación de impresoras 3D (Bambu Lab/Elegoo/
+         FlashForge) -- wizard de 6 pasos, ver guided-printer-setup.js. No
+         reutiliza .cnc-wizard-* (ver guided-printer-setup.css) porque el
+         diseño aprobado pide un stepper más elaborado. Todo el contenido de
+         cada paso se pinta dinámicamente vía JS -- acá solo vive el
+         esqueleto (header sticky + body scrolleable + footer sticky). -->
+    <div id="guided-printer-setup-modal" class="modal">
+        <div class="modal-backdrop" id="guided-printer-setup-backdrop"></div>
+        <div class="modal-content gps-modal-content">
+            <div class="gps-header">
+                <button class="modal-close" id="guided-printer-setup-close">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <h2 data-i18n="guidedSetupTitle">Configuración guiada de impresoras 3D</h2>
+                <div class="gps-stepper" id="gps-stepper"></div>
+                <p class="gps-stepper-compact" id="gps-stepper-compact"></p>
+            </div>
+            <div class="gps-body" id="guided-printer-setup-body">
+                <div class="gps-step" id="gps-step-1"></div>
+                <div class="gps-step" id="gps-step-2" hidden></div>
+                <div class="gps-step" id="gps-step-3" hidden></div>
+                <div class="gps-step" id="gps-step-4" hidden></div>
+                <div class="gps-step" id="gps-step-5" hidden></div>
+                <div class="gps-step" id="gps-step-6" hidden></div>
+            </div>
+            <div class="gps-footer">
+                <div class="gps-footer-actions" id="gps-footer-actions"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Device Unlink Confirm Modal -->
     <div id="device-unlink-modal" class="modal">
         <div class="modal-backdrop" id="device-unlink-backdrop"></div>
@@ -4509,5 +4379,6 @@
     <script src="/static/js/translations-fr.js?v=2"></script>
     <script src="/static/js/translations-de.js?v=2"></script>
     <script src="/static/js/app.js?v=206"></script>
+    <script src="/static/js/guided-printer-setup.js?v=1"></script>
 </body>
 </html>

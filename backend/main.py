@@ -7,10 +7,12 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+
+from backend.errors import PrinterRegistrationError
 
 from backend.config import (
     LOG_BACKUP_COUNT,
@@ -89,6 +91,14 @@ async def log_unhandled_exceptions(request: Request, call_next):
     except Exception:
         logger.exception(f"Excepción no controlada en {request.method} {request.url.path}")
         raise
+
+
+@app.exception_handler(PrinterRegistrationError)
+async def printer_registration_error_handler(request: Request, exc: PrinterRegistrationError):
+    """`detail` sigue siendo string puro (compatibilidad con las modales de
+    registro ya existentes); `error_code` es un campo hermano nuevo que solo
+    lee el asistente guiado de instalación de impresoras."""
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "error_code": exc.error_code})
 
 
 app.mount("/static", StaticFiles(directory="backend/static"), name="static")

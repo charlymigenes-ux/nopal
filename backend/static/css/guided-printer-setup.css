@@ -1,0 +1,851 @@
+/* ── Asistente guiado de instalación de impresoras (Bambu Lab / Elegoo /
+   FlashForge) ── Archivo propio en vez de sumarse a style.css: es un
+   componente grande y autocontenido (wizard de 6 pasos), separarlo evita
+   inflar más el stylesheet principal. Todas las reglas usan las variables
+   de tema (--bg, --card-bg, --accent, etc.) definidas en style.css:29-123,
+   así que el asistente hereda los 5 temas (light/dark/green/red/custom)
+   sin overrides propios. */
+
+#guided-printer-setup-modal .modal-content.gps-modal-content {
+    width: 94%;
+    max-width: 780px;
+    height: 90vh;
+    max-height: 800px;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Objetivo táctil mínimo (Raspberry Pi con pantalla táctil): todo botón de
+   navegación del asistente mide al menos 44px de alto, sin depender de hover. */
+#guided-printer-setup-modal .btn-file-action {
+    min-height: 44px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+/* ── Header fijo (título + stepper) ── */
+
+.gps-header {
+    flex-shrink: 0;
+    padding: 24px 28px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.gps-header h2 {
+    margin: 0 0 16px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text);
+    padding-right: 40px;
+}
+
+.gps-stepper {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+}
+
+.gps-stepper-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.gps-stepper-connector {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    margin-top: 17px;
+    min-width: 12px;
+}
+
+.gps-stepper-connector.done {
+    background: var(--accent);
+}
+
+.gps-stepper-circle {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    background: var(--panel-bg);
+    border: 2px solid var(--border);
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.gps-stepper-item.active .gps-stepper-circle {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.gps-stepper-item.done .gps-stepper-circle {
+    background: rgba(var(--accent-rgb), 0.16);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.gps-stepper-label {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.2;
+    max-width: 84px;
+}
+
+.gps-stepper-item.active .gps-stepper-label {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.gps-stepper-compact {
+    display: none;
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+@media (max-width: 600px) {
+    .gps-stepper { display: none; }
+    .gps-stepper-compact { display: block; }
+    .gps-header { padding: 18px 18px 14px; }
+    #guided-printer-setup-modal .modal-content.gps-modal-content {
+        width: 100%;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+}
+
+/* ── Body scrollable ── */
+
+.gps-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px;
+}
+
+.gps-step {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.gps-step-title {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.gps-step-hint {
+    margin: -8px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* ── Footer fijo (navegación) ── */
+
+.gps-footer {
+    flex-shrink: 0;
+    padding: 16px 28px;
+    border-top: 1px solid var(--border);
+    background: var(--card-bg);
+}
+
+.gps-footer-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.gps-footer-actions .btn-file-action {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 560px) {
+    .gps-footer-actions { justify-content: stretch; }
+    .gps-footer-actions .btn-file-action { flex: 1 1 auto; justify-content: center; }
+}
+
+/* ── Banners informativos reutilizables (red, warning) ── */
+
+.gps-info-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(var(--accent-rgb), 0.08);
+    border: 1px solid rgba(var(--accent-rgb), 0.25);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.gps-info-banner svg {
+    flex-shrink: 0;
+    color: var(--accent);
+    margin-top: 1px;
+}
+
+.gps-info-banner-warning {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.gps-info-banner-warning svg {
+    color: var(--orange);
+}
+
+/* ── Paso 1: selección de marca ── */
+
+.gps-brand-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+}
+
+.gps-brand-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: left;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.1s ease, background 0.15s ease;
+    min-height: 44px;
+}
+
+.gps-brand-card:hover,
+.gps-brand-card:focus-visible {
+    border-color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.06);
+    transform: translateY(-2px);
+    outline: none;
+}
+
+.gps-brand-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.gps-brand-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(var(--accent-rgb), 0.14);
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.gps-brand-card-name {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.gps-brand-card-desc {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+.gps-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.gps-badge-compatible {
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+}
+
+.gps-badge-requires-lan {
+    background: rgba(245, 158, 11, 0.16);
+    color: var(--orange);
+}
+
+/* ── Paso 2: preparar impresora ── */
+
+.gps-prep-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.gps-prep-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.88rem;
+    color: var(--text);
+}
+
+.gps-prep-item-number {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.gps-prep-illustration {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+}
+
+.gps-prep-illustration-inner {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.gps-prep-illustration-device {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.gps-prep-illustration-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.gps-prep-illustration-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.gps-prep-illustration-row svg {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+/* ── Paso 3: búsqueda en la red ── */
+
+.gps-discovery-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 28px 16px;
+    border-radius: var(--radius-lg);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    text-align: center;
+}
+
+.gps-spinner {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid rgba(var(--accent-rgb), 0.2);
+    border-top-color: var(--accent);
+    animation: gpsSpin 0.8s linear infinite;
+}
+
+@keyframes gpsSpin {
+    to { transform: rotate(360deg); }
+}
+
+.gps-discovery-status-text {
+    font-weight: 600;
+    color: var(--text);
+    font-size: 0.92rem;
+}
+
+.gps-discovery-elapsed {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.gps-inline-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.gps-device-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.gps-device-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    text-align: left;
+    min-height: 44px;
+}
+
+.gps-device-card:hover:not(.gps-device-card-disabled) {
+    border-color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.06);
+}
+
+.gps-device-card-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.gps-device-card-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 16px;
+    flex: 1;
+    min-width: 0;
+}
+
+.gps-device-card-field {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.gps-device-card-field-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+}
+
+.gps-device-card-field-value {
+    font-size: 0.86rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gps-device-badge-available {
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+}
+
+.gps-device-badge-registered {
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--text-muted);
+}
+
+.gps-empty-discovery {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+/* ── Paso 4: credenciales ── */
+
+.gps-form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.gps-secret-field-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.gps-secret-field-wrap input {
+    padding-right: 40px;
+}
+
+.gps-secret-toggle-btn {
+    position: absolute;
+    right: 8px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.gps-secret-toggle-btn:hover {
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.1);
+}
+
+.gps-select-hint {
+    margin: 4px 0 14px;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+/* ── Paso 5: verificación ── */
+
+.gps-verify-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 16px 4px;
+    text-align: center;
+}
+
+.gps-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-radius: var(--radius-lg);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.gps-checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    font-size: 0.86rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+}
+
+.gps-checklist-item:last-child {
+    border-bottom: none;
+}
+
+.gps-checklist-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.7rem;
+}
+
+.gps-checklist-item.pending .gps-checklist-icon {
+    border: 2px solid rgba(var(--accent-rgb), 0.25);
+    border-top-color: var(--accent);
+    animation: gpsSpin 0.8s linear infinite;
+}
+
+.gps-checklist-item.ok .gps-checklist-icon {
+    background: rgba(34, 197, 94, 0.18);
+    color: #22c55e;
+}
+
+.gps-checklist-item.fail .gps-checklist-icon {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+}
+
+.gps-checklist-item.unreached .gps-checklist-icon {
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--text-muted);
+}
+
+.gps-checklist-item.fail {
+    color: #ef4444;
+}
+
+.gps-checklist-item.unreached {
+    color: var(--text-muted);
+}
+
+.gps-verify-error-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: var(--text);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.gps-tech-details {
+    border-radius: var(--radius-md);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+}
+
+.gps-tech-details summary {
+    cursor: pointer;
+    padding: 10px 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    list-style: none;
+}
+
+.gps-tech-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.gps-tech-details summary::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 6px;
+    color: var(--accent);
+    transition: transform 0.15s ease;
+}
+
+.gps-tech-details[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.gps-tech-details-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 12px;
+    padding: 4px 4px 12px;
+    font-size: 0.8rem;
+}
+
+.gps-tech-details-grid dt {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.gps-tech-details-grid dd {
+    margin: 0;
+    color: var(--text);
+    word-break: break-word;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+/* ── Paso 6: resumen final ── */
+
+.gps-summary-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 20px;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+}
+
+@media (max-width: 480px) {
+    .gps-summary-card { grid-template-columns: 1fr; }
+}
+
+.gps-summary-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.gps-summary-row-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+}
+
+.gps-summary-row-value {
+    font-size: 0.92rem;
+    color: var(--text);
+    font-weight: 600;
+    overflow-wrap: break-word;
+}
+
+.gps-capabilities-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+@media (max-width: 480px) {
+    .gps-capabilities-grid { grid-template-columns: 1fr; }
+}
+
+.gps-capabilities-col-title {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.gps-capability-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.gps-capability-item svg {
+    flex-shrink: 0;
+}
+
+.gps-capability-item.available svg {
+    color: #22c55e;
+}
+
+.gps-capability-item.unavailable {
+    color: var(--text-muted);
+}
+
+.gps-capability-item.unavailable svg {
+    color: var(--text-muted);
+}
+
+.gps-step6-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+@media (max-width: 480px) {
+    .gps-step6-actions { grid-template-columns: 1fr; }
+}
+
+.gps-step6-actions .btn-file-action {
+    justify-content: center;
+}
+
+/* ── Botón de entrada al asistente en Configuración → Dispositivos ── */
+
+.guided-printer-setup-open-btn {
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+/* ── Panel de diagnóstico en tarjetas de impresoras registradas (Bambu Lab /
+   Elegoo / FlashForge) ── Vive junto al resto del asistente porque se agregó
+   como parte de la misma entrega (ver testPrinterConnection en app.js), no
+   porque pertenezca al modal del wizard. */
+
+.printer-diag-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 10px;
+    min-height: 32px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.printer-diag-toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.printer-diag-panel {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.printer-diag-panel-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+}
+
+.printer-diag-panel-status.ok { color: #22c55e; }
+.printer-diag-panel-status.fail { color: #ef4444; }
+.printer-diag-panel-status.checking { color: var(--text-muted); }
+
+.printer-diag-panel-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+}
+
+.printer-diag-panel-grid dt {
+    color: var(--text-muted);
+}
+
+.printer-diag-panel-grid dd {
+    margin: 0;
+    color: var(--text);
+    word-break: break-word;
+}
+
+.printer-diag-panel .gps-spinner {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}

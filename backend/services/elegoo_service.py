@@ -77,7 +77,60 @@ def get_registered_printers() -> List[Dict[str, Any]]:
     return _load_registry()
 
 
-def register_printer(ip: str, mainboard_id: str, name: str, model: str = "") -> Dict[str, Any]:
+async def _verify_connection(ip: str, mainboard_id: str, timeout: float = 4.0) -> Dict[str, Any]:
+    """Abre una conexión WS SDCP descartable solo para confirmar que hay una
+    impresora real respondiendo en esa IP -- no se reusa como listener
+    persistente (ver _ensure_listener). Éxito mínimo: llegó algún mensaje
+    SDCP válido (Topic con /status/ o /attributes/) dentro del timeout, lo
+    que ya confirma IP/puerto/protocolo correctos. Si además el topic
+    referencia el mainboard_id esperado se marca "confirmed" -- si no, se
+    acepta igual pero sin esa confirmación extra: el protocolo real (según
+    la documentación comunitaria citada en el docstring del módulo) no
+    garantiza de forma verificable el formato exacto del topic sin hardware
+    real contra el que probarlo, así que no se convierte en un rechazo duro."""
+    uri = _ws_url(ip)
+    try:
+        async with websockets.connect(uri, open_timeout=timeout, ping_interval=None) as ws:
+            end_time = time.monotonic() + timeout
+            while True:
+                remaining = end_time - time.monotonic()
+                if remaining <= 0:
+                    return {"ok": False, "error": "La impresora respondió, pero no envió estado", "error_code": "PROTOCOL_INVALID"}
+                try:
+                    message = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    return {"ok": False, "error": "La impresora respondió, pero no envió estado", "error_code": "PROTOCOL_INVALID"}
+                if isinstance(message, bytes):
+                    message = message.decode("utf-8", errors="ignore")
+                if message in ("ping", "pong"):
+                    continue
+                try:
+                    payload = json.loads(message)
+                except json.JSONDecodeError:
+                    continue
+                topic = payload.get("Topic", "")
+                if "/status/" in topic or "/attributes/" in topic:
+                    confirmed = mainboard_id in topic
+                    return {"ok": True, "confirmed_id": confirmed}
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": "Tiempo de espera agotado conectando con la impresora", "error_code": "CONNECTION_FAILED"}
+    except (OSError, websockets.InvalidURI, websockets.InvalidHandshake) as e:
+        return {"ok": False, "error": f"No se pudo conectar a {ip}:{WS_PORT}: {e}", "error_code": "CONNECTION_FAILED"}
+
+
+async def register_printer(ip: str, mainboard_id: str, name: str, model: str = "") -> Dict[str, Any]:
+    """A diferencia del resto de bambu/flashforge_service.py, esto arrancó
+    sin ninguna verificación real (guardaba directo) -- corregido para que
+    también rechace el registro si la impresora no responde, en línea con
+    el resto de las marcas."""
+    check = await _verify_connection(ip, mainboard_id)
+    if not check["ok"]:
+        return {
+            "success": False,
+            "error": check.get("error") or "No se pudo conectar con la impresora",
+            "error_code": check.get("error_code", "UNKNOWN"),
+        }
+
     entries = [e for e in _load_registry() if e.get("mainboard_id") != mainboard_id]
     entry = {
         "mainboard_id": mainboard_id,
@@ -89,7 +142,26 @@ def register_printer(ip: str, mainboard_id: str, name: str, model: str = "") -> 
     entries.append(entry)
     _save_registry(entries)
     logger.info(f"Impresora Elegoo registrada: {name} ({ip}, {mainboard_id})")
-    return entry
+    return {"success": True, "printer": entry}
+
+
+async def test_connection(mainboard_id: str) -> Dict[str, Any]:
+    """Diagnóstico bajo demanda para una impresora ya registrada -- reusa
+    _verify_connection en vez de reimplementar el chequeo."""
+    entry = next((e for e in _load_registry() if e.get("mainboard_id") == mainboard_id), None)
+    if entry is None:
+        return {"success": False, "error": "Impresora no encontrada"}
+
+    started = time.monotonic()
+    check = await _verify_connection(entry["ip"], mainboard_id)
+    latency_ms = round((time.monotonic() - started) * 1000)
+    return {
+        "success": check["ok"],
+        "error": check.get("error"),
+        "latency_ms": latency_ms if check["ok"] else None,
+        "confirmed_id": check.get("confirmed_id", False),
+        "listener_connected": _connected.get(mainboard_id, False),
+    }
 
 
 def unregister_printer(mainboard_id: str) -> bool:
