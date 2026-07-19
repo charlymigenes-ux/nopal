@@ -39,6 +39,11 @@ firmware/nopal_accessory/builds/
 # — no es código fuente, se genera en cada instalación.
 data/
 
+# Código de plugins clonado por git (ver plugin_installer_service.py) --
+# cada plugin es su propio repo, NOPAL core solo guarda el catálogo curado
+# (backend/plugin_catalog.json) y el estado de instalación (data/plugins/).
+plugins/
+
 # Respaldos automáticos de otras herramientas (Codex, etc.), no son parte
 # del proyecto.
 .codex-backups/

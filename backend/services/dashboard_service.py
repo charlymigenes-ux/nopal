@@ -5,17 +5,27 @@ from collections import deque
 from typing import Any, Dict, List, Optional
 
 from backend.services.bambu_service import get_registered_printers_with_status as get_bambu_printers
-from backend.services.camera_service import get_camera_health_counts
 from backend.services.elegoo_service import get_registered_printers_with_status as get_elegoo_printers
 from backend.services.flashforge_service import get_registered_printers_with_status as get_flashforge_printers
 from backend.services.klipper_service import get_all_printers_status, get_system_stats
 from backend.services.laser_service import get_active_job_hosts, get_registered_lasers_status
 from backend.services.marlin_printer_service import get_active_job_devices, get_registered_printers_with_status
 from backend.services.notification_service import get_notifications
+from backend.services.plugin_loader_service import get_loaded_plugin_module
 from backend.services.pricing_service import get_settings as get_pricing_settings
 from backend.utils import is_git_update_available
 
 UPLOAD_FOLDER = "uploads"
+
+
+def _get_camera_health_counts() -> Dict[str, int]:
+    """Las cámaras son un plugin, no un módulo de core -- si no está
+    instalado/cargado no hay conteo real que sumar, se trata como 0/0 en
+    vez de romper el arranque de NOPAL."""
+    module = get_loaded_plugin_module("camera-viewer", "services.camera_service")
+    if module is None:
+        return {"online": 0, "total": 0}
+    return module.get_camera_health_counts()
 
 # Historial de carga del host para el sparkline de "Rendimiento del host" —
 # se va llenando con cada consulta al resumen (cada ~10s desde el frontend),
@@ -248,7 +258,7 @@ async def get_dashboard_summary() -> Dict[str, Any]:
     )
     marlin_jobs = await loop.run_in_executor(None, get_active_job_devices)
     laser_cnc_jobs = await loop.run_in_executor(None, get_active_job_hosts)
-    camera_counts = await loop.run_in_executor(None, get_camera_health_counts)
+    camera_counts = await loop.run_in_executor(None, _get_camera_health_counts)
     # Sin executor a propósito: arranca (si hace falta) las tareas asyncio de
     # los listeners WS persistentes de elegoo_service.py, que necesitan el
     # event loop de este mismo hilo (asyncio.create_task) para registrarse.

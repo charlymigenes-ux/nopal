@@ -1,10 +1,19 @@
 import asyncio
 from typing import Any, Dict, List
 
-from backend.services.accessory_service import get_accessories_status
 from backend.services.klipper_service import get_all_printers_status
 from backend.services.laser_service import get_laser_jobs_with_errors, get_registered_lasers_status
+from backend.services.plugin_loader_service import get_loaded_plugin_module
 from backend.utils import is_git_update_available
+
+
+async def _get_accessories_status() -> List[Dict[str, Any]]:
+    """Los accesorios Arduino son un plugin, no un módulo de core -- si no
+    está instalado/cargado no hay señal que agregar, no es un error."""
+    module = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if module is None:
+        return []
+    return await module.get_accessories_status()
 
 
 async def get_notifications() -> Dict[str, Any]:
@@ -15,7 +24,7 @@ async def get_notifications() -> Dict[str, Any]:
     printers, lasers, accessories, update_available = await asyncio.gather(
         loop.run_in_executor(None, get_all_printers_status),
         get_registered_lasers_status(),
-        get_accessories_status(),
+        _get_accessories_status(),
         loop.run_in_executor(None, is_git_update_available),
     )
 

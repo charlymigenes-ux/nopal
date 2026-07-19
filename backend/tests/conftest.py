@@ -2,9 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.services.bambu_service as bambu_service
-import backend.services.camera_service as camera_service
 import backend.services.elegoo_service as elegoo_service
 import backend.services.flashforge_service as flashforge_service
+import backend.services.plugin_installer_service as plugin_installer_service
 from backend.auth_deps import require_auth
 from backend.main import app
 
@@ -47,5 +47,12 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     monkeypatch.setattr(bambu_service, "REGISTRY_PATH", str(tmp_path / "bambu_printer_registry.json"))
     monkeypatch.setattr(elegoo_service, "REGISTRY_PATH", str(tmp_path / "elegoo_printer_registry.json"))
     monkeypatch.setattr(flashforge_service, "REGISTRY_PATH", str(tmp_path / "flashforge_printer_registry.json"))
-    monkeypatch.setattr(camera_service, "REGISTRY_PATH", str(tmp_path / "camera_registry.json"))
+    # Plugins: aísla tanto la carpeta de clones (plugins/) como el estado de
+    # instalación (data/plugins/installed.json) -- sin esto, instalar/
+    # desinstalar un plugin en un test haría un `git clone` real y tocaría
+    # el installed.json real del repo (mismo riesgo que ya pasó una vez con
+    # camera_registry.json).
+    monkeypatch.setattr(plugin_installer_service, "PLUGINS_DIR", tmp_path / "plugins")
+    monkeypatch.setattr(plugin_installer_service, "PLUGIN_DATA_DIR", tmp_path / "data" / "plugins")
+    monkeypatch.setattr(plugin_installer_service, "INSTALLED_FILE", tmp_path / "data" / "plugins" / "installed.json")
     yield tmp_path

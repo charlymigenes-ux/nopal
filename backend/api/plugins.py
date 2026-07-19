@@ -1,14 +1,22 @@
-"""Galería y registro local de plugins de NOPAL.
+"""Galería y registro de plugins de NOPAL.
 
-El catálogo está separado de la instalación principal. En esta primera fase
-solo se registran paquetes aprobados por NOPAL; no se ejecuta ni descarga
-código arbitrario desde Internet.
+El catálogo (backend/plugin_catalog.json) es curado por NOPAL: cada entrada
+"available" apunta a un repo de git propio (`repo_url`). Instalar clona ese
+repo de verdad (ver backend/services/plugin_installer_service.py) -- ya no
+es solo un flag como antes. Los datos de versión/entry-points de un plugin
+YA instalado se leen de su propio manifest (`nopal-plugin.json`, recién
+clonado en plugins/<id>/), no del catálogo curado -- este último solo trae
+metadata descriptiva para la galería (nombre, ícono, precio, etc.).
+
+Plugins pagos (`pricing.type == "paid"`) todavía no se pueden instalar: el
+servidor de licencias que los habilitaría (repos privados + Gumroad) es una
+iniciativa aparte que no existe todavía -- se rechaza con un mensaje claro
+en vez de simular que funciona.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -16,181 +24,62 @@ from threading import Lock
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.auth_deps import require_auth, require_role
-
+from backend.services import plugin_installer_service as installer
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 
-PLUGIN_DATA_DIR = Path(os.getenv("NOPAL_PLUGIN_DATA_DIR", "data/plugins"))
-INSTALLED_FILE = PLUGIN_DATA_DIR / "installed.json"
+CATALOG_PATH = Path(__file__).resolve().parent.parent / "plugin_catalog.json"
 _state_lock = Lock()
 
-CATALOG = (
-    {
-        "id": "shape-creator",
-        "name": "Creador de formas",
-        "version": "1.1.1",
-        "publisher": "NOPAL Labs",
-        "category": "Diseño",
-        "description": "Crea rectángulos, círculos, polígonos y formas paramétricas listas para láser o CNC.",
-        "long_description": "Genera geometría básica con medidas exactas, esquinas configurables y exportación preparada para los flujos de trabajo de NOPAL.",
-        "icon": "shapes",
-        "accent": "#a855f7",
-        "compatibility": ["Láser", "CNC"],
-        "permissions": ["Guardar archivos en la biblioteca"],
-        "size": "1.8 MB",
-        "featured": True,
-        "availability": "available",
-        "frontend": {
-            "style": "/static/plugins/shape-creator/shape-creator.css",
-            "script": "/static/plugins/shape-creator/shape-creator.js",
-            "section": "shape-creator",
-        },
-    },
-    {
-        "id": "gcode-optimizer",
-        "name": "Optimizador G-Code",
-        "version": "0.9.0",
-        "publisher": "NOPAL Labs",
-        "category": "Producción",
-        "description": "Analiza recorridos y propone ajustes para reducir movimientos innecesarios.",
-        "long_description": "Optimización asistida de trayectorias, velocidades y orden de operaciones.",
-        "icon": "route",
-        "accent": "#22c55e",
-        "compatibility": ["Impresión 3D", "Láser", "CNC"],
-        "permissions": ["Leer archivos G-Code"],
-        "size": "2.4 MB",
-        "featured": False,
-        "availability": "coming_soon",
-    },
-    {
-        "id": "svg-toolkit",
-        "name": "Herramientas SVG",
-        "version": "0.8.0",
-        "publisher": "NOPAL Labs",
-        "category": "Diseño",
-        "description": "Limpia, une y simplifica trazos SVG antes de enviarlos a producción.",
-        "long_description": "Utilidades para preparar vectores y detectar contornos abiertos o duplicados.",
-        "icon": "vector",
-        "accent": "#06b6d4",
-        "compatibility": ["Láser", "CNC"],
-        "permissions": ["Leer y guardar archivos SVG"],
-        "size": "1.2 MB",
-        "featured": False,
-        "availability": "coming_soon",
-    },
-    {
-        "id": "font-library",
-        "name": "Biblioteca de tipografías",
-        "version": "0.1.0",
-        "publisher": "NOPAL Labs",
-        "category": "Diseño",
-        "description": "Explora, previsualiza y aplica tipografías preparadas para corte, grabado y CNC.",
-        "long_description": "Gestiona una colección de fuentes, comprueba su legibilidad y convierte texto a trayectos listos para producción.",
-        "icon": "type",
-        "accent": "#ec4899",
-        "compatibility": ["Láser", "CNC"],
-        "permissions": ["Leer y guardar tipografías"],
-        "size": "Por definir",
-        "featured": False,
-        "availability": "coming_soon",
-    },
-    {
-        "id": "material-library",
-        "name": "Biblioteca de materiales",
-        "version": "0.7.0",
-        "publisher": "Comunidad NOPAL",
-        "category": "Utilidades",
-        "description": "Perfiles compartidos de potencia, velocidad y profundidad por material.",
-        "long_description": "Colección local de parámetros probados con historial y notas por máquina.",
-        "icon": "layers",
-        "accent": "#f59e0b",
-        "compatibility": ["Láser", "CNC"],
-        "permissions": ["Leer la configuración de dispositivos"],
-        "size": "860 KB",
-        "featured": False,
-        "availability": "coming_soon",
-    },
-    {
-        "id": "arduino-accessories",
-        "name": "Accesorios Arduino/ESP32",
-        "version": "1.0.0",
-        "publisher": "NOPAL Labs",
-        "category": "Accesorios",
-        "description": "Controla relés y tiras LED conectadas a una placa Arduino/ESP32 propia, sin depender de enchufes WiFi de terceros.",
-        "long_description": "Firmware genérico para ESP32/ESP8266 con detección automática por USB: relés on/off, color de tiras PWM/WS2812, macros/escenas y actividad reciente, todo desde NOPAL.",
-        "icon": "cpu",
-        "accent": "#00979d",
-        "compatibility": ["Láser", "Impresión 3D", "CNC"],
-        "permissions": ["Detectar puertos USB", "Enviar comandos a la placa"],
-        "size": "48 KB",
-        "featured": False,
-        "availability": "available",
-        "frontend": {
-            "style": "/static/plugins/arduino-accessories/arduino-accessories.css",
-            "script": "/static/plugins/arduino-accessories/arduino-accessories.js",
-            "section": "arduino-accessories",
-        },
-    },
-    {
-        "id": "camera-viewer",
-        "name": "Cámaras",
-        "version": "1.0.0",
-        "publisher": "NOPAL Labs",
-        "category": "Producción",
-        "description": "Agrega cámaras por URL de stream MJPEG y míralas en vivo desde el panel.",
-        "long_description": "Compatible con cualquier fuente que exponga un stream MJPEG: Crowsnest, mjpg-streamer, go2rtc, ustreamer o una cámara IP. Sin protocolo propio ni marca específica: solo nombre + URL.",
-        "icon": "camera",
-        "accent": "#38bdf8",
-        "compatibility": ["Impresión 3D", "Láser", "CNC"],
-        "permissions": ["Guardar direcciones de cámaras"],
-        "size": "24 KB",
-        "featured": False,
-        "availability": "available",
-        "frontend": {
-            "style": "/static/plugins/camera-viewer/camera-viewer.css?v=3",
-            "script": "/static/plugins/camera-viewer/camera-viewer.js?v=3",
-            "section": "camera-viewer",
-        },
-    },
-)
 
-
-def _read_installed() -> dict[str, dict]:
+def _load_catalog() -> list[dict]:
     try:
-        payload = json.loads(INSTALLED_FILE.read_text(encoding="utf-8"))
-        return payload if isinstance(payload, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {}
-
-
-def _write_installed(installed: dict[str, dict]) -> None:
-    PLUGIN_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    temporary = INSTALLED_FILE.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(installed, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temporary.replace(INSTALLED_FILE)
+        with open(CATALOG_PATH, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return []
 
 
 def _catalog_item(plugin_id: str) -> dict:
-    item = next((plugin for plugin in CATALOG if plugin["id"] == plugin_id), None)
+    item = next((plugin for plugin in _load_catalog() if plugin["id"] == plugin_id), None)
     if item is None:
         raise HTTPException(status_code=404, detail="Plugin no encontrado")
     return item
 
 
+def _plugin_static_url(plugin_id: str, relative_path: str | None) -> str | None:
+    if not relative_path:
+        return None
+    return f"/plugins-static/{plugin_id}/{relative_path}"
+
+
 def _serialize_catalog() -> list[dict]:
-    installed = _read_installed()
-    return [
-        {
-            **plugin,
-            "installed": plugin["id"] in installed,
-            "installed_at": installed.get(plugin["id"], {}).get("installed_at"),
-            "enabled": installed.get(plugin["id"], {}).get("enabled", False),
-        }
-        for plugin in CATALOG
-    ]
+    """Mergea el catálogo curado con el estado real de instalación. Para un
+    plugin ya instalado, la versión y los entry points de frontend vienen
+    de su propio manifest (la fuente de verdad real, recién clonada), no
+    del catálogo -- que solo aporta la metadata descriptiva."""
+    installed = installer.read_installed_state()
+    result = []
+    for plugin in _load_catalog():
+        plugin_id = plugin["id"]
+        state = installed.get(plugin_id)
+        entry = dict(plugin)
+        entry["installed"] = plugin_id in installed
+        entry["installed_at"] = state.get("installed_at") if state else None
+        entry["enabled"] = state.get("enabled", False) if state else False
+        if entry["installed"]:
+            manifest = installer.read_manifest(plugin_id)
+            if manifest:
+                entry["version"] = manifest.get("version", entry.get("version"))
+                frontend = manifest.get("frontend")
+                if frontend:
+                    entry["frontend"] = {
+                        "section": frontend.get("section"),
+                        "script": _plugin_static_url(plugin_id, frontend.get("script")),
+                        "style": _plugin_static_url(plugin_id, frontend.get("style")),
+                    }
+        result.append(entry)
+    return result
 
 
 @router.get("")
@@ -208,25 +97,59 @@ def install_plugin(plugin_id: str, _user: dict = Depends(require_role("admin")))
     plugin = _catalog_item(plugin_id)
     if plugin["availability"] != "available":
         raise HTTPException(status_code=409, detail="Este plugin todavía no está disponible")
+    pricing = plugin.get("pricing") or {"type": "free"}
+    if pricing.get("type") != "free":
+        raise HTTPException(
+            status_code=501,
+            detail="Los plugins pagos todavía no están disponibles (falta el servidor de licencias)",
+        )
+    if not plugin.get("repo_url"):
+        raise HTTPException(status_code=500, detail="Este plugin no tiene un repositorio configurado")
 
     with _state_lock:
-        installed = _read_installed()
+        installed = installer.read_installed_state()
+        if plugin_id in installed:
+            raise HTTPException(status_code=409, detail="El plugin ya está instalado")
+        result = installer.clone(plugin_id, plugin["repo_url"])
+        if not result["success"]:
+            raise HTTPException(status_code=502, detail=result["error"])
         installed[plugin_id] = {
-            "version": plugin["version"],
+            "version": result["manifest"].get("version", plugin.get("version")),
             "enabled": True,
             "installed_at": datetime.now(timezone.utc).isoformat(),
         }
-        _write_installed(installed)
+        installer.write_installed_state(installed)
     return {"ok": True, "plugin": next(item for item in _serialize_catalog() if item["id"] == plugin_id)}
+
+
+@router.post("/{plugin_id}/update")
+def update_plugin(plugin_id: str, _user: dict = Depends(require_role("admin"))):
+    with _state_lock:
+        installed = installer.read_installed_state()
+        if plugin_id not in installed:
+            raise HTTPException(status_code=404, detail="El plugin no está instalado")
+        result = installer.update(plugin_id)
+        if not result["success"]:
+            raise HTTPException(status_code=502, detail=result["error"])
+        if result["updated"]:
+            installed[plugin_id]["version"] = result["manifest"].get("version", installed[plugin_id].get("version"))
+            installer.write_installed_state(installed)
+    return {
+        "ok": True,
+        "updated": result["updated"],
+        "commits": result.get("commits", []),
+        "backend_changed": result.get("backend_changed", False),
+    }
 
 
 @router.delete("/{plugin_id}")
 def uninstall_plugin(plugin_id: str, _user: dict = Depends(require_role("admin"))):
     _catalog_item(plugin_id)
     with _state_lock:
-        installed = _read_installed()
+        installed = installer.read_installed_state()
         if plugin_id not in installed:
             raise HTTPException(status_code=404, detail="El plugin no está instalado")
         installed.pop(plugin_id)
-        _write_installed(installed)
+        installer.write_installed_state(installed)
+        installer.remove(plugin_id)
     return {"ok": True, "plugin_id": plugin_id}
