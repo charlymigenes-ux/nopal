@@ -963,6 +963,7 @@ window.NopalTranslations["pt-BR"] = {
   "panelAutoHideDescription": "Escolha se os cartões do painel ficam sempre visíveis ou se escondem sozinhos até você passar o mouse na barra superior.",
   "panelAutoHideAlways": "Sempre visível",
   "panelAutoHideHover": "Ocultar e mostrar ao passar o mouse",
+  "panelHeroToggle": "Recolher painel superior",
   "noSystemStats": "Nenhuma impressora foi detectada para ler as estatísticas do sistema.",
   "temperatures": "Temperaturas",
   "tempActual": "Atual",

@@ -963,6 +963,7 @@ window.NopalTranslations["fr"] = {
   "panelAutoHideDescription": "Choisissez si les fiches du panneau restent toujours visibles ou se masquent jusqu'à ce que vous survoliez la barre supérieure.",
   "panelAutoHideAlways": "Toujours visible",
   "panelAutoHideHover": "Masquer et afficher au survol",
+  "panelHeroToggle": "Réduire le panneau supérieur",
   "noSystemStats": "Aucune imprimante n'a été détectée pour lire les statistiques du système.",
   "temperatures": "Températures",
   "tempActual": "Actuel",

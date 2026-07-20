@@ -998,6 +998,41 @@ body.green .global-topbar {
     gap: 12px;
 }
 
+/* Vive fuera de .panel-hero-collapsible a propósito -- si estuviera adentro
+   desaparecería junto con el resto del contenido al colapsar (overflow:
+   hidden + grid-template-rows: 0fr) y no habría forma de volver a
+   expandirlo con el mouse. */
+.panel-hero-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 18px;
+    margin: -9px auto 8px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 0 0 10px 10px;
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.panel-hero-toggle-btn:hover {
+    background: var(--panel-bg);
+    color: var(--text);
+}
+
+.panel-hero-toggle-btn svg {
+    transition: transform 0.32s ease;
+}
+
+.panel-hero-collapsible.collapsed ~ .panel-hero-toggle-btn svg {
+    transform: rotate(180deg);
+}
+
 .panel-row {
     display: grid;
     gap: 12px;

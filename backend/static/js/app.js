@@ -3662,6 +3662,18 @@ document.getElementById('settings-panel-autohide')?.addEventListener('change', e
     applyPanelAutoHideMode();
 });
 
+// Botón manual, siempre visible en el borde inferior del panel -- a
+// diferencia del modo "hover" (opt-in, escondido en Configuración), este
+// funciona sin depender de ningún ajuste. Al usarlo se fija panelHeroPinned
+// para que, en modo "hover", el auto-colapso al sacar el mouse no le gane
+// la partida al click explícito del usuario.
+document.getElementById('panel-hero-toggle-btn')?.addEventListener('click', () => {
+    const collapsed = !document.getElementById('panel-hero-collapsible')?.classList.contains('collapsed');
+    panelHeroPinned = true;
+    clearTimeout(panelHeroCollapseTimer);
+    setPanelHeroCollapsed(collapsed);
+});
+
 applyPanelAutoHideMode();
 
 let toolheadJogStep = 25;
@@ -15766,6 +15778,61 @@ applyDeviceColumnsLayout();
     if (machinesMixedGrid) machinesMixedGrid.hidden = mode !== 'mixed';
 })();
 
+// Los 6 botones de dispositivo del sidebar (Láser/CNC/Marlin/Elegoo/
+// FlashForge/Bambu) arrancan `hidden` en el HTML y solo se muestran cuando
+// ya existe al menos un dispositivo de esa categoría -- mismo patrón que ya
+// usa "Galería de plugins" (ver updateTopbarUser más arriba). El primer alta
+// de cualquier categoría siempre es posible igual desde Configuración >
+// Dispositivos (ese flujo no depende de estos botones -- ver
+// marlin-printers-discover-btn/elegoo-printers-discover-btn/etc. en
+// index.html), así que ocultarlos hasta que haya algo que gestionar no deja
+// a nadie sin forma de dar de alta su primer dispositivo.
+function setDeviceNavHidden(section, hidden) {
+    const btn = document.querySelector(`.nav-item[data-section="${section}"]`);
+    if (btn) btn.hidden = hidden;
+}
+
+async function refreshDeviceNavVisibility() {
+    // Láser/CNC: reusa la lista que refreshDashboardLaserCard ya mantiene
+    // fresca para el dashboard -- conteo de dispositivos registrados real,
+    // no el post-filtro "mostrar offline" que usa lastDeviceCategoryCounts.
+    setDeviceNavHidden('laser', !dashboardLaserEntries.some(e => (e.kind || 'laser') !== 'cnc'));
+    setDeviceNavHidden('cnc', !dashboardLaserEntries.some(e => e.kind === 'cnc'));
+
+    const checkBrand = async (section, url) => {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const data = await res.json();
+            setDeviceNavHidden(section, !(data.printers && data.printers.length > 0));
+        } catch {
+            // Sin red o error puntual: no tocar el estado actual del botón.
+        }
+    };
+    await Promise.all([
+        checkBrand('marlin', '/api/marlin-printers/registry'),
+        checkBrand('elegoo', '/api/elegoo/printers'),
+        checkBrand('bambu', '/api/bambu/printers'),
+    ]);
+}
+
+// FlashForge queda fuera del refresco periódico de arriba a propósito: a
+// diferencia de Marlin/Elegoo/Bambu, GET /api/flashforge/printers hace un
+// /detail real por impresora registrada (ver flashforge_printers.py) --
+// repetirlo de fondo cada 20s solo para decidir si el botón del sidebar se
+// ve tiene un costo real si esa impresora está apagada. Se resuelve una
+// sola vez al cargar la página.
+async function refreshFlashforgeNavVisibility() {
+    try {
+        const res = await fetch('/api/flashforge/printers');
+        if (!res.ok) return;
+        const data = await res.json();
+        setDeviceNavHidden('flashforge', !(data.printers && data.printers.length > 0));
+    } catch {
+        // no-op
+    }
+}
+
 // Update language display on load
 updateLangSwitchUI();
 updatePageLanguage();
@@ -15782,6 +15849,8 @@ refreshDashboardLaserCard();
 refreshUsbPorts();
 loadAccessories();
 loadAccessoryArduinoDiscoverList();
+refreshDeviceNavVisibility();
+refreshFlashforgeNavVisibility();
 maybeStartTour('dashboard');
 
 // Refresh printers every 5 seconds
@@ -15798,6 +15867,7 @@ setInterval(loadAccessories, 10000);
 // (checkLaserConnectionTransitions) sin la contención constante.
 setInterval(refreshDashboardLaserCard, 20000);
 setInterval(refreshUsbPorts, 8000);
+setInterval(refreshDeviceNavVisibility, 20000);
 
 // Badge de cola de Láser/CNC en el sidebar: independiente de si el usuario
 // está dentro de esas secciones (startLaserPolling/startCncPolling se

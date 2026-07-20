@@ -1043,6 +1043,7 @@ window.NopalTranslations["de"] = {
   "panelAutoHideDescription": "Wählen Sie, ob die Bedienfeldkarten immer sichtbar bleiben oder sich ausblenden, bis Sie mit der Maus über die obere Leiste fahren.",
   "panelAutoHideAlways": "Immer sichtbar",
   "panelAutoHideHover": "Beim Schweben ein- und ausblenden",
+  "panelHeroToggle": "Oberes Panel einklappen",
   "noSystemStats": "Es wurde kein Drucker zum Lesen der Systemstatistiken erkannt.",
   "temperatures": "Temperaturen",
   "tempActual": "Aktuell",

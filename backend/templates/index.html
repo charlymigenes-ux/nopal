@@ -101,29 +101,29 @@
                         <svg class="nav-category-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                     <div class="nav-category-items">
-                        <button class="nav-item" data-section="laser" data-i18n-title="laser" title="Láser">
+                        <button class="nav-item" data-section="laser" data-i18n-title="laser" title="Láser" hidden>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>
                             <span class="nav-item-badge" id="nav-badge-laser" hidden>0</span>
                             <span data-i18n="laser">Láser</span>
                         </button>
-                        <button class="nav-item" data-section="cnc" data-i18n-title="cnc" title="CNC">
+                        <button class="nav-item" data-section="cnc" data-i18n-title="cnc" title="CNC" hidden>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"/><path d="M12 6c0-2-2-3-2-3M12 8c0-2 2-3 2-3"/><path d="M8 12h8l-2 10h-4z"/></svg>
                             <span class="nav-item-badge" id="nav-badge-cnc" hidden>0</span>
                             <span data-i18n="cnc">CNC</span>
                         </button>
-                        <button class="nav-item" data-section="marlin" data-i18n-title="navMarlinPrinters" title="Impresoras Marlin">
+                        <button class="nav-item" data-section="marlin" data-i18n-title="navMarlinPrinters" title="Impresoras Marlin" hidden>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M12 22V12"/><path d="m3.5 6.5 8.5 5.5 8.5-5.5"/></svg>
                             <span data-i18n="navMarlinPrinters">Impresoras Marlin</span>
                         </button>
-                        <button class="nav-item" data-section="elegoo" data-i18n-title="navElegooPrinters" title="Impresoras Elegoo">
+                        <button class="nav-item" data-section="elegoo" data-i18n-title="navElegooPrinters" title="Impresoras Elegoo" hidden>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                             <span data-i18n="navElegooPrinters">Impresoras Elegoo</span>
                         </button>
-                        <button class="nav-item" data-section="flashforge" data-i18n-title="navFlashforgePrinters" title="Impresoras FlashForge">
+                        <button class="nav-item" data-section="flashforge" data-i18n-title="navFlashforgePrinters" title="Impresoras FlashForge" hidden>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                             <span data-i18n="navFlashforgePrinters">Impresoras FlashForge</span>
                         </button>
-                        <button class="nav-item" data-section="bambu" data-i18n-title="navBambuPrinters" title="Impresoras Bambu Lab">
+                        <button class="nav-item" data-section="bambu" data-i18n-title="navBambuPrinters" title="Impresoras Bambu Lab" hidden>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
                             <span data-i18n="navBambuPrinters">Impresoras Bambu Lab</span>
                         </button>
@@ -263,6 +263,10 @@
                     </div>
                     </div>
                     </div>
+
+                    <button type="button" class="panel-hero-toggle-btn" id="panel-hero-toggle-btn" aria-label="Colapsar panel superior" data-i18n-title="panelHeroToggle" title="Colapsar panel superior">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
 
                     <div class="panel-row panel-row-bottom">
                         <article class="panel-card panel-card-alerts">
