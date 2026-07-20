@@ -124,5 +124,23 @@
     "availability": "available",
     "pricing": { "type": "free" },
     "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-camera-viewer.git"
+  },
+  {
+    "id": "cotizador",
+    "name": "Cotizador",
+    "version": "1.0.0",
+    "publisher": "NOPAL Labs",
+    "category": "Producción",
+    "description": "Calcula el costo estimado de trabajos de impresión 3D, láser o CNC y genera cotizaciones listas para enviar.",
+    "long_description": "Cotizador de trabajos con catálogo propio de materiales y perfiles de costo por máquina, ajustes globales (moneda, precio del kWh, margen, mano de obra) e historial de cotizaciones con vista imprimible, PDF y reenvío por WhatsApp.",
+    "icon": "banknote",
+    "accent": "#22c55e",
+    "compatibility": ["Impresión 3D", "Láser", "CNC"],
+    "permissions": ["Leer archivos de la biblioteca", "Guardar catálogos de materiales y máquinas", "Guardar el historial de cotizaciones"],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "available",
+    "pricing": { "type": "free" },
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-cotizador.git"
   }
 ]
