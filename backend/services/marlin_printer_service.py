@@ -1,11 +1,8 @@
 """Impresoras 3D standalone que corren Marlin puro (sin Klipper/Moonraker).
 
-Path paralelo al de klipper_service.py/printers.py: ahí NOPAL habla REST con
-un Moonraker local, que ya asume Klipper. Acá no hay ningún servidor
-intermedio — es serie USB directo, así que se reutiliza el protocolo de
-marlin_driver.py con un gestor de conexión propio, solo serie (sin la mitad
-websocket/ESP3D que laser_service.py necesita para placas de red, que una
-impresora conectada por USB nunca usa).
+Path paralelo al de klipper_service.py/printers.py: aquí NOPAL habla Marlin
+directo, ya sea por serie USB o mediante el puente TCP de un módulo MKS WiFi.
+Ambos transportes reutilizan marlin_driver.py y comparten el mismo spooler.
 """
 
 import asyncio
@@ -17,7 +14,7 @@ import time
 from collections import deque
 from typing import Any, Dict, List, Optional
 
-from backend.services import marlin_driver
+from backend.services import marlin_driver, mks_wifi_transport
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +49,13 @@ def _probe_marlin_sync(device: str, baud: int = 115200, timeout: float = 3.0) ->
     persistente de ensure_listener), manda M105 y confirma que la respuesta
     trae temperaturas con el formato de Marlin — sin dejar hilos ni puertos
     abiertos colgados si el resultado es negativo."""
+    if device.startswith("tcp://"):
+        try:
+            lines = mks_wifi_transport.query_lines(device, "M105", timeout)
+        except (OSError, ValueError):
+            return False
+        return any(marlin_driver.TEMP_RE.search(line) for line in lines)
+
     try:
         import serial
     except ImportError:
@@ -113,6 +117,13 @@ def _probe_marlin_firmware_info_sync(device: str, baud: int, timeout: float = 4.
     propia, no la persistente de ensure_listener) -- se llama justo después
     de un probe_marlin_autobaud exitoso, cuando todavía no existe ningún
     listener para esta impresora (recién se está por registrar)."""
+    if device.startswith("tcp://"):
+        try:
+            lines = mks_wifi_transport.query_lines(device, "M115", timeout)
+        except (OSError, ValueError):
+            return None
+        return marlin_driver.parse_firmware_info_lines(lines)
+
     try:
         import serial
     except ImportError:
@@ -170,6 +181,10 @@ def _reconcile_usb_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]
         stored_device = entry.get("device", "")
         location = entry.get("location")
 
+        if entry.get("transport") == "mks_wifi" or stored_device.startswith("tcp://"):
+            result.append(entry)
+            continue
+
         if not location:
             if os.path.exists(stored_device):
                 found_location = _location_for_device(stored_device)
@@ -212,10 +227,18 @@ def get_registered_printers_with_status() -> List[Dict[str, Any]]:
     puerto /dev/ttyUSBx sigue existiendo, y que la reconciliación (ver
     _reconcile_usb_entries) no la haya marcado en conflicto."""
     entries = _reconcile_usb_entries(_load_registry())
-    return [
-        {**entry, "online": not entry.get("conflict") and os.path.exists(entry.get("device", ""))}
-        for entry in entries
-    ]
+    result = []
+    for entry in entries:
+        device = entry.get("device", "")
+        if entry.get("transport") == "mks_wifi" or device.startswith("tcp://"):
+            # El firmware oficial admite un solo cliente y reemplaza el
+            # anterior al aceptar otro. No hacer un probe paralelo si ya hay
+            # listener: cortaría el canal usado por un trabajo en curso.
+            online = device in _serial_connections or mks_wifi_transport.is_reachable(device)
+        else:
+            online = not entry.get("conflict") and os.path.exists(device)
+        result.append({**entry, "online": online})
+    return result
 
 
 def register_printer(
@@ -227,8 +250,16 @@ def register_printer(
     profile_id: Optional[str] = None,
     board_variant: Optional[str] = None,
     extruder_count: Optional[int] = None,
+    transport: Optional[str] = None,
 ) -> Dict[str, Any]:
     from backend.services.laser_service import _location_for_device
+
+    transport = transport or ("mks_wifi" if device.startswith("tcp://") else "usb_serial")
+    if transport not in ("usb_serial", "mks_wifi"):
+        raise ValueError("Transporte Marlin no soportado")
+    if transport == "mks_wifi":
+        host, port = mks_wifi_transport.parse_endpoint(device)
+        device = mks_wifi_transport.make_endpoint(host, port)
 
     entries = [e for e in _load_registry() if e.get("device") != device]
     existing = next((e for e in _load_registry() if e.get("device") == device), None)
@@ -237,7 +268,8 @@ def register_printer(
         "name": name,
         "baud": baud,
         "registered_at": existing.get("registered_at") if existing else time.time(),
-        "location": _location_for_device(device),
+        "location": _location_for_device(device) if transport == "usb_serial" else None,
+        "transport": transport,
         "verified_marlin": verified_marlin if verified_marlin is not None else (
             existing.get("verified_marlin") if existing else False
         ),
@@ -286,6 +318,13 @@ def _baud_for(device: str) -> int:
     return (entry or {}).get("baud") or 115200
 
 
+def _transport_kind_for(device: str) -> str:
+    entry = next((e for e in _load_registry() if e.get("device") == device), None)
+    if entry and entry.get("transport"):
+        return entry["transport"]
+    return "mks_wifi" if device.startswith("tcp://") else "usb_serial"
+
+
 def list_usb_marlin_ports() -> List[Dict[str, Any]]:
     """Puertos USB candidatos para una impresora Marlin: misma whitelist de
     chips que las placas láser/CNC (CH340, CP2102, ESP32 — comunes también en
@@ -318,7 +357,7 @@ def list_usb_marlin_ports() -> List[Dict[str, Any]]:
     ]
 
 
-# ── Conexión serie única y compartida por dispositivo ──
+# ── Conexión única y compartida por dispositivo (USB o TCP) ──
 
 _console_buffers: Dict[str, deque] = {}
 _subscribers: Dict[str, List[asyncio.Queue]] = {}
@@ -341,15 +380,18 @@ def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
 
 
 def _serial_reader_loop(device: str, baud: int, loop: asyncio.AbstractEventLoop):
-    import serial
-
     buffer = _console_buffers.setdefault(device, deque(maxlen=300))
     stop_flag = _serial_stop_flags[device]
+    transport_kind = _transport_kind_for(device)
 
     try:
-        ser = serial.Serial(device, baud, timeout=0.5)
+        if transport_kind == "mks_wifi":
+            ser = mks_wifi_transport.TcpLineConnection(device, timeout=0.5)
+        else:
+            import serial
+            ser = serial.Serial(device, baud, timeout=0.5)
         _serial_connections[device] = ser
-        logger.info(f"[{device}] Puerto serie abierto")
+        logger.info(f"[{device}] Transporte {transport_kind} abierto")
         _serial_open_failed_logged[device] = False
     except Exception as e:
         if not _serial_open_failed_logged.get(device):
@@ -360,7 +402,8 @@ def _serial_reader_loop(device: str, baud: int, loop: asyncio.AbstractEventLoop)
     # Igual que laser_service: los adaptadores USB-serie (CH340, etc.)
     # suelen resetear la placa al abrir el puerto (toggle de DTR) — se le da
     # margen antes de avisar que el listener está listo para recibir comandos.
-    time.sleep(2)
+    if transport_kind == "usb_serial":
+        time.sleep(2)
     loop.call_soon_threadsafe(_listener_ready_events.setdefault(device, asyncio.Event()).set)
 
     while not stop_flag.is_set():
@@ -370,6 +413,8 @@ def _serial_reader_loop(device: str, baud: int, loop: asyncio.AbstractEventLoop)
             logger.debug(f"[{device}] Puerto serie cerrado/desconectado: {e}")
             break
         if not raw:
+            if getattr(ser, "closed", False):
+                break
             continue
         text = raw.decode("utf-8", errors="ignore").strip()
         if not text:

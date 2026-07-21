@@ -28,6 +28,48 @@ class TestProfilesEndpoint:
         assert response.status_code == 401
 
 
+class TestMksWifiEndpoints:
+    def test_discovers_modules(self, client, as_admin, monkeypatch):
+        module = {
+            "module_id": "ABC123",
+            "ip": "192.168.1.44",
+            "device": "tcp://192.168.1.44:8080",
+            "transport": "mks_wifi",
+        }
+        monkeypatch.setattr(
+            marlin_printers_api.mks_wifi_transport,
+            "discover_mks_wifi",
+            lambda: [module],
+        )
+        response = client.get("/api/marlin-printers/mks-wifi/discover")
+        assert response.status_code == 200
+        assert response.json()["modules"] == [module]
+
+    def test_tcp_probe_returns_normalized_device(self, client, as_admin, monkeypatch):
+        _mock_successful_probe(
+            monkeypatch,
+            firmware_info={"FIRMWARE_NAME": "Robin", "EXTRUDER_COUNT": "2"},
+        )
+        response = client.post(
+            "/api/marlin-printers/mks-wifi/test",
+            data={"host": "192.168.1.44", "port": 8080},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "connected": True,
+            "device": "tcp://192.168.1.44:8080",
+            "transport": "mks_wifi",
+            "firmware_info": {"FIRMWARE_NAME": "Robin", "EXTRUDER_COUNT": "2"},
+        }
+
+    def test_rejects_invalid_tcp_host(self, client, as_admin):
+        response = client.post(
+            "/api/marlin-printers/mks-wifi/test",
+            data={"host": "bad/host", "port": 8080},
+        )
+        assert response.status_code == 400
+
+
 class TestRegisterWithProfile:
     def test_register_with_valid_profile_and_variant(self, client, as_admin, monkeypatch):
         _mock_successful_probe(monkeypatch, firmware_info={"FIRMWARE_NAME": "Marlin 2.1.2"})
@@ -137,3 +179,34 @@ class TestRegisterWithProfile:
             data={"device": "/dev/ttyUSB0", "name": "x"},
         )
         assert response.status_code == 403
+
+    def test_registers_mks_wifi_transport(self, client, as_admin, monkeypatch):
+        _mock_successful_probe(
+            monkeypatch,
+            firmware_info={"FIRMWARE_NAME": "Robin", "EXTRUDER_COUNT": "2"},
+        )
+        response = client.post(
+            "/api/marlin-printers/registry",
+            data={
+                "device": "tcp://192.168.1.44:8080",
+                "name": "Hellbot WiFi",
+                "transport": "mks_wifi",
+                "profile_id": "hellbot_magna2_300",
+                "board_variant": "mks_robin_nano_v3",
+                "extruder_count": 2,
+            },
+        )
+        assert response.status_code == 200
+        entry = response.json()
+        assert entry["transport"] == "mks_wifi"
+        assert entry["device"] == "tcp://192.168.1.44:8080"
+        assert entry["baud"] == 0
+        assert entry["location"] is None
+
+    def test_rejects_unknown_transport(self, client, as_admin, monkeypatch):
+        _mock_successful_probe(monkeypatch)
+        response = client.post(
+            "/api/marlin-printers/registry",
+            data={"device": "x", "name": "x", "transport": "bluetooth"},
+        )
+        assert response.status_code == 400
