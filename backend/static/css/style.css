@@ -11043,6 +11043,45 @@ body.green .laser-start-confirm-copies input {
     color: var(--text-secondary) !important;
 }
 
+.devices-subcard-title-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.devices-subcard-title-row .devices-subcard-sublabel {
+    margin-top: 0 !important;
+}
+
+.devices-subcard-title-row .btn-file-action {
+    flex-shrink: 0;
+    padding: 7px 12px;
+    font-size: 0.78rem;
+}
+
+.marlin-register-inline-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px;
+    gap: 10px;
+}
+
+.marlin-register-inline-fields[hidden] {
+    display: none;
+}
+
+@media (max-width: 520px) {
+    .marlin-register-inline-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .devices-subcard-title-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+
 .usb-ports-list {
     display: flex;
     flex-direction: column;
