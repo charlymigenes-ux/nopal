@@ -1006,13 +1006,16 @@ body.green .global-topbar {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
+    width: 100%;
     height: 18px;
-    margin: -9px auto 8px;
+    margin: -9px 0 8px;
     padding: 0;
-    border: 1px solid var(--border);
+    border: none;
     border-radius: 0 0 10px 10px;
-    background: var(--card-bg);
+    /* Semitransparente de verdad (no un color fijo) -- color-mix con la
+       variable del tema activo hace que se vea bien en los 5 temas sin
+       hardcodear ningún valor. */
+    background: color-mix(in srgb, var(--card-bg) 55%, transparent);
     color: var(--text-secondary);
     cursor: pointer;
     position: relative;
@@ -1021,16 +1024,19 @@ body.green .global-topbar {
 }
 
 .panel-hero-toggle-btn:hover {
-    background: var(--panel-bg);
+    background: color-mix(in srgb, var(--panel-bg) 70%, transparent);
     color: var(--text);
 }
 
 .panel-hero-toggle-btn svg {
     transition: transform 0.32s ease;
+    /* Abierto (estado por defecto, sin .collapsed) = flecha hacia arriba. */
+    transform: rotate(180deg);
 }
 
 .panel-hero-collapsible.collapsed ~ .panel-hero-toggle-btn svg {
-    transform: rotate(180deg);
+    /* Cerrado = flecha hacia abajo (forma original del SVG, sin rotar). */
+    transform: rotate(0deg);
 }
 
 .panel-row {
