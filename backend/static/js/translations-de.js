@@ -65,6 +65,7 @@ window.NopalTranslations["de"] = {
   "marlinPrinterAddAction": "Drucker hinzufügen",
   "marlinPrinterAddGoSettingsHint": "Fügen Sie den Drucker über Einstellungen → Geräte hinzu.",
   "marlinPrinterBaudLabel": "Geschwindigkeit (Baudrate)",
+  "marlinPrinterBaudAuto": "Automatisch erkennen (115200 / 250000)",
   "marlinPrinterNoActiveJob": "Keine aktiven Jobs.",
   "marlinPrinterNoPorts": "Keine kompatiblen Ports erkannt.",
   "marlinPrinterNoPrinters": "Keine Marlin-Drucker registriert.",

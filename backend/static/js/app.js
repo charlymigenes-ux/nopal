@@ -11558,6 +11558,34 @@ document.addEventListener('click', (event) => {
 // impresora, mismo patrón tarjeta->modal que usa Impresora 3D (Klipper).
 
 let marlinPrintersRegistryCache = [];
+// Catálogo de perfiles (ver printer_profiles.py) -- estático del lado del
+// backend, se pide una sola vez y se cachea acá para no repetir el fetch
+// en cada render de tarjeta. { [profileId]: perfil }
+let marlinPrinterProfilesCache = null;
+
+async function ensureMarlinPrinterProfiles() {
+    if (marlinPrinterProfilesCache) return marlinPrinterProfilesCache;
+    try {
+        const response = await fetch('/api/marlin-printers/profiles');
+        const data = await response.json();
+        marlinPrinterProfilesCache = {};
+        (data.profiles || []).forEach(profile => { marlinPrinterProfilesCache[profile.id] = profile; });
+    } catch (error) {
+        console.error(error);
+        marlinPrinterProfilesCache = {};
+    }
+    return marlinPrinterProfilesCache;
+}
+
+// Etiqueta legible de la revisión de placa (ej. "MKS Robin Nano V3 (2023)")
+// a partir de profile_id/board_variant guardados en el registro -- null si
+// todavía no se cargó el catálogo o la impresora no tiene perfil (placa
+// Marlin genérica, caso normal y válido).
+function marlinBoardVariantLabel(profileId, boardVariant) {
+    if (!profileId || !boardVariant || !marlinPrinterProfilesCache) return null;
+    const profile = marlinPrinterProfilesCache[profileId];
+    return profile?.board_variants?.[boardVariant]?.label || null;
+}
 
 async function loadMarlinPrintersSettingsCard() {
     const discoverContainer = document.getElementById('marlin-discover-list');
@@ -11653,7 +11681,7 @@ function openMarlinRegisterModal(device, chip) {
     const nameInput = document.getElementById('marlin-printer-register-name');
     if (nameInput) nameInput.value = chip && chip !== 'CH340' && chip !== 'CH340K' ? chip : 'Impresora Marlin';
     const baudSelect = document.getElementById('marlin-printer-register-baud');
-    if (baudSelect) baudSelect.value = '115200';
+    if (baudSelect) baudSelect.value = '';
     document.getElementById('marlin-printer-register-modal')?.classList.add('active');
     if (nameInput) { nameInput.focus(); nameInput.select(); }
 }
@@ -11673,10 +11701,15 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
     const baudSelect = document.getElementById('marlin-printer-register-baud');
     const name = nameInput ? nameInput.value.trim() : '';
     if (!device || !name) return;
+    // Vacío ("Auto-detectar") significa "no mandar baud" -- el backend
+    // prueba 115200/250000 solo (ver probe_marlin_autobaud). Si el usuario
+    // eligió uno a mano, se manda ese tal cual, igual que antes.
+    const selectedBaud = baudSelect ? baudSelect.value : '';
     closeMarlinRegisterModal();
     try {
         const testFormData = new FormData();
         testFormData.append('device', device);
+        if (selectedBaud) testFormData.append('baud', selectedBaud);
         const testResponse = await fetch('/api/marlin-printers/usb-ports/test', { method: 'POST', body: testFormData });
         if (!testResponse.ok) {
             const data = await testResponse.json().catch(() => ({}));
@@ -11686,7 +11719,7 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
         const formData = new FormData();
         formData.append('device', device);
         formData.append('name', name);
-        formData.append('baud', baudSelect ? baudSelect.value : '115200');
+        if (selectedBaud) formData.append('baud', selectedBaud);
         await fetch('/api/marlin-printers/registry', { method: 'POST', body: formData });
         showToast(`${name}: ${t('marlinPrinterRegisterSuccess')}`);
     } catch (error) {
@@ -11716,13 +11749,47 @@ function marlinPrinterCardHtml(printer, status) {
     const statusText = isOnline ? t('online') : t('offline');
     const stateLabel = isOnline ? t(visualState) : t('offline');
     const name = printer.name || printer.device;
+    const boardLabel = marlinBoardVariantLabel(printer.profile_id, printer.board_variant);
+    // extruder_count solo se guarda con perfil (ver printer_profiles.py) --
+    // una placa Marlin genérica sin perfil sigue siendo de un solo hotend,
+    // como toda la vida.
+    const dualExtruder = printer.extruder_count === 2;
 
-    let extruderTemp = null;
-    let bedTemp = null;
-    if (status?.extruder && typeof status.extruder.current === 'number') extruderTemp = Math.round(status.extruder.current * 10) / 10;
-    if (status?.heater_bed && typeof status.heater_bed.current === 'number') bedTemp = Math.round(status.heater_bed.current * 10) / 10;
-    const extruderTarget = status?.extruder && typeof status.extruder.target === 'number' ? status.extruder.target : 0;
-    const bedTarget = status?.heater_bed && typeof status.heater_bed.target === 'number' ? status.heater_bed.target : 0;
+    const readTemp = key => status?.[key] && typeof status[key].current === 'number' ? Math.round(status[key].current * 10) / 10 : null;
+    const readTarget = key => status?.[key] && typeof status[key].target === 'number' ? status[key].target : 0;
+    const bedTemp = readTemp('heater_bed');
+    const bedTarget = readTarget('heater_bed');
+    // Para la onda térmica decorativa, con doble extrusor alcanza con T0 --
+    // es un efecto visual aproximado, no una lectura exacta por extrusor.
+    const primaryExtruderKey = dualExtruder ? 'extruder0' : 'extruder';
+    const extruderTemp = readTemp(primaryExtruderKey);
+    const extruderTarget = readTarget(primaryExtruderKey);
+
+    const tempItemsHtml = dualExtruder
+        ? `
+            <div class="temp-item">
+                <div class="temp-label">${t('bedTemp')}</div>
+                <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
+            </div>
+            <div class="temp-item">
+                <div class="temp-label">T0</div>
+                <div class="temp-value">${readTemp('extruder0') != null ? readTemp('extruder0') : '--'}<span class="temp-unit">°C</span></div>
+            </div>
+            <div class="temp-item">
+                <div class="temp-label">T1</div>
+                <div class="temp-value">${readTemp('extruder1') != null ? readTemp('extruder1') : '--'}<span class="temp-unit">°C</span></div>
+            </div>
+        `
+        : `
+            <div class="temp-item">
+                <div class="temp-label">${t('bedTemp')}</div>
+                <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
+            </div>
+            <div class="temp-item">
+                <div class="temp-label">${t('extruderTemp')}</div>
+                <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
+            </div>
+        `;
 
     return `
         <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
@@ -11730,7 +11797,7 @@ function marlinPrinterCardHtml(printer, status) {
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${escapeHtml(name)}</h3>
-                    <p class="printer-name-sub">Marlin</p>
+                    <p class="printer-name-sub">${boardLabel ? escapeHtml(boardLabel) : 'Marlin'}</p>
                 </div>
                 <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
@@ -11745,18 +11812,7 @@ function marlinPrinterCardHtml(printer, status) {
                 ${printerIllustrationImg(visualState)}
             </div>
 
-            ${isOnline ? `
-                <div class="printer-temps">
-                    <div class="temp-item">
-                        <div class="temp-label">${t('bedTemp')}</div>
-                        <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
-                    </div>
-                    <div class="temp-item">
-                        <div class="temp-label">${t('extruderTemp')}</div>
-                        <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
-                    </div>
-                </div>
-            ` : ''}
+            ${isOnline ? `<div class="printer-temps${dualExtruder ? ' printer-temps-triple' : ''}">${tempItemsHtml}</div>` : ''}
         </div>
     `;
 }
@@ -11792,6 +11848,7 @@ async function refreshMarlinPrintersGrid() {
 }
 
 async function loadMarlinSection() {
+    await ensureMarlinPrinterProfiles();
     await loadMarlinPrintersSettingsCard();
     refreshMarlinPrintersGrid();
     stopMarlinPrintersPolling();

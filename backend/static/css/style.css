@@ -14021,6 +14021,11 @@ body.green .option-switch {
     gap: 12px;
 }
 
+/* Doble extrusor (cama + T0 + T1) -- ver marlinPrinterCardHtml en app.js */
+.printer-temps.printer-temps-triple {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .temp-label {
     font-size: 0.68rem;
     color: var(--text-muted);

@@ -61,6 +61,7 @@ window.NopalTranslations["pt-BR"] = {
   "marlinPrinterAddAction": "Adicionar Impressora",
   "marlinPrinterAddGoSettingsHint": "Adicione a impressora a partir de Configurações → Dispositivos.",
   "marlinPrinterBaudLabel": "Velocidade (taxa de transmissão)",
+  "marlinPrinterBaudAuto": "Detectar automaticamente (115200 / 250000)",
   "marlinPrinterNoActiveJob": "Nenhum serviço ativo",
   "marlinPrinterNoPorts": "Nenhuma porta compatível detectada.",
   "marlinPrinterNoPrinters": "Nenhuma impressora Marlin registrada.",

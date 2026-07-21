@@ -61,6 +61,7 @@ window.NopalTranslations["fr"] = {
   "marlinPrinterAddAction": "Ajouter une imprimante...",
   "marlinPrinterAddGoSettingsHint": "Ajoutez l'imprimante à partir de Paramètres → Périphériques.",
   "marlinPrinterBaudLabel": "Vitesse (débit en bauds)",
+  "marlinPrinterBaudAuto": "Détection automatique (115200 / 250000)",
   "marlinPrinterNoActiveJob": "Aucune tâche active.",
   "marlinPrinterNoPorts": "Aucun port compatible détecté.",
   "marlinPrinterNoPrinters": "Aucune imprimante Marlin enregistrée.",
