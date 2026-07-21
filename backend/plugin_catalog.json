@@ -9,6 +9,188 @@
     "long_description": "Genera geometría básica con medidas exactas, esquinas configurables y exportación preparada para los flujos de trabajo de NOPAL.",
     "icon": "shapes",
     "accent": "#a855f7",
+    "compatibility": [
+      "Láser",
+      "CNC"
+    ],
+    "permissions": [
+      "Guardar archivos en la biblioteca"
+    ],
+    "size": "Por definir",
+    "featured": true,
+    "availability": "available",
+    "pricing": {
+      "type": "free"
+    },
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-shape-creator.git"
+  },
+  {
+    "id": "gcode-optimizer",
+    "name": "Optimizador G-Code",
+    "version": "0.9.0",
+    "publisher": "NOPAL Labs",
+    "category": "Producción",
+    "description": "Analiza recorridos y propone ajustes para reducir movimientos innecesarios.",
+    "long_description": "Optimización asistida de trayectorias, velocidades y orden de operaciones.",
+    "icon": "route",
+    "accent": "#22c55e",
+    "compatibility": [
+      "Impresión 3D",
+      "Láser",
+      "CNC"
+    ],
+    "permissions": [
+      "Leer archivos G-Code"
+    ],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "coming_soon",
+    "pricing": {
+      "type": "free"
+    },
+    "repo_url": null
+  },
+  {
+    "id": "svg-toolkit",
+    "name": "Herramientas SVG",
+    "version": "0.8.0",
+    "publisher": "NOPAL Labs",
+    "category": "Diseño",
+    "description": "Limpia, une y simplifica trazos SVG antes de enviarlos a producción.",
+    "long_description": "Utilidades para preparar vectores y detectar contornos abiertos o duplicados.",
+    "icon": "vector",
+    "accent": "#06b6d4",
+    "compatibility": [
+      "Láser",
+      "CNC"
+    ],
+    "permissions": [
+      "Leer y guardar archivos SVG"
+    ],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "available",
+    "pricing": {
+      "type": "free"
+    },
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-svg-toolkit.git"
+  },
+  {
+    "id": "font-library",
+    "name": "Biblioteca de tipografías",
+    "version": "0.1.0",
+    "publisher": "NOPAL Labs",
+    "category": "Diseño",
+    "description": "Explora, previsualiza y aplica tipografías preparadas para corte, grabado y CNC.",
+    "long_description": "Gestiona una colección de fuentes, comprueba su legibilidad y convierte texto a trayectos listos para producción.",
+    "icon": "type",
+    "accent": "#ec4899",
+    "compatibility": [
+      "Láser",
+      "CNC"
+    ],
+    "permissions": [
+      "Leer y guardar tipografías"
+    ],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "coming_soon",
+    "pricing": {
+      "type": "free"
+    },
+    "repo_url": null
+  },
+  {
+    "id": "material-library",
+    "name": "Biblioteca de materiales",
+    "version": "0.7.0",
+    "publisher": "Comunidad NOPAL",
+    "category": "Utilidades",
+    "description": "Perfiles compartidos de potencia, velocidad y profundidad por material.",
+    "long_description": "Colección local de parámetros probados con historial y notas por máquina.",
+    "icon": "layers",
+    "accent": "#f59e0b",
+    "compatibility": [
+      "Láser",
+      "CNC"
+    ],
+    "permissions": [
+      "Leer la configuración de dispositivos"
+    ],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "coming_soon",
+    "pricing": {
+      "type": "free"
+    },
+    "repo_url": null
+  },
+  {
+    "id": "arduino-accessories",
+    "name": "Accesorios Arduino/ESP32",
+    "version": "1.0.0",
+    "publisher": "NOPAL Labs",
+    "category": "Accesorios",
+    "description": "Controla relés y tiras LED conectadas a una placa Arduino/ESP32 propia, sin depender de enchufes WiFi de terceros.",
+    "long_description": "Firmware genérico para ESP32/ESP8266 con detección automática por USB: relés on/off, color de tiras PWM/WS2812, macros/escenas y actividad reciente, todo desde NOPAL.",
+    "icon": "cpu",
+    "accent": "#00979d",
+    "compatibility": [
+      "Láser",
+      "Impresión 3D",
+      "CNC"
+    ],
+    "permissions": [
+      "Detectar puertos USB",
+      "Enviar comandos a la placa"
+    ],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "available",
+    "pricing": {
+      "type": "free"
+    },
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-arduino-accessories.git"
+  },
+  {
+    "id": "camera-viewer",
+    "name": "Cámaras",
+    "version": "1.0.0",
+    "publisher": "NOPAL Labs",
+    "category": "Producción",
+    "description": "Agrega cámaras por URL de stream MJPEG, ONVIF o webcam USB, y míralas en vivo desde el panel.",
+    "long_description": "Compatible con cualquier fuente que exponga un stream MJPEG (Crowsnest, mjpg-streamer, go2rtc, ustreamer o una cámara IP), resolución automática por ONVIF, y detección + streaming propio de webcams USB conectadas localmente.",
+    "icon": "camera",
+    "accent": "#38bdf8",
+    "compatibility": [
+      "Impresión 3D",
+      "Láser",
+      "CNC"
+    ],
+    "permissions": [
+      "Guardar direcciones de cámaras",
+      "Detectar webcams USB"
+    ],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "available",
+    "pricing": {
+      "type": "free"
+    },
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-camera-viewer.git"
+  }
+]
+[
+  {
+    "id": "shape-creator",
+    "name": "Creador de formas",
+    "version": "1.1.1",
+    "publisher": "NOPAL Labs",
+    "category": "Diseño",
+    "description": "Crea rectángulos, círculos, polígonos y formas paramétricas listas para láser o CNC.",
+    "long_description": "Genera geometría básica con medidas exactas, esquinas configurables y exportación preparada para los flujos de trabajo de NOPAL.",
+    "icon": "shapes",
+    "accent": "#a855f7",
     "compatibility": ["Láser", "CNC"],
     "permissions": ["Guardar archivos en la biblioteca"],
     "size": "Por definir",
