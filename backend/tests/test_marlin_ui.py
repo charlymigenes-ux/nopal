@@ -53,7 +53,7 @@ def test_marlin_ui_translation_keys_exist_in_every_catalog():
 def test_marlin_ui_assets_have_updated_cachebusters():
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
     assert '/static/css/style.css?v=267' in html
-    assert '/static/js/app.js?v=207' in html
+    assert '/static/js/app.js?v=208' in html
     assert '/static/js/translations.js?v=24' in html
     for language in ("de", "fr", "pt-BR"):
         assert f'/static/js/translations-{language}.js?v=4' in html

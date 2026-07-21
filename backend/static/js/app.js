@@ -14097,6 +14097,12 @@ let pluginsLoaded = false;
 
 window.NopalPluginRegistry = window.NopalPluginRegistry || {};
 
+function versionedPluginAssetUrl(url, version) {
+    if (!url) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}v=${encodeURIComponent(version || 'dev')}`;
+}
+
 function loadPluginAsset(plugin) {
     if (!plugin?.frontend?.script || window.NopalPluginRegistry[plugin.id]) return Promise.resolve();
     const styleId = `plugin-style-${plugin.id}`;
@@ -14104,7 +14110,7 @@ function loadPluginAsset(plugin) {
         const link = document.createElement('link');
         link.id = styleId;
         link.rel = 'stylesheet';
-        link.href = plugin.frontend.style;
+        link.href = versionedPluginAssetUrl(plugin.frontend.style, plugin.version);
         document.head.appendChild(link);
     }
     const scriptId = `plugin-script-${plugin.id}`;
@@ -14113,7 +14119,7 @@ function loadPluginAsset(plugin) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.id = scriptId;
-        script.src = plugin.frontend.script;
+        script.src = versionedPluginAssetUrl(plugin.frontend.script, plugin.version);
         script.defer = true;
         script.onload = resolve;
         script.onerror = () => reject(new Error(`No se pudo cargar ${plugin.name}`));
