@@ -27,15 +27,22 @@
  *   NOPAL:LED:255,0,0
  *   NOPAL:WS:0,255,0
  *
- * Respuesta de NOPAL:ID? (v1.3):
- *   NOPAL,role=accessory,chip=...,fw=1.3,relays=4,pwm_led=1,ws2812=1,
+ * Respuesta de NOPAL:ID? (v1.4):
+ *   NOPAL,role=accessory,chip=...,fw=1.4,relays=4,pwm_led=1,ws2812=1,
  *   ws2812_count=30,wifi=1,wifi_connected=...,wifi_mode=...,hostname=...,
  *   ip=...,ota=1,ota_path=/update,uptime_ms=...,free_heap=...
  *
  * Portal web (cuando hay Wi-Fi):
- *   http://IP/            -> redirige a /update
- *   http://IP/api/status  -> estado en JSON
- *   http://IP/update      -> panel de ElegantOTA (usuario/clave de secrets.h)
+ *   http://IP/             -> redirige a /update
+ *   http://IP/api/status   -> estado en JSON
+ *   http://IP/update       -> panel de ElegantOTA (usuario/clave de secrets.h)
+ *   http://IP/api/relay    -> control de relés por HTTP (nuevo en 1.4,
+ *                              GET ?n=1 consulta, POST n=1&on=true/false
+ *                              cambia -- requiere las mismas credenciales
+ *                              que ElegantOTA)
+ *   http://IP/api/led      -> control de color por HTTP (nuevo en 1.4,
+ *                              POST mode=pwm|ws2812&r=..&g=..&b=.. --
+ *                              misma autenticación)
  *
  * Antes de compilar copia secrets.h.example a secrets.h y pon tus propios
  * datos (ver README.txt de esta carpeta).
@@ -66,7 +73,7 @@
 // CONFIGURACIÓN GENERAL
 // ============================================================================
 
-#define FW_VERSION "1.3"
+#define FW_VERSION "1.4"
 
 // La mayoría de módulos de relés se activan con LOW.
 const bool RELAY_ACTIVE_LOW = true;
@@ -113,6 +120,13 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define WS2812_PIN 4
 #define WS2812_COUNT 30
 
+// LED integrado de la placa ("Dev Module" típico) -- indica que el
+// firmware está vivo. GPIO2 está libre en este mapeo de pines (no lo usa
+// ningún relé/PWM/WS2812), a diferencia de ESP8266 (ver abajo).
+#define STATUS_LED_ENABLE true
+#define STATUS_LED_PIN 2
+#define STATUS_LED_ACTIVE_LOW false
+
 
 #elif defined(ESP8266)
 
@@ -153,6 +167,12 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define WS2812_ENABLE true
 #define WS2812_PIN 2      // D4
 #define WS2812_COUNT 30
+
+// GPIO2 (D4), el LED integrado habitual de las NodeMCU/Wemos, ya lo usa
+// WS2812_PIN en este mapeo -- no queda un pin libre y seguro para un LED
+// de estado dedicado sin arriesgar un conflicto con la tira WS2812. Sin
+// LED de estado en ESP8266 por ahora (ver STATUS_LED_ENABLE en ESP32).
+#define STATUS_LED_ENABLE false
 
 #endif
 
@@ -233,6 +253,53 @@ uint8_t clampColor(int value) {
 bool validRelayIndex(int index) {
   return index >= 0 && index < RELAY_COUNT;
 }
+
+
+// ============================================================================
+// LED DE ESTADO
+// ============================================================================
+//
+// Fijo encendido en cuanto la placa termina de arrancar (USB, WiFi o
+// ambos) -- indica "el firmware está vivo", nunca se apaga en operación
+// normal. Parpadea solo mientras hay wifi configurado y NO está
+// conectado (reconectando/AP de recuperación tras perder la red) -- ver
+// serviceStatusLed(), llamada en cada vuelta de serviceNetwork().
+
+#if STATUS_LED_ENABLE
+
+void setStatusLed(bool on) {
+  digitalWrite(
+    STATUS_LED_PIN,
+    (on != STATUS_LED_ACTIVE_LOW) ? HIGH : LOW
+  );
+}
+
+void serviceStatusLed() {
+  static uint32_t lastToggleMs = 0;
+  static bool ledOn = true;
+
+  const bool steady =
+    WiFi.status() == WL_CONNECTED ||
+    !wifiCredentialsConfigured();
+
+  if (steady) {
+    if (!ledOn) {
+      ledOn = true;
+      setStatusLed(true);
+    }
+    return;
+  }
+
+  const uint32_t now = millis();
+
+  if (now - lastToggleMs >= 300) {
+    lastToggleMs = now;
+    ledOn = !ledOn;
+    setStatusLed(ledOn);
+  }
+}
+
+#endif
 
 
 void printChipIdentification() {
@@ -747,6 +814,38 @@ String buildStatusJson() {
 }
 
 
+// Protege los endpoints de control (relé/LED) con las mismas credenciales
+// que ya usa ElegantOTA (NOPAL_OTA_USERNAME/PASSWORD) -- son las que el
+// usuario ya tiene que configurar en secrets.h y las mismas que NOPAL le
+// pide al registrar un accesorio por WiFi, no hace falta una credencial
+// nueva. /api/status y /health quedan sin auth a propósito (mismo
+// criterio que ya tenían: son de solo lectura, no cambian nada de la
+// placa).
+// Declaración explícita: el auto-prototipado de Arduino (que normalmente
+// permite llamar una función definida más abajo en el mismo .ino sin
+// declararla antes) no resuelve bien un parámetro de puntero a función
+// como el de parseAndSetColor -- confirmado compilando de verdad (PlatformIO):
+// sin esto, "parseAndSetColor" no se declaró en este ámbito" adentro de
+// los lambda de setupWebServer(). handleRelayCommand() no necesita esto
+// porque su firma es más simple y el auto-prototipado sí la resuelve.
+bool parseAndSetColor(
+  const String& command,
+  uint8_t prefixLength,
+  void (*setColor)(uint8_t, uint8_t, uint8_t),
+  String& response
+);
+
+
+bool checkApiAuth() {
+  if (server.authenticate(NOPAL_OTA_USERNAME, NOPAL_OTA_PASSWORD)) {
+    return true;
+  }
+
+  server.requestAuthentication();
+  return false;
+}
+
+
 void setupWebServer() {
   server.on("/", HTTP_GET, []() {
     server.sendHeader("Location", "/update");
@@ -765,6 +864,83 @@ void setupWebServer() {
     server.send(200, "text/plain", "OK");
   });
 
+
+  // ------------------------------------------------------------------------
+  // Control por red -- mismo protocolo de texto que ya habla Serial,
+  // reusando los mismos handlers (handleRelayCommand/parseAndSetColor) para
+  // que la placa se comporte exactamente igual sin importar por dónde
+  // llegó el comando.
+  // ------------------------------------------------------------------------
+
+  server.on("/api/relay", HTTP_GET, []() {
+    if (!checkApiAuth()) return;
+
+    const String command = String("R") + server.arg("n") + "?";
+    // Default por si handleRelayCommand() ni siquiera reconoce la forma
+    // del comando (ej. falta "n" -> "R?", que sí matchea el formato de
+    // consulta y da ERR:INVALID_RELAY -- pero por las dudas, nunca dejar
+    // `response` vacío, o el llamante HTTP recibiría un 200 engañoso con
+    // cuerpo vacío en vez de un error).
+    String response = "ERR:INVALID_RELAY";
+    handleRelayCommand(command, response);
+
+    server.send(
+      response.startsWith("ERR") ? 400 : 200,
+      "text/plain",
+      response
+    );
+  });
+
+  server.on("/api/relay", HTTP_POST, []() {
+    if (!checkApiAuth()) return;
+
+    const bool on = server.arg("on") == "true" || server.arg("on") == "1";
+    const String command = String("R") + server.arg("n") + ":" + (on ? "ON" : "OFF");
+    // Mismo motivo que en el GET de arriba: si falta "n" el comando queda
+    // como "R:ON"/"R:OFF" (sin dígitos entre "R" y ":"), una forma que
+    // handleRelayCommand() ni reconoce como comando de relé (devuelve
+    // false y no toca `response`) -- sin este default se mandaría un 200
+    // con el cuerpo vacío en vez de avisar el error.
+    String response = "ERR:INVALID_RELAY";
+    handleRelayCommand(command, response);
+
+    server.send(
+      response.startsWith("ERR") ? 400 : 200,
+      "text/plain",
+      response
+    );
+  });
+
+  server.on("/api/led", HTTP_POST, []() {
+    if (!checkApiAuth()) return;
+
+    const String mode = server.arg("mode");
+    String response = "ERR:UNSUPPORTED";
+
+#if PWM_LED_ENABLE
+    if (mode == "pwm") {
+      const String command =
+        String("LED:") + server.arg("r") + "," + server.arg("g") + "," + server.arg("b");
+      parseAndSetColor(command, 4, setPwmLedColor, response);
+    }
+#endif
+
+#if WS2812_ENABLE
+    if (mode == "ws2812") {
+      const String command =
+        String("WS:") + server.arg("r") + "," + server.arg("g") + "," + server.arg("b");
+      parseAndSetColor(command, 3, setWs2812Color, response);
+    }
+#endif
+
+    server.send(
+      response.startsWith("ERR") ? 400 : 200,
+      "text/plain",
+      response
+    );
+  });
+
+
   server.onNotFound([]() {
     server.send(
       404,
@@ -773,12 +949,14 @@ void setupWebServer() {
     );
   });
 
-  ElegantOTA.setAuth(
-    NOPAL_OTA_USERNAME,
-    NOPAL_OTA_PASSWORD
-  );
-
-  ElegantOTA.begin(&server);
+  // IMPORTANTE: las credenciales van como argumentos de begin(), no en un
+  // setAuth() previo -- ElegantOTAClass::begin(server, username="",
+  // password="") llama a setAuth(username, password) internamente, así que
+  // un setAuth() hecho ANTES de begin() queda pisado por los valores por
+  // default (vacíos) de begin() y el panel /update queda sin protección
+  // real, aunque el código "parezca" configurarla. Confirmado en vivo: con
+  // el bug, http://IP/update respondía 200 sin ninguna credencial.
+  ElegantOTA.begin(&server, NOPAL_OTA_USERNAME, NOPAL_OTA_PASSWORD);
 
   server.begin();
   webServerStarted = true;
@@ -792,6 +970,10 @@ void setupWebServer() {
 
 void serviceNetwork() {
   maintainWifiConnection();
+
+#if STATUS_LED_ENABLE
+  serviceStatusLed();
+#endif
 
   if (webServerStarted) {
     server.handleClient();
@@ -915,7 +1097,14 @@ void sendNetworkIdentification() {
 // PROCESAMIENTO DE RELÉS
 // ============================================================================
 
-bool handleRelayCommand(const String& command) {
+// Devuelve la respuesta en `response` en vez de imprimirla directo (así la
+// puede reusar tanto handleCommand(), que la manda por Serial, como los
+// endpoints HTTP nuevos, que la mandan como cuerpo de la respuesta) -- el
+// `bool` de retorno conserva su significado original: "reconocí esto como
+// un comando de relé" (true incluso en error de formato/índice/acción),
+// false si ni siquiera tiene forma de comando de relé (deja que
+// handleCommand() siga probando otros handlers).
+bool handleRelayCommand(const String& command, String& response) {
 
   if (
     command.length() < 2 ||
@@ -941,15 +1130,14 @@ bool handleRelayCommand(const String& command) {
       relayNumber - 1;
 
     if (!validRelayIndex(relayIndex)) {
-      Serial.println("ERR:INVALID_RELAY");
+      response = "ERR:INVALID_RELAY";
       return true;
     }
 
-    Serial.println(
+    response =
       getRelay(relayIndex)
         ? "ON"
-        : "OFF"
-    );
+        : "OFF";
 
     return true;
   }
@@ -978,7 +1166,7 @@ bool handleRelayCommand(const String& command) {
     relayNumber - 1;
 
   if (!validRelayIndex(relayIndex)) {
-    Serial.println("ERR:INVALID_RELAY");
+    response = "ERR:INVALID_RELAY";
     return true;
   }
 
@@ -990,17 +1178,17 @@ bool handleRelayCommand(const String& command) {
 
   if (action == "ON") {
     setRelay(relayIndex, true);
-    Serial.println("OK");
+    response = "OK";
     return true;
   }
 
   if (action == "OFF") {
     setRelay(relayIndex, false);
-    Serial.println("OK");
+    response = "OK";
     return true;
   }
 
-  Serial.println("ERR:INVALID_ACTION");
+  response = "ERR:INVALID_ACTION";
 
   return true;
 }
@@ -1009,6 +1197,45 @@ bool handleRelayCommand(const String& command) {
 // ============================================================================
 // PROCESAMIENTO DE COMANDOS
 // ============================================================================
+
+// Mismo criterio que handleRelayCommand(): devuelve la respuesta en vez de
+// imprimirla, para reusarse desde Serial (handleCommand) y desde los
+// endpoints HTTP nuevos. `setColor` es setPwmLedColor o setWs2812Color
+// (misma firma en ambas), `prefixLength` es cuánto saltar del comando
+// antes de los 3 números ("LED:" = 4, "WS:" = 3).
+bool parseAndSetColor(
+  const String& command,
+  uint8_t prefixLength,
+  void (*setColor)(uint8_t, uint8_t, uint8_t),
+  String& response
+) {
+  int red;
+  int green;
+  int blue;
+
+  const int parsedValues = sscanf(
+    command.c_str() + prefixLength,
+    "%d,%d,%d",
+    &red,
+    &green,
+    &blue
+  );
+
+  if (parsedValues != 3) {
+    response = "ERR:INVALID_RGB";
+    return true;
+  }
+
+  setColor(
+    clampColor(red),
+    clampColor(green),
+    clampColor(blue)
+  );
+
+  response = "OK";
+  return true;
+}
+
 
 void handleCommand(String line) {
 
@@ -1043,8 +1270,13 @@ void handleCommand(String line) {
   // Relés
   // ------------------------------------------------------------------------
 
-  if (handleRelayCommand(command)) {
-    return;
+  {
+    String response;
+
+    if (handleRelayCommand(command, response)) {
+      Serial.println(response);
+      return;
+    }
   }
 
 
@@ -1055,31 +1287,9 @@ void handleCommand(String line) {
 #if PWM_LED_ENABLE
 
   if (command.startsWith("LED:")) {
-
-    int red;
-    int green;
-    int blue;
-
-    const int parsedValues = sscanf(
-      command.c_str() + 4,
-      "%d,%d,%d",
-      &red,
-      &green,
-      &blue
-    );
-
-    if (parsedValues != 3) {
-      Serial.println("ERR:INVALID_RGB");
-      return;
-    }
-
-    setPwmLedColor(
-      clampColor(red),
-      clampColor(green),
-      clampColor(blue)
-    );
-
-    Serial.println("OK");
+    String response;
+    parseAndSetColor(command, 4, setPwmLedColor, response);
+    Serial.println(response);
     return;
   }
 
@@ -1093,31 +1303,9 @@ void handleCommand(String line) {
 #if WS2812_ENABLE
 
   if (command.startsWith("WS:")) {
-
-    int red;
-    int green;
-    int blue;
-
-    const int parsedValues = sscanf(
-      command.c_str() + 3,
-      "%d,%d,%d",
-      &red,
-      &green,
-      &blue
-    );
-
-    if (parsedValues != 3) {
-      Serial.println("ERR:INVALID_RGB");
-      return;
-    }
-
-    setWs2812Color(
-      clampColor(red),
-      clampColor(green),
-      clampColor(blue)
-    );
-
-    Serial.println("OK");
+    String response;
+    parseAndSetColor(command, 3, setWs2812Color, response);
+    Serial.println(response);
     return;
   }
 
@@ -1141,6 +1329,15 @@ void setup() {
     pinMode(RELAY_PINS[index], OUTPUT);
     setRelay(index, false);
   }
+
+#if STATUS_LED_ENABLE
+  // Encendido apenas la placa está mínimamente viva -- antes de setupWifi()
+  // a propósito, para que el LED ya esté prendido durante el margen de
+  // conexión (varios segundos) en vez de parecer una placa muerta hasta
+  // que termine.
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  setStatusLed(true);
+#endif
 
   setupPwmLed();
 

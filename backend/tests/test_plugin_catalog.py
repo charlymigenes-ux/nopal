@@ -84,6 +84,7 @@ class TestInstallPlugin:
         assert plugin["installed"] is True
         assert plugin["frontend"]["script"] == "/plugins-static/free-plugin/frontend/free-plugin.js"
         assert plugin["version"] == "1.0.0"  # viene del manifest clonado, no del catálogo (que decía 0.9.0)
+        assert plugin["catalog_version"] == "0.9.0"  # se guarda aparte, sin pisar -- así el frontend detecta el drift
 
     def test_install_requires_admin(self, client, as_operator, fixture_catalog):
         response = client.post("/api/plugins/free-plugin/install")

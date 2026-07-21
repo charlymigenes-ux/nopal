@@ -1,8 +1,6 @@
 import asyncio
 import logging
 import os
-import urllib.parse
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -35,12 +33,10 @@ from backend.api.flashforge_printers import router as flashforge_printers_router
 from backend.api.bambu_printers import router as bambu_printers_router
 from backend.api.logs import router as logs_router
 from backend.api.system import router as system_router
-from backend.api.pricing import router as pricing_router
 from backend.api.auth import router as auth_router
 from backend.api.notifications import router as notifications_router
 from backend.api.plugins import router as plugins_router
 from backend.api.dashboard import router as dashboard_router
-from backend.services.pricing_service import get_quote
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
@@ -121,7 +117,6 @@ app.include_router(flashforge_printers_router)
 app.include_router(bambu_printers_router)
 app.include_router(logs_router)
 app.include_router(system_router)
-app.include_router(pricing_router)
 app.include_router(auth_router)
 app.include_router(notifications_router)
 app.include_router(plugins_router)
@@ -210,39 +205,3 @@ async def view_model(request: Request, filename: str, user: dict = Depends(requi
     )
 
 
-@app.get("/cotizador/print/{quote_id}", response_class=HTMLResponse)
-async def print_quote(request: Request, quote_id: str, user: dict = Depends(require_auth)):
-    """Vista imprimible de una cotización guardada — el usuario la exporta a
-    PDF con el diálogo nativo del navegador (Ctrl+P). No hay librería de
-    generación de PDF en el proyecto; agregar una para esto sería una
-    dependencia nueva para algo que el navegador ya resuelve solo."""
-    quote = get_quote(quote_id)
-    if quote is None:
-        return HTMLResponse(content="<h1>Cotización no encontrada</h1>", status_code=404)
-
-    created_at = quote.get("created_at")
-    created_at_str = datetime.fromtimestamp(created_at).strftime("%d/%m/%Y %H:%M") if created_at else "—"
-
-    # Mismas miniaturas ya usadas en el resto de la app: incrustada del
-    # slicer para impresión 3D (puede no existir en un STL sin laminar),
-    # trazado real para láser/CNC (esa nunca da 404). El "kind" solo define
-    # el color del trazo (ver COLOR_BY_KIND en thumbnail_service.py), no
-    # afecta si hay imagen o no — un valor por defecto es inofensivo en
-    # cotizaciones viejas que no guardaron job_type.
-    file_info = quote.get("file") or {}
-    job_type = quote.get("job_type", "")
-    thumb_kind = {"printer": "printer", "laser_cut": "laser", "laser_engrave": "laser", "cnc": "cnc"}.get(job_type, "cnc")
-    thumbnail_url = None
-    if file_info.get("path"):
-        section = file_info.get("section", "model")
-        encoded_path = urllib.parse.quote(file_info["path"])
-        if section == "gcode":
-            thumbnail_url = f"/api/gcode/thumbnail?path={encoded_path}&kind={thumb_kind}"
-        else:
-            thumbnail_url = f"/api/models/thumbnail?path={encoded_path}&section=model"
-
-    return templates.TemplateResponse(
-        request=request,
-        name="quote_print.html",
-        context={"quote": quote, "created_at_str": created_at_str, "thumbnail_url": thumbnail_url},
-    )

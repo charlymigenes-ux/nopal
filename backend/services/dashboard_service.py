@@ -12,7 +12,6 @@ from backend.services.laser_service import get_active_job_hosts, get_registered_
 from backend.services.marlin_printer_service import get_active_job_devices, get_registered_printers_with_status
 from backend.services.notification_service import get_notifications
 from backend.services.plugin_loader_service import get_loaded_plugin_module
-from backend.services.pricing_service import get_settings as get_pricing_settings
 from backend.utils import is_git_update_available
 
 UPLOAD_FOLDER = "uploads"
@@ -223,8 +222,14 @@ def _active_jobs(
 def _estimated_active_power_watts(active_job_kinds: List[str]) -> int:
     """Estimación, no medición: suma la potencia nominal configurada (en
     Cotizador > Ajustes) de cada máquina con un trabajo corriendo ahora
-    mismo. NOPAL no tiene integración con medidores de energía reales."""
-    watts_default = get_pricing_settings().get("machine_watts_default", {})
+    mismo. NOPAL no tiene integración con medidores de energía reales.
+
+    Cotizador es un plugin, no un módulo de core -- si no está
+    instalado/cargado no hay ajustes reales que sumar, se trata como {} en
+    vez de romper el arranque de NOPAL (mismo patrón que
+    _get_camera_health_counts más arriba)."""
+    module = get_loaded_plugin_module("cotizador", "services.pricing_service")
+    watts_default = module.get_settings().get("machine_watts_default", {}) if module else {}
     total = sum(float(watts_default.get(kind, 0) or 0) for kind in active_job_kinds)
     return round(total)
 

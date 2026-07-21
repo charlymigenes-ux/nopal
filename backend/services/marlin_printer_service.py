@@ -91,6 +91,71 @@ async def probe_marlin(device: str, baud: int = 115200, timeout: float = 3.0) ->
     return await loop.run_in_executor(None, _probe_marlin_sync, device, baud, timeout)
 
 
+AUTOBAUD_CANDIDATES = (115200, 250000)
+
+
+async def probe_marlin_autobaud(
+    device: str, bauds: tuple = AUTOBAUD_CANDIDATES, timeout: float = 3.0
+) -> Optional[int]:
+    """Prueba cada baud de `bauds` en orden (mismo handshake que
+    probe_marlin, un intento por baud) y devuelve el primero que responda
+    como Marlin, o None si ninguno contestó. No prueba en paralelo a
+    propósito -- abrir el mismo puerto serie dos veces a la vez es lo que
+    _probe_marlin_sync evita adrede (ver su docstring)."""
+    for baud in bauds:
+        if await probe_marlin(device, baud, timeout):
+            return baud
+    return None
+
+
+def _probe_marlin_firmware_info_sync(device: str, baud: int, timeout: float = 4.0) -> Optional[Dict[str, str]]:
+    """M115, mismo criterio autocontenido que _probe_marlin_sync (conexión
+    propia, no la persistente de ensure_listener) -- se llama justo después
+    de un probe_marlin_autobaud exitoso, cuando todavía no existe ningún
+    listener para esta impresora (recién se está por registrar)."""
+    try:
+        import serial
+    except ImportError:
+        return None
+    try:
+        ser = serial.Serial(device, baud, timeout=0.5)
+    except Exception:
+        return None
+    try:
+        time.sleep(2)
+        try:
+            ser.reset_input_buffer()
+            ser.write(b"M115\n")
+        except Exception:
+            return None
+        lines: List[str] = []
+        end_time = time.monotonic() + timeout
+        while time.monotonic() < end_time:
+            try:
+                raw = ser.readline()
+            except Exception:
+                break
+            if not raw:
+                continue
+            text = raw.decode("utf-8", errors="ignore").strip()
+            if not text:
+                continue
+            lines.append(text)
+            if marlin_driver.OK_RE.match(text):
+                break
+        return marlin_driver.parse_firmware_info_lines(lines)
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+
+async def probe_marlin_firmware_info(device: str, baud: int, timeout: float = 4.0) -> Optional[Dict[str, str]]:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _probe_marlin_firmware_info_sync, device, baud, timeout)
+
+
 def _reconcile_usb_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Mismo patrón que laser_service._reconcile_usb_entries: autocorrige el
     `device` de cada impresora usando su ubicación física USB (estable) como
@@ -158,6 +223,10 @@ def register_printer(
     name: str,
     baud: int = 115200,
     verified_marlin: Optional[bool] = None,
+    firmware_info: Optional[Dict[str, str]] = None,
+    profile_id: Optional[str] = None,
+    board_variant: Optional[str] = None,
+    extruder_count: Optional[int] = None,
 ) -> Dict[str, Any]:
     from backend.services.laser_service import _location_for_device
 
@@ -171,6 +240,29 @@ def register_printer(
         "location": _location_for_device(device),
         "verified_marlin": verified_marlin if verified_marlin is not None else (
             existing.get("verified_marlin") if existing else False
+        ),
+        # Lo que haya reportado M115 (FIRMWARE_NAME/MACHINE_TYPE/
+        # EXTRUDER_COUNT/etc.), tal cual -- señal complementaria para
+        # "Detectar automáticamente" en el alta con perfil de placa, nunca
+        # obligatoria (no todo firmware reporta todos los campos). None si
+        # el probe no llegó a correr o no devolvió nada.
+        "firmware_info": firmware_info if firmware_info is not None else (
+            existing.get("firmware_info") if existing else None
+        ),
+        # Perfil de placa (ver printer_profiles.py) -- los 3 quedan en None
+        # para una impresora Marlin genérica sin perfil, exactamente el
+        # comportamiento de antes de que esto existiera. La validación de
+        # que board_variant/extruder_count tengan sentido para el
+        # profile_id elegido vive en la capa de API (marlin_printers.py),
+        # no acá -- este módulo solo persiste.
+        "profile_id": profile_id if profile_id is not None else (
+            existing.get("profile_id") if existing else None
+        ),
+        "board_variant": board_variant if board_variant is not None else (
+            existing.get("board_variant") if existing else None
+        ),
+        "extruder_count": extruder_count if extruder_count is not None else (
+            existing.get("extruder_count") if existing else None
         ),
     }
     entries.append(entry)
@@ -422,10 +514,18 @@ async def get_temperature_snapshot(device: str) -> Dict[str, Any]:
     (se difiere acumular muestras propias)."""
     transport = _transport_for(device)
     temps = await marlin_driver.get_temperatures(transport) or {}
+
+    def _label(key: str) -> str:
+        if key == "extruder":
+            return "Extruder"
+        if key.startswith("extruder"):
+            return f"Extruder {key[len('extruder'):]}"
+        return "Heater Bed"
+
     sensors = [
         {
             "key": key,
-            "label": "Extruder" if key == "extruder" else "Heater Bed",
+            "label": _label(key),
             "kind": "heater",
             "current": values.get("current"),
             "target": values.get("target"),
@@ -436,9 +536,20 @@ async def get_temperature_snapshot(device: str) -> Dict[str, Any]:
 
 
 def set_heater_target(device: str, heater: str, target: float) -> bool:
-    """M104 (extrusor) o M140 (cama) — equivalente fire-and-forget al
-    SET_HEATER_TEMPERATURE de Klipper."""
-    command = f"M104 S{target}" if heater == "extruder" else f"M140 S{target}"
+    """M104 (extrusor, con T<n> si hay más de un hotend) o M140 (cama) --
+    equivalente fire-and-forget al SET_HEATER_TEMPERATURE de Klipper. Con
+    doble extrusor, `heater` llega como "extruder0"/"extruder1" (ver
+    get_temperature_snapshot) -- antes de esto solo existía "extruder" a
+    secas, así que cualquier valor con número habría caído mal en la rama
+    de cama (M140) por error; ahora selecciona el tool con M104 T<n>."""
+    if heater == "heater_bed":
+        command = f"M140 S{target}"
+    elif heater == "extruder":
+        command = f"M104 S{target}"
+    elif heater.startswith("extruder") and heater[len("extruder"):].isdigit():
+        command = f"M104 T{heater[len('extruder'):]} S{target}"
+    else:
+        return False
     return _send_raw(device, command)
 
 

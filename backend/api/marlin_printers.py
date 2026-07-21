@@ -4,9 +4,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException
 
 from backend.auth_deps import require_auth, require_role
+from backend.services import printer_profiles
 from backend.services.marlin_printer_service import (
     list_usb_marlin_ports,
     probe_marlin,
+    probe_marlin_autobaud,
+    probe_marlin_firmware_info,
     get_registered_printers,
     get_registered_printers_with_status,
     register_printer,
@@ -31,6 +34,14 @@ from backend.utils import safe_section_path
 router = APIRouter()
 
 
+@router.get("/api/marlin-printers/profiles")
+async def marlin_printers_profiles_endpoint(user: dict = Depends(require_auth)):
+    """Catálogo de perfiles de impresora conocidos (ver printer_profiles.py)
+    -- para poblar el selector de modelo del alta. Vacío para una placa
+    Marlin genérica sin perfil, eso sigue siendo válido."""
+    return {"profiles": printer_profiles.list_profiles()}
+
+
 @router.get("/api/marlin-printers/discover")
 async def marlin_printers_discover_endpoint(user: dict = Depends(require_auth)):
     """Puertos USB conectados que podrían ser una impresora Marlin (aún no registrados)."""
@@ -48,26 +59,72 @@ async def marlin_printers_registry_status_endpoint(user: dict = Depends(require_
 
 
 @router.post("/api/marlin-printers/usb-ports/test")
-async def marlin_usb_test_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
-    """Prueba si el puerto USB indicado responde al protocolo Marlin (M105)."""
-    if not await probe_marlin(device):
+async def marlin_usb_test_endpoint(
+    device: str = Form(...),
+    baud: Optional[int] = Form(None),
+    user: dict = Depends(require_auth),
+):
+    """Prueba si el puerto USB indicado responde al protocolo Marlin (M105).
+    Si no se manda `baud`, autodetecta probando 115200 y 250000 en orden
+    (ver probe_marlin_autobaud) -- antes esto siempre asumía 115200 sin
+    importar lo elegido en el dropdown del frontend."""
+    if baud is not None:
+        detected_baud = baud if await probe_marlin(device, baud) else None
+    else:
+        detected_baud = await probe_marlin_autobaud(device)
+    if detected_baud is None:
         raise HTTPException(status_code=502, detail="No se detectó respuesta Marlin en este puerto")
-    return {"connected": True, "device": device}
+    return {"connected": True, "device": device, "baud": detected_baud}
 
 
 @router.post("/api/marlin-printers/registry")
 async def marlin_printers_registry_add_endpoint(
     device: str = Form(...),
     name: str = Form(...),
-    baud: int = Form(115200),
+    baud: Optional[int] = Form(None),
+    profile_id: Optional[str] = Form(None),
+    board_variant: Optional[str] = Form(None),
+    extruder_count: Optional[int] = Form(None),
     user: dict = Depends(require_role("admin")),
 ):
     """Registra una impresora Marlin conectada por USB. El handshake es
     obligatorio server-side (no solo confiar en que el frontend haya
     llamado a /usb-ports/test antes) — así el registro sigue siendo
-    seguro incluso si algo llama a este endpoint directo."""
-    verified_marlin = await probe_marlin(device, baud)
-    return register_printer(device, name, baud, verified_marlin)
+    seguro incluso si algo llama a este endpoint directo. Si no se manda
+    `baud`, autodetecta (ver probe_marlin_autobaud); si autodetectar no
+    encuentra nada, igual registra a 115200 para no bloquear el alta (queda
+    marcada verified_marlin=False, como ya pasaba antes con un baud
+    incorrecto a mano).
+
+    `profile_id`/`board_variant`/`extruder_count` son opcionales -- una
+    placa Marlin genérica sin perfil se sigue registrando igual que
+    siempre, sin mandar ninguno de los tres."""
+    if profile_id is not None and printer_profiles.get_profile(profile_id) is None:
+        raise HTTPException(status_code=400, detail="Perfil de impresora desconocido")
+    if board_variant is not None:
+        if profile_id is None:
+            raise HTTPException(status_code=400, detail="board_variant requiere un profile_id")
+        if not printer_profiles.is_valid_board_variant(profile_id, board_variant):
+            raise HTTPException(status_code=400, detail="Revisión de placa desconocida para este perfil")
+    if extruder_count is not None:
+        if profile_id is None:
+            raise HTTPException(status_code=400, detail="extruder_count requiere un profile_id")
+        if not printer_profiles.is_valid_extruder_count(profile_id, extruder_count):
+            raise HTTPException(status_code=400, detail="Cantidad de extrusores fuera de rango para este perfil")
+
+    if baud is not None:
+        verified_marlin = await probe_marlin(device, baud)
+        resolved_baud = baud
+    else:
+        detected_baud = await probe_marlin_autobaud(device)
+        verified_marlin = detected_baud is not None
+        resolved_baud = detected_baud or 115200
+
+    firmware_info = await probe_marlin_firmware_info(device, resolved_baud) if verified_marlin else None
+    return register_printer(
+        device, name, resolved_baud, verified_marlin, firmware_info,
+        profile_id, board_variant, extruder_count,
+    )
 
 
 @router.post("/api/marlin-printers/registry/remove")

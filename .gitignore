@@ -23,6 +23,7 @@ scheduled_prints.json
 pricing_config.json
 quotes_registry.json
 accessory_registry.json
+arduino_boards_config.json
 auth_users.json
 .session_secret
 
