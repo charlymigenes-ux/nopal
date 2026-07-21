@@ -13993,6 +13993,15 @@ function pluginActionLabel(plugin) {
     return plugin.installed ? t('pluginsUninstall') : t('pluginsInstall');
 }
 
+// "Actualizar" solo tiene sentido si ya está instalado Y el catálogo
+// declara una versión distinta a la que hay clonada de verdad (ver
+// catalog_version en _serialize_catalog(), backend/api/plugins.py) --
+// comparación simple por igualdad de string, no semver: este catálogo lo
+// mantiene a mano un solo desarrollador, nunca declara una versión "vieja".
+function pluginUpdateAvailable(plugin) {
+    return !!(plugin.installed && plugin.catalog_version && plugin.catalog_version !== plugin.version);
+}
+
 function pluginCatalogText(plugin, field) {
     const safeId = String(plugin.id || '').replace(/-/g, '_');
     const key = `pluginCatalog_${safeId}_${field}`;
@@ -14034,7 +14043,10 @@ function renderPluginCard(plugin) {
             <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
             <div class="plugin-card-footer">
                 <span class="plugin-card-meta">${escapeHtml(pluginCategoryText(plugin.category))} · ${escapeHtml(plugin.size === 'Por definir' ? t('pluginsSizeTbd') : plugin.size)}</span>
-                <button type="button" class="plugin-install-btn${plugin.installed ? ' is-installed' : ''}" data-plugin-action="${plugin.installed ? 'uninstall' : 'install'}" data-plugin-id="${escapeHtml(plugin.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(pluginActionLabel(plugin))}</button>
+                <div class="plugin-card-actions">
+                    ${pluginUpdateAvailable(plugin) ? `<button type="button" class="plugin-update-btn" data-plugin-action="update" data-plugin-id="${escapeHtml(plugin.id)}" title="${escapeHtml(t('pluginsUpdateAvailable').replace('{version}', plugin.catalog_version))}">${escapeHtml(t('pluginsUpdate'))}</button>` : ''}
+                    <button type="button" class="plugin-install-btn${plugin.installed ? ' is-installed' : ''}" data-plugin-action="${plugin.installed ? 'uninstall' : 'install'}" data-plugin-id="${escapeHtml(plugin.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(pluginActionLabel(plugin))}</button>
+                </div>
             </div>
         </article>`;
 }
@@ -14103,17 +14115,36 @@ async function changePluginInstallation(pluginId, action, button) {
     button.disabled = true;
     button.textContent = t('pluginsWorking');
     try {
-        const response = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}${action === 'install' ? '/install' : ''}`, { method: action === 'install' ? 'POST' : 'DELETE' });
+        const url = action === 'install' ? `/api/plugins/${encodeURIComponent(pluginId)}/install`
+            : action === 'update' ? `/api/plugins/${encodeURIComponent(pluginId)}/update`
+            : `/api/plugins/${encodeURIComponent(pluginId)}`;
+        const response = await fetch(url, { method: action === 'uninstall' ? 'DELETE' : 'POST' });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.detail || t('pluginsActionError'));
         if (action === 'uninstall') unloadPluginModule(pluginId);
         pluginsLoaded = false;
         await loadPluginsGallery(true);
-        showToast(action === 'install' ? t('pluginsInstalledSuccess').replace('{name}', localizedName) : t('pluginsUninstalledSuccess').replace('{name}', localizedName));
+        if (action === 'install') {
+            showToast(t('pluginsInstalledSuccess').replace('{name}', localizedName));
+        } else if (action === 'uninstall') {
+            showToast(t('pluginsUninstalledSuccess').replace('{name}', localizedName));
+        } else if (!data.updated) {
+            showToast(t('pluginsUpdateNoChanges').replace('{name}', localizedName));
+        } else if (data.backend_changed) {
+            // Cambió backend/ del plugin -- eso solo se carga una vez, al
+            // arrancar NOPAL (ver plugin_loader_service.py), así que un
+            // reload de la página no alcanza acá.
+            showToast(t('pluginsUpdatedBackendChanged').replace('{name}', localizedName), 'warning');
+        } else {
+            // Solo cambió frontend -- recargar la página trae el script
+            // nuevo sin depender de invalidar caché a mano.
+            showToast(t('pluginsUpdatedSuccess').replace('{name}', localizedName));
+            setTimeout(() => window.location.reload(), 1200);
+        }
     } catch (error) {
         showToast(error.message || t('pluginsActionError'), 'error');
         button.disabled = false;
-        button.textContent = pluginActionLabel(plugin);
+        button.textContent = action === 'update' ? t('pluginsUpdate') : pluginActionLabel(plugin);
     }
 }
 

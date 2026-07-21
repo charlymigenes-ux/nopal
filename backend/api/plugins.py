@@ -67,6 +67,11 @@ def _serialize_catalog() -> list[dict]:
         entry["installed"] = plugin_id in installed
         entry["installed_at"] = state.get("installed_at") if state else None
         entry["enabled"] = state.get("enabled", False) if state else False
+        # "version" queda como la instalada de verdad (ver docstring); esta
+        # se guarda aparte, SIN pisar, para que el frontend pueda comparar
+        # las dos y mostrar "Actualizar" cuando el catálogo declaró una
+        # versión distinta a la que hay clonada.
+        entry["catalog_version"] = plugin.get("version")
         if entry["installed"]:
             manifest = installer.read_manifest(plugin_id)
             if manifest:
