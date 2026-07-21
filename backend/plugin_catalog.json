@@ -49,9 +49,9 @@
     "permissions": ["Leer y guardar archivos SVG"],
     "size": "Por definir",
     "featured": false,
-    "availability": "coming_soon",
+    "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": null
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-svg-toolkit.git"
   },
   {
     "id": "font-library",
