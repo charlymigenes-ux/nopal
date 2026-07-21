@@ -1,10 +1,11 @@
+import asyncio
 import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 
 from backend.auth_deps import require_auth, require_role
-from backend.services import printer_profiles
+from backend.services import mks_wifi_transport, printer_profiles
 from backend.services.marlin_printer_service import (
     list_usb_marlin_ports,
     probe_marlin,
@@ -48,6 +49,35 @@ async def marlin_printers_discover_endpoint(user: dict = Depends(require_auth)):
     return {"ports": list_usb_marlin_ports()}
 
 
+@router.get("/api/marlin-printers/mks-wifi/discover")
+async def marlin_mks_wifi_discover_endpoint(user: dict = Depends(require_auth)):
+    """Descubre módulos oficiales MKS WiFi mediante broadcast UDP 8989."""
+    loop = asyncio.get_running_loop()
+    modules = await loop.run_in_executor(None, mks_wifi_transport.discover_mks_wifi)
+    return {"modules": modules}
+
+
+@router.post("/api/marlin-printers/mks-wifi/test")
+async def marlin_mks_wifi_test_endpoint(
+    host: str = Form(...),
+    port: int = Form(mks_wifi_transport.DEFAULT_TCP_PORT),
+    user: dict = Depends(require_auth),
+):
+    try:
+        device = mks_wifi_transport.make_endpoint(host, port)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not await probe_marlin(device, 0):
+        raise HTTPException(status_code=502, detail="No se detectó respuesta Marlin por MKS WiFi")
+    firmware_info = await probe_marlin_firmware_info(device, 0)
+    return {
+        "connected": True,
+        "device": device,
+        "transport": "mks_wifi",
+        "firmware_info": firmware_info,
+    }
+
+
 @router.get("/api/marlin-printers/registry")
 async def marlin_printers_registry_endpoint(user: dict = Depends(require_auth)):
     return {"printers": get_registered_printers()}
@@ -85,9 +115,11 @@ async def marlin_printers_registry_add_endpoint(
     profile_id: Optional[str] = Form(None),
     board_variant: Optional[str] = Form(None),
     extruder_count: Optional[int] = Form(None),
+    transport: Optional[str] = Form(None),
     user: dict = Depends(require_role("admin")),
 ):
-    """Registra una impresora Marlin conectada por USB. El handshake es
+    """Registra una impresora Marlin por USB o por el puente TCP de MKS
+    WiFi. El handshake es
     obligatorio server-side (no solo confiar en que el frontend haya
     llamado a /usb-ports/test antes) — así el registro sigue siendo
     seguro incluso si algo llama a este endpoint directo. Si no se manda
@@ -112,7 +144,19 @@ async def marlin_printers_registry_add_endpoint(
         if not printer_profiles.is_valid_extruder_count(profile_id, extruder_count):
             raise HTTPException(status_code=400, detail="Cantidad de extrusores fuera de rango para este perfil")
 
-    if baud is not None:
+    transport = transport or ("mks_wifi" if device.startswith("tcp://") else "usb_serial")
+    if transport not in ("usb_serial", "mks_wifi"):
+        raise HTTPException(status_code=400, detail="Transporte Marlin no soportado")
+
+    if transport == "mks_wifi":
+        try:
+            host, port = mks_wifi_transport.parse_endpoint(device)
+            device = mks_wifi_transport.make_endpoint(host, port)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        verified_marlin = await probe_marlin(device, 0)
+        resolved_baud = 0
+    elif baud is not None:
         verified_marlin = await probe_marlin(device, baud)
         resolved_baud = baud
     else:
@@ -123,7 +167,7 @@ async def marlin_printers_registry_add_endpoint(
     firmware_info = await probe_marlin_firmware_info(device, resolved_baud) if verified_marlin else None
     return register_printer(
         device, name, resolved_baud, verified_marlin, firmware_info,
-        profile_id, board_variant, extruder_count,
+        profile_id, board_variant, extruder_count, transport,
     )
 
 

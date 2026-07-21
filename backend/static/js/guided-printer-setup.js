@@ -9,6 +9,15 @@
 // por paso" es la misma idea, pero el resto del componente es propio.
 
 const BRAND_CONFIG = {
+    hellbot: {
+        displayName: 'Hellbot / Marlin',
+        statusBadge: 'compatible',
+        descI18nKey: 'guidedSetupBrandHellbotDesc',
+        // El alta Marlin ya tiene un modal especializado que permite elegir
+        // USB o MKS WiFi, perfil, revisión de placa y extrusores. Desde el
+        // asistente se entra a ese flujo en vez de duplicar esos controles.
+        externalFlow: 'marlin',
+    },
     bambu: {
         displayName: 'Bambu Lab',
         statusBadge: 'compatible',
@@ -88,6 +97,7 @@ const BRAND_CONFIG = {
 };
 
 const GPS_BRAND_ICON_SVG = {
+    hellbot: '<path d="M6 2h12v5H6z"/><path d="M4 7h16v13H4z"/><path d="M8 11h8v5H8z"/><line x1="9" y1="20" x2="9" y2="22"/><line x1="15" y1="20" x2="15" y2="22"/>',
     bambu: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
     elegoo: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
     flashforge: '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
@@ -288,7 +298,16 @@ function renderGpsStep1() {
         </div>`;
     container.querySelectorAll('.gps-brand-card').forEach(card => {
         card.addEventListener('click', () => {
-            guidedSetupState.brand = card.dataset.brand;
+            const brand = card.dataset.brand;
+            const cfg = BRAND_CONFIG[brand];
+            if (cfg?.externalFlow === 'marlin') {
+                closeGuidedPrinterSetup();
+                if (typeof openMarlinRegisterModal === 'function') {
+                    openMarlinRegisterModal('', 'Hellbot / Marlin', 'mks_wifi');
+                }
+                return;
+            }
+            guidedSetupState.brand = brand;
             showGuidedSetupStep(2);
         });
     });

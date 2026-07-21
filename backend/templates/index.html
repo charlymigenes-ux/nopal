@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=266">
+    <link rel="stylesheet" href="/static/css/style.css?v=267">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -2084,8 +2084,14 @@
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                                     </button>
                                 </div>
-                                <p data-i18n="marlinPrintersDescription">Impresoras 3D con firmware Marlin puro conectadas por USB directo, sin Klipper/Moonraker.</p>
+                                <p data-i18n="marlinPrintersDescription">Impresoras 3D con firmware Marlin puro conectadas por USB o MKS WiFi, sin Klipper/Moonraker.</p>
+                                <p class="devices-subcard-sublabel" data-i18n="marlinTransportUsb">USB directo</p>
                                 <div class="usb-ports-list" id="marlin-discover-list"></div>
+                                <div class="devices-subcard-title-row">
+                                    <p class="devices-subcard-sublabel" data-i18n="marlinMksWifiHeader">MKS WiFi en la red</p>
+                                    <button type="button" class="btn-file-action" id="marlin-mks-wifi-manual-btn" data-i18n="marlinMksWifiManualAdd">Agregar por IP</button>
+                                </div>
+                                <div class="usb-ports-list" id="marlin-mks-wifi-discover-list"></div>
                                 <p class="devices-subcard-sublabel" data-i18n="marlinPrintersRegisteredHeader">Impresoras registradas</p>
                                 <div class="usb-ports-list" id="marlin-printers-registry-list"></div>
                             </div>
@@ -3418,7 +3424,7 @@
         </div>
     </div>
 
-    <!-- Alta de una impresora Marlin standalone (USB, nombre + baudrate) -->
+    <!-- Alta de una impresora Marlin standalone (USB o MKS WiFi) -->
     <div id="marlin-printer-register-modal" class="modal">
         <div class="modal-backdrop" id="marlin-printer-register-backdrop"></div>
         <div class="modal-content app-confirm-modal-content">
@@ -3431,6 +3437,23 @@
             <h2 data-i18n="marlinPrinterRegisterTitle">Agregar impresora Marlin</h2>
             <p class="laser-card-subtitle" id="marlin-printer-register-device-label"></p>
             <div class="usb-classify-name-field">
+                <label for="marlin-printer-register-transport" data-i18n="marlinTransportLabel">Conexión</label>
+                <select id="marlin-printer-register-transport">
+                    <option value="usb_serial" data-i18n="marlinTransportUsb">USB directo</option>
+                    <option value="mks_wifi" data-i18n="marlinTransportMksWifi">MKS WiFi</option>
+                </select>
+            </div>
+            <div id="marlin-printer-register-wifi-fields" class="marlin-register-inline-fields" hidden>
+                <div class="usb-classify-name-field">
+                    <label for="marlin-printer-register-host" data-i18n="marlinMksWifiHostLabel">IP o nombre de red</label>
+                    <input type="text" id="marlin-printer-register-host" inputmode="url" autocomplete="off" placeholder="192.168.0.120">
+                </div>
+                <div class="usb-classify-name-field marlin-register-port-field">
+                    <label for="marlin-printer-register-port" data-i18n="marlinMksWifiPortLabel">Puerto TCP</label>
+                    <input type="number" id="marlin-printer-register-port" min="1" max="65535" value="8080">
+                </div>
+            </div>
+            <div class="usb-classify-name-field" id="marlin-printer-register-baud-field">
                 <label for="marlin-printer-register-name" data-i18n="usbRegisterNameLabel">Nombre del dispositivo</label>
                 <input type="text" id="marlin-printer-register-name" autocomplete="off">
             </div>
@@ -3443,6 +3466,22 @@
                     <option value="57600">57600</option>
                     <option value="9600">9600</option>
                 </select>
+            </div>
+            <div class="usb-classify-name-field">
+                <label for="marlin-printer-register-profile" data-i18n="marlinProfileLabel">Perfil de impresora</label>
+                <select id="marlin-printer-register-profile">
+                    <option value="" data-i18n="marlinProfileGeneric">Marlin genérica</option>
+                </select>
+            </div>
+            <div id="marlin-printer-register-profile-fields" class="marlin-register-inline-fields" hidden>
+                <div class="usb-classify-name-field">
+                    <label for="marlin-printer-register-board" data-i18n="marlinBoardVariantLabel">Revisión de placa</label>
+                    <select id="marlin-printer-register-board"></select>
+                </div>
+                <div class="usb-classify-name-field marlin-register-port-field">
+                    <label for="marlin-printer-register-extruders" data-i18n="marlinExtruderCountLabel">Extrusores</label>
+                    <select id="marlin-printer-register-extruders"></select>
+                </div>
             </div>
             <div class="usb-classify-name-actions">
                 <button type="button" class="btn-file-action" id="marlin-printer-register-confirm-btn">
@@ -3899,11 +3938,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=22"></script>
-    <script src="/static/js/translations-pt-BR.js?v=2"></script>
-    <script src="/static/js/translations-fr.js?v=2"></script>
-    <script src="/static/js/translations-de.js?v=2"></script>
-    <script src="/static/js/app.js?v=206"></script>
-    <script src="/static/js/guided-printer-setup.js?v=1"></script>
+    <script src="/static/js/translations.js?v=24"></script>
+    <script src="/static/js/translations-pt-BR.js?v=4"></script>
+    <script src="/static/js/translations-fr.js?v=4"></script>
+    <script src="/static/js/translations-de.js?v=4"></script>
+    <script src="/static/js/app.js?v=207"></script>
+    <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
