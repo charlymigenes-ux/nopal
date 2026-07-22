@@ -1,4 +1,41 @@
+import sys
+from types import SimpleNamespace
+
 from backend.services import marlin_printer_service
+
+
+class TestProbeMarlinUsb:
+    def test_accepts_m115_only_anet_et4_marlin_21(self, monkeypatch):
+        class FakeSerial:
+            def __init__(self, device, baud, timeout):
+                assert device == "/dev/ttyUSB2"
+                assert baud == 250000
+                self.lines = iter([
+                    b'echo:Unknown command: "\\xf8"\n',
+                    b"ok\n",
+                    b"FIRMWARE_NAME:Marlin 2.1.2.7 SOURCE_CODE_URL:github.com/MarlinFirmware/Marlin "
+                    b"PROTOCOL_VERSION:1.0 MACHINE_TYPE:ANET ET4 PRO EXTRUDER_COUNT:1\n",
+                ])
+                self.written = b""
+
+            def reset_input_buffer(self):
+                pass
+
+            def write(self, payload):
+                self.written += payload
+
+            def readline(self):
+                return next(self.lines, b"")
+
+            def close(self):
+                pass
+
+        fake = FakeSerial("/dev/ttyUSB2", 250000, 0.5)
+        monkeypatch.setitem(sys.modules, "serial", SimpleNamespace(Serial=lambda *args, **kwargs: fake))
+        monkeypatch.setattr(marlin_printer_service.time, "sleep", lambda _seconds: None)
+
+        assert marlin_printer_service._probe_marlin_sync("/dev/ttyUSB2", 250000, timeout=0.1)
+        assert fake.written == b"\r\nM115\r\n"
 
 
 class TestProbeMarlinAutobaud:
