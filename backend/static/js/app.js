@@ -6357,14 +6357,14 @@ if (gcodeSendLaserBtn) {
 }
 
 // ── Enviar G-code a impresora 3D (imprimir ahora, cola nativa de Moonraker o programada) ──
-// El picker mezcla 3 fuentes (Klipper, Elegoo, FlashForge) en una sola lista.
+// El picker mezcla Klipper, Marlin, Elegoo, FlashForge y Bambu en una sola lista.
 // Cada entrada se identifica con { type, id }: para Klipper `id` es el puerto
 // (número), para Elegoo/FlashForge es el `id` del registro (mainboard_id /
 // serial_number, string). Elegoo y FlashForge no tienen cola nativa ni usan
 // el scheduler propio de NOPAL (que además guarda todo por `port`), así que
 // para esas dos el modo queda forzado siempre a "now".
 let printerSendTarget = null;
-let printerSendSelected = null; // { type: 'klipper'|'elegoo'|'flashforge', id }
+let printerSendSelected = null; // { type: 'klipper'|'marlin'|'elegoo'|'flashforge'|'bambu', id }
 let printerSendMode = 'now';
 let printerSendEntries = []; // lista fresca combinada, se recarga cada vez que se abre el modal
 
@@ -6374,19 +6374,34 @@ function getPrinterSendSelectedEntry() {
 }
 
 // Refresca Klipper (a través de loadPrinters(), que además actualiza el
-// dashboard) y hace fetch fresco de Elegoo/FlashForge/Bambu en paralelo — a
+// dashboard) y hace fetch fresco de Marlin/Elegoo/FlashForge/Bambu en paralelo — a
 // propósito NO se reusan elegooPrintersRegistryCache/flashforgePrintersRegistryCache/
 // bambuPrintersRegistryCache, porque esos solo se llenan si el usuario ya
 // visitó esas secciones antes.
 async function loadPrinterSendEntries() {
-    const [, elegooData, flashforgeData, bambuData] = await Promise.all([
+    const [, marlinData, marlinJobsData, elegooData, flashforgeData, bambuData] = await Promise.all([
         loadPrinters(),
+        fetch('/api/marlin-printers/registry/status').then(res => res.json()).catch(() => ({ printers: [] })),
+        fetch('/api/marlin-printers/jobs/active').then(res => res.json()).catch(() => ({ jobs: [] })),
         fetch('/api/elegoo/printers').then(res => res.json()).catch(() => ({ printers: [] })),
         fetch('/api/flashforge/printers').then(res => res.json()).catch(() => ({ printers: [] })),
         fetch('/api/bambu/printers').then(res => res.json()).catch(() => ({ printers: [] })),
     ]);
 
     const entries = allPrinters.map(printer => ({ type: 'klipper', id: printer.port, printer }));
+    const marlinJobs = new Map((marlinJobsData.jobs || []).map(job => [String(job.device), job]));
+    (marlinData.printers || []).forEach(printer => {
+        const activeJob = marlinJobs.get(String(printer.device));
+        entries.push({
+            type: 'marlin',
+            id: printer.device,
+            printer: {
+                ...printer,
+                status: printer.online ? 'online' : 'offline',
+                state: activeJob?.state || 'idle',
+            },
+        });
+    });
     (elegooData.printers || []).forEach(printer => entries.push({ type: 'elegoo', id: printer.id, printer }));
     (flashforgeData.printers || []).forEach(printer => entries.push({ type: 'flashforge', id: printer.id, printer }));
     (bambuData.printers || []).forEach(printer => entries.push({ type: 'bambu', id: printer.id, printer }));
@@ -6473,7 +6488,7 @@ function updatePrinterSendBusyWarning() {
     if (primaryBtn) primaryBtn.disabled = isBusy && printerSendMode === 'now';
 }
 
-// Elegoo/FlashForge no soportan "Agregar a la cola" ni "Programar impresión"
+// Marlin/Elegoo/FlashForge/Bambu no soportan "Agregar a la cola" ni "Programar impresión"
 // (ver comentario arriba) — se deshabilitan sus tarjetas de modo y el botón
 // rápido de cola del footer, y si el usuario tenía ese modo elegido se
 // vuelve a "now" automáticamente al cambiar de impresora.
@@ -6597,6 +6612,9 @@ async function submitPrinterSend(mode) {
         if (selectedEntry.type === 'klipper') {
             formData.append('mode', mode);
             url = `/api/printers/${selectedEntry.id}/send`;
+        } else if (selectedEntry.type === 'marlin') {
+            formData.append('device', selectedEntry.id);
+            url = '/api/marlin-printers/print/start';
         } else if (selectedEntry.type === 'elegoo') {
             url = `/api/elegoo/printers/${encodeURIComponent(selectedEntry.id)}/send`;
         } else if (selectedEntry.type === 'bambu') {
@@ -6616,6 +6634,7 @@ async function submitPrinterSend(mode) {
         if (selectedEntry.type === 'elegoo') refreshElegooPrintersGrid();
         if (selectedEntry.type === 'flashforge') refreshFlashforgePrintersGrid();
         if (selectedEntry.type === 'bambu') refreshBambuPrintersGrid();
+        if (selectedEntry.type === 'marlin') refreshMarlinPrintersGrid();
     } catch (error) {
         console.error(error);
         appAlert(error.message || 'No se pudo enviar el archivo.', '', 'danger');

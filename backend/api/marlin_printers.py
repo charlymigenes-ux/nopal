@@ -255,10 +255,11 @@ async def marlin_printers_console_command_endpoint(
 async def marlin_printers_print_start_endpoint(
     device: str = Form(...),
     path: str = Form(...),
+    section: str = Form("gcode"),
     user: dict = Depends(require_auth),
 ):
     """Inicia el envío de un archivo G-code (de la biblioteca) a la impresora."""
-    file_path = safe_section_path("gcode", path)
+    file_path = safe_section_path(section, path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 

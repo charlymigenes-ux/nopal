@@ -51,6 +51,44 @@ class TestUsbProbeIdentity:
         }
 
 
+class TestPrintStartEndpoint:
+    def test_accepts_library_section_and_starts_marlin_job(self, client, as_admin, monkeypatch, tmp_path):
+        gcode_file = tmp_path / "ANET_ET4.gcode"
+        gcode_file.write_text("G28\nG1 X10", encoding="utf-8")
+        captured = {}
+
+        def fake_safe_section_path(section, path):
+            captured["section"] = section
+            captured["path"] = path
+            return str(gcode_file)
+
+        def fake_start_print(device, gcode_text, filename=""):
+            captured.update(device=device, gcode_text=gcode_text, filename=filename)
+            return {"state": "running", "filename": filename}
+
+        monkeypatch.setattr(marlin_printers_api, "safe_section_path", fake_safe_section_path)
+        monkeypatch.setattr(marlin_printers_api, "start_print", fake_start_print)
+
+        response = client.post(
+            "/api/marlin-printers/print/start",
+            data={
+                "device": "/dev/ttyUSB2",
+                "path": "ANET_ET4.gcode",
+                "section": "model",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"state": "running", "filename": "ANET_ET4.gcode"}
+        assert captured == {
+            "section": "model",
+            "path": "ANET_ET4.gcode",
+            "device": "/dev/ttyUSB2",
+            "gcode_text": "G28\nG1 X10",
+            "filename": "ANET_ET4.gcode",
+        }
+
+
 class TestMksWifiEndpoints:
     def test_discovers_modules(self, client, as_admin, monkeypatch):
         module = {

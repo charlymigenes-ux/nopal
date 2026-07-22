@@ -12,7 +12,7 @@ def test_plugin_frontend_assets_are_versioned_from_manifest():
 
 def test_core_app_cachebuster_is_updated():
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
-    assert '/static/js/app.js?v=210' in html
+    assert '/static/js/app.js?v=211' in html
 
 
 def test_plugin_update_requires_a_newer_catalog_version_and_actions_fit_card():
