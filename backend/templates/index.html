@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=270">
+    <link rel="stylesheet" href="/static/css/style.css?v=271">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -2580,7 +2580,7 @@
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
             </div>
             <h2 data-i18n="tempPresetsTitle">Temperaturas preestablecidas</h2>
-            <p class="laser-card-subtitle" data-i18n="tempPresetsDescription">Se usan al presionar PREESTAB. en la ficha de temperaturas.</p>
+            <p class="laser-card-subtitle" data-i18n="tempPresetsDescription">Crea perfiles para PLA, PETG, ABS, TPU o tus propios materiales.</p>
             <div id="temp-presets-fields" class="temp-presets-fields"></div>
             <div class="laser-start-confirm-row">
                 <button type="button" class="btn-file-action" id="temp-presets-cancel-btn">
@@ -2590,6 +2590,18 @@
                     <span data-i18n="save">Guardar</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <div id="material-preheat-modal" class="modal">
+        <div class="modal-backdrop" id="material-preheat-modal-backdrop"></div>
+        <div class="modal-content temp-presets-modal-content material-preheat-dialog">
+            <button class="modal-close" id="material-preheat-modal-close" aria-label="Cerrar">&times;</button>
+            <div class="temp-presets-modal-icon">♨</div>
+            <h2>Precalentar por material</h2>
+            <p class="laser-card-subtitle" id="material-preheat-machine">Selecciona el material cargado.</p>
+            <div class="material-preheat-list" id="material-preheat-list"></div>
+            <button type="button" class="btn-file-action" id="material-preheat-configure">Configurar materiales</button>
         </div>
     </div>
 
@@ -3957,7 +3969,7 @@
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=214"></script>
+    <script src="/static/js/app.js?v=215"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

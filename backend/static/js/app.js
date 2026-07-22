@@ -3013,6 +3013,63 @@ async function setTemperatureTarget(port, heater, target) {
 }
 
 let temperatureCardThemeMode = null; // 'warm' | 'cool' | null
+let temperatureMaterialPresets = null;
+let temperaturePresetEditorData = null;
+let materialPreheatTarget = null;
+
+function normalizeTemperatureMaterialPresets(data) {
+    if (Array.isArray(data?.materials)) return data;
+    return { active: 'personalizado', materials: [{ id: 'personalizado', name: 'Personalizado', heater_bed: data?.heater_bed ?? 60, extruder: data?.extruder ?? 200 }] };
+}
+
+async function loadTemperatureMaterialPresets(force = false) {
+    if (temperatureMaterialPresets && !force) return temperatureMaterialPresets;
+    const response = await fetch('/api/system/temperature-presets');
+    if (!response.ok) throw new Error('No se pudieron cargar los materiales');
+    temperatureMaterialPresets = normalizeTemperatureMaterialPresets(await response.json());
+    return temperatureMaterialPresets;
+}
+
+async function setMarlinHeaterTarget(device, heater, target) {
+    const formData = new FormData();
+    formData.append('device', device);
+    formData.append('heater', heater);
+    formData.append('target', target);
+    const response = await fetch('/api/marlin-printers/temperature-target', { method: 'POST', body: formData });
+    if (!response.ok) throw new Error('No se pudo actualizar la temperatura Marlin');
+}
+
+async function applyMaterialPreheat(material) {
+    if (!materialPreheatTarget) return;
+    const target = materialPreheatTarget;
+    const heaters = target.heaters || ['heater_bed', 'extruder'];
+    await Promise.all(heaters.map(heater => {
+        const value = material[heater === 'heater_bed' ? 'heater_bed' : 'extruder'];
+        return target.type === 'marlin' ? setMarlinHeaterTarget(target.id, heater, value) : setTemperatureTarget(target.id, heater, value);
+    }));
+    document.getElementById('material-preheat-modal')?.classList.remove('active');
+    showToast(`${material.name}: cama ${material.heater_bed}°C · boquilla ${material.extruder}°C`);
+}
+
+async function openMaterialPreheatModal(target) {
+    materialPreheatTarget = target;
+    const modal = document.getElementById('material-preheat-modal');
+    const list = document.getElementById('material-preheat-list');
+    document.getElementById('material-preheat-machine').textContent = `${target.name || 'Impresora'} · selecciona el material cargado`;
+    list.innerHTML = '<div class="machine-led-loading">Cargando materiales…</div>';
+    modal.classList.add('active');
+    try {
+        const presets = await loadTemperatureMaterialPresets();
+        list.innerHTML = presets.materials.map(material => `<button type="button" class="material-preheat-option" data-material-id="${escapeHtml(material.id)}"><strong>${escapeHtml(material.name)}</strong><span><b>${material.extruder}°</b> boquilla</span><span><b>${material.heater_bed}°</b> cama</span></button>`).join('');
+        list.querySelectorAll('[data-material-id]').forEach(button => button.addEventListener('click', async () => {
+            const material = presets.materials.find(item => item.id === button.dataset.materialId);
+            button.disabled = true;
+            try { await applyMaterialPreheat(material); } catch (error) { showToast(error.message, 'error'); button.disabled = false; }
+        }));
+    } catch (error) {
+        list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    }
+}
 
 function renderTemperaturesCard(data, port) {
     const container = document.getElementById('printer-modal-temperatures');
@@ -3118,20 +3175,9 @@ function renderTemperaturesCard(data, port) {
 
     const presetBtn = document.getElementById('temp-preset-btn');
     if (presetBtn) {
-        presetBtn.addEventListener('click', async () => {
+        presetBtn.addEventListener('click', () => {
             temperatureCardThemeMode = 'warm';
-            try {
-                const response = await fetch('/api/system/temperature-presets');
-                const presets = await response.json();
-                heaterSensors.forEach(sensor => {
-                    if (presets[sensor.key] != null) {
-                        setTemperatureTarget(port, sensor.key, presets[sensor.key]);
-                    }
-                });
-                setTimeout(() => loadPrinterTemperatures(port), 400);
-            } catch (error) {
-                console.error(error);
-            }
+            openMaterialPreheatModal({ type: 'klipper', id: port, name: 'Impresora Klipper', heaters: heaterSensors.map(sensor => sensor.key) });
         });
     }
 
@@ -3146,23 +3192,33 @@ async function openTempPresetsModal(heaterSensors) {
     const fieldsEl = document.getElementById('temp-presets-fields');
     if (!modal || !fieldsEl) return;
 
-    let presets = {};
-    try {
-        const response = await fetch('/api/system/temperature-presets');
-        presets = await response.json();
-    } catch (error) {
-        console.error(error);
+    let presets = modal.classList.contains('active') ? temperaturePresetEditorData : null;
+    if (!presets) {
+        try {
+            presets = await loadTemperatureMaterialPresets(true);
+        } catch (error) {
+            console.error(error);
+        }
     }
 
-    fieldsEl.innerHTML = heaterSensors.map(sensor => `
-        <div class="temp-presets-field">
-            <label for="temp-preset-input-${escapeHtml(sensor.key)}">${escapeHtml(sensor.label)}</label>
-            <div class="temp-target-input-wrap">
-                <input type="number" id="temp-preset-input-${escapeHtml(sensor.key)}" data-heater="${escapeHtml(sensor.key)}" value="${presets[sensor.key] ?? ''}" step="1" min="0">
-                <span class="temp-target-unit">°C</span>
-            </div>
-        </div>
-    `).join('');
+    temperaturePresetEditorData = presets || { active: 'pla', materials: [] };
+    fieldsEl.innerHTML = `<div class="material-preset-editor-list">${temperaturePresetEditorData.materials.map((material, index) => `
+        <div class="material-preset-editor-row" data-material-row="${index}">
+            <input type="text" data-material-field="name" value="${escapeHtml(material.name)}" aria-label="Nombre del material">
+            <label><span>Boquilla</span><input type="number" data-material-field="extruder" value="${material.extruder}" min="0" max="400"><small>°C</small></label>
+            <label><span>Cama</span><input type="number" data-material-field="heater_bed" value="${material.heater_bed}" min="0" max="200"><small>°C</small></label>
+            <button type="button" class="material-preset-remove" data-material-remove="${index}" aria-label="Eliminar material">×</button>
+        </div>`).join('')}</div><button type="button" class="btn-file-action material-preset-add" id="material-preset-add">+ Agregar material</button>`;
+    fieldsEl.querySelectorAll('[data-material-remove]').forEach(button => button.addEventListener('click', () => {
+        temperaturePresetEditorData.materials.splice(Number(button.dataset.materialRemove), 1);
+        temperatureMaterialPresets = temperaturePresetEditorData;
+        openTempPresetsModal(heaterSensors);
+    }));
+    document.getElementById('material-preset-add')?.addEventListener('click', () => {
+        temperaturePresetEditorData.materials.push({ id: `material-${Date.now()}`, name: 'Nuevo material', heater_bed: 60, extruder: 200 });
+        temperatureMaterialPresets = temperaturePresetEditorData;
+        openTempPresetsModal(heaterSensors);
+    });
 
     modal.classList.add('active');
 }
@@ -3185,21 +3241,35 @@ if (tempPresetsSaveBtn) {
     tempPresetsSaveBtn.addEventListener('click', async () => {
         const fieldsEl = document.getElementById('temp-presets-fields');
         if (!fieldsEl) return;
-        const presets = {};
-        fieldsEl.querySelectorAll('input[data-heater]').forEach(input => {
-            const value = parseFloat(input.value);
-            if (!Number.isNaN(value)) presets[input.dataset.heater] = value;
+        const materials = [];
+        fieldsEl.querySelectorAll('[data-material-row]').forEach((row, index) => {
+            const previous = temperaturePresetEditorData.materials[index] || {};
+            materials.push({
+                id: previous.id || `material-${index + 1}`,
+                name: row.querySelector('[data-material-field="name"]').value.trim(),
+                extruder: Number(row.querySelector('[data-material-field="extruder"]').value),
+                heater_bed: Number(row.querySelector('[data-material-field="heater_bed"]').value),
+            });
         });
+        const presets = { active: temperaturePresetEditorData.active || materials[0]?.id, materials };
         try {
             const formData = new FormData();
             formData.append('presets', JSON.stringify(presets));
-            await fetch('/api/system/temperature-presets', { method: 'POST', body: formData });
+            const response = await fetch('/api/system/temperature-presets', { method: 'POST', body: formData });
+            if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || 'No se pudieron guardar los materiales');
+            temperatureMaterialPresets = presets;
             closeTempPresetsModal();
         } catch (error) {
-            console.error(error);
+            showToast(error.message, 'error');
         }
     });
 }
+
+['material-preheat-modal-close', 'material-preheat-modal-backdrop'].forEach(id => document.getElementById(id)?.addEventListener('click', () => document.getElementById('material-preheat-modal')?.classList.remove('active')));
+document.getElementById('material-preheat-configure')?.addEventListener('click', () => {
+    document.getElementById('material-preheat-modal')?.classList.remove('active');
+    openTempPresetsModal([]);
+});
 
 async function loadPrinterTemperatures(port) {
     const container = document.getElementById('printer-modal-temperatures');
@@ -5393,8 +5463,12 @@ function laserDashboardCardHtml(entry) {
                     <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
                     ${hostLabel ? `<p class="printer-name-sub">${typeLabel}</p>` : ''}
                 </div>
-                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                <div class="printer-quick-actions">
+                    ${isOnline ? `<button type="button" class="printer-quick-action-btn marlin-card-temp-action" data-marlin-temp-action="cool" title="${t('tempCool')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.7 17.7 8.4a8 8 0 1 1-11.4 0Z"/></svg></button>
+                    <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent marlin-card-temp-action" data-marlin-temp-action="preheat" title="${t('tempPreset')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.4 5.2A8.25 8.25 0 1 1 6 7a8.3 8.3 0 0 0 3 2.6 9 9 0 0 1 3.4-6.9 8.2 8.2 0 0 0 3 2.5Z"/></svg></button>` : ''}
+                    <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                    </div>
                 </div>
             </div>
 
@@ -5420,6 +5494,24 @@ function laserDashboardCardHtml(entry) {
             ` : ''}
         </div>
     `;
+}
+
+function bindMarlinTemperatureActions(root) {
+    root.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
+        card.querySelectorAll('[data-marlin-temp-action]').forEach(button => button.addEventListener('click', async event => {
+            event.stopPropagation();
+            const device = card.dataset.marlinDevice;
+            const printer = marlinPrintersRegistryCache.find(item => item.device === device) || {};
+            const heaters = ['heater_bed', printer.extruder_count === 2 ? 'extruder0' : 'extruder'];
+            if (printer.extruder_count === 2) heaters.push('extruder1');
+            if (button.dataset.marlinTempAction === 'preheat') {
+                openMaterialPreheatModal({ type: 'marlin', id: device, name: printer.name || card.querySelector('.printer-name')?.textContent || 'Marlin', heaters });
+            } else {
+                try { await Promise.all(heaters.map(heater => setMarlinHeaterTarget(device, heater, 0))); showToast('Calentadores Marlin apagados'); }
+                catch (error) { showToast(error.message, 'error'); }
+            }
+        }));
+    });
 }
 
 let dashboardLaserEntries = [];
@@ -6222,6 +6314,7 @@ function renderPrinters(printersInput) {
     const columnsRoot = groupMode === 'mixed' ? (machinesMixedGrid || printersGrid) : (machinesColumns || printersGrid);
 
     decorateMachineCardsWithLedSettings(columnsRoot);
+    bindMarlinTemperatureActions(columnsRoot);
 
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         card.addEventListener('click', () => {
@@ -6284,12 +6377,8 @@ function renderPrinters(printersInput) {
                     ]);
                 } else if (action === 'preheat') {
                     dashboardPrinterThemeMode.set(port, 'warm');
-                    const response = await fetch('/api/system/temperature-presets');
-                    const presets = await response.json();
-                    const tasks = [];
-                    if (presets.heater_bed != null) tasks.push(setTemperatureTarget(port, 'heater_bed', presets.heater_bed));
-                    if (presets.extruder != null) tasks.push(setTemperatureTarget(port, 'extruder', presets.extruder));
-                    await Promise.all(tasks);
+                    const printer = allPrinters.find(item => String(item.port) === String(port)) || {};
+                    openMaterialPreheatModal({ type: 'klipper', id: port, name: printer.name || `Klipper ${port}` });
                 }
                 loadPrinters();
             } catch (error) {
@@ -12371,6 +12460,7 @@ async function refreshMarlinPrintersGrid() {
             }
         }));
         grid.innerHTML = entries.map(({ printer, status }) => marlinPrinterCardHtml(printer, status)).join('');
+        bindMarlinTemperatureActions(grid);
         grid.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
             card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
         });
@@ -13856,6 +13946,11 @@ function renderMarlinTemperaturesCard(data, device) {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
                     <span>${t('temperatures')}</span>
                 </div>
+                <div class="temp-card-header-actions">
+                    <button type="button" class="temp-cool-pill" id="marlin-temp-cool-btn">${t('tempCool')}</button>
+                    <button type="button" class="temp-preset-pill" id="marlin-temp-preset-btn">${t('tempPreset')}</button>
+                    <button type="button" class="temp-icon-btn" id="marlin-temp-config-btn" title="Configurar materiales">⚙</button>
+                </div>
             </div>
             <div class="temp-card-body">
                 <div class="temp-table">
@@ -13882,6 +13977,16 @@ function renderMarlinTemperaturesCard(data, device) {
             }
         });
     });
+    const heaterKeys = sensors.map(sensor => sensor.key);
+    document.getElementById('marlin-temp-cool-btn')?.addEventListener('click', async () => {
+        try { await Promise.all(heaterKeys.map(heater => setMarlinHeaterTarget(device, heater, 0))); refreshMarlinModalTemperatures(); }
+        catch (error) { showToast(error.message, 'error'); }
+    });
+    document.getElementById('marlin-temp-preset-btn')?.addEventListener('click', () => {
+        const printer = marlinPrintersRegistryCache.find(item => item.device === device) || {};
+        openMaterialPreheatModal({ type: 'marlin', id: device, name: printer.name || 'Marlin', heaters: heaterKeys });
+    });
+    document.getElementById('marlin-temp-config-btn')?.addEventListener('click', () => openTempPresetsModal(sensors));
 }
 
 async function applyMarlinTempTarget(device, heater, container) {

@@ -12,7 +12,7 @@ def test_plugin_frontend_assets_are_versioned_from_manifest():
 
 def test_core_app_cachebuster_is_updated():
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
-    assert '/static/js/app.js?v=214' in html
+    assert '/static/js/app.js?v=215' in html
 
 
 def test_plugin_update_requires_a_newer_catalog_version_and_actions_fit_card():
@@ -24,7 +24,7 @@ def test_plugin_update_requires_a_newer_catalog_version_and_actions_fit_card():
     assert "plugin-card-actions${pluginUpdateAvailable(plugin) ? ' has-update' : ''}" in javascript
     assert ".plugin-card-actions.has-update { width: 100%; }" in stylesheet
     assert '"id": "arduino-accessories"' in catalog
-    assert '"version": "2.4.0"' in catalog
+    assert '"version": "2.4.1"' in catalog
 
 
 def test_machine_cards_expose_plugin_gated_led_scenes():

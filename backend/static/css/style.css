@@ -14958,3 +14958,21 @@ body.light .btn-accent {
 .machine-led-secondary { border: 1px solid var(--border); background: transparent; color: var(--text-secondary); }
 .machine-led-primary:disabled { opacity: .5; cursor: wait; }
 @media (max-width: 620px) { .machine-led-dialog { padding: 20px 16px; } .machine-led-colors { grid-template-columns: 1fr; } .machine-led-segment-fields { grid-template-columns: 1fr 1fr; } }
+
+.material-preheat-dialog { width: min(540px, 92vw); }
+.material-preheat-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 20px 0 14px; }
+.material-preheat-option { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 15px; border: 1px solid var(--border); border-radius: 13px; background: rgba(6,18,25,.72); color: var(--text); text-align: left; cursor: pointer; }
+.material-preheat-option:hover { border-color: #f59e0b; background: rgba(245,158,11,.08); }
+.material-preheat-option strong { grid-column: 1 / -1; color: #fbbf24; font-size: 1rem; }
+.material-preheat-option span { color: var(--text-secondary); font-size: .76rem; }
+.material-preheat-option b { color: var(--text); }
+.material-preset-editor-list { display: grid; gap: 9px; width: 100%; }
+.material-preset-editor-row { display: grid; grid-template-columns: minmax(105px,1.3fr) 1fr 1fr 32px; gap: 8px; align-items: end; padding: 10px; border: 1px solid var(--border); border-radius: 11px; background: rgba(6,18,25,.54); }
+.material-preset-editor-row > input, .material-preset-editor-row label { min-width: 0; }
+.material-preset-editor-row input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-bg); color: var(--text); }
+.material-preset-editor-row label { display: grid; grid-template-columns: 1fr auto; gap: 4px; position: relative; }
+.material-preset-editor-row label span { grid-column: 1 / -1; color: var(--text-secondary); font-size: .66rem; }
+.material-preset-editor-row label small { align-self: center; color: var(--text-secondary); }
+.material-preset-remove { height: 34px; border: 1px solid rgba(239,68,68,.35); border-radius: 8px; background: rgba(239,68,68,.08); color: #ff6b6b; cursor: pointer; }
+.material-preset-add { margin-top: 10px; }
+@media (max-width: 620px) { .material-preheat-list { grid-template-columns: 1fr; } .material-preset-editor-row { grid-template-columns: 1fr 1fr 32px; } .material-preset-editor-row > input { grid-column: 1 / -1; } }
