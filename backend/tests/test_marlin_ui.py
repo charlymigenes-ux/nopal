@@ -107,7 +107,9 @@ def test_marlin_print_card_combines_local_library_and_native_sd_files():
 def test_dashboard_combines_every_registered_3d_connector():
     javascript = (ROOT / "backend/static/js/app.js").read_text(encoding="utf-8")
     stylesheet = (ROOT / "backend/static/css/style.css").read_text(encoding="utf-8")
-    assert "async function loadDashboardStandalonePrinters()" in javascript
+    assert "async function loadDashboardStandalonePrinters({ skipMarlinStatusRefresh = false } = {})" in javascript
+    assert "refreshDashboardMarlinStatuses(printers)" in javascript
+    assert "marlinDashboardStatusCache" in javascript
     for endpoint in (
         "/api/marlin-printers/registry/status",
         "/api/elegoo/printers",

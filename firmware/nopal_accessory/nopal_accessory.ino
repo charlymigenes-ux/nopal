@@ -73,7 +73,8 @@
 // CONFIGURACIÓN GENERAL
 // ============================================================================
 
-#define FW_VERSION "1.4"
+#define FW_VERSION "4.0.0"
+#define NOPAL_PROTOCOL 4
 
 // La mayoría de módulos de relés se activan con LOW.
 const bool RELAY_ACTIVE_LOW = true;
@@ -117,8 +118,8 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define PWM_LED_PIN_B 27
 
 #define WS2812_ENABLE true
-#define WS2812_PIN 4
-#define WS2812_COUNT 30
+#define WS2812_PIN 23
+#define WS2812_COUNT 8
 
 // LED integrado de la placa ("Dev Module" típico) -- indica que el
 // firmware está vivo. GPIO2 está libre en este mapeo de pines (no lo usa
@@ -549,6 +550,32 @@ void setWs2812Color(uint8_t red, uint8_t green, uint8_t blue) {
 }
 
 
+bool setWs2812Segment(
+  int start,
+  int count,
+  uint8_t red,
+  uint8_t green,
+  uint8_t blue,
+  String& response
+) {
+#if WS2812_ENABLE
+  if (start < 0 || count < 1 || start + count > WS2812_COUNT) {
+    response = "ERR:INVALID_SEGMENT";
+    return true;
+  }
+  const uint32_t color = strip.Color(red, green, blue);
+  for (int pixel = start; pixel < start + count; pixel++) {
+    strip.setPixelColor(pixel, color);
+  }
+  strip.show();
+  response = "OK";
+#else
+  response = "ERR:UNSUPPORTED";
+#endif
+  return true;
+}
+
+
 // ============================================================================
 // WI-FI
 // ============================================================================
@@ -741,6 +768,10 @@ String buildStatusJson() {
   json += FW_VERSION;
   json += "\",";
 
+  json += "\"protocol\":";
+  json += String(NOPAL_PROTOCOL);
+  json += ",";
+
   json += "\"hostname\":\"";
   json += jsonEscape(String(NOPAL_HOSTNAME));
   json += "\",";
@@ -834,6 +865,7 @@ bool parseAndSetColor(
   void (*setColor)(uint8_t, uint8_t, uint8_t),
   String& response
 );
+bool parseAndSetSegment(const String& command, uint8_t prefixLength, String& response);
 
 
 bool checkApiAuth() {
@@ -927,9 +959,15 @@ void setupWebServer() {
 
 #if WS2812_ENABLE
     if (mode == "ws2812") {
-      const String command =
-        String("WS:") + server.arg("r") + "," + server.arg("g") + "," + server.arg("b");
-      parseAndSetColor(command, 3, setWs2812Color, response);
+      if (server.hasArg("start") || server.hasArg("count")) {
+        const String command = String("WSSEG:") + server.arg("start") + "," + server.arg("count") + "," +
+          server.arg("r") + "," + server.arg("g") + "," + server.arg("b");
+        parseAndSetSegment(command, 6, response);
+      } else {
+        const String command =
+          String("WS:") + server.arg("r") + "," + server.arg("g") + "," + server.arg("b");
+        parseAndSetColor(command, 3, setWs2812Color, response);
+      }
     }
 #endif
 
@@ -1003,6 +1041,9 @@ void sendIdentification() {
 
   Serial.print(",fw=");
   Serial.print(FW_VERSION);
+
+  Serial.print(",protocol=");
+  Serial.print(NOPAL_PROTOCOL);
 
   Serial.print(",relays=");
   Serial.print(RELAY_COUNT);
@@ -1237,6 +1278,36 @@ bool parseAndSetColor(
 }
 
 
+bool parseAndSetSegment(const String& command, uint8_t prefixLength, String& response) {
+  int start;
+  int count;
+  int red;
+  int green;
+  int blue;
+  const int parsedValues = sscanf(
+    command.c_str() + prefixLength,
+    "%d,%d,%d,%d,%d",
+    &start,
+    &count,
+    &red,
+    &green,
+    &blue
+  );
+  if (parsedValues != 5) {
+    response = "ERR:INVALID_SEGMENT";
+    return true;
+  }
+  return setWs2812Segment(
+    start,
+    count,
+    clampColor(red),
+    clampColor(green),
+    clampColor(blue),
+    response
+  );
+}
+
+
 void handleCommand(String line) {
 
   line.trim();
@@ -1301,6 +1372,13 @@ void handleCommand(String line) {
   // ------------------------------------------------------------------------
 
 #if WS2812_ENABLE
+
+  if (command.startsWith("WSSEG:")) {
+    String response;
+    parseAndSetSegment(command, 6, response);
+    Serial.println(response);
+    return;
+  }
 
   if (command.startsWith("WS:")) {
     String response;

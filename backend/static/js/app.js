@@ -5227,6 +5227,8 @@ let dashboardLaserDevicesLoadError = false;
 let dashboardStandalonePrintersLoaded = false;
 let dashboardStandalonePrintersLoading = false;
 let dashboardStandalonePrinterEntries = [];
+const marlinDashboardStatusCache = new Map();
+let marlinDashboardStatusRefreshInFlight = false;
 
 function deviceColumnLoadingMarkup(labelKey) {
     const accentClass = labelKey === 'laser' ? 'device-loading-orbit-laser'
@@ -5272,7 +5274,35 @@ function standalonePrinterSortPriority(visualState) {
     return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
 }
 
-async function loadDashboardStandalonePrinters() {
+async function refreshDashboardMarlinStatuses(printers) {
+    if (marlinDashboardStatusRefreshInFlight || !printers.length) return;
+    marlinDashboardStatusRefreshInFlight = true;
+    try {
+        const results = await Promise.all(printers.map(async printer => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5500);
+            try {
+                const response = await fetch(`/api/marlin-printers/status?device=${encodeURIComponent(printer.device)}`, { signal: controller.signal });
+                if (!response.ok) return null;
+                return { device: printer.device, status: await response.json() };
+            } catch {
+                return null;
+            } finally {
+                clearTimeout(timer);
+            }
+        }));
+        let changed = false;
+        results.filter(Boolean).forEach(({ device, status }) => {
+            marlinDashboardStatusCache.set(String(device), status);
+            changed = true;
+        });
+        if (changed) setTimeout(() => loadDashboardStandalonePrinters({ skipMarlinStatusRefresh: true }), 0);
+    } finally {
+        marlinDashboardStatusRefreshInFlight = false;
+    }
+}
+
+async function loadDashboardStandalonePrinters({ skipMarlinStatusRefresh = false } = {}) {
     if (dashboardStandalonePrintersLoading) return;
     dashboardStandalonePrintersLoading = true;
     try {
@@ -5294,7 +5324,8 @@ async function loadDashboardStandalonePrinters() {
             printers.forEach(printer => {
                 const job = jobsByDevice.get(String(printer.device));
                 const state = job?.state === 'running' ? 'printing' : (job?.state || 'idle');
-                const status = { connected: Boolean(printer.online), state };
+                const cachedStatus = marlinDashboardStatusCache.get(String(printer.device)) || {};
+                const status = { ...cachedStatus, connected: Boolean(printer.online), state };
                 const visualState = getMarlinPrinterVisualState(status);
                 entries.push({
                     type: 'marlin', id: printer.device,
@@ -5303,6 +5334,7 @@ async function loadDashboardStandalonePrinters() {
                     html: marlinPrinterCardHtml(printer, status),
                 });
             });
+            if (!skipMarlinStatusRefresh) void refreshDashboardMarlinStatuses(printers);
         }
 
         if (elegooResult.status === 'fulfilled') {
@@ -5464,8 +5496,6 @@ function laserDashboardCardHtml(entry) {
                     ${hostLabel ? `<p class="printer-name-sub">${typeLabel}</p>` : ''}
                 </div>
                 <div class="printer-quick-actions">
-                    ${isOnline ? `<button type="button" class="printer-quick-action-btn marlin-card-temp-action" data-marlin-temp-action="cool" title="${t('tempCool')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.7 17.7 8.4a8 8 0 1 1-11.4 0Z"/></svg></button>
-                    <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent marlin-card-temp-action" data-marlin-temp-action="preheat" title="${t('tempPreset')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.4 5.2A8.25 8.25 0 1 1 6 7a8.3 8.3 0 0 0 3 2.6 9 9 0 0 1 3.4-6.9 8.2 8.2 0 0 0 3 2.5Z"/></svg></button>` : ''}
                     <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
                     </div>
@@ -12420,8 +12450,12 @@ function marlinPrinterCardHtml(printer, status) {
                     <h3 class="printer-name">${escapeHtml(name)}</h3>
                     <p class="printer-name-sub">${boardLabel ? escapeHtml(boardLabel) : 'Marlin'}</p>
                 </div>
-                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                <div class="printer-quick-actions">
+                    ${isOnline ? `<button type="button" class="printer-quick-action-btn marlin-card-temp-action" data-marlin-temp-action="cool" title="${t('tempCool')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.7 17.7 8.4a8 8 0 1 1-11.4 0Z"/></svg></button>
+                    <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent marlin-card-temp-action" data-marlin-temp-action="preheat" title="${t('tempPreset')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.4 5.2A8.25 8.25 0 1 1 6 7a8.3 8.3 0 0 0 3 2.6 9 9 0 0 1 3.4-6.9 8.2 8.2 0 0 0 3 2.5Z"/></svg></button>` : ''}
+                    <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                    </div>
                 </div>
             </div>
 
