@@ -53,7 +53,7 @@ def test_marlin_ui_translation_keys_exist_in_every_catalog():
 def test_marlin_ui_assets_have_updated_cachebusters():
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
     assert '/static/css/style.css?v=268' in html
-    assert '/static/js/app.js?v=209' in html
+    assert '/static/js/app.js?v=210' in html
     assert '/static/js/translations.js?v=24' in html
     for language in ("de", "fr", "pt-BR"):
         assert f'/static/js/translations-{language}.js?v=4' in html
@@ -76,3 +76,11 @@ def test_guided_setup_exposes_hellbot_marlin_flow():
     for filename in translation_files:
         content = (ROOT / "backend/static/js" / filename).read_text(encoding="utf-8")
         assert "guidedSetupBrandHellbotDesc" in content, f"falta traducción Hellbot en {filename}"
+
+
+def test_marlin_registration_uses_m115_machine_type_as_automatic_name():
+    javascript = (ROOT / "backend/static/js/app.js").read_text(encoding="utf-8")
+    assert "function marlinMachineName(testData)" in javascript
+    assert "testData?.firmware_info?.MACHINE_TYPE" in javascript
+    assert "nameInput.dataset.autoName = 'true'" in javascript
+    assert "nameInput.value = detectedMachineName" in javascript

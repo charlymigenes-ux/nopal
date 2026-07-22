@@ -28,6 +28,29 @@ class TestProfilesEndpoint:
         assert response.status_code == 401
 
 
+class TestUsbProbeIdentity:
+    def test_returns_machine_type_for_automatic_name(self, client, as_admin, monkeypatch):
+        firmware_info = {
+            "FIRMWARE_NAME": "Marlin 2.1.2.7",
+            "MACHINE_TYPE": "ANET ET4 PRO",
+            "EXTRUDER_COUNT": "1",
+        }
+        _mock_successful_probe(monkeypatch, baud=250000, firmware_info=firmware_info)
+
+        response = client.post(
+            "/api/marlin-printers/usb-ports/test",
+            data={"device": "/dev/ttyUSB2"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "connected": True,
+            "device": "/dev/ttyUSB2",
+            "baud": 250000,
+            "firmware_info": firmware_info,
+        }
+
+
 class TestMksWifiEndpoints:
     def test_discovers_modules(self, client, as_admin, monkeypatch):
         module = {

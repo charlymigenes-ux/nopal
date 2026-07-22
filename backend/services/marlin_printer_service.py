@@ -19,6 +19,22 @@ from backend.services import marlin_driver, mks_wifi_transport
 logger = logging.getLogger(__name__)
 
 REGISTRY_PATH = "marlin_printer_registry.json"
+_probe_firmware_info_cache: Dict[tuple, tuple] = {}
+_probe_firmware_info_cache_lock = threading.Lock()
+
+
+def _cache_probe_firmware_info(device: str, baud: int, info: Dict[str, str]) -> None:
+    with _probe_firmware_info_cache_lock:
+        _probe_firmware_info_cache[(device, baud)] = (time.monotonic(), dict(info))
+
+
+def _take_cached_probe_firmware_info(device: str, baud: int) -> Optional[Dict[str, str]]:
+    with _probe_firmware_info_cache_lock:
+        cached = _probe_firmware_info_cache.pop((device, baud), None)
+    if cached is None:
+        return None
+    saved_at, info = cached
+    return info if time.monotonic() - saved_at <= 20 else None
 
 
 # ── Registro de impresoras conocidas (persistido) ──
@@ -92,7 +108,9 @@ def _probe_marlin_sync(device: str, baud: int = 115200, timeout: float = 3.0) ->
             lines.append(text)
             if marlin_driver.TEMP_RE.search(text):
                 return True
-            if marlin_driver.parse_firmware_info_lines(lines):
+            firmware_info = marlin_driver.parse_firmware_info_lines(lines)
+            if firmware_info:
+                _cache_probe_firmware_info(device, baud, firmware_info)
                 return True
         return False
     finally:
@@ -175,6 +193,9 @@ def _probe_marlin_firmware_info_sync(device: str, baud: int, timeout: float = 4.
 
 
 async def probe_marlin_firmware_info(device: str, baud: int, timeout: float = 4.0) -> Optional[Dict[str, str]]:
+    cached = _take_cached_probe_firmware_info(device, baud)
+    if cached is not None:
+        return cached
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _probe_marlin_firmware_info_sync, device, baud, timeout)
 

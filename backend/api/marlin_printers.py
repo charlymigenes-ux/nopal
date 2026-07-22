@@ -94,17 +94,24 @@ async def marlin_usb_test_endpoint(
     baud: Optional[int] = Form(None),
     user: dict = Depends(require_auth),
 ):
-    """Prueba si el puerto USB indicado responde al protocolo Marlin (M105).
+    """Prueba si el puerto USB indicado responde al protocolo Marlin.
     Si no se manda `baud`, autodetecta probando 115200 y 250000 en orden
     (ver probe_marlin_autobaud) -- antes esto siempre asumía 115200 sin
-    importar lo elegido en el dropdown del frontend."""
+    importar lo elegido en el dropdown del frontend. También devuelve M115
+    para que el formulario use MACHINE_TYPE como nombre automático."""
     if baud is not None:
         detected_baud = baud if await probe_marlin(device, baud) else None
     else:
         detected_baud = await probe_marlin_autobaud(device)
     if detected_baud is None:
         raise HTTPException(status_code=502, detail="No se detectó respuesta Marlin en este puerto")
-    return {"connected": True, "device": device, "baud": detected_baud}
+    firmware_info = await probe_marlin_firmware_info(device, detected_baud)
+    return {
+        "connected": True,
+        "device": device,
+        "baud": detected_baud,
+        "firmware_info": firmware_info,
+    }
 
 
 @router.post("/api/marlin-printers/registry")

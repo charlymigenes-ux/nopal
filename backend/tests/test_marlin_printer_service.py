@@ -36,6 +36,19 @@ class TestProbeMarlinUsb:
 
         assert marlin_printer_service._probe_marlin_sync("/dev/ttyUSB2", 250000, timeout=0.1)
         assert fake.written == b"\r\nM115\r\n"
+        cached = marlin_printer_service._take_cached_probe_firmware_info("/dev/ttyUSB2", 250000)
+        assert cached["MACHINE_TYPE"] == "ANET ET4 PRO"
+
+    async def test_firmware_info_reuses_identity_from_successful_probe(self, monkeypatch):
+        info = {"FIRMWARE_NAME": "Marlin 2.1.2.7", "MACHINE_TYPE": "ANET ET4 PRO"}
+        marlin_printer_service._cache_probe_firmware_info("/dev/ttyUSB2", 250000, info)
+        monkeypatch.setattr(
+            marlin_printer_service,
+            "_probe_marlin_firmware_info_sync",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("no debe reabrir el puerto")),
+        )
+
+        assert await marlin_printer_service.probe_marlin_firmware_info("/dev/ttyUSB2", 250000) == info
 
 
 class TestProbeMarlinAutobaud:

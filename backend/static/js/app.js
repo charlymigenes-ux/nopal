@@ -7519,7 +7519,6 @@ document.getElementById('accessory-cancel-btn')?.addEventListener('click', close
 
 document.getElementById('accessory-save-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('accessory-name-input').value.trim();
-    if (!name) return;
     const kind = document.getElementById('accessory-kind-select').value;
     const driver = accessoryDriverSwitch.getValue() || 'http_relay';
 
@@ -11748,13 +11747,32 @@ async function populateMarlinRegisterProfiles(preferredProfile = '') {
     updateMarlinRegisterProfileFields();
 }
 
+async function probeMarlinUsbRegistration(device, baud = '') {
+    const formData = new FormData();
+    formData.append('device', device);
+    if (baud) formData.append('baud', baud);
+    const response = await fetch('/api/marlin-printers/usb-ports/test', { method: 'POST', body: formData });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || t('usbTestFailed'));
+    }
+    return response.json();
+}
+
+function marlinMachineName(testData) {
+    return String(testData?.firmware_info?.MACHINE_TYPE || '').trim();
+}
+
 async function openMarlinRegisterModal(device, chip, transport = 'usb_serial', options = {}) {
     marlinRegisterTarget = { device: device || '', transport };
     const label = document.getElementById('marlin-printer-register-device-label');
     if (label) label.textContent = [chip, device].filter(Boolean).join(' · ') || t('marlinMksWifiManualAdd');
     const nameInput = document.getElementById('marlin-printer-register-name');
-    if (nameInput) nameInput.value = transport === 'mks_wifi' ? 'Hellbot Magna 2 300' :
-        (chip && chip !== 'CH340' && chip !== 'CH340K' ? chip : 'Impresora Marlin');
+    if (nameInput) {
+        nameInput.value = transport === 'mks_wifi' ? 'Hellbot Magna 2 300' :
+            (chip && chip !== 'CH340' && chip !== 'CH340K' ? chip : 'Impresora Marlin');
+        nameInput.dataset.autoName = 'true';
+    }
     const transportSelect = document.getElementById('marlin-printer-register-transport');
     if (transportSelect) transportSelect.value = transport;
     const hostInput = document.getElementById('marlin-printer-register-host');
@@ -11767,6 +11785,21 @@ async function openMarlinRegisterModal(device, chip, transport = 'usb_serial', o
     await populateMarlinRegisterProfiles(transport === 'mks_wifi' ? 'hellbot_magna2_300' : '');
     document.getElementById('marlin-printer-register-modal')?.classList.add('active');
     if (nameInput) { nameInput.focus(); nameInput.select(); }
+    // El puerto ya está conectado: identifícalo en segundo plano y usa el
+    // MACHINE_TYPE real de M115 como nombre. Si el usuario empieza a escribir
+    // un apodo mientras llega la respuesta, no se pisa su texto.
+    if (transport === 'usb_serial' && device && marlinRegisterTarget) {
+        const target = marlinRegisterTarget;
+        target.probePromise = probeMarlinUsbRegistration(device).then(testData => {
+            if (marlinRegisterTarget !== target) return testData;
+            target.detected = testData;
+            const machineName = marlinMachineName(testData);
+            if (machineName && nameInput?.dataset.autoName === 'true') nameInput.value = machineName;
+            if (baudSelect && testData.baud) baudSelect.dataset.detectedBaud = String(testData.baud);
+            if (label && machineName) label.textContent = `${machineName} · ${device}`;
+            return testData;
+        }).catch(() => null);
+    }
 }
 
 function closeMarlinRegisterModal() {
@@ -11779,13 +11812,16 @@ document.getElementById('marlin-printer-register-backdrop')?.addEventListener('c
 document.getElementById('marlin-printer-register-cancel-btn')?.addEventListener('click', closeMarlinRegisterModal);
 document.getElementById('marlin-printer-register-transport')?.addEventListener('change', updateMarlinRegisterTransportFields);
 document.getElementById('marlin-printer-register-profile')?.addEventListener('change', updateMarlinRegisterProfileFields);
+document.getElementById('marlin-printer-register-name')?.addEventListener('input', event => {
+    event.currentTarget.dataset.autoName = 'false';
+});
 
 document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener('click', async () => {
     let device = marlinRegisterTarget?.device || '';
     const transport = document.getElementById('marlin-printer-register-transport')?.value || 'usb_serial';
     const nameInput = document.getElementById('marlin-printer-register-name');
     const baudSelect = document.getElementById('marlin-printer-register-baud');
-    const name = nameInput ? nameInput.value.trim() : '';
+    let name = nameInput ? nameInput.value.trim() : '';
     if (!name) return;
     // Vacío ("Auto-detectar") significa "no mandar baud" -- el backend
     // prueba 115200/250000 solo (ver probe_marlin_autobaud). Si el usuario
@@ -11794,6 +11830,7 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
     try {
         const testFormData = new FormData();
         let testUrl = '/api/marlin-printers/usb-ports/test';
+        let testData = null;
         if (transport === 'mks_wifi') {
             const host = document.getElementById('marlin-printer-register-host')?.value.trim() || '';
             const port = document.getElementById('marlin-printer-register-port')?.value || '8080';
@@ -11805,20 +11842,32 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
             if (!device) return;
             testFormData.append('device', device);
             if (selectedBaud) testFormData.append('baud', selectedBaud);
+            if (!selectedBaud && marlinRegisterTarget?.probePromise) {
+                testData = await marlinRegisterTarget.probePromise;
+            }
         }
-        const testResponse = await fetch(testUrl, { method: 'POST', body: testFormData });
-        if (!testResponse.ok) {
-            const data = await testResponse.json().catch(() => ({}));
-            throw new Error(data.detail || t('usbTestFailed'));
+        if (!testData) {
+            const testResponse = await fetch(testUrl, { method: 'POST', body: testFormData });
+            if (!testResponse.ok) {
+                const data = await testResponse.json().catch(() => ({}));
+                throw new Error(data.detail || t('usbTestFailed'));
+            }
+            testData = await testResponse.json();
         }
-        const testData = await testResponse.json();
         if (transport === 'mks_wifi') device = testData.device;
+        const detectedMachineName = marlinMachineName(testData);
+        if (detectedMachineName && nameInput?.dataset.autoName === 'true') {
+            name = detectedMachineName;
+            nameInput.value = detectedMachineName;
+        }
+        if (!name) throw new Error(t('usbRegisterNameLabel'));
 
         const formData = new FormData();
         formData.append('device', device);
         formData.append('name', name);
         formData.append('transport', transport);
-        if (transport === 'usb_serial' && selectedBaud) formData.append('baud', selectedBaud);
+        const resolvedBaud = selectedBaud || testData.baud || '';
+        if (transport === 'usb_serial' && resolvedBaud) formData.append('baud', resolvedBaud);
         const profileId = document.getElementById('marlin-printer-register-profile')?.value || '';
         if (profileId) {
             formData.append('profile_id', profileId);
