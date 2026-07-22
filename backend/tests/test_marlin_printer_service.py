@@ -202,3 +202,59 @@ class TestTemperatureSnapshotDualExtruder:
 
         snapshot = await marlin_printer_service.get_temperature_snapshot("/dev/ttyUSB0")
         assert snapshot["sensors"][0]["label"] == "Extruder"
+
+
+class TestNativeSdCard:
+    def test_parses_real_anet_m20_output_and_filters_non_gcode(self):
+        lines = [
+            "Begin file list",
+            "DONA.GC 9207543",
+            "SAGRADO1.GC 14671667",
+            "ALANCL~1.GC 9137946",
+            "FRENTE.GIF 6155866",
+            "ROSTRO1.GC 30574518",
+            "End file list",
+            "ok",
+        ]
+
+        assert marlin_printer_service.parse_sd_file_list(lines) == [
+            {"name": "DONA.GC", "size": 9207543},
+            {"name": "SAGRADO1.GC", "size": 14671667},
+            {"name": "ALANCL~1.GC", "size": 9137946},
+            {"name": "ROSTRO1.GC", "size": 30574518},
+        ]
+
+    async def test_starts_sd_file_with_m23_then_m24(self, monkeypatch):
+        marlin_printer_service._jobs.clear()
+        marlin_printer_service._sd_jobs.clear()
+        commands = []
+
+        async def fake_list_sd_files(device):
+            return [{"name": "DONA.GC", "size": 9207543}]
+
+        async def fake_collect(device, command, stop_when, timeout=8.0):
+            commands.append(command)
+            return [
+                "echo:Now fresh file: DONA.GC",
+                "File opened: DONA.GC Size: 9207543",
+                "File selected",
+            ]
+
+        async def fake_ready(device, timeout=5.0):
+            return None
+
+        monkeypatch.setattr(marlin_printer_service, "list_sd_files", fake_list_sd_files)
+        monkeypatch.setattr(marlin_printer_service, "_collect_device_command", fake_collect)
+        monkeypatch.setattr(marlin_printer_service, "ensure_listener_ready", fake_ready)
+        monkeypatch.setattr(
+            marlin_printer_service,
+            "_send_raw",
+            lambda device, command: commands.append(command) or True,
+        )
+
+        job = await marlin_printer_service.start_sd_print("/dev/ttyUSB2", "DONA.GC")
+
+        assert commands == ["M23 DONA.GC", "M24"]
+        assert job["source"] == "sd"
+        assert job["state"] == "running"
+        assert job["total"] == 9207543

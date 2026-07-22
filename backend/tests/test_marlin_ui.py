@@ -53,7 +53,7 @@ def test_marlin_ui_translation_keys_exist_in_every_catalog():
 def test_marlin_ui_assets_have_updated_cachebusters():
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
     assert '/static/css/style.css?v=268' in html
-    assert '/static/js/app.js?v=211' in html
+    assert '/static/js/app.js?v=212' in html
     assert '/static/js/translations.js?v=24' in html
     for language in ("de", "fr", "pt-BR"):
         assert f'/static/js/translations-{language}.js?v=4' in html
@@ -93,3 +93,12 @@ def test_printer_send_picker_includes_marlin_and_routes_print_start():
     assert "type: 'marlin'" in javascript
     assert "formData.append('device', selectedEntry.id)" in javascript
     assert "url = '/api/marlin-printers/print/start'" in javascript
+
+
+def test_marlin_print_card_combines_local_library_and_native_sd_files():
+    javascript = (ROOT / "backend/static/js/app.js").read_text(encoding="utf-8")
+    assert "fetch('/api/browse?path=&type=gcode')" in javascript
+    assert "/api/marlin-printers/sd/files?device=" in javascript
+    assert 'data-source="local"' in javascript
+    assert 'data-source="sd"' in javascript
+    assert "endpoint = '/api/marlin-printers/sd/print/start'" in javascript

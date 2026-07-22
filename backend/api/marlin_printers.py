@@ -23,7 +23,9 @@ from backend.services.marlin_printer_service import (
     ensure_listener,
     get_console_buffer,
     send_console_command,
+    list_sd_files,
     start_print,
+    start_sd_print,
     get_job_status,
     get_active_job_devices,
     pause_job,
@@ -272,6 +274,28 @@ async def marlin_printers_print_start_endpoint(
         raise HTTPException(status_code=409, detail=str(e))
 
     return job
+
+
+@router.get("/api/marlin-printers/sd/files")
+async def marlin_printers_sd_files_endpoint(
+    device: str,
+    user: dict = Depends(require_auth),
+):
+    """Lista G-code directamente desde la SD de la impresora (M20)."""
+    return {"files": await list_sd_files(device)}
+
+
+@router.post("/api/marlin-printers/sd/print/start")
+async def marlin_printers_sd_print_start_endpoint(
+    device: str = Form(...),
+    filename: str = Form(...),
+    user: dict = Depends(require_auth),
+):
+    """Arranca el archivo dentro de la SD con M23/M24, sin copia local."""
+    try:
+        return await start_sd_print(device, filename)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/api/marlin-printers/print/status")

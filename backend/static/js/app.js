@@ -13597,17 +13597,32 @@ function wireMarlinConsoleForm(device) {
 async function renderMarlinPrintCardShell(device) {
     const container = document.getElementById('marlin-printer-modal-print');
     if (!container) return;
-    let files = [];
-    try {
-        const response = await fetch('/api/browse?path=&type=gcode');
-        const data = await response.json();
-        files = data.files || [];
-    } catch (error) {
-        console.error(error);
-    }
+    let localFiles = [];
+    let sdFiles = [];
+    const [localResult, sdResult] = await Promise.allSettled([
+        fetch('/api/browse?path=&type=gcode').then(async response => {
+            if (!response.ok) throw new Error('No se pudo leer la biblioteca local.');
+            return response.json();
+        }),
+        fetch(`/api/marlin-printers/sd/files?device=${encodeURIComponent(device)}`).then(async response => {
+            if (!response.ok) throw new Error('No se pudo leer la tarjeta SD.');
+            return response.json();
+        }),
+    ]);
+    if (localResult.status === 'fulfilled') localFiles = localResult.value.files || [];
+    else console.error(localResult.reason);
+    if (sdResult.status === 'fulfilled') sdFiles = sdResult.value.files || [];
+    else console.error(sdResult.reason);
 
-    const options = files.length
-        ? files.map(file => `<option value="${escapeHtml(stripSectionPrefix(file.id, 'gcode'))}">${escapeHtml(file.name)}</option>`).join('')
+    const localOptions = localFiles.map(file => `
+        <option data-source="local" value="${escapeHtml(stripSectionPrefix(file.id, 'gcode'))}">${escapeHtml(file.name)}</option>
+    `).join('');
+    const sdOptions = sdFiles.map(file => `
+        <option data-source="sd" value="${escapeHtml(file.name)}">${escapeHtml(file.name)} · ${escapeHtml(formatSize(file.size))}</option>
+    `).join('');
+    const options = localOptions || sdOptions
+        ? `${localOptions ? `<optgroup label="${escapeHtml(t('helpCatLibraryTitle'))} · NOPAL">${localOptions}</optgroup>` : ''}
+           ${sdOptions ? `<optgroup label="${escapeHtml(t('laserSdTitle'))} · Marlin">${sdOptions}</optgroup>` : ''}`
         : `<option value="">${escapeHtml(t('noFilesFound'))}</option>`;
 
     container.innerHTML = `
@@ -13651,13 +13666,22 @@ async function renderMarlinPrintCardShell(device) {
 
     document.getElementById('marlin-print-start-btn')?.addEventListener('click', async () => {
         const select = document.getElementById('marlin-print-file-select');
-        const path = select?.value;
-        if (!path) return;
+        const selectedOption = select?.selectedOptions?.[0];
+        const selectedValue = selectedOption?.value;
+        const source = selectedOption?.dataset.source || 'local';
+        if (!selectedValue) return;
         try {
             const formData = new FormData();
             formData.append('device', device);
-            formData.append('path', path);
-            const response = await fetch('/api/marlin-printers/print/start', { method: 'POST', body: formData });
+            let endpoint;
+            if (source === 'sd') {
+                formData.append('filename', selectedValue);
+                endpoint = '/api/marlin-printers/sd/print/start';
+            } else {
+                formData.append('path', selectedValue);
+                endpoint = '/api/marlin-printers/print/start';
+            }
+            const response = await fetch(endpoint, { method: 'POST', body: formData });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
                 throw new Error(err.detail || 'No se pudo iniciar la impresión.');

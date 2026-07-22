@@ -89,6 +89,45 @@ class TestPrintStartEndpoint:
         }
 
 
+class TestSdCardEndpoints:
+    def test_lists_files_directly_from_marlin_sd(self, client, as_admin, monkeypatch):
+        async def fake_list_sd_files(device):
+            assert device == "/dev/ttyUSB2"
+            return [{"name": "DONA.GC", "size": 9207543}]
+
+        monkeypatch.setattr(marlin_printers_api, "list_sd_files", fake_list_sd_files)
+        response = client.get(
+            "/api/marlin-printers/sd/files",
+            params={"device": "/dev/ttyUSB2"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"files": [{"name": "DONA.GC", "size": 9207543}]}
+
+    def test_starts_native_sd_file_without_local_path(self, client, as_admin, monkeypatch):
+        async def fake_start_sd_print(device, filename):
+            assert device == "/dev/ttyUSB2"
+            assert filename == "DONA.GC"
+            return {
+                "filename": filename,
+                "source": "sd",
+                "state": "running",
+                "current": 0,
+                "total": 9207543,
+                "error": None,
+            }
+
+        monkeypatch.setattr(marlin_printers_api, "start_sd_print", fake_start_sd_print)
+        response = client.post(
+            "/api/marlin-printers/sd/print/start",
+            data={"device": "/dev/ttyUSB2", "filename": "DONA.GC"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["source"] == "sd"
+        assert response.json()["filename"] == "DONA.GC"
+
+
 class TestMksWifiEndpoints:
     def test_discovers_modules(self, client, as_admin, monkeypatch):
         module = {
