@@ -28,6 +28,106 @@ class TestProfilesEndpoint:
         assert response.status_code == 401
 
 
+class TestUsbProbeIdentity:
+    def test_returns_machine_type_for_automatic_name(self, client, as_admin, monkeypatch):
+        firmware_info = {
+            "FIRMWARE_NAME": "Marlin 2.1.2.7",
+            "MACHINE_TYPE": "ANET ET4 PRO",
+            "EXTRUDER_COUNT": "1",
+        }
+        _mock_successful_probe(monkeypatch, baud=250000, firmware_info=firmware_info)
+
+        response = client.post(
+            "/api/marlin-printers/usb-ports/test",
+            data={"device": "/dev/ttyUSB2"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "connected": True,
+            "device": "/dev/ttyUSB2",
+            "baud": 250000,
+            "firmware_info": firmware_info,
+        }
+
+
+class TestPrintStartEndpoint:
+    def test_accepts_library_section_and_starts_marlin_job(self, client, as_admin, monkeypatch, tmp_path):
+        gcode_file = tmp_path / "ANET_ET4.gcode"
+        gcode_file.write_text("G28\nG1 X10", encoding="utf-8")
+        captured = {}
+
+        def fake_safe_section_path(section, path):
+            captured["section"] = section
+            captured["path"] = path
+            return str(gcode_file)
+
+        def fake_start_print(device, gcode_text, filename=""):
+            captured.update(device=device, gcode_text=gcode_text, filename=filename)
+            return {"state": "running", "filename": filename}
+
+        monkeypatch.setattr(marlin_printers_api, "safe_section_path", fake_safe_section_path)
+        monkeypatch.setattr(marlin_printers_api, "start_print", fake_start_print)
+
+        response = client.post(
+            "/api/marlin-printers/print/start",
+            data={
+                "device": "/dev/ttyUSB2",
+                "path": "ANET_ET4.gcode",
+                "section": "model",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"state": "running", "filename": "ANET_ET4.gcode"}
+        assert captured == {
+            "section": "model",
+            "path": "ANET_ET4.gcode",
+            "device": "/dev/ttyUSB2",
+            "gcode_text": "G28\nG1 X10",
+            "filename": "ANET_ET4.gcode",
+        }
+
+
+class TestSdCardEndpoints:
+    def test_lists_files_directly_from_marlin_sd(self, client, as_admin, monkeypatch):
+        async def fake_list_sd_files(device):
+            assert device == "/dev/ttyUSB2"
+            return [{"name": "DONA.GC", "size": 9207543}]
+
+        monkeypatch.setattr(marlin_printers_api, "list_sd_files", fake_list_sd_files)
+        response = client.get(
+            "/api/marlin-printers/sd/files",
+            params={"device": "/dev/ttyUSB2"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"files": [{"name": "DONA.GC", "size": 9207543}]}
+
+    def test_starts_native_sd_file_without_local_path(self, client, as_admin, monkeypatch):
+        async def fake_start_sd_print(device, filename):
+            assert device == "/dev/ttyUSB2"
+            assert filename == "DONA.GC"
+            return {
+                "filename": filename,
+                "source": "sd",
+                "state": "running",
+                "current": 0,
+                "total": 9207543,
+                "error": None,
+            }
+
+        monkeypatch.setattr(marlin_printers_api, "start_sd_print", fake_start_sd_print)
+        response = client.post(
+            "/api/marlin-printers/sd/print/start",
+            data={"device": "/dev/ttyUSB2", "filename": "DONA.GC"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["source"] == "sd"
+        assert response.json()["filename"] == "DONA.GC"
+
+
 class TestMksWifiEndpoints:
     def test_discovers_modules(self, client, as_admin, monkeypatch):
         module = {

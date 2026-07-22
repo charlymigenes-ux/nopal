@@ -1,4 +1,54 @@
+import sys
+from types import SimpleNamespace
+
 from backend.services import marlin_printer_service
+
+
+class TestProbeMarlinUsb:
+    def test_accepts_m115_only_anet_et4_marlin_21(self, monkeypatch):
+        class FakeSerial:
+            def __init__(self, device, baud, timeout):
+                assert device == "/dev/ttyUSB2"
+                assert baud == 250000
+                self.lines = iter([
+                    b'echo:Unknown command: "\\xf8"\n',
+                    b"ok\n",
+                    b"FIRMWARE_NAME:Marlin 2.1.2.7 SOURCE_CODE_URL:github.com/MarlinFirmware/Marlin "
+                    b"PROTOCOL_VERSION:1.0 MACHINE_TYPE:ANET ET4 PRO EXTRUDER_COUNT:1\n",
+                ])
+                self.written = b""
+
+            def reset_input_buffer(self):
+                pass
+
+            def write(self, payload):
+                self.written += payload
+
+            def readline(self):
+                return next(self.lines, b"")
+
+            def close(self):
+                pass
+
+        fake = FakeSerial("/dev/ttyUSB2", 250000, 0.5)
+        monkeypatch.setitem(sys.modules, "serial", SimpleNamespace(Serial=lambda *args, **kwargs: fake))
+        monkeypatch.setattr(marlin_printer_service.time, "sleep", lambda _seconds: None)
+
+        assert marlin_printer_service._probe_marlin_sync("/dev/ttyUSB2", 250000, timeout=0.1)
+        assert fake.written == b"\r\nM115\r\n"
+        cached = marlin_printer_service._take_cached_probe_firmware_info("/dev/ttyUSB2", 250000)
+        assert cached["MACHINE_TYPE"] == "ANET ET4 PRO"
+
+    async def test_firmware_info_reuses_identity_from_successful_probe(self, monkeypatch):
+        info = {"FIRMWARE_NAME": "Marlin 2.1.2.7", "MACHINE_TYPE": "ANET ET4 PRO"}
+        marlin_printer_service._cache_probe_firmware_info("/dev/ttyUSB2", 250000, info)
+        monkeypatch.setattr(
+            marlin_printer_service,
+            "_probe_marlin_firmware_info_sync",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("no debe reabrir el puerto")),
+        )
+
+        assert await marlin_printer_service.probe_marlin_firmware_info("/dev/ttyUSB2", 250000) == info
 
 
 class TestProbeMarlinAutobaud:
@@ -152,3 +202,59 @@ class TestTemperatureSnapshotDualExtruder:
 
         snapshot = await marlin_printer_service.get_temperature_snapshot("/dev/ttyUSB0")
         assert snapshot["sensors"][0]["label"] == "Extruder"
+
+
+class TestNativeSdCard:
+    def test_parses_real_anet_m20_output_and_filters_non_gcode(self):
+        lines = [
+            "Begin file list",
+            "DONA.GC 9207543",
+            "SAGRADO1.GC 14671667",
+            "ALANCL~1.GC 9137946",
+            "FRENTE.GIF 6155866",
+            "ROSTRO1.GC 30574518",
+            "End file list",
+            "ok",
+        ]
+
+        assert marlin_printer_service.parse_sd_file_list(lines) == [
+            {"name": "DONA.GC", "size": 9207543},
+            {"name": "SAGRADO1.GC", "size": 14671667},
+            {"name": "ALANCL~1.GC", "size": 9137946},
+            {"name": "ROSTRO1.GC", "size": 30574518},
+        ]
+
+    async def test_starts_sd_file_with_m23_then_m24(self, monkeypatch):
+        marlin_printer_service._jobs.clear()
+        marlin_printer_service._sd_jobs.clear()
+        commands = []
+
+        async def fake_list_sd_files(device):
+            return [{"name": "DONA.GC", "size": 9207543}]
+
+        async def fake_collect(device, command, stop_when, timeout=8.0):
+            commands.append(command)
+            return [
+                "echo:Now fresh file: DONA.GC",
+                "File opened: DONA.GC Size: 9207543",
+                "File selected",
+            ]
+
+        async def fake_ready(device, timeout=5.0):
+            return None
+
+        monkeypatch.setattr(marlin_printer_service, "list_sd_files", fake_list_sd_files)
+        monkeypatch.setattr(marlin_printer_service, "_collect_device_command", fake_collect)
+        monkeypatch.setattr(marlin_printer_service, "ensure_listener_ready", fake_ready)
+        monkeypatch.setattr(
+            marlin_printer_service,
+            "_send_raw",
+            lambda device, command: commands.append(command) or True,
+        )
+
+        job = await marlin_printer_service.start_sd_print("/dev/ttyUSB2", "DONA.GC")
+
+        assert commands == ["M23 DONA.GC", "M24"]
+        assert job["source"] == "sd"
+        assert job["state"] == "running"
+        assert job["total"] == 9207543

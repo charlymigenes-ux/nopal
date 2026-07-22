@@ -23,14 +23,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 TEMP_PRESETS_PATH = "temperature_presets.json"
+DEFAULT_MATERIAL_PRESETS = {
+    "active": "pla",
+    "materials": [
+        {"id": "pla", "name": "PLA", "heater_bed": 60, "extruder": 200},
+        {"id": "petg", "name": "PETG", "heater_bed": 75, "extruder": 235},
+        {"id": "abs", "name": "ABS", "heater_bed": 100, "extruder": 245},
+        {"id": "tpu", "name": "TPU", "heater_bed": 50, "extruder": 220},
+    ],
+}
 
 
 def _load_temperature_presets() -> dict:
     try:
         with open(TEMP_PRESETS_PATH, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
+            if isinstance(data, dict) and isinstance(data.get("materials"), list):
+                return data
+            # Compatibilidad con el formato histórico {heater_bed, extruder}.
+            if isinstance(data, dict) and data:
+                legacy = dict(DEFAULT_MATERIAL_PRESETS)
+                legacy["materials"] = [
+                    {"id": "personalizado", "name": "Personalizado", **data},
+                    *[dict(item) for item in DEFAULT_MATERIAL_PRESETS["materials"]],
+                ]
+                legacy["active"] = "personalizado"
+                return legacy
+            return DEFAULT_MATERIAL_PRESETS
     except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+        return DEFAULT_MATERIAL_PRESETS
 
 
 def _save_temperature_presets(presets: dict) -> None:
@@ -181,20 +202,43 @@ async def get_toolhead_endpoint(port: int, user: dict = Depends(require_auth)):
 
 @router.get("/api/system/temperature-presets")
 async def get_temperature_presets_endpoint(user: dict = Depends(require_auth)):
-    """Temperaturas preestablecidas (globales) por heater, usadas por el botón PREESTAB."""
+    """Perfiles de precalentamiento por material para Klipper y Marlin."""
     return _load_temperature_presets()
 
 
 @router.post("/api/system/temperature-presets")
 async def set_temperature_presets_endpoint(presets: str = Form(...), user: dict = Depends(require_role("admin"))):
-    """Guarda las temperaturas preestablecidas por heater (JSON: {heater: target})."""
+    """Guarda perfiles: {active, materials:[{id,name,heater_bed,extruder}]}"""
     try:
         parsed = json.loads(presets)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="JSON inválido")
-    if not isinstance(parsed, dict):
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("materials"), list):
         raise HTTPException(status_code=400, detail="Formato inválido")
-    _save_temperature_presets(parsed)
+    materials = []
+    for index, material in enumerate(parsed["materials"]):
+        if not isinstance(material, dict):
+            raise HTTPException(status_code=400, detail="Material inválido")
+        name = str(material.get("name") or "").strip()[:40]
+        material_id = str(material.get("id") or f"material-{index + 1}").strip()[:40]
+        if not name or not material_id:
+            raise HTTPException(status_code=400, detail="Cada material necesita nombre")
+        normalized = {"id": material_id, "name": name}
+        for heater in ("heater_bed", "extruder"):
+            try:
+                value = float(material.get(heater, 0))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Temperatura inválida")
+            if value < 0 or value > 400:
+                raise HTTPException(status_code=400, detail="Temperatura fuera de rango")
+            normalized[heater] = value
+        materials.append(normalized)
+    if not materials:
+        raise HTTPException(status_code=400, detail="Agrega al menos un material")
+    active = str(parsed.get("active") or materials[0]["id"])
+    if active not in {item["id"] for item in materials}:
+        active = materials[0]["id"]
+    _save_temperature_presets({"active": active, "materials": materials})
     return {"success": True}
 
 

@@ -3013,6 +3013,63 @@ async function setTemperatureTarget(port, heater, target) {
 }
 
 let temperatureCardThemeMode = null; // 'warm' | 'cool' | null
+let temperatureMaterialPresets = null;
+let temperaturePresetEditorData = null;
+let materialPreheatTarget = null;
+
+function normalizeTemperatureMaterialPresets(data) {
+    if (Array.isArray(data?.materials)) return data;
+    return { active: 'personalizado', materials: [{ id: 'personalizado', name: 'Personalizado', heater_bed: data?.heater_bed ?? 60, extruder: data?.extruder ?? 200 }] };
+}
+
+async function loadTemperatureMaterialPresets(force = false) {
+    if (temperatureMaterialPresets && !force) return temperatureMaterialPresets;
+    const response = await fetch('/api/system/temperature-presets');
+    if (!response.ok) throw new Error('No se pudieron cargar los materiales');
+    temperatureMaterialPresets = normalizeTemperatureMaterialPresets(await response.json());
+    return temperatureMaterialPresets;
+}
+
+async function setMarlinHeaterTarget(device, heater, target) {
+    const formData = new FormData();
+    formData.append('device', device);
+    formData.append('heater', heater);
+    formData.append('target', target);
+    const response = await fetch('/api/marlin-printers/temperature-target', { method: 'POST', body: formData });
+    if (!response.ok) throw new Error('No se pudo actualizar la temperatura Marlin');
+}
+
+async function applyMaterialPreheat(material) {
+    if (!materialPreheatTarget) return;
+    const target = materialPreheatTarget;
+    const heaters = target.heaters || ['heater_bed', 'extruder'];
+    await Promise.all(heaters.map(heater => {
+        const value = material[heater === 'heater_bed' ? 'heater_bed' : 'extruder'];
+        return target.type === 'marlin' ? setMarlinHeaterTarget(target.id, heater, value) : setTemperatureTarget(target.id, heater, value);
+    }));
+    document.getElementById('material-preheat-modal')?.classList.remove('active');
+    showToast(`${material.name}: cama ${material.heater_bed}°C · boquilla ${material.extruder}°C`);
+}
+
+async function openMaterialPreheatModal(target) {
+    materialPreheatTarget = target;
+    const modal = document.getElementById('material-preheat-modal');
+    const list = document.getElementById('material-preheat-list');
+    document.getElementById('material-preheat-machine').textContent = `${target.name || 'Impresora'} · selecciona el material cargado`;
+    list.innerHTML = '<div class="machine-led-loading">Cargando materiales…</div>';
+    modal.classList.add('active');
+    try {
+        const presets = await loadTemperatureMaterialPresets();
+        list.innerHTML = presets.materials.map(material => `<button type="button" class="material-preheat-option" data-material-id="${escapeHtml(material.id)}"><strong>${escapeHtml(material.name)}</strong><span><b>${material.extruder}°</b> boquilla</span><span><b>${material.heater_bed}°</b> cama</span></button>`).join('');
+        list.querySelectorAll('[data-material-id]').forEach(button => button.addEventListener('click', async () => {
+            const material = presets.materials.find(item => item.id === button.dataset.materialId);
+            button.disabled = true;
+            try { await applyMaterialPreheat(material); } catch (error) { showToast(error.message, 'error'); button.disabled = false; }
+        }));
+    } catch (error) {
+        list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    }
+}
 
 function renderTemperaturesCard(data, port) {
     const container = document.getElementById('printer-modal-temperatures');
@@ -3118,20 +3175,9 @@ function renderTemperaturesCard(data, port) {
 
     const presetBtn = document.getElementById('temp-preset-btn');
     if (presetBtn) {
-        presetBtn.addEventListener('click', async () => {
+        presetBtn.addEventListener('click', () => {
             temperatureCardThemeMode = 'warm';
-            try {
-                const response = await fetch('/api/system/temperature-presets');
-                const presets = await response.json();
-                heaterSensors.forEach(sensor => {
-                    if (presets[sensor.key] != null) {
-                        setTemperatureTarget(port, sensor.key, presets[sensor.key]);
-                    }
-                });
-                setTimeout(() => loadPrinterTemperatures(port), 400);
-            } catch (error) {
-                console.error(error);
-            }
+            openMaterialPreheatModal({ type: 'klipper', id: port, name: 'Impresora Klipper', heaters: heaterSensors.map(sensor => sensor.key) });
         });
     }
 
@@ -3146,23 +3192,33 @@ async function openTempPresetsModal(heaterSensors) {
     const fieldsEl = document.getElementById('temp-presets-fields');
     if (!modal || !fieldsEl) return;
 
-    let presets = {};
-    try {
-        const response = await fetch('/api/system/temperature-presets');
-        presets = await response.json();
-    } catch (error) {
-        console.error(error);
+    let presets = modal.classList.contains('active') ? temperaturePresetEditorData : null;
+    if (!presets) {
+        try {
+            presets = await loadTemperatureMaterialPresets(true);
+        } catch (error) {
+            console.error(error);
+        }
     }
 
-    fieldsEl.innerHTML = heaterSensors.map(sensor => `
-        <div class="temp-presets-field">
-            <label for="temp-preset-input-${escapeHtml(sensor.key)}">${escapeHtml(sensor.label)}</label>
-            <div class="temp-target-input-wrap">
-                <input type="number" id="temp-preset-input-${escapeHtml(sensor.key)}" data-heater="${escapeHtml(sensor.key)}" value="${presets[sensor.key] ?? ''}" step="1" min="0">
-                <span class="temp-target-unit">°C</span>
-            </div>
-        </div>
-    `).join('');
+    temperaturePresetEditorData = presets || { active: 'pla', materials: [] };
+    fieldsEl.innerHTML = `<div class="material-preset-editor-list">${temperaturePresetEditorData.materials.map((material, index) => `
+        <div class="material-preset-editor-row" data-material-row="${index}">
+            <input type="text" data-material-field="name" value="${escapeHtml(material.name)}" aria-label="Nombre del material">
+            <label><span>Boquilla</span><input type="number" data-material-field="extruder" value="${material.extruder}" min="0" max="400"><small>°C</small></label>
+            <label><span>Cama</span><input type="number" data-material-field="heater_bed" value="${material.heater_bed}" min="0" max="200"><small>°C</small></label>
+            <button type="button" class="material-preset-remove" data-material-remove="${index}" aria-label="Eliminar material">×</button>
+        </div>`).join('')}</div><button type="button" class="btn-file-action material-preset-add" id="material-preset-add">+ Agregar material</button>`;
+    fieldsEl.querySelectorAll('[data-material-remove]').forEach(button => button.addEventListener('click', () => {
+        temperaturePresetEditorData.materials.splice(Number(button.dataset.materialRemove), 1);
+        temperatureMaterialPresets = temperaturePresetEditorData;
+        openTempPresetsModal(heaterSensors);
+    }));
+    document.getElementById('material-preset-add')?.addEventListener('click', () => {
+        temperaturePresetEditorData.materials.push({ id: `material-${Date.now()}`, name: 'Nuevo material', heater_bed: 60, extruder: 200 });
+        temperatureMaterialPresets = temperaturePresetEditorData;
+        openTempPresetsModal(heaterSensors);
+    });
 
     modal.classList.add('active');
 }
@@ -3185,21 +3241,35 @@ if (tempPresetsSaveBtn) {
     tempPresetsSaveBtn.addEventListener('click', async () => {
         const fieldsEl = document.getElementById('temp-presets-fields');
         if (!fieldsEl) return;
-        const presets = {};
-        fieldsEl.querySelectorAll('input[data-heater]').forEach(input => {
-            const value = parseFloat(input.value);
-            if (!Number.isNaN(value)) presets[input.dataset.heater] = value;
+        const materials = [];
+        fieldsEl.querySelectorAll('[data-material-row]').forEach((row, index) => {
+            const previous = temperaturePresetEditorData.materials[index] || {};
+            materials.push({
+                id: previous.id || `material-${index + 1}`,
+                name: row.querySelector('[data-material-field="name"]').value.trim(),
+                extruder: Number(row.querySelector('[data-material-field="extruder"]').value),
+                heater_bed: Number(row.querySelector('[data-material-field="heater_bed"]').value),
+            });
         });
+        const presets = { active: temperaturePresetEditorData.active || materials[0]?.id, materials };
         try {
             const formData = new FormData();
             formData.append('presets', JSON.stringify(presets));
-            await fetch('/api/system/temperature-presets', { method: 'POST', body: formData });
+            const response = await fetch('/api/system/temperature-presets', { method: 'POST', body: formData });
+            if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || 'No se pudieron guardar los materiales');
+            temperatureMaterialPresets = presets;
             closeTempPresetsModal();
         } catch (error) {
-            console.error(error);
+            showToast(error.message, 'error');
         }
     });
 }
+
+['material-preheat-modal-close', 'material-preheat-modal-backdrop'].forEach(id => document.getElementById(id)?.addEventListener('click', () => document.getElementById('material-preheat-modal')?.classList.remove('active')));
+document.getElementById('material-preheat-configure')?.addEventListener('click', () => {
+    document.getElementById('material-preheat-modal')?.classList.remove('active');
+    openTempPresetsModal([]);
+});
 
 async function loadPrinterTemperatures(port) {
     const container = document.getElementById('printer-modal-temperatures');
@@ -5154,6 +5224,11 @@ let dashboardPrintersLoaded = false;
 let dashboardLaserDevicesLoaded = false;
 let dashboardPrintersLoadError = false;
 let dashboardLaserDevicesLoadError = false;
+let dashboardStandalonePrintersLoaded = false;
+let dashboardStandalonePrintersLoading = false;
+let dashboardStandalonePrinterEntries = [];
+const marlinDashboardStatusCache = new Map();
+let marlinDashboardStatusRefreshInFlight = false;
 
 function deviceColumnLoadingMarkup(labelKey) {
     const accentClass = labelKey === 'laser' ? 'device-loading-orbit-laser'
@@ -5191,6 +5266,127 @@ async function loadPrinters() {
         dashboardPrintersLoaded = true;
         dashboardPrintersLoadError = true;
         renderPrinters(allPrinters);
+    }
+}
+
+function standalonePrinterSortPriority(visualState) {
+    if (visualState === 'offline') return 4;
+    return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
+}
+
+async function refreshDashboardMarlinStatuses(printers) {
+    if (marlinDashboardStatusRefreshInFlight || !printers.length) return;
+    marlinDashboardStatusRefreshInFlight = true;
+    try {
+        const results = await Promise.all(printers.map(async printer => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5500);
+            try {
+                const response = await fetch(`/api/marlin-printers/status?device=${encodeURIComponent(printer.device)}`, { signal: controller.signal });
+                if (!response.ok) return null;
+                return { device: printer.device, status: await response.json() };
+            } catch {
+                return null;
+            } finally {
+                clearTimeout(timer);
+            }
+        }));
+        let changed = false;
+        results.filter(Boolean).forEach(({ device, status }) => {
+            marlinDashboardStatusCache.set(String(device), status);
+            changed = true;
+        });
+        if (changed) setTimeout(() => loadDashboardStandalonePrinters({ skipMarlinStatusRefresh: true }), 0);
+    } finally {
+        marlinDashboardStatusRefreshInFlight = false;
+    }
+}
+
+async function loadDashboardStandalonePrinters({ skipMarlinStatusRefresh = false } = {}) {
+    if (dashboardStandalonePrintersLoading) return;
+    dashboardStandalonePrintersLoading = true;
+    try {
+        const requests = [
+            fetch('/api/marlin-printers/registry/status').then(res => res.ok ? res.json() : Promise.reject(new Error('Marlin'))),
+            fetch('/api/marlin-printers/jobs/active').then(res => res.ok ? res.json() : Promise.reject(new Error('Marlin jobs'))),
+            fetch('/api/elegoo/printers').then(res => res.ok ? res.json() : Promise.reject(new Error('Elegoo'))),
+            fetch('/api/flashforge/printers').then(res => res.ok ? res.json() : Promise.reject(new Error('FlashForge'))),
+            fetch('/api/bambu/printers').then(res => res.ok ? res.json() : Promise.reject(new Error('Bambu'))),
+        ];
+        const [marlinResult, marlinJobsResult, elegooResult, flashforgeResult, bambuResult] = await Promise.allSettled(requests);
+        const entries = [];
+
+        if (marlinResult.status === 'fulfilled') {
+            const printers = marlinResult.value.printers || [];
+            const jobs = marlinJobsResult.status === 'fulfilled' ? (marlinJobsResult.value.jobs || []) : [];
+            const jobsByDevice = new Map(jobs.map(job => [String(job.device), job]));
+            marlinPrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const job = jobsByDevice.get(String(printer.device));
+                const state = job?.state === 'running' ? 'printing' : (job?.state || 'idle');
+                const cachedStatus = marlinDashboardStatusCache.get(String(printer.device)) || {};
+                const status = { ...cachedStatus, connected: Boolean(printer.online), state };
+                const visualState = getMarlinPrinterVisualState(status);
+                entries.push({
+                    type: 'marlin', id: printer.device,
+                    isOnline: Boolean(printer.online),
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: marlinPrinterCardHtml(printer, status),
+                });
+            });
+            if (!skipMarlinStatusRefresh) void refreshDashboardMarlinStatuses(printers);
+        }
+
+        if (elegooResult.status === 'fulfilled') {
+            const printers = elegooResult.value.printers || [];
+            elegooPrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const visualState = getElegooVisualState(printer);
+                entries.push({
+                    type: 'elegoo', id: printer.id,
+                    isOnline: visualState !== 'offline',
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: elegooPrinterCardHtml(printer),
+                });
+            });
+        }
+
+        if (flashforgeResult.status === 'fulfilled') {
+            const printers = flashforgeResult.value.printers || [];
+            flashforgePrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const visualState = getFlashforgeVisualState(printer);
+                entries.push({
+                    type: 'flashforge', id: printer.id,
+                    isOnline: visualState !== 'offline',
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: flashforgePrinterCardHtml(printer),
+                });
+            });
+        }
+
+        if (bambuResult.status === 'fulfilled') {
+            const printers = bambuResult.value.printers || [];
+            bambuPrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const visualState = getBambuVisualState(printer);
+                entries.push({
+                    type: 'bambu', id: printer.id,
+                    isOnline: visualState !== 'offline',
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: bambuPrinterCardHtml(printer),
+                });
+            });
+        }
+
+        dashboardStandalonePrinterEntries = entries;
+        dashboardStandalonePrintersLoaded = true;
+        renderPrinters(allPrinters);
+        updateActivePrintersCount();
+    } catch (error) {
+        console.error(error);
+    } finally {
+        dashboardStandalonePrintersLoading = false;
     }
 }
 
@@ -5299,8 +5495,10 @@ function laserDashboardCardHtml(entry) {
                     <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
                     ${hostLabel ? `<p class="printer-name-sub">${typeLabel}</p>` : ''}
                 </div>
-                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                <div class="printer-quick-actions">
+                    <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                    </div>
                 </div>
             </div>
 
@@ -5326,6 +5524,24 @@ function laserDashboardCardHtml(entry) {
             ` : ''}
         </div>
     `;
+}
+
+function bindMarlinTemperatureActions(root) {
+    root.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
+        card.querySelectorAll('[data-marlin-temp-action]').forEach(button => button.addEventListener('click', async event => {
+            event.stopPropagation();
+            const device = card.dataset.marlinDevice;
+            const printer = marlinPrintersRegistryCache.find(item => item.device === device) || {};
+            const heaters = ['heater_bed', printer.extruder_count === 2 ? 'extruder0' : 'extruder'];
+            if (printer.extruder_count === 2) heaters.push('extruder1');
+            if (button.dataset.marlinTempAction === 'preheat') {
+                openMaterialPreheatModal({ type: 'marlin', id: device, name: printer.name || card.querySelector('.printer-name')?.textContent || 'Marlin', heaters });
+            } else {
+                try { await Promise.all(heaters.map(heater => setMarlinHeaterTarget(device, heater, 0))); showToast('Calentadores Marlin apagados'); }
+                catch (error) { showToast(error.message, 'error'); }
+            }
+        }));
+    });
 }
 
 let dashboardLaserEntries = [];
@@ -5708,6 +5924,235 @@ function checkLaserConnectionTransitions(laserEntries) {
     });
 }
 
+// Alertas LED por máquina. El panel solo publica cambios de estado; toda la
+// selección de hardware y ejecución vive dentro de Automatización de Taller.
+const machineLedPlugin = { checked: false, installed: false, available: false };
+const machineLedLastState = new Map();
+let machineLedCurrentMachine = null;
+
+function machineLedCardIdentity(card) {
+    const name = card.querySelector('.printer-name')?.textContent?.trim() || 'Máquina';
+    if (card.dataset.port) return { type: 'klipper', id: card.dataset.port, name };
+    if (card.dataset.marlinDevice) return { type: 'marlin', id: card.dataset.marlinDevice, name };
+    if (card.dataset.elegooId) return { type: 'elegoo', id: card.dataset.elegooId, name };
+    if (card.dataset.flashforgeId) return { type: 'flashforge', id: card.dataset.flashforgeId, name };
+    if (card.dataset.bambuId) return { type: 'bambu', id: card.dataset.bambuId, name };
+    if (card.dataset.laserHost) return {
+        type: card.classList.contains('printer-card-type-cnc') ? 'cnc' : 'laser',
+        id: card.dataset.laserHost,
+        name,
+    };
+    return null;
+}
+
+function machineLedCardState(card) {
+    return ['heating', 'printing', 'paused', 'completed', 'error', 'offline', 'idle']
+        .find(state => card.classList.contains(state)) || (card.classList.contains('offline') ? 'offline' : 'idle');
+}
+
+async function ensureMachineLedPluginStatus() {
+    if (machineLedPlugin.checked) return machineLedPlugin;
+    machineLedPlugin.checked = true;
+    try {
+        const response = await fetch('/api/plugins');
+        const plugins = response.ok ? ((await response.json()).plugins || []) : [];
+        const plugin = plugins.find(item => item.id === 'arduino-accessories');
+        machineLedPlugin.installed = Boolean(plugin?.installed && plugin?.enabled);
+        machineLedPlugin.available = machineLedPlugin.installed;
+    } catch (error) {
+        machineLedPlugin.installed = false;
+    }
+    return machineLedPlugin;
+}
+
+async function publishMachineLedState(machine, state) {
+    const key = `${machine.type}:${machine.id}`;
+    if (machineLedLastState.get(key) === state) return;
+    const plugin = await ensureMachineLedPluginStatus();
+    if (!plugin.installed || !plugin.available) return;
+    const form = new FormData();
+    form.append('machine_type', machine.type);
+    form.append('machine_id', machine.id);
+    form.append('state', state);
+    try {
+        const response = await fetch('/api/accessories/machine-led/state', { method: 'POST', body: form });
+        if (response.status === 404) {
+            machineLedPlugin.available = false;
+            return;
+        }
+        if (response.ok) machineLedLastState.set(key, state);
+    } catch (error) {
+        console.debug('Alertas LED no disponibles:', error);
+    }
+}
+
+function decorateMachineCardsWithLedSettings(root) {
+    root.querySelectorAll('.printer-card').forEach(card => {
+        const machine = machineLedCardIdentity(card);
+        if (!machine) return;
+        const header = card.querySelector('.printer-card-top');
+        if (header && !header.querySelector('.machine-led-settings-btn')) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'machine-led-settings-btn';
+            button.title = 'Alertas visuales LED';
+            button.setAttribute('aria-label', `Configurar alertas LED de ${machine.name}`);
+            button.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.34.7.64.96.3.25.68.4 1.08.4H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>';
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                openMachineLedModal(machine);
+            });
+            const actions = header.querySelector('.printer-quick-actions') || header;
+            actions.prepend(button);
+        }
+        publishMachineLedState(machine, machineLedCardState(card));
+    });
+}
+
+function machineLedUnavailableMarkup(installed) {
+    return `<div class="machine-led-empty">
+        <div class="machine-led-empty-icon">${installed ? '!' : '✦'}</div>
+        <h3>${installed ? 'El plugin necesita actualizarse' : 'Activa las alertas visuales'}</h3>
+        <p>${installed
+            ? 'Automatización de Taller está instalado, pero esta versión todavía no expone la configuración de escenas por máquina.'
+            : 'Esta opción aparece al instalar el plugin Automatización de Taller. El control de tus máquinas sigue funcionando sin él.'}</p>
+        <button type="button" class="machine-led-primary" data-machine-led-open-plugins>${installed ? 'Ver actualización' : 'Instalar plugin'}</button>
+    </div>`;
+}
+
+function machineLedRgbToHex(rgb) {
+    return `#${(rgb || [0, 0, 0]).map(value => Number(value).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function machineLedHexToRgb(hex) {
+    return [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16));
+}
+
+function renderMachineLedEditor(payload) {
+    const content = document.getElementById('machine-led-content');
+    const targets = payload.targets || [];
+    if (!targets.length) {
+        content.innerHTML = `<div class="machine-led-empty"><div class="machine-led-empty-icon">⌁</div>
+            <h3>Falta registrar una tira LED</h3>
+            <p>El plugin está instalado, pero todavía no hay una tira PWM o WS2812 registrada como accesorio. Agrégala en Automatización de Taller y vuelve aquí.</p>
+            <button type="button" class="machine-led-primary" data-machine-led-open-accessories>Abrir Automatización de Taller</button></div>`;
+        return;
+    }
+    const saved = payload.config || {};
+    const selectedId = saved.accessory_id || targets[0].id;
+    const selected = targets.find(item => item.id === selectedId) || targets[0];
+    const colors = { ...(payload.default_colors || {}), ...(saved.colors || {}) };
+    const stateLabels = { idle: 'En espera', heating: 'Calentando', printing: 'Trabajando', paused: 'Pausada', completed: 'Finalizada', error: 'Error', offline: 'Desconectada' };
+    const total = selected.led_count || 1;
+    const start = saved.start ?? 0;
+    const count = saved.count ?? total;
+    content.innerHTML = `<form id="machine-led-form">
+        <label class="machine-led-enable"><span><strong>Usar alertas visuales</strong><small>Esta máquina enviará sus cambios de estado al accesorio LED.</small></span>
+            <input type="checkbox" id="machine-led-enabled" ${saved.enabled ? 'checked' : ''}></label>
+        <label class="machine-led-field"><span>Tira LED</span><select id="machine-led-target">${targets.map(target => `<option value="${escapeHtml(target.id)}" ${target.id === selected.id ? 'selected' : ''}>${escapeHtml(target.name)} · ${target.led_count || '?'} LEDs</option>`).join('')}</select></label>
+        <div class="machine-led-segment-title"><strong>Zona asignada</strong><span id="machine-led-segment-summary">LED ${start + 1}–${start + count} de ${total}</span></div>
+        <div class="machine-led-pixels" id="machine-led-pixels"></div>
+        <div class="machine-led-segment-fields">
+            <label class="machine-led-field"><span>Empieza en</span><input id="machine-led-start" type="number" min="1" max="${total}" value="${start + 1}"></label>
+            <label class="machine-led-field"><span>Cantidad</span><input id="machine-led-count" type="number" min="1" max="${total}" value="${count}"></label>
+        </div>
+        <p class="machine-led-protocol-note" id="machine-led-protocol-note" ${selected.segment_capable ? 'hidden' : ''}>Esta placa usa protocolo ${selected.protocol || 3}: puede usar la tira completa. Los repartos 4+4, 3+5 o similares se habilitan al actualizarla a protocolo 4.</p>
+        <div class="machine-led-colors"><strong>Color para cada estado</strong>${(payload.states || []).map(state => `<label><span>${stateLabels[state] || state}</span><input type="color" data-machine-led-color="${state}" value="${machineLedRgbToHex(colors[state])}"></label>`).join('')}</div>
+        <div class="machine-led-actions"><button type="button" class="machine-led-secondary" data-machine-led-cancel>Cancelar</button><button type="submit" class="machine-led-primary">Guardar escena</button></div>
+    </form>`;
+
+    const targetSelect = document.getElementById('machine-led-target');
+    const startInput = document.getElementById('machine-led-start');
+    const countInput = document.getElementById('machine-led-count');
+    const drawPixels = () => {
+        const target = targets.find(item => item.id === targetSelect.value) || targets[0];
+        const targetTotal = target.led_count || 1;
+        if (!target.segment_capable) { startInput.value = 1; countInput.value = targetTotal; }
+        startInput.disabled = !target.segment_capable;
+        countInput.disabled = !target.segment_capable;
+        startInput.max = targetTotal;
+        countInput.max = targetTotal;
+        let zoneStart = Math.max(0, Number(startInput.value) - 1);
+        let zoneCount = Math.max(1, Number(countInput.value));
+        if (zoneStart + zoneCount > targetTotal) zoneCount = targetTotal - zoneStart;
+        document.getElementById('machine-led-pixels').innerHTML = Array.from({ length: targetTotal }, (_, index) => `<i class="${index >= zoneStart && index < zoneStart + zoneCount ? 'selected' : ''}" title="LED ${index + 1}"></i>`).join('');
+        document.getElementById('machine-led-segment-summary').textContent = `LED ${zoneStart + 1}–${zoneStart + zoneCount} de ${targetTotal}`;
+        const note = document.getElementById('machine-led-protocol-note');
+        note.hidden = target.segment_capable;
+        if (!target.segment_capable) note.textContent = `Esta placa usa protocolo ${target.protocol || 3}: puede usar la tira completa. Los repartos se habilitan al actualizarla a protocolo 4.`;
+    };
+    [targetSelect, startInput, countInput].forEach(input => input.addEventListener('input', drawPixels));
+    drawPixels();
+    document.getElementById('machine-led-form').addEventListener('submit', saveMachineLedConfig);
+}
+
+async function openMachineLedModal(machine) {
+    machineLedCurrentMachine = machine;
+    const modal = document.getElementById('machine-led-modal');
+    document.getElementById('machine-led-machine-name').textContent = `${machine.name} · escena independiente`;
+    const content = document.getElementById('machine-led-content');
+    content.innerHTML = '<div class="machine-led-loading">Leyendo configuración…</div>';
+    modal.hidden = false;
+    const plugin = await ensureMachineLedPluginStatus();
+    if (!plugin.installed) {
+        content.innerHTML = machineLedUnavailableMarkup(false);
+        return;
+    }
+    try {
+        const query = new URLSearchParams({ machine_type: machine.type, machine_id: machine.id });
+        const response = await fetch(`/api/accessories/machine-led/config?${query}`);
+        if (!response.ok) {
+            machineLedPlugin.available = false;
+            content.innerHTML = machineLedUnavailableMarkup(true);
+            return;
+        }
+        machineLedPlugin.available = true;
+        renderMachineLedEditor(await response.json());
+    } catch (error) {
+        content.innerHTML = machineLedUnavailableMarkup(true);
+    }
+}
+
+async function saveMachineLedConfig(event) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const button = formElement.querySelector('[type="submit"]');
+    button.disabled = true;
+    const form = new FormData();
+    form.append('machine_type', machineLedCurrentMachine.type);
+    form.append('machine_id', machineLedCurrentMachine.id);
+    form.append('machine_name', machineLedCurrentMachine.name);
+    form.append('enabled', document.getElementById('machine-led-enabled').checked);
+    form.append('accessory_id', document.getElementById('machine-led-target').value);
+    form.append('start', Math.max(0, Number(document.getElementById('machine-led-start').value) - 1));
+    form.append('count', Number(document.getElementById('machine-led-count').value));
+    const colors = {};
+    formElement.querySelectorAll('[data-machine-led-color]').forEach(input => { colors[input.dataset.machineLedColor] = machineLedHexToRgb(input.value); });
+    form.append('colors', JSON.stringify(colors));
+    try {
+        const response = await fetch('/api/accessories/machine-led/config', { method: 'POST', body: form });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || 'No se pudo guardar la escena');
+        machineLedLastState.delete(`${machineLedCurrentMachine.type}:${machineLedCurrentMachine.id}`);
+        document.getElementById('machine-led-modal').hidden = true;
+        showToast('Escena LED guardada');
+    } catch (error) {
+        showToast(error.message, 'error');
+        button.disabled = false;
+    }
+}
+
+document.getElementById('machine-led-close')?.addEventListener('click', () => { document.getElementById('machine-led-modal').hidden = true; });
+document.getElementById('machine-led-modal')?.addEventListener('click', event => {
+    if (event.target.id === 'machine-led-modal' || event.target.closest('[data-machine-led-cancel]')) event.currentTarget.hidden = true;
+    if (event.target.closest('[data-machine-led-open-plugins]')) { event.currentTarget.hidden = true; switchSection('plugins'); }
+    if (event.target.closest('[data-machine-led-open-accessories]')) {
+        event.currentTarget.hidden = true;
+        const nav = document.querySelector('[data-plugin-id="arduino-accessories"], [data-section="arduino-accessories"]');
+        if (nav?.dataset.section) switchSection(nav.dataset.section); else switchSection('plugins');
+    }
+});
+
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
@@ -5840,6 +6285,7 @@ function renderPrinters(printersInput) {
 
         return { isOnline, sortPriority: getPrinterSortPriority(printer), html };
     });
+    printerEntries.push(...dashboardStandalonePrinterEntries);
 
     const laserOnlyEntries = dashboardLaserEntries.filter(entry => (entry.kind || 'laser') !== 'cnc').map(entry => {
         const isOnline = getLaserVisualState(entry.status) !== 'offline';
@@ -5897,11 +6343,39 @@ function renderPrinters(printersInput) {
 
     const columnsRoot = groupMode === 'mixed' ? (machinesMixedGrid || printersGrid) : (machinesColumns || printersGrid);
 
+    decorateMachineCardsWithLedSettings(columnsRoot);
+    bindMarlinTemperatureActions(columnsRoot);
+
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         card.addEventListener('click', () => {
             const port = Number(card.dataset.port);
             const printer = allPrinters.find(p => p.port === port);
             if (printer) openPrinterModal(printer);
+        });
+    });
+
+    columnsRoot.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
+        card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
+    });
+
+    const standaloneSections = [
+        ['elegoo', 'elegooId'],
+        ['flashforge', 'flashforgeId'],
+        ['bambu', 'bambuId'],
+    ];
+    standaloneSections.forEach(([section, dataKey]) => {
+        columnsRoot.querySelectorAll(`.printer-card[data-${section}-id]`).forEach(card => {
+            card.addEventListener('click', () => switchSection(section));
+            card.querySelectorAll('.elegoo-card-action-btn').forEach(btn => {
+                btn.addEventListener('click', event => {
+                    event.stopPropagation();
+                    const action = btn.dataset.action;
+                    const printerId = btn.dataset[dataKey];
+                    if (section === 'elegoo') handleElegooPrinterAction(action, printerId);
+                    if (section === 'flashforge') handleFlashforgePrinterAction(action, printerId);
+                    if (section === 'bambu') handleBambuPrinterAction(action, printerId);
+                });
+            });
         });
     });
 
@@ -5933,12 +6407,8 @@ function renderPrinters(printersInput) {
                     ]);
                 } else if (action === 'preheat') {
                     dashboardPrinterThemeMode.set(port, 'warm');
-                    const response = await fetch('/api/system/temperature-presets');
-                    const presets = await response.json();
-                    const tasks = [];
-                    if (presets.heater_bed != null) tasks.push(setTemperatureTarget(port, 'heater_bed', presets.heater_bed));
-                    if (presets.extruder != null) tasks.push(setTemperatureTarget(port, 'extruder', presets.extruder));
-                    await Promise.all(tasks);
+                    const printer = allPrinters.find(item => String(item.port) === String(port)) || {};
+                    openMaterialPreheatModal({ type: 'klipper', id: port, name: printer.name || `Klipper ${port}` });
                 }
                 loadPrinters();
             } catch (error) {
@@ -5954,7 +6424,8 @@ function updateActivePrintersCount() {
             const stateValue = getPrinterEffectiveStateValue(printer);
             return printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
         }).length;
-        activePrintersEl.textContent = onlineCount.toLocaleString();
+        const standaloneOnlineCount = dashboardStandalonePrinterEntries.filter(entry => entry.isOnline).length;
+        activePrintersEl.textContent = (onlineCount + standaloneOnlineCount).toLocaleString();
     }
 }
 
@@ -6357,14 +6828,14 @@ if (gcodeSendLaserBtn) {
 }
 
 // ── Enviar G-code a impresora 3D (imprimir ahora, cola nativa de Moonraker o programada) ──
-// El picker mezcla 3 fuentes (Klipper, Elegoo, FlashForge) en una sola lista.
+// El picker mezcla Klipper, Marlin, Elegoo, FlashForge y Bambu en una sola lista.
 // Cada entrada se identifica con { type, id }: para Klipper `id` es el puerto
 // (número), para Elegoo/FlashForge es el `id` del registro (mainboard_id /
 // serial_number, string). Elegoo y FlashForge no tienen cola nativa ni usan
 // el scheduler propio de NOPAL (que además guarda todo por `port`), así que
 // para esas dos el modo queda forzado siempre a "now".
 let printerSendTarget = null;
-let printerSendSelected = null; // { type: 'klipper'|'elegoo'|'flashforge', id }
+let printerSendSelected = null; // { type: 'klipper'|'marlin'|'elegoo'|'flashforge'|'bambu', id }
 let printerSendMode = 'now';
 let printerSendEntries = []; // lista fresca combinada, se recarga cada vez que se abre el modal
 
@@ -6374,19 +6845,34 @@ function getPrinterSendSelectedEntry() {
 }
 
 // Refresca Klipper (a través de loadPrinters(), que además actualiza el
-// dashboard) y hace fetch fresco de Elegoo/FlashForge/Bambu en paralelo — a
+// dashboard) y hace fetch fresco de Marlin/Elegoo/FlashForge/Bambu en paralelo — a
 // propósito NO se reusan elegooPrintersRegistryCache/flashforgePrintersRegistryCache/
 // bambuPrintersRegistryCache, porque esos solo se llenan si el usuario ya
 // visitó esas secciones antes.
 async function loadPrinterSendEntries() {
-    const [, elegooData, flashforgeData, bambuData] = await Promise.all([
+    const [, marlinData, marlinJobsData, elegooData, flashforgeData, bambuData] = await Promise.all([
         loadPrinters(),
+        fetch('/api/marlin-printers/registry/status').then(res => res.json()).catch(() => ({ printers: [] })),
+        fetch('/api/marlin-printers/jobs/active').then(res => res.json()).catch(() => ({ jobs: [] })),
         fetch('/api/elegoo/printers').then(res => res.json()).catch(() => ({ printers: [] })),
         fetch('/api/flashforge/printers').then(res => res.json()).catch(() => ({ printers: [] })),
         fetch('/api/bambu/printers').then(res => res.json()).catch(() => ({ printers: [] })),
     ]);
 
     const entries = allPrinters.map(printer => ({ type: 'klipper', id: printer.port, printer }));
+    const marlinJobs = new Map((marlinJobsData.jobs || []).map(job => [String(job.device), job]));
+    (marlinData.printers || []).forEach(printer => {
+        const activeJob = marlinJobs.get(String(printer.device));
+        entries.push({
+            type: 'marlin',
+            id: printer.device,
+            printer: {
+                ...printer,
+                status: printer.online ? 'online' : 'offline',
+                state: activeJob?.state || 'idle',
+            },
+        });
+    });
     (elegooData.printers || []).forEach(printer => entries.push({ type: 'elegoo', id: printer.id, printer }));
     (flashforgeData.printers || []).forEach(printer => entries.push({ type: 'flashforge', id: printer.id, printer }));
     (bambuData.printers || []).forEach(printer => entries.push({ type: 'bambu', id: printer.id, printer }));
@@ -6473,7 +6959,7 @@ function updatePrinterSendBusyWarning() {
     if (primaryBtn) primaryBtn.disabled = isBusy && printerSendMode === 'now';
 }
 
-// Elegoo/FlashForge no soportan "Agregar a la cola" ni "Programar impresión"
+// Marlin/Elegoo/FlashForge/Bambu no soportan "Agregar a la cola" ni "Programar impresión"
 // (ver comentario arriba) — se deshabilitan sus tarjetas de modo y el botón
 // rápido de cola del footer, y si el usuario tenía ese modo elegido se
 // vuelve a "now" automáticamente al cambiar de impresora.
@@ -6597,6 +7083,9 @@ async function submitPrinterSend(mode) {
         if (selectedEntry.type === 'klipper') {
             formData.append('mode', mode);
             url = `/api/printers/${selectedEntry.id}/send`;
+        } else if (selectedEntry.type === 'marlin') {
+            formData.append('device', selectedEntry.id);
+            url = '/api/marlin-printers/print/start';
         } else if (selectedEntry.type === 'elegoo') {
             url = `/api/elegoo/printers/${encodeURIComponent(selectedEntry.id)}/send`;
         } else if (selectedEntry.type === 'bambu') {
@@ -6616,6 +7105,7 @@ async function submitPrinterSend(mode) {
         if (selectedEntry.type === 'elegoo') refreshElegooPrintersGrid();
         if (selectedEntry.type === 'flashforge') refreshFlashforgePrintersGrid();
         if (selectedEntry.type === 'bambu') refreshBambuPrintersGrid();
+        if (selectedEntry.type === 'marlin') refreshMarlinPrintersGrid();
     } catch (error) {
         console.error(error);
         appAlert(error.message || 'No se pudo enviar el archivo.', '', 'danger');
@@ -7519,7 +8009,6 @@ document.getElementById('accessory-cancel-btn')?.addEventListener('click', close
 
 document.getElementById('accessory-save-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('accessory-name-input').value.trim();
-    if (!name) return;
     const kind = document.getElementById('accessory-kind-select').value;
     const driver = accessoryDriverSwitch.getValue() || 'http_relay';
 
@@ -11748,13 +12237,32 @@ async function populateMarlinRegisterProfiles(preferredProfile = '') {
     updateMarlinRegisterProfileFields();
 }
 
+async function probeMarlinUsbRegistration(device, baud = '') {
+    const formData = new FormData();
+    formData.append('device', device);
+    if (baud) formData.append('baud', baud);
+    const response = await fetch('/api/marlin-printers/usb-ports/test', { method: 'POST', body: formData });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || t('usbTestFailed'));
+    }
+    return response.json();
+}
+
+function marlinMachineName(testData) {
+    return String(testData?.firmware_info?.MACHINE_TYPE || '').trim();
+}
+
 async function openMarlinRegisterModal(device, chip, transport = 'usb_serial', options = {}) {
     marlinRegisterTarget = { device: device || '', transport };
     const label = document.getElementById('marlin-printer-register-device-label');
     if (label) label.textContent = [chip, device].filter(Boolean).join(' · ') || t('marlinMksWifiManualAdd');
     const nameInput = document.getElementById('marlin-printer-register-name');
-    if (nameInput) nameInput.value = transport === 'mks_wifi' ? 'Hellbot Magna 2 300' :
-        (chip && chip !== 'CH340' && chip !== 'CH340K' ? chip : 'Impresora Marlin');
+    if (nameInput) {
+        nameInput.value = transport === 'mks_wifi' ? 'Hellbot Magna 2 300' :
+            (chip && chip !== 'CH340' && chip !== 'CH340K' ? chip : 'Impresora Marlin');
+        nameInput.dataset.autoName = 'true';
+    }
     const transportSelect = document.getElementById('marlin-printer-register-transport');
     if (transportSelect) transportSelect.value = transport;
     const hostInput = document.getElementById('marlin-printer-register-host');
@@ -11767,6 +12275,21 @@ async function openMarlinRegisterModal(device, chip, transport = 'usb_serial', o
     await populateMarlinRegisterProfiles(transport === 'mks_wifi' ? 'hellbot_magna2_300' : '');
     document.getElementById('marlin-printer-register-modal')?.classList.add('active');
     if (nameInput) { nameInput.focus(); nameInput.select(); }
+    // El puerto ya está conectado: identifícalo en segundo plano y usa el
+    // MACHINE_TYPE real de M115 como nombre. Si el usuario empieza a escribir
+    // un apodo mientras llega la respuesta, no se pisa su texto.
+    if (transport === 'usb_serial' && device && marlinRegisterTarget) {
+        const target = marlinRegisterTarget;
+        target.probePromise = probeMarlinUsbRegistration(device).then(testData => {
+            if (marlinRegisterTarget !== target) return testData;
+            target.detected = testData;
+            const machineName = marlinMachineName(testData);
+            if (machineName && nameInput?.dataset.autoName === 'true') nameInput.value = machineName;
+            if (baudSelect && testData.baud) baudSelect.dataset.detectedBaud = String(testData.baud);
+            if (label && machineName) label.textContent = `${machineName} · ${device}`;
+            return testData;
+        }).catch(() => null);
+    }
 }
 
 function closeMarlinRegisterModal() {
@@ -11779,13 +12302,16 @@ document.getElementById('marlin-printer-register-backdrop')?.addEventListener('c
 document.getElementById('marlin-printer-register-cancel-btn')?.addEventListener('click', closeMarlinRegisterModal);
 document.getElementById('marlin-printer-register-transport')?.addEventListener('change', updateMarlinRegisterTransportFields);
 document.getElementById('marlin-printer-register-profile')?.addEventListener('change', updateMarlinRegisterProfileFields);
+document.getElementById('marlin-printer-register-name')?.addEventListener('input', event => {
+    event.currentTarget.dataset.autoName = 'false';
+});
 
 document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener('click', async () => {
     let device = marlinRegisterTarget?.device || '';
     const transport = document.getElementById('marlin-printer-register-transport')?.value || 'usb_serial';
     const nameInput = document.getElementById('marlin-printer-register-name');
     const baudSelect = document.getElementById('marlin-printer-register-baud');
-    const name = nameInput ? nameInput.value.trim() : '';
+    let name = nameInput ? nameInput.value.trim() : '';
     if (!name) return;
     // Vacío ("Auto-detectar") significa "no mandar baud" -- el backend
     // prueba 115200/250000 solo (ver probe_marlin_autobaud). Si el usuario
@@ -11794,6 +12320,7 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
     try {
         const testFormData = new FormData();
         let testUrl = '/api/marlin-printers/usb-ports/test';
+        let testData = null;
         if (transport === 'mks_wifi') {
             const host = document.getElementById('marlin-printer-register-host')?.value.trim() || '';
             const port = document.getElementById('marlin-printer-register-port')?.value || '8080';
@@ -11805,20 +12332,32 @@ document.getElementById('marlin-printer-register-confirm-btn')?.addEventListener
             if (!device) return;
             testFormData.append('device', device);
             if (selectedBaud) testFormData.append('baud', selectedBaud);
+            if (!selectedBaud && marlinRegisterTarget?.probePromise) {
+                testData = await marlinRegisterTarget.probePromise;
+            }
         }
-        const testResponse = await fetch(testUrl, { method: 'POST', body: testFormData });
-        if (!testResponse.ok) {
-            const data = await testResponse.json().catch(() => ({}));
-            throw new Error(data.detail || t('usbTestFailed'));
+        if (!testData) {
+            const testResponse = await fetch(testUrl, { method: 'POST', body: testFormData });
+            if (!testResponse.ok) {
+                const data = await testResponse.json().catch(() => ({}));
+                throw new Error(data.detail || t('usbTestFailed'));
+            }
+            testData = await testResponse.json();
         }
-        const testData = await testResponse.json();
         if (transport === 'mks_wifi') device = testData.device;
+        const detectedMachineName = marlinMachineName(testData);
+        if (detectedMachineName && nameInput?.dataset.autoName === 'true') {
+            name = detectedMachineName;
+            nameInput.value = detectedMachineName;
+        }
+        if (!name) throw new Error(t('usbRegisterNameLabel'));
 
         const formData = new FormData();
         formData.append('device', device);
         formData.append('name', name);
         formData.append('transport', transport);
-        if (transport === 'usb_serial' && selectedBaud) formData.append('baud', selectedBaud);
+        const resolvedBaud = selectedBaud || testData.baud || '';
+        if (transport === 'usb_serial' && resolvedBaud) formData.append('baud', resolvedBaud);
         const profileId = document.getElementById('marlin-printer-register-profile')?.value || '';
         if (profileId) {
             formData.append('profile_id', profileId);
@@ -11904,15 +12443,19 @@ function marlinPrinterCardHtml(printer, status) {
         `;
 
     return `
-        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
+        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
             <div class="printer-card-top">
                 <div>
                     <h3 class="printer-name">${escapeHtml(name)}</h3>
                     <p class="printer-name-sub">${boardLabel ? escapeHtml(boardLabel) : 'Marlin'}</p>
                 </div>
-                <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                <div class="printer-quick-actions">
+                    ${isOnline ? `<button type="button" class="printer-quick-action-btn marlin-card-temp-action" data-marlin-temp-action="cool" title="${t('tempCool')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.7 17.7 8.4a8 8 0 1 1-11.4 0Z"/></svg></button>
+                    <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent marlin-card-temp-action" data-marlin-temp-action="preheat" title="${t('tempPreset')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.4 5.2A8.25 8.25 0 1 1 6 7a8.3 8.3 0 0 0 3 2.6 9 9 0 0 1 3.4-6.9 8.2 8.2 0 0 0 3 2.5Z"/></svg></button>` : ''}
+                    <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
+                    </div>
                 </div>
             </div>
 
@@ -11951,6 +12494,7 @@ async function refreshMarlinPrintersGrid() {
             }
         }));
         grid.innerHTML = entries.map(({ printer, status }) => marlinPrinterCardHtml(printer, status)).join('');
+        bindMarlinTemperatureActions(grid);
         grid.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
             card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
         });
@@ -13436,6 +13980,11 @@ function renderMarlinTemperaturesCard(data, device) {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
                     <span>${t('temperatures')}</span>
                 </div>
+                <div class="temp-card-header-actions">
+                    <button type="button" class="temp-cool-pill" id="marlin-temp-cool-btn">${t('tempCool')}</button>
+                    <button type="button" class="temp-preset-pill" id="marlin-temp-preset-btn">${t('tempPreset')}</button>
+                    <button type="button" class="temp-icon-btn" id="marlin-temp-config-btn" title="Configurar materiales">⚙</button>
+                </div>
             </div>
             <div class="temp-card-body">
                 <div class="temp-table">
@@ -13462,6 +14011,16 @@ function renderMarlinTemperaturesCard(data, device) {
             }
         });
     });
+    const heaterKeys = sensors.map(sensor => sensor.key);
+    document.getElementById('marlin-temp-cool-btn')?.addEventListener('click', async () => {
+        try { await Promise.all(heaterKeys.map(heater => setMarlinHeaterTarget(device, heater, 0))); refreshMarlinModalTemperatures(); }
+        catch (error) { showToast(error.message, 'error'); }
+    });
+    document.getElementById('marlin-temp-preset-btn')?.addEventListener('click', () => {
+        const printer = marlinPrintersRegistryCache.find(item => item.device === device) || {};
+        openMaterialPreheatModal({ type: 'marlin', id: device, name: printer.name || 'Marlin', heaters: heaterKeys });
+    });
+    document.getElementById('marlin-temp-config-btn')?.addEventListener('click', () => openTempPresetsModal(sensors));
 }
 
 async function applyMarlinTempTarget(device, heater, container) {
@@ -13529,17 +14088,32 @@ function wireMarlinConsoleForm(device) {
 async function renderMarlinPrintCardShell(device) {
     const container = document.getElementById('marlin-printer-modal-print');
     if (!container) return;
-    let files = [];
-    try {
-        const response = await fetch('/api/browse?path=&type=gcode');
-        const data = await response.json();
-        files = data.files || [];
-    } catch (error) {
-        console.error(error);
-    }
+    let localFiles = [];
+    let sdFiles = [];
+    const [localResult, sdResult] = await Promise.allSettled([
+        fetch('/api/browse?path=&type=gcode').then(async response => {
+            if (!response.ok) throw new Error('No se pudo leer la biblioteca local.');
+            return response.json();
+        }),
+        fetch(`/api/marlin-printers/sd/files?device=${encodeURIComponent(device)}`).then(async response => {
+            if (!response.ok) throw new Error('No se pudo leer la tarjeta SD.');
+            return response.json();
+        }),
+    ]);
+    if (localResult.status === 'fulfilled') localFiles = localResult.value.files || [];
+    else console.error(localResult.reason);
+    if (sdResult.status === 'fulfilled') sdFiles = sdResult.value.files || [];
+    else console.error(sdResult.reason);
 
-    const options = files.length
-        ? files.map(file => `<option value="${escapeHtml(stripSectionPrefix(file.id, 'gcode'))}">${escapeHtml(file.name)}</option>`).join('')
+    const localOptions = localFiles.map(file => `
+        <option data-source="local" value="${escapeHtml(stripSectionPrefix(file.id, 'gcode'))}">${escapeHtml(file.name)}</option>
+    `).join('');
+    const sdOptions = sdFiles.map(file => `
+        <option data-source="sd" value="${escapeHtml(file.name)}">${escapeHtml(file.name)} · ${escapeHtml(formatSize(file.size))}</option>
+    `).join('');
+    const options = localOptions || sdOptions
+        ? `${localOptions ? `<optgroup label="${escapeHtml(t('helpCatLibraryTitle'))} · NOPAL">${localOptions}</optgroup>` : ''}
+           ${sdOptions ? `<optgroup label="${escapeHtml(t('laserSdTitle'))} · Marlin">${sdOptions}</optgroup>` : ''}`
         : `<option value="">${escapeHtml(t('noFilesFound'))}</option>`;
 
     container.innerHTML = `
@@ -13583,13 +14157,22 @@ async function renderMarlinPrintCardShell(device) {
 
     document.getElementById('marlin-print-start-btn')?.addEventListener('click', async () => {
         const select = document.getElementById('marlin-print-file-select');
-        const path = select?.value;
-        if (!path) return;
+        const selectedOption = select?.selectedOptions?.[0];
+        const selectedValue = selectedOption?.value;
+        const source = selectedOption?.dataset.source || 'local';
+        if (!selectedValue) return;
         try {
             const formData = new FormData();
             formData.append('device', device);
-            formData.append('path', path);
-            const response = await fetch('/api/marlin-printers/print/start', { method: 'POST', body: formData });
+            let endpoint;
+            if (source === 'sd') {
+                formData.append('filename', selectedValue);
+                endpoint = '/api/marlin-printers/sd/print/start';
+            } else {
+                formData.append('path', selectedValue);
+                endpoint = '/api/marlin-printers/print/start';
+            }
+            const response = await fetch(endpoint, { method: 'POST', body: formData });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
                 throw new Error(err.detail || 'No se pudo iniciar la impresión.');
@@ -14097,6 +14680,12 @@ let pluginsLoaded = false;
 
 window.NopalPluginRegistry = window.NopalPluginRegistry || {};
 
+function versionedPluginAssetUrl(url, version) {
+    if (!url) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}v=${encodeURIComponent(version || 'dev')}`;
+}
+
 function loadPluginAsset(plugin) {
     if (!plugin?.frontend?.script || window.NopalPluginRegistry[plugin.id]) return Promise.resolve();
     const styleId = `plugin-style-${plugin.id}`;
@@ -14104,7 +14693,7 @@ function loadPluginAsset(plugin) {
         const link = document.createElement('link');
         link.id = styleId;
         link.rel = 'stylesheet';
-        link.href = plugin.frontend.style;
+        link.href = versionedPluginAssetUrl(plugin.frontend.style, plugin.version);
         document.head.appendChild(link);
     }
     const scriptId = `plugin-script-${plugin.id}`;
@@ -14113,7 +14702,7 @@ function loadPluginAsset(plugin) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.id = scriptId;
-        script.src = plugin.frontend.script;
+        script.src = versionedPluginAssetUrl(plugin.frontend.script, plugin.version);
         script.defer = true;
         script.onload = resolve;
         script.onerror = () => reject(new Error(`No se pudo cargar ${plugin.name}`));
@@ -14162,13 +14751,21 @@ function pluginActionLabel(plugin) {
     return plugin.installed ? t('pluginsUninstall') : t('pluginsInstall');
 }
 
-// "Actualizar" solo tiene sentido si ya está instalado Y el catálogo
-// declara una versión distinta a la que hay clonada de verdad (ver
-// catalog_version en _serialize_catalog(), backend/api/plugins.py) --
-// comparación simple por igualdad de string, no semver: este catálogo lo
-// mantiene a mano un solo desarrollador, nunca declara una versión "vieja".
+// "Actualizar" solo tiene sentido si el catálogo ofrece una versión
+// MAYOR que la instalada. Una comparación por desigualdad mostraba el botón
+// incluso cuando el checkout del plugin iba por delante del catálogo.
 function pluginUpdateAvailable(plugin) {
-    return !!(plugin.installed && plugin.catalog_version && plugin.catalog_version !== plugin.version);
+    if (!plugin.installed || !plugin.catalog_version || !plugin.version) return false;
+    const catalog = String(plugin.catalog_version).split('.').map(part => Number.parseInt(part, 10) || 0);
+    const installed = String(plugin.version).split('.').map(part => Number.parseInt(part, 10) || 0);
+    const length = Math.max(catalog.length, installed.length);
+    for (let index = 0; index < length; index += 1) {
+        const catalogPart = catalog[index] || 0;
+        const installedPart = installed[index] || 0;
+        if (catalogPart > installedPart) return true;
+        if (catalogPart < installedPart) return false;
+    }
+    return false;
 }
 
 function pluginCatalogText(plugin, field) {
@@ -14212,7 +14809,7 @@ function renderPluginCard(plugin) {
             <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
             <div class="plugin-card-footer">
                 <span class="plugin-card-meta">${escapeHtml(pluginCategoryText(plugin.category))} · ${escapeHtml(plugin.size === 'Por definir' ? t('pluginsSizeTbd') : plugin.size)}</span>
-                <div class="plugin-card-actions">
+                <div class="plugin-card-actions${pluginUpdateAvailable(plugin) ? ' has-update' : ''}">
                     ${pluginUpdateAvailable(plugin) ? `<button type="button" class="plugin-update-btn" data-plugin-action="update" data-plugin-id="${escapeHtml(plugin.id)}" title="${escapeHtml(t('pluginsUpdateAvailable').replace('{version}', plugin.catalog_version))}">${escapeHtml(t('pluginsUpdate'))}</button>` : ''}
                     <button type="button" class="plugin-install-btn${plugin.installed ? ' is-installed' : ''}" data-plugin-action="${plugin.installed ? 'uninstall' : 'install'}" data-plugin-id="${escapeHtml(plugin.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(pluginActionLabel(plugin))}</button>
                 </div>
@@ -16041,6 +16638,7 @@ renderPrintQueue();
 renderInitialDeviceLoaders();
 loadModels();
 loadPrinters();
+loadDashboardStandalonePrinters();
 loadRecentPrinterFiles();
 loadLaserHistory();
 loadDashboardPanel();
@@ -16055,6 +16653,7 @@ maybeStartTour('dashboard');
 
 // Refresh printers every 5 seconds
 setInterval(loadPrinters, 5000);
+setInterval(loadDashboardStandalonePrinters, 10000);
 setInterval(loadDashboardPanel, 10000);
 setInterval(updatePanelClock, 1000);
 setInterval(loadAccessories, 10000);

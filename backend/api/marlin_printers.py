@@ -23,7 +23,9 @@ from backend.services.marlin_printer_service import (
     ensure_listener,
     get_console_buffer,
     send_console_command,
+    list_sd_files,
     start_print,
+    start_sd_print,
     get_job_status,
     get_active_job_devices,
     pause_job,
@@ -94,17 +96,24 @@ async def marlin_usb_test_endpoint(
     baud: Optional[int] = Form(None),
     user: dict = Depends(require_auth),
 ):
-    """Prueba si el puerto USB indicado responde al protocolo Marlin (M105).
+    """Prueba si el puerto USB indicado responde al protocolo Marlin.
     Si no se manda `baud`, autodetecta probando 115200 y 250000 en orden
     (ver probe_marlin_autobaud) -- antes esto siempre asumía 115200 sin
-    importar lo elegido en el dropdown del frontend."""
+    importar lo elegido en el dropdown del frontend. También devuelve M115
+    para que el formulario use MACHINE_TYPE como nombre automático."""
     if baud is not None:
         detected_baud = baud if await probe_marlin(device, baud) else None
     else:
         detected_baud = await probe_marlin_autobaud(device)
     if detected_baud is None:
         raise HTTPException(status_code=502, detail="No se detectó respuesta Marlin en este puerto")
-    return {"connected": True, "device": device, "baud": detected_baud}
+    firmware_info = await probe_marlin_firmware_info(device, detected_baud)
+    return {
+        "connected": True,
+        "device": device,
+        "baud": detected_baud,
+        "firmware_info": firmware_info,
+    }
 
 
 @router.post("/api/marlin-printers/registry")
@@ -248,10 +257,11 @@ async def marlin_printers_console_command_endpoint(
 async def marlin_printers_print_start_endpoint(
     device: str = Form(...),
     path: str = Form(...),
+    section: str = Form("gcode"),
     user: dict = Depends(require_auth),
 ):
     """Inicia el envío de un archivo G-code (de la biblioteca) a la impresora."""
-    file_path = safe_section_path("gcode", path)
+    file_path = safe_section_path(section, path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
@@ -264,6 +274,28 @@ async def marlin_printers_print_start_endpoint(
         raise HTTPException(status_code=409, detail=str(e))
 
     return job
+
+
+@router.get("/api/marlin-printers/sd/files")
+async def marlin_printers_sd_files_endpoint(
+    device: str,
+    user: dict = Depends(require_auth),
+):
+    """Lista G-code directamente desde la SD de la impresora (M20)."""
+    return {"files": await list_sd_files(device)}
+
+
+@router.post("/api/marlin-printers/sd/print/start")
+async def marlin_printers_sd_print_start_endpoint(
+    device: str = Form(...),
+    filename: str = Form(...),
+    user: dict = Depends(require_auth),
+):
+    """Arranca el archivo dentro de la SD con M23/M24, sin copia local."""
+    try:
+        return await start_sd_print(device, filename)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/api/marlin-printers/print/status")

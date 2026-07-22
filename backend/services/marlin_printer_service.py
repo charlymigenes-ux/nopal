@@ -9,16 +9,33 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from backend.services import marlin_driver, mks_wifi_transport
 
 logger = logging.getLogger(__name__)
 
 REGISTRY_PATH = "marlin_printer_registry.json"
+_probe_firmware_info_cache: Dict[tuple, tuple] = {}
+_probe_firmware_info_cache_lock = threading.Lock()
+
+
+def _cache_probe_firmware_info(device: str, baud: int, info: Dict[str, str]) -> None:
+    with _probe_firmware_info_cache_lock:
+        _probe_firmware_info_cache[(device, baud)] = (time.monotonic(), dict(info))
+
+
+def _take_cached_probe_firmware_info(device: str, baud: int) -> Optional[Dict[str, str]]:
+    with _probe_firmware_info_cache_lock:
+        cached = _probe_firmware_info_cache.pop((device, baud), None)
+    if cached is None:
+        return None
+    saved_at, info = cached
+    return info if time.monotonic() - saved_at <= 20 else None
 
 
 # ── Registro de impresoras conocidas (persistido) ──
@@ -46,9 +63,13 @@ def get_registered_printers() -> List[Dict[str, Any]]:
 def _probe_marlin_sync(device: str, baud: int = 115200, timeout: float = 3.0) -> bool:
     """Handshake liviano y autocontenido, análogo a
     laser_service._probe_grbl_sync: abre su propia conexión (no la
-    persistente de ensure_listener), manda M105 y confirma que la respuesta
-    trae temperaturas con el formato de Marlin — sin dejar hilos ni puertos
-    abiertos colgados si el resultado es negativo."""
+    persistente de ensure_listener) y confirma una respuesta Marlin real.
+
+    Por USB usa M115 (identificación oficial) porque algunos builds actuales,
+    como Marlin 2.1.2.7 para ANET ET4 Pro, responden M115 correctamente pero
+    no exponen M105 durante el alta. Exigir temperaturas rechazaba una placa
+    válida. TCP conserva primero el probe M105 por compatibilidad con MKS.
+    """
     if device.startswith("tcp://"):
         try:
             lines = mks_wifi_transport.query_lines(device, "M105", timeout)
@@ -65,13 +86,16 @@ def _probe_marlin_sync(device: str, baud: int = 115200, timeout: float = 3.0) ->
     except Exception:
         return False
     try:
-        time.sleep(2)  # Marlin también resetea al abrir el puerto (DTR)
+        time.sleep(3)  # Varias placas resetean al abrir el puerto (DTR)
         try:
             ser.reset_input_buffer()
-            ser.write(b"M105\n")
+            # La línea vacía realinea parsers que dejaron un byte basura al
+            # cambiar de baud; la ET4 observada hace exactamente eso.
+            ser.write(b"\r\nM115\r\n")
         except Exception:
             return False
         end_time = time.monotonic() + timeout
+        lines: List[str] = []
         while time.monotonic() < end_time:
             try:
                 raw = ser.readline()
@@ -80,7 +104,14 @@ def _probe_marlin_sync(device: str, baud: int = 115200, timeout: float = 3.0) ->
             if not raw:
                 continue
             text = raw.decode("utf-8", errors="ignore").strip()
+            if not text:
+                continue
+            lines.append(text)
             if marlin_driver.TEMP_RE.search(text):
+                return True
+            firmware_info = marlin_driver.parse_firmware_info_lines(lines)
+            if firmware_info:
+                _cache_probe_firmware_info(device, baud, firmware_info)
                 return True
         return False
     finally:
@@ -163,6 +194,9 @@ def _probe_marlin_firmware_info_sync(device: str, baud: int, timeout: float = 4.
 
 
 async def probe_marlin_firmware_info(device: str, baud: int, timeout: float = 4.0) -> Optional[Dict[str, str]]:
+    cached = _take_cached_probe_firmware_info(device, baud)
+    if cached is not None:
+        return cached
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _probe_marlin_firmware_info_sync, device, baud, timeout)
 
@@ -526,6 +560,84 @@ def _transport_for(device: str) -> marlin_driver.MarlinTransport:
     )
 
 
+async def _collect_device_command(
+    device: str,
+    command: str,
+    stop_when: Callable[[str], bool],
+    timeout: float = 8.0,
+) -> List[str]:
+    """Recolecta una respuesta Marlin hasta una marca propia del comando.
+
+    Para SD no basta cortar en el primer ``ok``: el modal también consulta
+    posición y temperatura, y un ``ok`` de ese polling podría llegar antes
+    que ``End file list``/``File selected``. Las marcas específicas evitan
+    truncar una lista M20 por una respuesta ajena.
+    """
+    transport = _transport_for(device)
+    await transport.ensure_ready()
+    queue = transport.subscribe()
+    lines: List[str] = []
+    try:
+        loop = asyncio.get_event_loop()
+        sent = await loop.run_in_executor(None, transport.send, command)
+        if not sent:
+            return lines
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                text = await asyncio.wait_for(queue.get(), timeout=max(deadline - time.monotonic(), 0.1))
+            except asyncio.TimeoutError:
+                break
+            lines.append(text)
+            if stop_when(text) or marlin_driver.ERROR_RE.match(text):
+                break
+        return lines
+    finally:
+        transport.unsubscribe(queue)
+
+
+SD_FILE_RE = re.compile(r"^(?P<name>.+?)\s+(?P<size>\d+)$")
+SD_PROGRESS_RE = re.compile(r"SD printing byte\s+(?P<current>\d+)\s*/\s*(?P<total>\d+)", re.IGNORECASE)
+SD_GCODE_EXTENSIONS = (".g", ".gc", ".gco", ".gcode")
+
+
+def parse_sd_file_list(lines: List[str]) -> List[Dict[str, Any]]:
+    """Parsea la salida M20 real de Marlin (nombre 8.3 + tamaño).
+
+    La ANET ET4 comprobada devuelve, por ejemplo, ``DONA.GC 9207543``.
+    Se ignoran GIF u otros auxiliares para no ofrecerlos como imprimibles.
+    """
+    files: List[Dict[str, Any]] = []
+    inside_list = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line.lower() == "begin file list":
+            inside_list = True
+            continue
+        if line.lower() == "end file list":
+            break
+        if not inside_list:
+            continue
+        match = SD_FILE_RE.match(line)
+        if not match:
+            continue
+        name = match.group("name").strip()
+        if not name.lower().endswith(SD_GCODE_EXTENSIONS):
+            continue
+        files.append({"name": name, "size": int(match.group("size"))})
+    return files
+
+
+async def list_sd_files(device: str) -> List[Dict[str, Any]]:
+    lines = await _collect_device_command(
+        device,
+        "M20",
+        lambda text: text.strip().lower() == "end file list",
+        timeout=10.0,
+    )
+    return parse_sd_file_list(lines)
+
+
 # ── Estado / temperatura / movimiento ──
 
 async def get_status(device: str, timeout: float = 4.0) -> Optional[Dict[str, Any]]:
@@ -537,9 +649,10 @@ async def get_status(device: str, timeout: float = 4.0) -> Optional[Dict[str, An
         return None
 
     job = _jobs.get(device)
-    if job and job.state == "running":
+    sd_job = _sd_jobs.get(device)
+    if (job and job.state == "running") or (sd_job and sd_job.get("state") == "running"):
         state = "printing"
-    elif job and job.state == "paused":
+    elif (job and job.state == "paused") or (sd_job and sd_job.get("state") == "paused"):
         state = "paused"
     else:
         state = "idle"
@@ -649,6 +762,7 @@ class PrintJob:
 
 # Un trabajo activo por impresora — igual que laser_service._jobs.
 _jobs: Dict[str, PrintJob] = {}
+_sd_jobs: Dict[str, Dict[str, Any]] = {}
 
 
 async def _run_print_job(job: PrintJob):
@@ -665,6 +779,9 @@ def start_print(device: str, gcode_text: str, filename: str = "") -> Dict[str, A
     if existing is not None and existing.state in ("running", "paused"):
         logger.warning(f"[{device}] No se pudo iniciar '{filename}': ya hay una impresión en curso")
         raise RuntimeError("Ya hay una impresión en curso en esta impresora")
+    sd_existing = _sd_jobs.get(device)
+    if sd_existing is not None and sd_existing.get("state") in ("running", "paused"):
+        raise RuntimeError("Ya hay una impresión desde la SD en curso en esta impresora")
 
     lines = gcode_text.splitlines()
     job = PrintJob(device, lines, filename, source="stream")
@@ -674,19 +791,101 @@ def start_print(device: str, gcode_text: str, filename: str = "") -> Dict[str, A
     return job.to_dict()
 
 
+async def start_sd_print(device: str, filename: str) -> Dict[str, Any]:
+    """Selecciona y arranca un archivo que permanece en la SD de Marlin.
+
+    No descarga ni crea una copia en la biblioteca local de NOPAL.
+    """
+    host_job = _jobs.get(device)
+    sd_job = _sd_jobs.get(device)
+    if host_job is not None and host_job.state in ("running", "paused"):
+        raise RuntimeError("Ya hay una impresión enviada por NOPAL en curso")
+    if sd_job is not None and sd_job.get("state") in ("running", "paused"):
+        raise RuntimeError("Ya hay una impresión desde la SD en curso")
+
+    files = await list_sd_files(device)
+    selected = next((entry for entry in files if entry["name"] == filename), None)
+    if selected is None:
+        raise RuntimeError("El archivo ya no está disponible en la tarjeta SD")
+
+    lines = await _collect_device_command(
+        device,
+        f"M23 {filename}",
+        lambda text: text.strip().lower() == "file selected",
+        timeout=8.0,
+    )
+    if not any(line.strip().lower() == "file selected" for line in lines):
+        error = next((line for line in lines if marlin_driver.ERROR_RE.match(line)), None)
+        raise RuntimeError(error or "Marlin no pudo seleccionar el archivo de la SD")
+
+    await ensure_listener_ready(device)
+    loop = asyncio.get_event_loop()
+    if not await loop.run_in_executor(None, _send_raw, device, "M24"):
+        raise RuntimeError("No se pudo iniciar la impresión desde la SD")
+
+    job = {
+        "filename": filename,
+        "source": "sd",
+        "state": "running",
+        "current": 0,
+        "total": selected["size"],
+        "error": None,
+        "started_at": time.time(),
+    }
+    _sd_jobs[device] = job
+    logger.info(f"[{device}] Impresión SD iniciada: {filename}")
+    return dict(job)
+
+
+async def _refresh_sd_job(device: str, job: Dict[str, Any]) -> Dict[str, Any]:
+    if job.get("state") not in ("running", "paused"):
+        return dict(job)
+    lines = await _collect_device_command(
+        device,
+        "M27",
+        lambda text: bool(SD_PROGRESS_RE.search(text))
+        or "not sd printing" in text.lower()
+        or "done printing file" in text.lower(),
+        timeout=4.0,
+    )
+    for line in lines:
+        progress = SD_PROGRESS_RE.search(line)
+        if progress:
+            job["current"] = int(progress.group("current"))
+            job["total"] = int(progress.group("total"))
+            return dict(job)
+        lowered = line.lower()
+        if "done printing file" in lowered or "not sd printing" in lowered:
+            job["state"] = "completed"
+            job["current"] = job.get("total", 0)
+            return dict(job)
+    return dict(job)
+
+
 async def get_job_status(device: str) -> Dict[str, Any]:
     job = _jobs.get(device)
+    if job is not None and job.state in ("running", "paused"):
+        return job.to_dict()
+    sd_job = _sd_jobs.get(device)
+    if sd_job is not None:
+        return await _refresh_sd_job(device, sd_job)
     if job is not None:
         return job.to_dict()
     return {"filename": "", "source": "", "state": "idle", "current": 0, "total": 0, "error": None}
 
 
 def get_active_job_devices() -> List[Dict[str, Any]]:
-    return [
+    host_jobs = [
         {**job.to_dict(), "device": device}
         for device, job in _jobs.items()
         if job.state in ("running", "paused")
     ]
+    sd_jobs = [
+        {**job, "device": device}
+        for device, job in _sd_jobs.items()
+        if job.get("state") in ("running", "paused")
+    ]
+    return host_jobs + sd_jobs
 
 
 async def pause_job(device: str) -> bool:
@@ -698,6 +897,13 @@ async def pause_job(device: str) -> bool:
         job.state = "paused"
         logger.info(f"[{device}] Impresión pausada")
         return True
+    sd_job = _sd_jobs.get(device)
+    if sd_job and sd_job.get("state") == "running":
+        await ensure_listener_ready(device)
+        if _send_raw(device, "M25"):
+            sd_job["state"] = "paused"
+            logger.info(f"[{device}] Impresión SD pausada")
+            return True
     return False
 
 
@@ -708,6 +914,13 @@ async def resume_job(device: str) -> bool:
         job.state = "running"
         logger.info(f"[{device}] Impresión reanudada")
         return True
+    sd_job = _sd_jobs.get(device)
+    if sd_job and sd_job.get("state") == "paused":
+        await ensure_listener_ready(device)
+        if _send_raw(device, "M24"):
+            sd_job["state"] = "running"
+            logger.info(f"[{device}] Impresión SD reanudada")
+            return True
     return False
 
 
@@ -718,4 +931,11 @@ async def cancel_job(device: str) -> bool:
         job.pause_requested = False
         logger.info(f"[{device}] Cancelación de impresión solicitada")
         return True
+    sd_job = _sd_jobs.get(device)
+    if sd_job and sd_job.get("state") in ("running", "paused"):
+        await ensure_listener_ready(device)
+        if _send_raw(device, "M524"):
+            sd_job["state"] = "cancelled"
+            logger.info(f"[{device}] Impresión SD cancelada")
+            return True
     return False
