@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=269">
+    <link rel="stylesheet" href="/static/css/style.css?v=270">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -3911,6 +3911,21 @@
         </div>
     </div>
 
+    <div class="machine-led-modal" id="machine-led-modal" hidden>
+        <section class="machine-led-dialog" role="dialog" aria-modal="true" aria-labelledby="machine-led-title">
+            <button type="button" class="machine-led-close" id="machine-led-close" aria-label="Cerrar">&times;</button>
+            <div class="machine-led-heading">
+                <span class="machine-led-heading-icon" aria-hidden="true">✦</span>
+                <div>
+                    <span class="machine-led-eyebrow">AUTOMATIZACIÓN DE TALLER</span>
+                    <h2 id="machine-led-title">Alertas visuales</h2>
+                    <p id="machine-led-machine-name">Configura cómo esta máquina usa la tira LED.</p>
+                </div>
+            </div>
+            <div id="machine-led-content" class="machine-led-content"></div>
+        </section>
+    </div>
+
     <div class="update-safety-modal" id="update-safety-modal" hidden>
         <section class="update-safety-dialog" role="dialog" aria-modal="true" aria-labelledby="update-safety-title">
             <div class="update-safety-icon" aria-hidden="true">
@@ -3942,7 +3957,7 @@
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=213"></script>
+    <script src="/static/js/app.js?v=214"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

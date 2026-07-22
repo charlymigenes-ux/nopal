@@ -5802,6 +5802,235 @@ function checkLaserConnectionTransitions(laserEntries) {
     });
 }
 
+// Alertas LED por máquina. El panel solo publica cambios de estado; toda la
+// selección de hardware y ejecución vive dentro de Automatización de Taller.
+const machineLedPlugin = { checked: false, installed: false, available: false };
+const machineLedLastState = new Map();
+let machineLedCurrentMachine = null;
+
+function machineLedCardIdentity(card) {
+    const name = card.querySelector('.printer-name')?.textContent?.trim() || 'Máquina';
+    if (card.dataset.port) return { type: 'klipper', id: card.dataset.port, name };
+    if (card.dataset.marlinDevice) return { type: 'marlin', id: card.dataset.marlinDevice, name };
+    if (card.dataset.elegooId) return { type: 'elegoo', id: card.dataset.elegooId, name };
+    if (card.dataset.flashforgeId) return { type: 'flashforge', id: card.dataset.flashforgeId, name };
+    if (card.dataset.bambuId) return { type: 'bambu', id: card.dataset.bambuId, name };
+    if (card.dataset.laserHost) return {
+        type: card.classList.contains('printer-card-type-cnc') ? 'cnc' : 'laser',
+        id: card.dataset.laserHost,
+        name,
+    };
+    return null;
+}
+
+function machineLedCardState(card) {
+    return ['heating', 'printing', 'paused', 'completed', 'error', 'offline', 'idle']
+        .find(state => card.classList.contains(state)) || (card.classList.contains('offline') ? 'offline' : 'idle');
+}
+
+async function ensureMachineLedPluginStatus() {
+    if (machineLedPlugin.checked) return machineLedPlugin;
+    machineLedPlugin.checked = true;
+    try {
+        const response = await fetch('/api/plugins');
+        const plugins = response.ok ? ((await response.json()).plugins || []) : [];
+        const plugin = plugins.find(item => item.id === 'arduino-accessories');
+        machineLedPlugin.installed = Boolean(plugin?.installed && plugin?.enabled);
+        machineLedPlugin.available = machineLedPlugin.installed;
+    } catch (error) {
+        machineLedPlugin.installed = false;
+    }
+    return machineLedPlugin;
+}
+
+async function publishMachineLedState(machine, state) {
+    const key = `${machine.type}:${machine.id}`;
+    if (machineLedLastState.get(key) === state) return;
+    const plugin = await ensureMachineLedPluginStatus();
+    if (!plugin.installed || !plugin.available) return;
+    const form = new FormData();
+    form.append('machine_type', machine.type);
+    form.append('machine_id', machine.id);
+    form.append('state', state);
+    try {
+        const response = await fetch('/api/accessories/machine-led/state', { method: 'POST', body: form });
+        if (response.status === 404) {
+            machineLedPlugin.available = false;
+            return;
+        }
+        if (response.ok) machineLedLastState.set(key, state);
+    } catch (error) {
+        console.debug('Alertas LED no disponibles:', error);
+    }
+}
+
+function decorateMachineCardsWithLedSettings(root) {
+    root.querySelectorAll('.printer-card').forEach(card => {
+        const machine = machineLedCardIdentity(card);
+        if (!machine) return;
+        const header = card.querySelector('.printer-card-top');
+        if (header && !header.querySelector('.machine-led-settings-btn')) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'machine-led-settings-btn';
+            button.title = 'Alertas visuales LED';
+            button.setAttribute('aria-label', `Configurar alertas LED de ${machine.name}`);
+            button.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.34.7.64.96.3.25.68.4 1.08.4H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>';
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                openMachineLedModal(machine);
+            });
+            const actions = header.querySelector('.printer-quick-actions') || header;
+            actions.prepend(button);
+        }
+        publishMachineLedState(machine, machineLedCardState(card));
+    });
+}
+
+function machineLedUnavailableMarkup(installed) {
+    return `<div class="machine-led-empty">
+        <div class="machine-led-empty-icon">${installed ? '!' : '✦'}</div>
+        <h3>${installed ? 'El plugin necesita actualizarse' : 'Activa las alertas visuales'}</h3>
+        <p>${installed
+            ? 'Automatización de Taller está instalado, pero esta versión todavía no expone la configuración de escenas por máquina.'
+            : 'Esta opción aparece al instalar el plugin Automatización de Taller. El control de tus máquinas sigue funcionando sin él.'}</p>
+        <button type="button" class="machine-led-primary" data-machine-led-open-plugins>${installed ? 'Ver actualización' : 'Instalar plugin'}</button>
+    </div>`;
+}
+
+function machineLedRgbToHex(rgb) {
+    return `#${(rgb || [0, 0, 0]).map(value => Number(value).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function machineLedHexToRgb(hex) {
+    return [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16));
+}
+
+function renderMachineLedEditor(payload) {
+    const content = document.getElementById('machine-led-content');
+    const targets = payload.targets || [];
+    if (!targets.length) {
+        content.innerHTML = `<div class="machine-led-empty"><div class="machine-led-empty-icon">⌁</div>
+            <h3>Falta registrar una tira LED</h3>
+            <p>El plugin está instalado, pero todavía no hay una tira PWM o WS2812 registrada como accesorio. Agrégala en Automatización de Taller y vuelve aquí.</p>
+            <button type="button" class="machine-led-primary" data-machine-led-open-accessories>Abrir Automatización de Taller</button></div>`;
+        return;
+    }
+    const saved = payload.config || {};
+    const selectedId = saved.accessory_id || targets[0].id;
+    const selected = targets.find(item => item.id === selectedId) || targets[0];
+    const colors = { ...(payload.default_colors || {}), ...(saved.colors || {}) };
+    const stateLabels = { idle: 'En espera', heating: 'Calentando', printing: 'Trabajando', paused: 'Pausada', completed: 'Finalizada', error: 'Error', offline: 'Desconectada' };
+    const total = selected.led_count || 1;
+    const start = saved.start ?? 0;
+    const count = saved.count ?? total;
+    content.innerHTML = `<form id="machine-led-form">
+        <label class="machine-led-enable"><span><strong>Usar alertas visuales</strong><small>Esta máquina enviará sus cambios de estado al accesorio LED.</small></span>
+            <input type="checkbox" id="machine-led-enabled" ${saved.enabled ? 'checked' : ''}></label>
+        <label class="machine-led-field"><span>Tira LED</span><select id="machine-led-target">${targets.map(target => `<option value="${escapeHtml(target.id)}" ${target.id === selected.id ? 'selected' : ''}>${escapeHtml(target.name)} · ${target.led_count || '?'} LEDs</option>`).join('')}</select></label>
+        <div class="machine-led-segment-title"><strong>Zona asignada</strong><span id="machine-led-segment-summary">LED ${start + 1}–${start + count} de ${total}</span></div>
+        <div class="machine-led-pixels" id="machine-led-pixels"></div>
+        <div class="machine-led-segment-fields">
+            <label class="machine-led-field"><span>Empieza en</span><input id="machine-led-start" type="number" min="1" max="${total}" value="${start + 1}"></label>
+            <label class="machine-led-field"><span>Cantidad</span><input id="machine-led-count" type="number" min="1" max="${total}" value="${count}"></label>
+        </div>
+        <p class="machine-led-protocol-note" id="machine-led-protocol-note" ${selected.segment_capable ? 'hidden' : ''}>Esta placa usa protocolo ${selected.protocol || 3}: puede usar la tira completa. Los repartos 4+4, 3+5 o similares se habilitan al actualizarla a protocolo 4.</p>
+        <div class="machine-led-colors"><strong>Color para cada estado</strong>${(payload.states || []).map(state => `<label><span>${stateLabels[state] || state}</span><input type="color" data-machine-led-color="${state}" value="${machineLedRgbToHex(colors[state])}"></label>`).join('')}</div>
+        <div class="machine-led-actions"><button type="button" class="machine-led-secondary" data-machine-led-cancel>Cancelar</button><button type="submit" class="machine-led-primary">Guardar escena</button></div>
+    </form>`;
+
+    const targetSelect = document.getElementById('machine-led-target');
+    const startInput = document.getElementById('machine-led-start');
+    const countInput = document.getElementById('machine-led-count');
+    const drawPixels = () => {
+        const target = targets.find(item => item.id === targetSelect.value) || targets[0];
+        const targetTotal = target.led_count || 1;
+        if (!target.segment_capable) { startInput.value = 1; countInput.value = targetTotal; }
+        startInput.disabled = !target.segment_capable;
+        countInput.disabled = !target.segment_capable;
+        startInput.max = targetTotal;
+        countInput.max = targetTotal;
+        let zoneStart = Math.max(0, Number(startInput.value) - 1);
+        let zoneCount = Math.max(1, Number(countInput.value));
+        if (zoneStart + zoneCount > targetTotal) zoneCount = targetTotal - zoneStart;
+        document.getElementById('machine-led-pixels').innerHTML = Array.from({ length: targetTotal }, (_, index) => `<i class="${index >= zoneStart && index < zoneStart + zoneCount ? 'selected' : ''}" title="LED ${index + 1}"></i>`).join('');
+        document.getElementById('machine-led-segment-summary').textContent = `LED ${zoneStart + 1}–${zoneStart + zoneCount} de ${targetTotal}`;
+        const note = document.getElementById('machine-led-protocol-note');
+        note.hidden = target.segment_capable;
+        if (!target.segment_capable) note.textContent = `Esta placa usa protocolo ${target.protocol || 3}: puede usar la tira completa. Los repartos se habilitan al actualizarla a protocolo 4.`;
+    };
+    [targetSelect, startInput, countInput].forEach(input => input.addEventListener('input', drawPixels));
+    drawPixels();
+    document.getElementById('machine-led-form').addEventListener('submit', saveMachineLedConfig);
+}
+
+async function openMachineLedModal(machine) {
+    machineLedCurrentMachine = machine;
+    const modal = document.getElementById('machine-led-modal');
+    document.getElementById('machine-led-machine-name').textContent = `${machine.name} · escena independiente`;
+    const content = document.getElementById('machine-led-content');
+    content.innerHTML = '<div class="machine-led-loading">Leyendo configuración…</div>';
+    modal.hidden = false;
+    const plugin = await ensureMachineLedPluginStatus();
+    if (!plugin.installed) {
+        content.innerHTML = machineLedUnavailableMarkup(false);
+        return;
+    }
+    try {
+        const query = new URLSearchParams({ machine_type: machine.type, machine_id: machine.id });
+        const response = await fetch(`/api/accessories/machine-led/config?${query}`);
+        if (!response.ok) {
+            machineLedPlugin.available = false;
+            content.innerHTML = machineLedUnavailableMarkup(true);
+            return;
+        }
+        machineLedPlugin.available = true;
+        renderMachineLedEditor(await response.json());
+    } catch (error) {
+        content.innerHTML = machineLedUnavailableMarkup(true);
+    }
+}
+
+async function saveMachineLedConfig(event) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const button = formElement.querySelector('[type="submit"]');
+    button.disabled = true;
+    const form = new FormData();
+    form.append('machine_type', machineLedCurrentMachine.type);
+    form.append('machine_id', machineLedCurrentMachine.id);
+    form.append('machine_name', machineLedCurrentMachine.name);
+    form.append('enabled', document.getElementById('machine-led-enabled').checked);
+    form.append('accessory_id', document.getElementById('machine-led-target').value);
+    form.append('start', Math.max(0, Number(document.getElementById('machine-led-start').value) - 1));
+    form.append('count', Number(document.getElementById('machine-led-count').value));
+    const colors = {};
+    formElement.querySelectorAll('[data-machine-led-color]').forEach(input => { colors[input.dataset.machineLedColor] = machineLedHexToRgb(input.value); });
+    form.append('colors', JSON.stringify(colors));
+    try {
+        const response = await fetch('/api/accessories/machine-led/config', { method: 'POST', body: form });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || 'No se pudo guardar la escena');
+        machineLedLastState.delete(`${machineLedCurrentMachine.type}:${machineLedCurrentMachine.id}`);
+        document.getElementById('machine-led-modal').hidden = true;
+        showToast('Escena LED guardada');
+    } catch (error) {
+        showToast(error.message, 'error');
+        button.disabled = false;
+    }
+}
+
+document.getElementById('machine-led-close')?.addEventListener('click', () => { document.getElementById('machine-led-modal').hidden = true; });
+document.getElementById('machine-led-modal')?.addEventListener('click', event => {
+    if (event.target.id === 'machine-led-modal' || event.target.closest('[data-machine-led-cancel]')) event.currentTarget.hidden = true;
+    if (event.target.closest('[data-machine-led-open-plugins]')) { event.currentTarget.hidden = true; switchSection('plugins'); }
+    if (event.target.closest('[data-machine-led-open-accessories]')) {
+        event.currentTarget.hidden = true;
+        const nav = document.querySelector('[data-plugin-id="arduino-accessories"], [data-section="arduino-accessories"]');
+        if (nav?.dataset.section) switchSection(nav.dataset.section); else switchSection('plugins');
+    }
+});
+
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
@@ -5991,6 +6220,8 @@ function renderPrinters(printersInput) {
     }
 
     const columnsRoot = groupMode === 'mixed' ? (machinesMixedGrid || printersGrid) : (machinesColumns || printersGrid);
+
+    decorateMachineCardsWithLedSettings(columnsRoot);
 
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         card.addEventListener('click', () => {

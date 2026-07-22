@@ -14917,3 +14917,44 @@ body.light .btn-accent {
 .tour-btn-primary:active {
     background: var(--accent-active);
 }
+
+/* Configuración de escenas LED por máquina */
+.machine-led-settings-btn { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border: 1px solid rgba(34,197,94,.32); border-radius: 9px; background: rgba(7,20,17,.78); color: #55e57d; cursor: pointer; }
+.machine-led-settings-btn:hover { border-color: #22c55e; background: rgba(34,197,94,.13); transform: rotate(18deg); }
+.machine-led-modal { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 20px; background: rgba(1,7,12,.78); backdrop-filter: blur(9px); }
+.machine-led-modal[hidden] { display: none; }
+.machine-led-dialog { position: relative; width: min(680px, 96vw); max-height: min(850px, 92vh); overflow: auto; padding: 26px; border: 1px solid rgba(34,197,94,.48); border-radius: 24px; background: linear-gradient(145deg, rgba(14,27,31,.98), rgba(8,16,24,.99)); box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 40px rgba(34,197,94,.08); color: var(--text); }
+.machine-led-close { position: absolute; right: 18px; top: 16px; width: 36px; height: 36px; border: 1px solid rgba(239,68,68,.45); border-radius: 50%; background: rgba(239,68,68,.08); color: #ff6b6b; font-size: 24px; cursor: pointer; }
+.machine-led-heading { display: flex; gap: 14px; align-items: center; padding-right: 42px; margin-bottom: 22px; }
+.machine-led-heading-icon { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 48px; border: 1px solid #22c55e; border-radius: 15px; color: #59f17d; background: rgba(34,197,94,.12); font-size: 24px; }
+.machine-led-eyebrow { color: #22c55e; font-size: .67rem; letter-spacing: .16em; font-weight: 800; }
+.machine-led-heading h2 { margin: 3px 0; font-size: 1.35rem; }
+.machine-led-heading p { margin: 0; color: var(--text-secondary); font-size: .85rem; }
+.machine-led-loading { padding: 48px; text-align: center; color: var(--text-secondary); }
+.machine-led-empty { padding: 34px 20px; border: 1px dashed rgba(34,197,94,.35); border-radius: 18px; text-align: center; background: rgba(34,197,94,.035); }
+.machine-led-empty-icon { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 12px; border-radius: 16px; background: rgba(34,197,94,.12); color: #48e270; font-size: 25px; }
+.machine-led-empty h3 { margin: 0 0 8px; }
+.machine-led-empty p { max-width: 480px; margin: 0 auto 20px; color: var(--text-secondary); line-height: 1.55; }
+.machine-led-enable { display: flex; justify-content: space-between; gap: 20px; align-items: center; padding: 15px; border: 1px solid rgba(34,197,94,.28); border-radius: 14px; background: rgba(34,197,94,.055); }
+.machine-led-enable span { display: grid; gap: 3px; }
+.machine-led-enable small { color: var(--text-secondary); }
+.machine-led-enable input { width: 20px; height: 20px; accent-color: #22c55e; }
+.machine-led-field { display: grid; gap: 7px; margin-top: 14px; color: var(--text-secondary); font-size: .8rem; }
+.machine-led-field select, .machine-led-field input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(4,13,20,.72); color: var(--text); }
+.machine-led-segment-title { display: flex; justify-content: space-between; margin-top: 22px; color: var(--text); font-size: .86rem; }
+.machine-led-segment-title span { color: #55e57d; }
+.machine-led-pixels { display: grid; grid-template-columns: repeat(auto-fit, minmax(12px, 1fr)); gap: 5px; margin: 11px 0; }
+.machine-led-pixels i { height: 24px; min-width: 10px; border-radius: 5px; background: #26343d; border: 1px solid #3c4c57; }
+.machine-led-pixels i.selected { background: #22c55e; border-color: #66ef87; box-shadow: 0 0 10px rgba(34,197,94,.38); }
+.machine-led-segment-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.machine-led-protocol-note { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid #f59e0b; border-radius: 8px; background: rgba(245,158,11,.08); color: #fbbf24; font-size: .78rem; line-height: 1.45; }
+.machine-led-colors { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; margin-top: 22px; }
+.machine-led-colors > strong { grid-column: 1 / -1; margin-bottom: 3px; }
+.machine-led-colors label { display: flex; align-items: center; justify-content: space-between; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-secondary); font-size: .8rem; }
+.machine-led-colors input { width: 34px; height: 25px; padding: 0; border: 0; background: transparent; }
+.machine-led-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.machine-led-primary, .machine-led-secondary { padding: 10px 17px; border-radius: 10px; font-weight: 750; cursor: pointer; }
+.machine-led-primary { border: 1px solid #22c55e; background: rgba(34,197,94,.15); color: #55e57d; }
+.machine-led-secondary { border: 1px solid var(--border); background: transparent; color: var(--text-secondary); }
+.machine-led-primary:disabled { opacity: .5; cursor: wait; }
+@media (max-width: 620px) { .machine-led-dialog { padding: 20px 16px; } .machine-led-colors { grid-template-columns: 1fr; } .machine-led-segment-fields { grid-template-columns: 1fr 1fr; } }
