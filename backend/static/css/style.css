@@ -4624,9 +4624,11 @@ body.green .settings-card {
 .plugin-card-description { flex: 1; margin: 11px 0 13px; color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
 .plugin-card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
 .plugin-card-tag { padding: 4px 7px; border-radius: 6px; background: rgba(148, 163, 184, 0.09); color: #cbd5e1; font-size: 0.64rem; }
-.plugin-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid rgba(148, 163, 184, 0.12); }
-.plugin-card-meta { color: var(--text-muted); font-size: 0.66rem; }
-.plugin-card-actions { display: flex; align-items: center; gap: 8px; }
+.plugin-card-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid rgba(148, 163, 184, 0.12); }
+.plugin-card-meta { min-width: 0; color: var(--text-muted); font-size: 0.66rem; }
+.plugin-card-actions { display: flex; min-width: 0; max-width: 100%; align-items: center; justify-content: flex-end; gap: 8px; }
+.plugin-card-actions.has-update { width: 100%; }
+.plugin-card-actions.has-update > button { flex: 1 1 0; min-width: 0; }
 .plugin-install-btn { min-width: 96px; padding: 8px 12px; border: 1px solid var(--plugin-accent); border-radius: 9px; background: color-mix(in srgb, var(--plugin-accent) 18%, transparent); color: var(--plugin-accent); font-weight: 750; cursor: pointer; }
 .plugin-install-btn:hover:not(:disabled) { background: var(--plugin-accent); color: #fff; }
 .plugin-install-btn.is-installed { border-color: rgba(239, 68, 68, 0.45); background: rgba(127, 29, 29, 0.15); color: #fca5a5; }

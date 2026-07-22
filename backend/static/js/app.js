@@ -14168,13 +14168,21 @@ function pluginActionLabel(plugin) {
     return plugin.installed ? t('pluginsUninstall') : t('pluginsInstall');
 }
 
-// "Actualizar" solo tiene sentido si ya está instalado Y el catálogo
-// declara una versión distinta a la que hay clonada de verdad (ver
-// catalog_version en _serialize_catalog(), backend/api/plugins.py) --
-// comparación simple por igualdad de string, no semver: este catálogo lo
-// mantiene a mano un solo desarrollador, nunca declara una versión "vieja".
+// "Actualizar" solo tiene sentido si el catálogo ofrece una versión
+// MAYOR que la instalada. Una comparación por desigualdad mostraba el botón
+// incluso cuando el checkout del plugin iba por delante del catálogo.
 function pluginUpdateAvailable(plugin) {
-    return !!(plugin.installed && plugin.catalog_version && plugin.catalog_version !== plugin.version);
+    if (!plugin.installed || !plugin.catalog_version || !plugin.version) return false;
+    const catalog = String(plugin.catalog_version).split('.').map(part => Number.parseInt(part, 10) || 0);
+    const installed = String(plugin.version).split('.').map(part => Number.parseInt(part, 10) || 0);
+    const length = Math.max(catalog.length, installed.length);
+    for (let index = 0; index < length; index += 1) {
+        const catalogPart = catalog[index] || 0;
+        const installedPart = installed[index] || 0;
+        if (catalogPart > installedPart) return true;
+        if (catalogPart < installedPart) return false;
+    }
+    return false;
 }
 
 function pluginCatalogText(plugin, field) {
@@ -14218,7 +14226,7 @@ function renderPluginCard(plugin) {
             <div class="plugin-card-tags">${plugin.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
             <div class="plugin-card-footer">
                 <span class="plugin-card-meta">${escapeHtml(pluginCategoryText(plugin.category))} · ${escapeHtml(plugin.size === 'Por definir' ? t('pluginsSizeTbd') : plugin.size)}</span>
-                <div class="plugin-card-actions">
+                <div class="plugin-card-actions${pluginUpdateAvailable(plugin) ? ' has-update' : ''}">
                     ${pluginUpdateAvailable(plugin) ? `<button type="button" class="plugin-update-btn" data-plugin-action="update" data-plugin-id="${escapeHtml(plugin.id)}" title="${escapeHtml(t('pluginsUpdateAvailable').replace('{version}', plugin.catalog_version))}">${escapeHtml(t('pluginsUpdate'))}</button>` : ''}
                     <button type="button" class="plugin-install-btn${plugin.installed ? ' is-installed' : ''}" data-plugin-action="${plugin.installed ? 'uninstall' : 'install'}" data-plugin-id="${escapeHtml(plugin.id)}" ${disabled ? 'disabled' : ''}>${escapeHtml(pluginActionLabel(plugin))}</button>
                 </div>
