@@ -52,8 +52,8 @@ def test_marlin_ui_translation_keys_exist_in_every_catalog():
 
 def test_marlin_ui_assets_have_updated_cachebusters():
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
-    assert '/static/css/style.css?v=268' in html
-    assert '/static/js/app.js?v=212' in html
+    assert '/static/css/style.css?v=269' in html
+    assert '/static/js/app.js?v=213' in html
     assert '/static/js/translations.js?v=24' in html
     for language in ("de", "fr", "pt-BR"):
         assert f'/static/js/translations-{language}.js?v=4' in html
@@ -102,3 +102,20 @@ def test_marlin_print_card_combines_local_library_and_native_sd_files():
     assert 'data-source="local"' in javascript
     assert 'data-source="sd"' in javascript
     assert "endpoint = '/api/marlin-printers/sd/print/start'" in javascript
+
+
+def test_dashboard_combines_every_registered_3d_connector():
+    javascript = (ROOT / "backend/static/js/app.js").read_text(encoding="utf-8")
+    stylesheet = (ROOT / "backend/static/css/style.css").read_text(encoding="utf-8")
+    assert "async function loadDashboardStandalonePrinters()" in javascript
+    for endpoint in (
+        "/api/marlin-printers/registry/status",
+        "/api/elegoo/printers",
+        "/api/flashforge/printers",
+        "/api/bambu/printers",
+    ):
+        assert endpoint in javascript
+    assert "printerEntries.push(...dashboardStandalonePrinterEntries)" in javascript
+    assert "openMarlinPrinterModal(card.dataset.marlinDevice)" in javascript
+    assert "printer-card-connection-marlin" in stylesheet
+    assert "border-left-color: #22d3ee" in stylesheet

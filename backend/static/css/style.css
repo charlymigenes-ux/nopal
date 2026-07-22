@@ -13899,6 +13899,17 @@ body.green .option-switch {
     border-left-color: #22c55e;
 }
 
+/* Marlin comparte la columna de impresoras 3D con Klipper y las marcas de
+   red, pero conserva un filo cian inequívoco en el panel y su sección. */
+.printer-card-type-3d.printer-card-connection-marlin {
+    border-left-color: #22d3ee;
+    box-shadow: inset 3px 0 12px rgba(34, 211, 238, 0.12), 0 1px 8px rgba(0, 0, 0, 0.06);
+}
+
+.printer-card-type-3d.printer-card-connection-marlin:hover {
+    box-shadow: inset 3px 0 15px rgba(34, 211, 238, 0.2), 0 8px 24px rgba(0, 0, 0, 0.09);
+}
+
 .printer-card-type-laser {
     border-left-color: #8b5cf6;
 }

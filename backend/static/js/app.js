@@ -5154,6 +5154,9 @@ let dashboardPrintersLoaded = false;
 let dashboardLaserDevicesLoaded = false;
 let dashboardPrintersLoadError = false;
 let dashboardLaserDevicesLoadError = false;
+let dashboardStandalonePrintersLoaded = false;
+let dashboardStandalonePrintersLoading = false;
+let dashboardStandalonePrinterEntries = [];
 
 function deviceColumnLoadingMarkup(labelKey) {
     const accentClass = labelKey === 'laser' ? 'device-loading-orbit-laser'
@@ -5191,6 +5194,97 @@ async function loadPrinters() {
         dashboardPrintersLoaded = true;
         dashboardPrintersLoadError = true;
         renderPrinters(allPrinters);
+    }
+}
+
+function standalonePrinterSortPriority(visualState) {
+    if (visualState === 'offline') return 4;
+    return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
+}
+
+async function loadDashboardStandalonePrinters() {
+    if (dashboardStandalonePrintersLoading) return;
+    dashboardStandalonePrintersLoading = true;
+    try {
+        const requests = [
+            fetch('/api/marlin-printers/registry/status').then(res => res.ok ? res.json() : Promise.reject(new Error('Marlin'))),
+            fetch('/api/marlin-printers/jobs/active').then(res => res.ok ? res.json() : Promise.reject(new Error('Marlin jobs'))),
+            fetch('/api/elegoo/printers').then(res => res.ok ? res.json() : Promise.reject(new Error('Elegoo'))),
+            fetch('/api/flashforge/printers').then(res => res.ok ? res.json() : Promise.reject(new Error('FlashForge'))),
+            fetch('/api/bambu/printers').then(res => res.ok ? res.json() : Promise.reject(new Error('Bambu'))),
+        ];
+        const [marlinResult, marlinJobsResult, elegooResult, flashforgeResult, bambuResult] = await Promise.allSettled(requests);
+        const entries = [];
+
+        if (marlinResult.status === 'fulfilled') {
+            const printers = marlinResult.value.printers || [];
+            const jobs = marlinJobsResult.status === 'fulfilled' ? (marlinJobsResult.value.jobs || []) : [];
+            const jobsByDevice = new Map(jobs.map(job => [String(job.device), job]));
+            marlinPrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const job = jobsByDevice.get(String(printer.device));
+                const state = job?.state === 'running' ? 'printing' : (job?.state || 'idle');
+                const status = { connected: Boolean(printer.online), state };
+                const visualState = getMarlinPrinterVisualState(status);
+                entries.push({
+                    type: 'marlin', id: printer.device,
+                    isOnline: Boolean(printer.online),
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: marlinPrinterCardHtml(printer, status),
+                });
+            });
+        }
+
+        if (elegooResult.status === 'fulfilled') {
+            const printers = elegooResult.value.printers || [];
+            elegooPrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const visualState = getElegooVisualState(printer);
+                entries.push({
+                    type: 'elegoo', id: printer.id,
+                    isOnline: visualState !== 'offline',
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: elegooPrinterCardHtml(printer),
+                });
+            });
+        }
+
+        if (flashforgeResult.status === 'fulfilled') {
+            const printers = flashforgeResult.value.printers || [];
+            flashforgePrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const visualState = getFlashforgeVisualState(printer);
+                entries.push({
+                    type: 'flashforge', id: printer.id,
+                    isOnline: visualState !== 'offline',
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: flashforgePrinterCardHtml(printer),
+                });
+            });
+        }
+
+        if (bambuResult.status === 'fulfilled') {
+            const printers = bambuResult.value.printers || [];
+            bambuPrintersRegistryCache = printers;
+            printers.forEach(printer => {
+                const visualState = getBambuVisualState(printer);
+                entries.push({
+                    type: 'bambu', id: printer.id,
+                    isOnline: visualState !== 'offline',
+                    sortPriority: standalonePrinterSortPriority(visualState),
+                    html: bambuPrinterCardHtml(printer),
+                });
+            });
+        }
+
+        dashboardStandalonePrinterEntries = entries;
+        dashboardStandalonePrintersLoaded = true;
+        renderPrinters(allPrinters);
+        updateActivePrintersCount();
+    } catch (error) {
+        console.error(error);
+    } finally {
+        dashboardStandalonePrintersLoading = false;
     }
 }
 
@@ -5840,6 +5934,7 @@ function renderPrinters(printersInput) {
 
         return { isOnline, sortPriority: getPrinterSortPriority(printer), html };
     });
+    printerEntries.push(...dashboardStandalonePrinterEntries);
 
     const laserOnlyEntries = dashboardLaserEntries.filter(entry => (entry.kind || 'laser') !== 'cnc').map(entry => {
         const isOnline = getLaserVisualState(entry.status) !== 'offline';
@@ -5905,6 +6000,31 @@ function renderPrinters(printersInput) {
         });
     });
 
+    columnsRoot.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
+        card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
+    });
+
+    const standaloneSections = [
+        ['elegoo', 'elegooId'],
+        ['flashforge', 'flashforgeId'],
+        ['bambu', 'bambuId'],
+    ];
+    standaloneSections.forEach(([section, dataKey]) => {
+        columnsRoot.querySelectorAll(`.printer-card[data-${section}-id]`).forEach(card => {
+            card.addEventListener('click', () => switchSection(section));
+            card.querySelectorAll('.elegoo-card-action-btn').forEach(btn => {
+                btn.addEventListener('click', event => {
+                    event.stopPropagation();
+                    const action = btn.dataset.action;
+                    const printerId = btn.dataset[dataKey];
+                    if (section === 'elegoo') handleElegooPrinterAction(action, printerId);
+                    if (section === 'flashforge') handleFlashforgePrinterAction(action, printerId);
+                    if (section === 'bambu') handleBambuPrinterAction(action, printerId);
+                });
+            });
+        });
+    });
+
     columnsRoot.querySelectorAll('.printer-card[data-laser-host]').forEach(card => {
         card.addEventListener('click', async () => {
             const host = card.dataset.laserHost;
@@ -5954,7 +6074,8 @@ function updateActivePrintersCount() {
             const stateValue = getPrinterEffectiveStateValue(printer);
             return printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
         }).length;
-        activePrintersEl.textContent = onlineCount.toLocaleString();
+        const standaloneOnlineCount = dashboardStandalonePrinterEntries.filter(entry => entry.isOnline).length;
+        activePrintersEl.textContent = (onlineCount + standaloneOnlineCount).toLocaleString();
     }
 }
 
@@ -11972,7 +12093,7 @@ function marlinPrinterCardHtml(printer, status) {
         `;
 
     return `
-        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
+        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
             <div class="printer-card-top">
                 <div>
@@ -16147,6 +16268,7 @@ renderPrintQueue();
 renderInitialDeviceLoaders();
 loadModels();
 loadPrinters();
+loadDashboardStandalonePrinters();
 loadRecentPrinterFiles();
 loadLaserHistory();
 loadDashboardPanel();
@@ -16161,6 +16283,7 @@ maybeStartTour('dashboard');
 
 // Refresh printers every 5 seconds
 setInterval(loadPrinters, 5000);
+setInterval(loadDashboardStandalonePrinters, 10000);
 setInterval(loadDashboardPanel, 10000);
 setInterval(updatePanelClock, 1000);
 setInterval(loadAccessories, 10000);
