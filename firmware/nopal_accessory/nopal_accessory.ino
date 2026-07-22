@@ -26,10 +26,11 @@
  *   NOPAL:R1?
  *   NOPAL:LED:255,0,0
  *   NOPAL:WS:0,255,0
+ *   NOPAL:WSSEG:0,4,255,80,0
  *
- * Respuesta de NOPAL:ID? (v1.4):
- *   NOPAL,role=accessory,chip=...,fw=1.4,relays=4,pwm_led=1,ws2812=1,
- *   ws2812_count=30,wifi=1,wifi_connected=...,wifi_mode=...,hostname=...,
+ * Respuesta de NOPAL:ID? (protocolo 4):
+ *   NOPAL,role=accessory,chip=...,fw=4.0.0,protocol=4,relays=4,pwm_led=1,ws2812=1,
+ *   ws2812_count=8,wifi=1,wifi_connected=...,wifi_mode=...,hostname=...,
  *   ip=...,ota=1,ota_path=/update,uptime_ms=...,free_heap=...
  *
  * Portal web (cuando hay Wi-Fi):
@@ -40,8 +41,8 @@
  *                              GET ?n=1 consulta, POST n=1&on=true/false
  *                              cambia -- requiere las mismas credenciales
  *                              que ElegantOTA)
- *   http://IP/api/led      -> control de color por HTTP (nuevo en 1.4,
- *                              POST mode=pwm|ws2812&r=..&g=..&b=.. --
+ *   http://IP/api/led      -> control completo o por segmento:
+ *                              POST mode=ws2812&start=0&count=4&r=..&g=..&b=.. --
  *                              misma autenticación)
  *
  * Antes de compilar copia secrets.h.example a secrets.h y pon tus propios
