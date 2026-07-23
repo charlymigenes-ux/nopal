@@ -28,7 +28,10 @@ auth_users.json
 .session_secret
 
 # Credenciales reales de placas NOPAL (Wi-Fi/OTA) — usa secrets.h.example
-# como plantilla, secrets.h con los datos reales nunca se sube.
+# como plantilla, secrets.h con los datos reales nunca se sube. Glob (no
+# ruta exacta) para cubrir también los secrets.h de cada subcarpeta de
+# sketch (NOPAL_ESP12E_BUZZER/, NOPAL_NodeMCU_V3_ESP8266/, etc.).
+firmware/nopal_accessory/**/secrets.h
 firmware/nopal_accessory/secrets.h
 
 # Binarios .bin subidos para flashear placas NOPAL — se suben desde el

@@ -29,13 +29,16 @@
  *   NOPAL:WSSEG:0,4,255,80,0
  *
  * Respuesta de NOPAL:ID? (protocolo 4):
- *   NOPAL,role=accessory,chip=...,fw=4.0.0,protocol=4,relays=4,pwm_led=1,ws2812=1,
+ *   NOPAL,role=accessory,chip=...,fw=4.1.0,protocol=4,relays=4,pwm_led=1,ws2812=1,
  *   ws2812_count=8,wifi=1,wifi_connected=...,wifi_mode=...,hostname=...,
  *   ip=...,ota=1,ota_path=/update,uptime_ms=...,free_heap=...
  *
  * Portal web (cuando hay Wi-Fi):
- *   http://IP/             -> redirige a /update
- *   http://IP/api/status   -> estado en JSON
+ *   http://IP/             -> panel NOPAL embebido (relés, NeoPixel, PWM RGB
+ *                              y estado del dispositivo) -- misma
+ *                              autenticación que ElegantOTA, con un botón
+ *                              adentro para ir directo a /update
+ *   http://IP/api/status   -> estado en JSON (de solo lectura, sin auth)
  *   http://IP/update       -> panel de ElegantOTA (usuario/clave de secrets.h)
  *   http://IP/api/relay    -> control de relés por HTTP (nuevo en 1.4,
  *                              GET ?n=1 consulta, POST n=1&on=true/false
@@ -58,6 +61,7 @@
   #include <WebServer.h>
   #include <ESPmDNS.h>
   #include <esp_arduino_version.h>
+  #include <esp_system.h>
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <WiFiClient.h>
@@ -74,7 +78,7 @@
 // CONFIGURACIÓN GENERAL
 // ============================================================================
 
-#define FW_VERSION "4.0.0"
+#define FW_VERSION "4.1.0"
 #define NOPAL_PROTOCOL 4
 
 // La mayoría de módulos de relés se activan con LOW.
@@ -120,7 +124,7 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 
 #define WS2812_ENABLE true
 #define WS2812_PIN 23
-#define WS2812_COUNT 8
+#define WS2812_COUNT 20
 
 // LED integrado de la placa ("Dev Module" típico) -- indica que el
 // firmware está vivo. GPIO2 está libre en este mapeo de pines (no lo usa
@@ -168,7 +172,7 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 
 #define WS2812_ENABLE true
 #define WS2812_PIN 2      // D4
-#define WS2812_COUNT 30
+#define WS2812_COUNT 20
 
 // GPIO2 (D4), el LED integrado habitual de las NodeMCU/Wemos, ya lo usa
 // WS2812_PIN en este mapeo -- no queda un pin libre y seguro para un LED
@@ -177,6 +181,41 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define STATUS_LED_ENABLE false
 
 #endif
+
+
+// ============================================================================
+// NOMBRES DE RELÉS (opcionales, solo para el panel web)
+// ============================================================================
+//
+// RELAY_COUNT vale 4 en ambas plataformas de arriba, así que este bloque
+// vive fuera del #if ESP32/ESP8266. Igual que en NOPAL_ESP12E.ino: si
+// secrets.h no define estos macros (lo normal, secrets.h.example no los
+// trae por defecto) se usa "Relé N" -- un secrets.h viejo o incompleto
+// sigue compilando sin tocarlo.
+//
+
+#ifndef NOPAL_RELAY1_NAME
+  #define NOPAL_RELAY1_NAME "Relé 1"
+#endif
+
+#ifndef NOPAL_RELAY2_NAME
+  #define NOPAL_RELAY2_NAME "Relé 2"
+#endif
+
+#ifndef NOPAL_RELAY3_NAME
+  #define NOPAL_RELAY3_NAME "Relé 3"
+#endif
+
+#ifndef NOPAL_RELAY4_NAME
+  #define NOPAL_RELAY4_NAME "Relé 4"
+#endif
+
+const char* const RELAY_NAMES[RELAY_COUNT] = {
+  NOPAL_RELAY1_NAME,
+  NOPAL_RELAY2_NAME,
+  NOPAL_RELAY3_NAME,
+  NOPAL_RELAY4_NAME
+};
 
 
 // ============================================================================
@@ -194,6 +233,307 @@ Adafruit_NeoPixel strip(
 );
 
 #endif
+
+
+// ============================================================================
+// PANEL WEB NOPAL
+// ============================================================================
+//
+// Mismo panel que NOPAL_ESP12E.ino (misma paleta/CSS, calcada a propósito
+// para que ambas placas "se vean iguales" como pidió el usuario), pero
+// hablando con las rutas/parámetros reales que ya expone este firmware
+// genérico (/api/relay con on=true|false, /api/led con mode=pwm|ws2812) en
+// vez de las rutas exclusivas del ESP-12E (/api/scene, /api/ws,
+// /api/ws/pixel) que este .ino no tiene y que NO se agregan acá -- no hay
+// que inventar rutas nuevas, solo reusar lo que ya está.
+//
+// Diferencias reales frente al panel del ESP-12E (no son bugs, son la
+// placa siendo distinta):
+//   - Sin "Escenas del taller" animadas (parpadeo/respirar/carrera): este
+//     firmware no tiene el motor de efectos StripEffect del ESP-12E, así
+//     que las "Escenas rápidas" de acá aplican un color fijo con la misma
+//     paleta, sin animación -- se avisa en el propio panel.
+//   - Sin brillo de NeoPixel: no hay strip.setBrightness()/ruta para eso
+//     en este firmware.
+//   - Sin entrada analógica (A0): esta placa no reserva ningún pin para
+//     eso en este mapeo.
+//   - Con tira RGB analógica por PWM (mode=pwm): el ESP-12E no la tiene,
+//     pero esta placa sí -- se agrega su propia tarjeta.
+//   - Sin buzzer: ninguna de las dos placas lo tiene en este .ino.
+//
+const char INDEX_HTML[] PROGMEM = R"NOPALHTML(
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NOPAL · Accesorio</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#101719;
+  --panel:#182326;
+  --panel2:#1e2c2f;
+  --line:#304246;
+  --text:#edf6f1;
+  --muted:#9bb0aa;
+  --green:#65d690;
+  --amber:#f4b55f;
+  --red:#ff6c6c;
+  --cyan:#62c7dc;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 20% 0%,rgba(101,214,144,.10),transparent 35%),
+    linear-gradient(180deg,#11191b,#0c1214);
+  color:var(--text);
+  font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+main{max-width:1080px;margin:auto;padding:24px}
+header{
+  display:flex;justify-content:space-between;align-items:center;
+  gap:16px;margin-bottom:20px
+}
+.brand{display:flex;align-items:center;gap:13px}
+.logo{
+  width:44px;height:44px;border-radius:14px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#276340,#173326);
+  border:1px solid #4d8b63;font-size:24px
+}
+h1{font-size:21px;margin:0}.sub{color:var(--muted);font-size:13px}
+a{color:var(--green);text-decoration:none}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.card{
+  grid-column:span 6;background:linear-gradient(145deg,var(--panel),var(--panel2));
+  border:1px solid var(--line);border-radius:18px;padding:18px;
+  box-shadow:0 14px 35px rgba(0,0,0,.20)
+}
+.card.full{grid-column:span 12}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#c5d8d2;margin:0 0 14px}
+.relays{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.relay{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px;border-radius:13px;background:#111b1d;border:1px solid #2d4043
+}
+.badge{font-size:12px;padding:4px 9px;border-radius:999px;background:#253336;color:var(--muted)}
+.badge.on{background:rgba(101,214,144,.16);color:var(--green)}
+button,.button{
+  border:1px solid #3a5155;background:#243438;color:var(--text);
+  padding:9px 12px;border-radius:11px;cursor:pointer;font-weight:650
+}
+button:hover,.button:hover{border-color:#6a8a8f}
+button.green{background:#205d3a;border-color:#39875a}
+button.red{background:#6a2929;border-color:#a64444}
+button.amber{background:#68491e;border-color:#9b7132}
+.row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.scenes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+input[type=color]{width:55px;height:40px;padding:3px;background:#101719;border:1px solid #3a5155;border-radius:10px}
+input[type=number]{width:72px}
+input[type=number],input[type=range]{
+  background:#101719;color:var(--text);border:1px solid #3a5155;
+  border-radius:9px;padding:8px
+}
+.statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat{padding:11px;border-radius:12px;background:#111b1d;border:1px solid #2c3d40}
+.stat b{display:block;font-size:17px}.stat span{font-size:11px;color:var(--muted);text-transform:uppercase}
+pre{
+  white-space:pre-wrap;word-break:break-word;background:#0c1315;
+  padding:12px;border-radius:12px;border:1px solid #26373a;color:#acd4c0
+}
+footer{margin:18px 2px;color:var(--muted);font-size:12px}
+@media(max-width:760px){
+  .card,.card.full{grid-column:span 12}
+  .scenes{grid-template-columns:repeat(2,1fr)}
+  .statgrid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand">
+    <div class="logo">🌵</div>
+    <div><h1>NOPAL · Accesorio</h1><div class="sub" id="identity">Cargando estado…</div></div>
+  </div>
+  <a class="button" href="/update">Actualizar firmware</a>
+</header>
+
+<section class="grid">
+  <article class="card">
+    <h2>Relés</h2>
+    <div class="relays" id="relays"></div>
+  </article>
+
+  <article class="card" id="cardScenes">
+    <h2>Escenas rápidas (NeoPixel)</h2>
+    <p class="sub">Color fijo para toda la tira -- este firmware genérico no
+      tiene parpadeo ni animaciones como el panel del ESP-12E.</p>
+    <div class="scenes">
+      <button class="green" onclick="scene('READY')">Listo</button>
+      <button onclick="scene('WORKING')">Trabajando</button>
+      <button class="amber" onclick="scene('WAITING')">En espera</button>
+      <button class="red" onclick="scene('ALARM')">Alarma</button>
+      <button onclick="scene('MAINTENANCE')">Mantenimiento</button>
+      <button onclick="scene('DISCONNECTED')">Desconectado</button>
+      <button onclick="scene('OFF')">Apagar LEDs</button>
+    </div>
+  </article>
+
+  <article class="card" id="cardWs">
+    <h2>NeoPixel global</h2>
+    <div class="row">
+      <input id="wsColor" type="color" value="#41d17d">
+      <button onclick="sendWsColor()">Aplicar color</button>
+      <button class="red" onclick="sendWsOff()">Apagar tira</button>
+    </div>
+    <p class="sub" id="wsInfo">—</p>
+  </article>
+
+  <article class="card" id="cardWsPixel">
+    <h2>NeoPixel individual</h2>
+    <div class="row">
+      <label>LED</label>
+      <input id="pixel" type="number" min="1" value="1">
+      <label>Cant.</label>
+      <input id="pixelCount" type="number" min="1" value="1">
+      <input id="pixelColor" type="color" value="#ff8c32">
+      <button onclick="sendPixel()">Aplicar</button>
+    </div>
+    <p class="sub">La numeración empieza en 1. "Cant." son LEDs consecutivos
+      a partir de ese número.</p>
+  </article>
+
+  <article class="card" id="cardPwm">
+    <h2>Tira RGB analógica (PWM)</h2>
+    <div class="row">
+      <input id="pwmColor" type="color" value="#41d17d">
+      <button onclick="sendPwmColor()">Aplicar color</button>
+      <button class="red" onclick="sendPwmOff()">Apagar</button>
+    </div>
+  </article>
+
+  <article class="card full">
+    <h2>Estado del dispositivo</h2>
+    <div class="statgrid">
+      <div class="stat"><b id="wifi">—</b><span>Wi-Fi</span></div>
+      <div class="stat"><b id="ip">—</b><span>Dirección IP</span></div>
+      <div class="stat"><b id="scene">—</b><span>Escena</span></div>
+      <div class="stat"><b id="relaysOn">—</b><span>Relés activos</span></div>
+    </div>
+    <pre id="details">Esperando datos…</pre>
+  </article>
+</section>
+
+<footer>NOPAL Firmware 4.1 · Accesorio genérico ESP32 / ESP8266 · Protocolo 4</footer>
+</main>
+<script>
+const enc=o=>new URLSearchParams(o);
+let lastScene='—';
+
+async function post(path,data){
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:enc(data)});
+  const t=await r.text();
+  if(!r.ok) throw new Error(t);
+  setTimeout(refresh,150);
+  return t;
+}
+function rgb(hex){return [parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)]}
+
+async function relay(n,on){try{await post('/api/relay',{n,on})}catch(e){alert(e.message)}}
+
+async function sendWsColor(){
+  const [r,g,b]=rgb(document.getElementById('wsColor').value);
+  try{await post('/api/led',{mode:'ws2812',r,g,b})}catch(e){alert(e.message)}
+}
+async function sendWsOff(){
+  try{await post('/api/led',{mode:'ws2812',r:0,g:0,b:0})}catch(e){alert(e.message)}
+}
+async function sendPixel(){
+  const [r,g,b]=rgb(document.getElementById('pixelColor').value);
+  const n=parseInt(document.getElementById('pixel').value,10)||1;
+  const count=parseInt(document.getElementById('pixelCount').value,10)||1;
+  try{await post('/api/led',{mode:'ws2812',start:n-1,count,r,g,b})}catch(e){alert(e.message)}
+}
+async function sendPwmColor(){
+  const [r,g,b]=rgb(document.getElementById('pwmColor').value);
+  try{await post('/api/led',{mode:'pwm',r,g,b})}catch(e){alert(e.message)}
+}
+async function sendPwmOff(){
+  try{await post('/api/led',{mode:'pwm',r:0,g:0,b:0})}catch(e){alert(e.message)}
+}
+
+const SCENE_COLORS={
+  READY:[25,220,95],WORKING:[20,175,255],WAITING:[255,145,20],
+  ALARM:[255,0,0],MAINTENANCE:[175,45,255],DISCONNECTED:[105,120,125],OFF:[0,0,0]
+};
+async function scene(name){
+  const c=SCENE_COLORS[name]||[0,0,0];
+  try{
+    await post('/api/led',{mode:'ws2812',r:c[0],g:c[1],b:c[2]});
+    lastScene=name;
+    document.getElementById('scene').textContent=name;
+  }catch(e){alert(e.message)}
+}
+
+function renderRelays(relays){
+  const list=relays||[];
+  const box=document.getElementById('relays');
+  box.innerHTML='';
+  list.forEach(x=>{
+    box.innerHTML+=`<div class="relay"><div><b>${x.name}</b><br><span class="sub">GPIO ${x.gpio}</span></div><div class="row"><span class="badge ${x.on?'on':''}">${x.on?'ON':'OFF'}</span><button onclick="relay(${x.n},${x.on?'false':'true'})">Cambiar</button></div></div>`;
+  });
+  document.getElementById('relaysOn').textContent=list.filter(x=>x.on).length+'/'+list.length;
+}
+
+async function refresh(){
+  try{
+    const r=await fetch('/api/status',{cache:'no-store'});
+    const s=await r.json();
+
+    document.getElementById('identity').textContent=
+      (s.hostname||'—')+' · '+(s.chip||s.board||'—')+' · FW '+s.firmware;
+
+    document.getElementById('wifi').textContent=
+      s.wifi.connected?'Conectado':s.wifi.mode.toUpperCase();
+    document.getElementById('ip').textContent=s.wifi.ip;
+    document.getElementById('scene').textContent=lastScene;
+
+    renderRelays(s.relays);
+
+    const hasWs=!!(s.io&&s.io.ws2812);
+    const hasPwm=!!(s.io&&s.io.pwm_led);
+    document.getElementById('cardWs').style.display=hasWs?'':'none';
+    document.getElementById('cardWsPixel').style.display=hasWs?'':'none';
+    document.getElementById('cardScenes').style.display=hasWs?'':'none';
+    document.getElementById('cardPwm').style.display=hasPwm?'':'none';
+
+    if(hasWs){
+      document.getElementById('pixel').max=s.io.ws2812_count;
+      document.getElementById('wsInfo').textContent=
+        s.io.ws2812_count+' LED(s), GPIO '+(s.io.ws2812_pin!==undefined?s.io.ws2812_pin:'—');
+    }
+
+    document.getElementById('details').textContent=
+      `SSID: ${s.wifi.ssid||'—'}\nRSSI: ${s.wifi.rssi} dBm\n`+
+      `AP recuperación: ${s.wifi.recovery_ap?('activo ('+(s.wifi.recovery_ssid||'—')+')'):'inactivo'}\n`+
+      `Hostname: ${s.hostname||'—'}\nChip: ${s.chip||'—'}\n`+
+      `Firmware: ${s.firmware} (protocolo ${s.protocol})\n`+
+      (hasWs?`NeoPixel: ${s.io.ws2812_count} LED(s), GPIO ${s.io.ws2812_pin}\n`:``)+
+      (hasPwm&&s.io.pwm_pins?`PWM RGB: GPIO ${s.io.pwm_pins.join('/')}\n`:``)+
+      `Heap libre: ${s.free_heap} bytes\nUptime: ${Math.floor(s.uptime_ms/1000)} s\n`+
+      `Reset: ${s.reset_reason||'—'}`;
+  }catch(e){
+    document.getElementById('identity').textContent='Sin respuesta del dispositivo';
+  }
+}
+refresh();setInterval(refresh,2500);
+</script>
+</body>
+</html>
+)NOPALHTML";
 
 
 // ============================================================================
@@ -304,16 +644,52 @@ void serviceStatusLed() {
 #endif
 
 
-void printChipIdentification() {
+// Devuelve el mismo texto que antes imprimía printChipIdentification()
+// directo por Serial -- factorizado en 4.1 para poder reusarlo también en
+// buildStatusJson() (campo "chip") sin duplicar el #if ESP32/ESP8266.
+String chipModelText() {
 
 #if defined(ESP32)
 
-  Serial.print(ESP.getChipModel());
+  return String(ESP.getChipModel());
 
 #elif defined(ESP8266)
 
-  Serial.print("ESP8266-");
-  Serial.print(ESP.getChipId(), HEX);
+  return String("ESP8266-") + String(ESP.getChipId(), HEX);
+
+#endif
+}
+
+
+void printChipIdentification() {
+  Serial.print(chipModelText());
+}
+
+
+// Texto legible de la razón del último reinicio -- útil para diagnosticar
+// reinicios inesperados (brownout, watchdog, panic) desde el panel web sin
+// tener que estar mirando el monitor Serial en el momento en que pasan.
+String resetReasonText() {
+
+#if defined(ESP32)
+
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return "Encendido";
+    case ESP_RST_EXT:       return "Pin de reset externo";
+    case ESP_RST_SW:        return "Software (reinicio pedido por el firmware)";
+    case ESP_RST_PANIC:     return "Pánico / excepción";
+    case ESP_RST_INT_WDT:   return "Watchdog de interrupción";
+    case ESP_RST_TASK_WDT:  return "Watchdog de tarea";
+    case ESP_RST_WDT:       return "Watchdog";
+    case ESP_RST_DEEPSLEEP: return "Salida de deep sleep";
+    case ESP_RST_BROWNOUT:  return "Brownout (caída de voltaje)";
+    case ESP_RST_SDIO:      return "SDIO";
+    default:                return "Desconocido";
+  }
+
+#elif defined(ESP8266)
+
+  return ESP.getResetReason();
 
 #endif
 }
@@ -760,10 +1136,27 @@ void maintainWifiConnection() {
 
 String buildStatusJson() {
   String json;
-  json.reserve(512);
+  // 512 alcanzaba antes de 4.1 -- ahora suma "chip"/"board"/"reset_reason"
+  // y el arreglo "relays" (usado por el panel web nuevo, ver INDEX_HTML),
+  // así que se reserva más para evitar reallocations a mitad de armado.
+  json.reserve(1536);
 
   json += "{";
   json += "\"role\":\"accessory\",";
+
+  json += "\"board\":\"";
+
+#if defined(ESP32)
+  json += "esp32_generic";
+#elif defined(ESP8266)
+  json += "esp8266_generic";
+#endif
+
+  json += "\",";
+
+  json += "\"chip\":\"";
+  json += jsonEscape(chipModelText());
+  json += "\",";
 
   json += "\"firmware\":\"";
   json += FW_VERSION;
@@ -784,6 +1177,10 @@ String buildStatusJson() {
   json += "\"free_heap\":";
   json += String(ESP.getFreeHeap());
   json += ",";
+
+  json += "\"reset_reason\":\"";
+  json += jsonEscape(resetReasonText());
+  json += "\",";
 
   json += "\"wifi\":{";
   json += "\"connected\":";
@@ -821,6 +1218,32 @@ String buildStatusJson() {
   json += "\"";
   json += "},";
 
+  // Estado individual de cada relé -- agregado en 4.1 para que el panel
+  // web nuevo (INDEX_HTML) pueda pintar el badge ON/OFF de cada uno sin
+  // tener que pegarle a /api/relay una vez por relé. Mismo shape que ya
+  // usaba NOPAL_ESP12E.ino y que probe_wifi_board() en accessory_service.py
+  // ya intenta leer con data.get("relays", []) -- backend viejo que no
+  // conocía este campo simplemente seguía usando io.relays (el conteo).
+  json += "\"relays\":[";
+
+  for (uint8_t index = 0; index < RELAY_COUNT; index++) {
+    if (index > 0) {
+      json += ",";
+    }
+
+    json += "{\"n\":";
+    json += String(index + 1);
+    json += ",\"name\":\"";
+    json += jsonEscape(String(RELAY_NAMES[index]));
+    json += "\",\"gpio\":";
+    json += String(RELAY_PINS[index]);
+    json += ",\"on\":";
+    json += getRelay(index) ? "true" : "false";
+    json += "}";
+  }
+
+  json += "],";
+
   json += "\"ota\":{";
   json += "\"enabled\":true,";
   json += "\"path\":\"/update\"";
@@ -832,12 +1255,29 @@ String buildStatusJson() {
   json += ",";
   json += "\"pwm_led\":";
   json += PWM_LED_ENABLE ? "true" : "false";
+
+#if PWM_LED_ENABLE
+  json += ",\"pwm_pins\":[";
+  json += String(PWM_LED_PIN_R);
+  json += ",";
+  json += String(PWM_LED_PIN_G);
+  json += ",";
+  json += String(PWM_LED_PIN_B);
+  json += "]";
+#endif
+
   json += ",";
   json += "\"ws2812\":";
   json += WS2812_ENABLE ? "true" : "false";
   json += ",";
   json += "\"ws2812_count\":";
   json += String(WS2812_ENABLE ? WS2812_COUNT : 0);
+
+#if WS2812_ENABLE
+  json += ",\"ws2812_pin\":";
+  json += String(WS2812_PIN);
+#endif
+
   json += "}";
 
   json += "}";
@@ -880,9 +1320,18 @@ bool checkApiAuth() {
 
 
 void setupWebServer() {
+  // Desde 4.1 sirve el panel NOPAL embebido (INDEX_HTML) en vez de
+  // redirigir directo a /update -- mismo criterio que NOPAL_ESP12E.ino:
+  // protegido con las mismas credenciales que ElegantOTA, y con un botón
+  // adentro del panel para quien de verdad quiera ir a /update.
   server.on("/", HTTP_GET, []() {
-    server.sendHeader("Location", "/update");
-    server.send(302, "text/plain", "");
+    if (!checkApiAuth()) return;
+
+    server.send_P(
+      200,
+      PSTR("text/html; charset=utf-8"),
+      INDEX_HTML
+    );
   });
 
   server.on("/api/status", HTTP_GET, []() {

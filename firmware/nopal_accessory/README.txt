@@ -25,6 +25,9 @@ FUNCIONES
   configuradas o si falla la conexión al Wi-Fi de casa/taller.
 - ElegantOTA: actualizar el firmware por red sin desconectar la placa,
   protegido con usuario/contraseña.
+- Panel web NOPAL embebido en http://IP/ (relés con nombre y GPIO, NeoPixel
+  global/individual, RGB PWM y estado del dispositivo) -- misma pinta que
+  el panel de NOPAL_ESP12E.ino, adaptado a las rutas reales de este .ino.
 - mDNS: http://<hostname>.local/
 - NOPAL:ID? incluye ahora datos de red (wifi, ip, hostname, ota) además de
   los relés/PWM/WS2812 y la telemetría (uptime_ms, free_heap) que ya
@@ -63,10 +66,12 @@ Después del arranque revisa el monitor Serial para conocer la IP asignada
 (o el comando NOPAL:NET? por USB).
 
 Panel:
-- http://IP/           -> redirige a /update
+- http://IP/           -> panel web NOPAL (relés, NeoPixel, PWM RGB y
+                            estado del dispositivo) -- pide usuario/clave,
+                            trae un botón adentro para ir a /update
 - http://IP/update      -> panel de ElegantOTA (pide usuario/clave)
-- http://IP/api/status  -> estado en JSON (wifi/ota/io)
-- http://<hostname>.local/update  (si tu red soporta mDNS)
+- http://IP/api/status  -> estado en JSON (wifi/ota/io/relays), sin auth
+- http://<hostname>.local/  (si tu red soporta mDNS)
 
 Si el Wi-Fi falla, la placa levanta su propia red:
 - SSID: NOPAL-XXXXXX
