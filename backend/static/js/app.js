@@ -7218,6 +7218,8 @@ function updatePrinterSendBusyWarning() {
 // (ver comentario arriba) — se deshabilitan sus tarjetas de modo y el botón
 // rápido de cola del footer, y si el usuario tenía ese modo elegido se
 // vuelve a "now" automáticamente al cambiar de impresora.
+let printerSendSdCheckToken = 0;
+
 function updatePrinterSendModesAvailability() {
     const selectedEntry = getPrinterSendSelectedEntry();
     const isKlipper = !selectedEntry || selectedEntry.type === 'klipper';
@@ -7235,12 +7237,57 @@ function updatePrinterSendModesAvailability() {
     if (!isKlipper && printerSendMode !== 'now') {
         setPrinterSendMode('now');
     }
+
+    updatePrinterSendSdAvailability(selectedEntry);
+}
+
+// Solo Marlin puede tener tarjeta SD, y encima hay que preguntarle a la
+// placa (M21) si de verdad hay una insertada -- se pide aparte del resto
+// (que es todo síncrono/local) y con un token de carrera: si el usuario ya
+// cambió de impresora para cuando responde, se descarta en vez de pintar
+// la disponibilidad de la impresora anterior.
+async function updatePrinterSendSdAvailability(selectedEntry) {
+    const card = document.getElementById('printer-send-mode-sd');
+    if (!card) return;
+    const token = ++printerSendSdCheckToken;
+
+    if (!selectedEntry || selectedEntry.type !== 'marlin') {
+        card.hidden = true;
+        card.disabled = true;
+        if (printerSendMode === 'sd') setPrinterSendMode('now');
+        return;
+    }
+
+    card.hidden = false;
+    card.disabled = true;
+    card.classList.add('disabled');
+    const noteEl = card.querySelector('.printer-send-mode-unavailable');
+    if (noteEl) noteEl.hidden = true;
+
+    try {
+        const response = await fetch(`/api/marlin-printers/sd/available?device=${encodeURIComponent(selectedEntry.id)}`);
+        if (token !== printerSendSdCheckToken) return;
+        const data = response.ok ? await response.json() : { available: false };
+        card.disabled = !data.available;
+        card.classList.toggle('disabled', !data.available);
+        if (noteEl) noteEl.hidden = !!data.available;
+        if (!data.available && printerSendMode === 'sd') setPrinterSendMode('now');
+    } catch (error) {
+        if (token !== printerSendSdCheckToken) return;
+        card.disabled = true;
+        card.classList.add('disabled');
+        if (noteEl) noteEl.hidden = false;
+        if (printerSendMode === 'sd') setPrinterSendMode('now');
+    }
 }
 
 function setPrinterSendMode(mode) {
     const selectedEntry = getPrinterSendSelectedEntry();
     const isKlipper = !selectedEntry || selectedEntry.type === 'klipper';
-    if (!isKlipper && mode !== 'now') mode = 'now';
+    const isMarlin = selectedEntry?.type === 'marlin';
+    if (mode === 'sd' && !isMarlin) mode = 'now';
+    if (!isKlipper && !isMarlin && mode !== 'now') mode = 'now';
+    if (!isKlipper && isMarlin && mode !== 'now' && mode !== 'sd') mode = 'now';
 
     printerSendMode = mode;
     document.querySelectorAll('.printer-send-mode-card').forEach(card => {
@@ -7253,6 +7300,9 @@ function setPrinterSendMode(mode) {
     if (mode === 'schedule') {
         if (primaryIcon) primaryIcon.innerHTML = '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>';
         if (primaryLabel) primaryLabel.textContent = t('printerSendModeScheduleTitle');
+    } else if (mode === 'sd') {
+        if (primaryIcon) primaryIcon.innerHTML = '<path d="M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6l-4-4z"/><path d="M13 2v4h4"/>';
+        if (primaryLabel) primaryLabel.textContent = t('printerSendModeSdTitle');
     } else {
         if (primaryIcon) primaryIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
         if (primaryLabel) primaryLabel.textContent = t('printNow');
@@ -7403,6 +7453,40 @@ async function submitPrinterSendSchedule() {
     }
 }
 
+async function submitPrinterSendToSd() {
+    if (!printerSendTarget || !printerSendSelected) return;
+    const selectedEntry = getPrinterSendSelectedEntry();
+    if (!selectedEntry || selectedEntry.type !== 'marlin') return;
+    const selectedPrinter = selectedEntry.printer;
+    if (selectedPrinter && selectedPrinter.status !== 'online') {
+        appAlert(t('printerSendOfflineError'), '', 'warning');
+        return;
+    }
+    const primaryBtn = document.getElementById('printer-send-primary-btn');
+    if (primaryBtn) primaryBtn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('device', selectedEntry.id);
+        formData.append('path', printerSendTarget.path);
+        formData.append('section', printerSendTarget.section || 'model');
+        formData.append('preheat', 'true');
+        const response = await fetch('/api/marlin-printers/sd/upload-and-print', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo subir el archivo a la SD.');
+        }
+        closePrinterSendModal();
+        showToast(t('printerSendStarted'));
+        refreshMarlinPrintersGrid();
+        loadPrinters();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || 'No se pudo subir el archivo a la SD.', '', 'danger');
+    } finally {
+        if (primaryBtn) primaryBtn.disabled = false;
+    }
+}
+
 document.getElementById('printer-send-backdrop')?.addEventListener('click', closePrinterSendModal);
 document.getElementById('printer-send-close-btn')?.addEventListener('click', closePrinterSendModal);
 document.getElementById('printer-send-cancel-btn')?.addEventListener('click', closePrinterSendModal);
@@ -7410,6 +7494,8 @@ document.getElementById('printer-send-queue-btn')?.addEventListener('click', () 
 document.getElementById('printer-send-primary-btn')?.addEventListener('click', () => {
     if (printerSendMode === 'schedule') {
         submitPrinterSendSchedule();
+    } else if (printerSendMode === 'sd') {
+        submitPrinterSendToSd();
     } else {
         submitPrinterSend('print');
     }

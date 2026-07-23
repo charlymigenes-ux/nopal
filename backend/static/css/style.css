@@ -13241,6 +13241,14 @@ body.green .lang-switch {
     box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
 }
 
+/* El selector de idioma del topbar combina .topbar-menu-item + .lang-switch-btn
+   -- .topbar-menu-item.active (más abajo en este archivo) pisaba el color de
+   texto de arriba con var(--accent), que es el mismo verde que este fondo:
+   texto invisible. Esta regla, más específica, gana pase lo que pase. */
+.topbar-menu-item.lang-switch-btn.active {
+    color: #052e12;
+}
+
 .lang-switch-btn.active:hover {
     background: #22c55e;
 }
