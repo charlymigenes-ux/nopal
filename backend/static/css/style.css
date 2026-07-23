@@ -207,7 +207,10 @@ body.dark {
 }
 
 body.green {
-    background-image: url('/static/img/fondo_NOPAL_RED.png');
+    /* --nopal-wallpaper la fija applyNopalWallpaper() según lo elegido en
+       Configuración > Apariencia -- el url() de acá es solo el fallback
+       (el fondo de siempre) para cuando no hay nada guardado todavía. */
+    background-image: var(--nopal-wallpaper, url('/static/img/fondo_NOPAL_RED.png'));
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -363,7 +366,12 @@ body.custom::before {
 
 body.dark .sidebar,
 body.green .sidebar {
-    background: transparent;
+    /* Antes era "transparent" a secas para que el sidebar se fundiera con
+       el fondo -- se veía bien con los fondos abstractos originales, pero
+       con un wallpaper más detallado (ej. una foto) los botones del menú
+       se pierden por completo. El degradado mantiene el mismo efecto de
+       "fusión" pero sin sacrificar el contraste del contenido. */
+    background: linear-gradient(180deg, rgba(0, 0, 0, .6), transparent);
 }
 
 .brand {
@@ -776,6 +784,24 @@ body.green .global-topbar {
     opacity: 1;
 }
 
+/* Resplandor pulsante en el botón de Configuración -- usa --accent-rgb (no
+   un color fijo) para que se adapte solo a cualquiera de los temas. */
+.sidebar-settings-btn {
+    animation: sidebarSettingsPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes sidebarSettingsPulse {
+    0%, 100% { box-shadow: 0 0 0 rgba(var(--accent-rgb), 0); }
+    50% { box-shadow: 0 0 12px 2px rgba(var(--accent-rgb), 0.65); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar-settings-btn {
+        animation: none;
+        box-shadow: 0 0 8px 1px rgba(var(--accent-rgb), 0.45);
+    }
+}
+
 /* ── Content ── */
 
 .content {
@@ -1014,8 +1040,9 @@ body.green .global-topbar {
     border-radius: 0 0 10px 10px;
     /* Semitransparente de verdad (no un color fijo) -- color-mix con la
        variable del tema activo hace que se vea bien en los 5 temas sin
-       hardcodear ningún valor. */
-    background: color-mix(in srgb, var(--card-bg) 55%, transparent);
+       hardcodear ningún valor. Amarillo/--orange a propósito: marca visualmente
+       el control que colapsa/expande el panel superior. */
+    background: color-mix(in srgb, var(--orange) 20%, transparent);
     color: var(--text-secondary);
     cursor: pointer;
     position: relative;
@@ -1024,7 +1051,7 @@ body.green .global-topbar {
 }
 
 .panel-hero-toggle-btn:hover {
-    background: color-mix(in srgb, var(--panel-bg) 70%, transparent);
+    background: color-mix(in srgb, var(--orange) 32%, transparent);
     color: var(--text);
 }
 
@@ -1062,6 +1089,13 @@ body.green .global-topbar {
     border-radius: var(--radius-lg);
     padding: 16px 18px;
     min-width: 0;
+}
+
+/* Las fichas del panel superior colapsable usan un tono distinto a
+   --card-bg (el mismo que usan las tarjetas de dispositivos más abajo) para
+   que se lea como un panel aparte, no como parte de la grilla. */
+.panel-hero-collapsible-inner .panel-card {
+    background: var(--panel-bg);
 }
 
 .panel-card-title {
@@ -7938,6 +7972,50 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
+/* ── NOPAL Style: la tarjeta pasó de <button> a <div> para poder meter las
+   miniaturas de fondo adentro sin anidar un <button> dentro de otro -- el
+   div conserva data-theme/.active para que setActiveThemeCard() lo siga
+   viendo igual que a las demás tarjetas. ── */
+.theme-option-card-nopal { padding: 10px 12px; gap: 8px; }
+.theme-option-select {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    width: 100%;
+}
+.theme-option-wallpapers { display: flex; gap: 8px; margin-top: 2px; }
+.theme-option-wallpaper-thumb {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.22);
+    overflow: hidden;
+    cursor: pointer;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.06);
+}
+.theme-option-wallpaper-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.theme-option-wallpaper-thumb:hover { border-color: rgba(34, 197, 94, 0.6); }
+.theme-option-wallpaper-thumb.active { border-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25); }
+.theme-option-wallpaper-thumb.is-missing img { display: none; }
+.theme-option-wallpaper-thumb.is-missing {
+    display: grid;
+    place-items: center;
+    border-style: dashed;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 1rem;
+    line-height: 1;
+}
+.theme-option-wallpaper-thumb.is-missing::after { content: '+'; }
+
 .theme-option-card-custom {
     padding: 0;
 }
@@ -8471,6 +8549,15 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .custom-theme-bg-dropzone.dragover {
     background: rgba(34, 197, 94, 0.06);
     border-color: rgba(34, 197, 94, 0.6);
+}
+
+/* Arrastrar archivos desde el explorador y soltarlos sobre toda la tarjeta
+   de una biblioteca (Impresión 3D / Archivos) -- outline en vez de border
+   para no correr el layout del toolbar/tabla que ya vive adentro. */
+.library-dropzone-active {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    background: rgba(var(--accent-rgb), 0.05);
 }
 
 .custom-theme-bg-dropzone strong {
@@ -13796,35 +13883,26 @@ body.green .option-switch {
 .printer-thermal-wave-a {
     stroke-width: 2.8;
     opacity: 0.95;
-    animation: printerThermalWaveA 9s ease-in-out infinite alternate;
+    animation: printerThermalWaveA 60s ease-in-out infinite alternate;
     animation-delay: var(--thermal-delay, 0s);
 }
 
 .printer-thermal-wave-b {
     stroke-width: 1.8;
     opacity: 0.62;
-    animation: printerThermalWaveB 12s ease-in-out infinite alternate-reverse;
+    animation: printerThermalWaveB 60s ease-in-out infinite alternate-reverse;
     animation-delay: var(--thermal-delay, 0s);
 }
 
 .printer-thermal-wave-c {
     stroke-width: 1.2;
     opacity: 0.42;
-    animation: printerThermalWaveC 15s ease-in-out infinite alternate;
+    animation: printerThermalWaveC 60s ease-in-out infinite alternate;
     animation-delay: var(--thermal-delay, 0s);
 }
 
-.printer-thermal-layer.is-actively-heating .printer-thermal-wave-a {
-    animation-duration: 6.5s;
-}
-
-.printer-thermal-layer.is-actively-heating .printer-thermal-wave-b {
-    animation-duration: 8.5s;
-}
-
-.printer-thermal-layer.is-thermal-stable .printer-thermal-wave-a {
-    animation-duration: 13s;
-}
+/* La temperatura solo cambia --thermal-color (ver más abajo) -- el ciclo de
+   la ola es siempre el mismo, sin importar el estado térmico. */
 
 .printer-thermal-layer.is-thermal-error {
     opacity: 0.16;
@@ -14919,8 +14997,11 @@ body.light .btn-accent {
 }
 
 /* Configuración de escenas LED por máquina */
-.machine-led-settings-btn { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border: 1px solid rgba(34,197,94,.32); border-radius: 9px; background: rgba(7,20,17,.78); color: #55e57d; cursor: pointer; }
-.machine-led-settings-btn:hover { border-color: #22c55e; background: rgba(34,197,94,.13); transform: rotate(18deg); }
+.machine-led-settings-btn { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border: 1px solid rgba(148,163,184,.35); border-radius: 9px; background: rgba(15,23,32,.75); color: #94a3b8; cursor: pointer; transition: border-color .15s, background-color .15s, color .15s; }
+.machine-led-settings-btn:hover { transform: rotate(18deg); }
+.machine-led-settings-btn:not(.is-enabled):hover { border-color: #94a3b8; background: rgba(148,163,184,.13); }
+.machine-led-settings-btn.is-enabled { border-color: rgba(34,197,94,.32); background: rgba(7,20,17,.78); color: #55e57d; }
+.machine-led-settings-btn.is-enabled:hover { border-color: #22c55e; background: rgba(34,197,94,.13); }
 .machine-led-modal { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 20px; background: rgba(1,7,12,.78); backdrop-filter: blur(9px); }
 .machine-led-modal[hidden] { display: none; }
 .machine-led-dialog { position: relative; width: min(680px, 96vw); max-height: min(850px, 92vh); overflow: auto; padding: 26px; border: 1px solid rgba(34,197,94,.48); border-radius: 24px; background: linear-gradient(145deg, rgba(14,27,31,.98), rgba(8,16,24,.99)); box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 40px rgba(34,197,94,.08); color: var(--text); }
@@ -14947,7 +15028,9 @@ body.light .btn-accent {
 .machine-led-pixels i { height: 24px; min-width: 10px; border-radius: 5px; background: #26343d; border: 1px solid #3c4c57; }
 .machine-led-pixels i.selected { background: #22c55e; border-color: #66ef87; box-shadow: 0 0 10px rgba(34,197,94,.38); }
 .machine-led-segment-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.machine-led-protocol-note { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid #f59e0b; border-radius: 8px; background: rgba(245,158,11,.08); color: #fbbf24; font-size: .78rem; line-height: 1.45; }
+.machine-led-protocol-note { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid #f59e0b; border-radius: 8px; background: rgba(245,158,11,.08); color: #fbbf24; font-size: .78rem; line-height: 1.45; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.machine-led-update-btn { flex-shrink: 0; padding: 6px 12px; border: 1px solid #f59e0b; border-radius: 8px; background: rgba(245,158,11,.16); color: #fbbf24; font-size: .74rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.machine-led-update-btn:hover { background: rgba(245,158,11,.28); }
 .machine-led-colors { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; margin-top: 22px; }
 .machine-led-colors > strong { grid-column: 1 / -1; margin-bottom: 3px; }
 .machine-led-colors label { display: flex; align-items: center; justify-content: space-between; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-secondary); font-size: .8rem; }
@@ -14959,7 +15042,85 @@ body.light .btn-accent {
 .machine-led-primary:disabled { opacity: .5; cursor: wait; }
 @media (max-width: 620px) { .machine-led-dialog { padding: 20px 16px; } .machine-led-colors { grid-template-columns: 1fr; } .machine-led-segment-fields { grid-template-columns: 1fr 1fr; } }
 
-.material-preheat-dialog { width: min(540px, 92vw); }
+/* ── Modal "Actualizar placa" -- dos caminos (descargar a mano / que NOPAL
+   lo haga) más el estado en vivo del flasheo automático. ── */
+.modal-content.firmware-update-dialog { max-width: 460px; }
+.firmware-update-dialog #firmware-update-subtitle { color: var(--text-secondary); font-size: .84rem; margin: 0 0 6px; }
+.firmware-update-paths { width: 100%; display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+.firmware-update-path { border: 1px solid var(--border); border-radius: 14px; padding: 16px; text-align: left; }
+.firmware-update-path h3 { margin: 0 0 10px; font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; color: var(--text-secondary); }
+.firmware-update-path p { margin: 0 0 12px; font-size: .8rem; color: var(--text-secondary); line-height: 1.5; }
+.firmware-update-download-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.firmware-update-path-auto { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.05); }
+.firmware-update-divider { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: .72rem; text-transform: uppercase; }
+.firmware-update-divider::before, .firmware-update-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.firmware-update-manual-next { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); text-align: left; }
+.firmware-update-manual-next ol { margin: 0 0 12px; padding-left: 18px; color: var(--text-secondary); font-size: .78rem; line-height: 1.6; }
+.firmware-update-manual-next li { margin-bottom: 4px; }
+
+.firmware-update-status { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 10px 0 4px; width: 100%; }
+.firmware-update-ring { position: relative; width: 140px; height: 140px; }
+.firmware-update-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.firmware-update-ring-track { fill: none; stroke: rgba(255,255,255,.08); stroke-width: 7; }
+.firmware-update-ring-fill {
+    fill: none;
+    stroke: url(#firmware-ring-gradient);
+    stroke-width: 7;
+    stroke-linecap: round;
+    stroke-dasharray: 264;
+    transform-origin: 50px 50px;
+}
+.firmware-update-ring-text {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    font-size: .82rem;
+    font-weight: 700;
+    color: var(--text);
+    padding: 0 18px;
+}
+.firmware-update-ring-text svg { color: #22c55e; }
+
+.firmware-update-ring.stage-searching .firmware-update-ring-fill { stroke-dashoffset: 190; animation: firmwareRingSpin 1.4s linear infinite; }
+.firmware-update-ring.stage-connected .firmware-update-ring-fill { stroke-dashoffset: 130; animation: none; }
+.firmware-update-ring.stage-uploading .firmware-update-ring-fill { stroke-dashoffset: 90; animation: firmwareRingSpin 1s linear infinite; }
+.firmware-update-ring.stage-done .firmware-update-ring-fill { stroke-dashoffset: 0; animation: none; }
+.firmware-update-ring.stage-error .firmware-update-ring-fill { stroke: #ef4444; stroke-dashoffset: 130; animation: none; }
+.firmware-update-ring.stage-error .firmware-update-ring-text { color: #ef4444; }
+
+@keyframes firmwareRingSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.firmware-update-device-info { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+.firmware-update-device-info strong { font-size: .9rem; color: var(--text); }
+.firmware-update-device-info span { font-size: .78rem; color: var(--text-secondary); }
+.firmware-update-done-label { color: #55e57d; font-weight: 700; }
+.firmware-update-error-label { color: #ef4444; }
+
+@media (prefers-reduced-motion: reduce) {
+    .firmware-update-ring-fill { animation: none !important; }
+}
+
+.material-preheat-dialog {
+    width: min(540px, 92vw);
+    height: auto;
+    max-height: 88vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 28px;
+}
+.material-preheat-dialog h2 { margin: 4px 0 2px; }
+.material-preheat-dialog .material-preheat-list,
+.material-preheat-dialog #material-preheat-configure {
+    align-self: stretch;
+}
 .material-preheat-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 20px 0 14px; }
 .material-preheat-option { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 15px; border: 1px solid var(--border); border-radius: 13px; background: rgba(6,18,25,.72); color: var(--text); text-align: left; cursor: pointer; }
 .material-preheat-option:hover { border-color: #f59e0b; background: rgba(245,158,11,.08); }

@@ -5640,13 +5640,15 @@ function notifyUser(title, body, tone = 'warning') {
 function updatePrintersViewMode(mode) {
     printersViewMode = mode;
     localStorage.setItem('printersViewMode', mode);
-    [printersGrid, lasersGrid, cncGrid].forEach(grid => {
+    [printersGrid, lasersGrid, cncGrid, document.getElementById('marlin-printers-grid')].forEach(grid => {
         if (grid) grid.classList.toggle('list-view', mode === 'list');
     });
-    const gridBtn = document.getElementById('view-grid-printers');
-    const listBtn = document.getElementById('view-list-printers');
-    if (gridBtn) gridBtn.classList.toggle('btn-view-toggle-active', mode === 'grid');
-    if (listBtn) listBtn.classList.toggle('btn-view-toggle-active', mode === 'list');
+    [['view-grid-printers', 'view-list-printers'], ['view-grid-marlin', 'view-list-marlin']].forEach(([gridId, listId]) => {
+        const gridBtn = document.getElementById(gridId);
+        const listBtn = document.getElementById(listId);
+        if (gridBtn) gridBtn.classList.toggle('btn-view-toggle-active', mode === 'grid');
+        if (listBtn) listBtn.classList.toggle('btn-view-toggle-active', mode === 'list');
+    });
 }
 
 // Organizador local de las tres columnas del dashboard. No afecta otras
@@ -5928,7 +5930,18 @@ function checkLaserConnectionTransitions(laserEntries) {
 // selección de hardware y ejecución vive dentro de Automatización de Taller.
 const machineLedPlugin = { checked: false, installed: false, available: false };
 const machineLedLastState = new Map();
+const machineLedEnabledCache = new Map();
 let machineLedCurrentMachine = null;
+
+async function fetchMachineLedEnabledStates() {
+    try {
+        const response = await fetch('/api/accessories/machine-led/enabled');
+        if (!response.ok) return null;
+        return (await response.json()).enabled || {};
+    } catch (error) {
+        return null;
+    }
+}
 
 function machineLedCardIdentity(card) {
     const name = card.querySelector('.printer-name')?.textContent?.trim() || 'Máquina';
@@ -5946,8 +5959,35 @@ function machineLedCardIdentity(card) {
 }
 
 function machineLedCardState(card) {
+    // "Enfriando" no es un estado real de la impresora (Klipper/Marlin/etc.
+    // vuelven a "idle" en cuanto el target baja a 0) -- se detecta aparte
+    // por la clase printer-card-cool que ya usa el tema visual de la
+    // tarjeta mientras la temperatura sigue bajando.
+    if (card.classList.contains('printer-card-cool')) return 'cooling';
     return ['heating', 'printing', 'paused', 'completed', 'error', 'offline', 'idle']
         .find(state => card.classList.contains(state)) || (card.classList.contains('offline') ? 'offline' : 'idle');
+}
+
+// Progreso 0-100 hacia el objetivo de temperatura, guardado por cada tarjeta
+// como data-heat-progress al renderizarse (ver computeHeatProgress). Nadie
+// obliga a que exista -- máquinas sin ese dato simplemente no animan el
+// degradado y usan el color fijo configurado para el estado.
+function machineLedCardProgress(card) {
+    const raw = card.dataset.heatProgress;
+    if (raw === undefined || raw === '') return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+}
+
+// Progreso hacia el objetivo de temperatura = el calentador que le falta
+// más (no el promedio) -- si cama y extrusor calientan a la vez, el LED no
+// se ve "casi listo" hasta que los dos de verdad lo estén.
+function computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget) {
+    const ratios = [];
+    if (bedTarget > 0 && typeof bedTemp === 'number') ratios.push(Math.max(0, Math.min(1, bedTemp / bedTarget)));
+    if (extruderTarget > 0 && typeof extruderTemp === 'number') ratios.push(Math.max(0, Math.min(1, extruderTemp / extruderTarget)));
+    if (!ratios.length) return null;
+    return Math.round(Math.min(...ratios) * 100);
 }
 
 async function ensureMachineLedPluginStatus() {
@@ -5965,47 +6005,89 @@ async function ensureMachineLedPluginStatus() {
     return machineLedPlugin;
 }
 
-async function publishMachineLedState(machine, state) {
+async function publishMachineLedState(machine, state, progress) {
     const key = `${machine.type}:${machine.id}`;
-    if (machineLedLastState.get(key) === state) return;
+    // Con heating/cooling el estado no cambia mientras sube o baja la
+    // temperatura, así que deduplicar solo por estado nunca dejaría
+    // avanzar el degradado. Se redondea a saltos de 5% -- el backend hace
+    // la deduplicación fina de verdad contra la cantidad de LEDs prendidos.
+    const isGradientState = (state === 'heating' || state === 'cooling') && progress != null;
+    const dedupValue = isGradientState ? `${state}:${Math.round(progress / 5) * 5}` : state;
+    if (machineLedLastState.get(key) === dedupValue) return;
     const plugin = await ensureMachineLedPluginStatus();
     if (!plugin.installed || !plugin.available) return;
     const form = new FormData();
     form.append('machine_type', machine.type);
     form.append('machine_id', machine.id);
     form.append('state', state);
+    if (isGradientState) form.append('progress', String(Math.round(progress)));
     try {
         const response = await fetch('/api/accessories/machine-led/state', { method: 'POST', body: form });
         if (response.status === 404) {
             machineLedPlugin.available = false;
             return;
         }
-        if (response.ok) machineLedLastState.set(key, state);
+        if (response.ok) machineLedLastState.set(key, dedupValue);
     } catch (error) {
         console.debug('Alertas LED no disponibles:', error);
     }
 }
 
+function machineLedButtonHtml(machine) {
+    return `<button type="button" class="machine-led-settings-btn" title="Alertas visuales LED" aria-label="Configurar alertas LED de ${escapeHtml(machine.name)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.34.7.64.96.3.25.68.4 1.08.4H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg></button>`;
+}
+
+// Asegura el botón de forma síncrona -- nunca detrás de un await. La causa
+// del parpadeo era justo que esta función esperaba una respuesta de red
+// (fetchMachineLedEnabledStates) antes de crear el botón: la tarjeta se
+// reconstruye por innerHTML en cada ciclo de polling y, mientras la
+// promesa seguía pendiente, quedaba sin botón unos cuantos frames.
+function ensureMachineLedButton(card, machine) {
+    const header = card.querySelector('.printer-card-top');
+    if (!header) return null;
+    let button = header.querySelector('.machine-led-settings-btn');
+    if (button) return button;
+    const actions = header.querySelector('.printer-quick-actions') || header;
+    actions.insertAdjacentHTML('afterbegin', machineLedButtonHtml(machine));
+    button = header.querySelector('.machine-led-settings-btn');
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        openMachineLedModal(machine);
+    });
+    return button;
+}
+
 function decorateMachineCardsWithLedSettings(root) {
-    root.querySelectorAll('.printer-card').forEach(card => {
-        const machine = machineLedCardIdentity(card);
-        if (!machine) return;
-        const header = card.querySelector('.printer-card-top');
-        if (header && !header.querySelector('.machine-led-settings-btn')) {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'machine-led-settings-btn';
-            button.title = 'Alertas visuales LED';
-            button.setAttribute('aria-label', `Configurar alertas LED de ${machine.name}`);
-            button.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.34.7.64.96.3.25.68.4 1.08.4H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>';
-            button.addEventListener('click', event => {
-                event.stopPropagation();
-                openMachineLedModal(machine);
-            });
-            const actions = header.querySelector('.printer-quick-actions') || header;
-            actions.prepend(button);
+    const entries = Array.from(root.querySelectorAll('.printer-card'))
+        .map(card => ({ card, machine: machineLedCardIdentity(card) }))
+        .filter(entry => entry.machine);
+    if (!entries.length) return;
+
+    entries.forEach(({ card, machine }) => {
+        const button = ensureMachineLedButton(card, machine);
+        if (button) {
+            const key = `${machine.type}:${machine.id}`;
+            button.classList.toggle('is-enabled', Boolean(machineLedEnabledCache.get(key)));
         }
-        publishMachineLedState(machine, machineLedCardState(card));
+        publishMachineLedState(machine, machineLedCardState(card), machineLedCardProgress(card));
+    });
+
+    // El color verde/gris (habilitado o no) sí puede llegar un ciclo tarde
+    // sin que se note -- se refresca aparte, sin bloquear la creación del
+    // botón ni el resto del render.
+    refreshMachineLedEnabledCache(entries);
+}
+
+async function refreshMachineLedEnabledCache(entries) {
+    const freshEnabled = await fetchMachineLedEnabledStates();
+    if (!freshEnabled) return;
+    machineLedEnabledCache.clear();
+    Object.entries(freshEnabled).forEach(([key, value]) => machineLedEnabledCache.set(key, value));
+    entries.forEach(({ card, machine }) => {
+        const button = card.querySelector('.machine-led-settings-btn');
+        if (!button) return;
+        const key = `${machine.type}:${machine.id}`;
+        button.classList.toggle('is-enabled', Boolean(machineLedEnabledCache.get(key)));
     });
 }
 
@@ -6042,7 +6124,7 @@ function renderMachineLedEditor(payload) {
     const selectedId = saved.accessory_id || targets[0].id;
     const selected = targets.find(item => item.id === selectedId) || targets[0];
     const colors = { ...(payload.default_colors || {}), ...(saved.colors || {}) };
-    const stateLabels = { idle: 'En espera', heating: 'Calentando', printing: 'Trabajando', paused: 'Pausada', completed: 'Finalizada', error: 'Error', offline: 'Desconectada' };
+    const stateLabels = { idle: 'En espera', heating: 'Calentando', cooling: 'Enfriando', printing: 'Trabajando', paused: 'Pausada', completed: 'Finalizada', error: 'Error', offline: 'Desconectada' };
     const total = selected.led_count || 1;
     const start = saved.start ?? 0;
     const count = saved.count ?? total;
@@ -6056,7 +6138,10 @@ function renderMachineLedEditor(payload) {
             <label class="machine-led-field"><span>Empieza en</span><input id="machine-led-start" type="number" min="1" max="${total}" value="${start + 1}"></label>
             <label class="machine-led-field"><span>Cantidad</span><input id="machine-led-count" type="number" min="1" max="${total}" value="${count}"></label>
         </div>
-        <p class="machine-led-protocol-note" id="machine-led-protocol-note" ${selected.segment_capable ? 'hidden' : ''}>Esta placa usa protocolo ${selected.protocol || 3}: puede usar la tira completa. Los repartos 4+4, 3+5 o similares se habilitan al actualizarla a protocolo 4.</p>
+        <div class="machine-led-protocol-note" id="machine-led-protocol-note" ${selected.segment_capable ? 'hidden' : ''}>
+            <span id="machine-led-protocol-note-text">Esta placa usa protocolo ${selected.protocol || 3}: puede usar la tira completa. Los repartos 4+4, 3+5 o similares se habilitan al actualizarla a protocolo 4.</span>
+            <button type="button" class="machine-led-update-btn" id="machine-led-update-firmware-btn">Actualizar placa</button>
+        </div>
         <div class="machine-led-colors"><strong>Color para cada estado</strong>${(payload.states || []).map(state => `<label><span>${stateLabels[state] || state}</span><input type="color" data-machine-led-color="${state}" value="${machineLedRgbToHex(colors[state])}"></label>`).join('')}</div>
         <div class="machine-led-actions"><button type="button" class="machine-led-secondary" data-machine-led-cancel>Cancelar</button><button type="submit" class="machine-led-primary">Guardar escena</button></div>
     </form>`;
@@ -6079,11 +6164,18 @@ function renderMachineLedEditor(payload) {
         document.getElementById('machine-led-segment-summary').textContent = `LED ${zoneStart + 1}–${zoneStart + zoneCount} de ${targetTotal}`;
         const note = document.getElementById('machine-led-protocol-note');
         note.hidden = target.segment_capable;
-        if (!target.segment_capable) note.textContent = `Esta placa usa protocolo ${target.protocol || 3}: puede usar la tira completa. Los repartos se habilitan al actualizarla a protocolo 4.`;
+        if (!target.segment_capable) {
+            document.getElementById('machine-led-protocol-note-text').textContent =
+                `Esta placa usa protocolo ${target.protocol || 3}: puede usar la tira completa. Los repartos se habilitan al actualizarla a protocolo 4.`;
+        }
     };
     [targetSelect, startInput, countInput].forEach(input => input.addEventListener('input', drawPixels));
     drawPixels();
     document.getElementById('machine-led-form').addEventListener('submit', saveMachineLedConfig);
+    document.getElementById('machine-led-update-firmware-btn')?.addEventListener('click', () => {
+        const target = targets.find(item => item.id === targetSelect.value) || targets[0];
+        openFirmwareUpdateModal(target.id, target.name);
+    });
 }
 
 async function openMachineLedModal(machine) {
@@ -6133,7 +6225,14 @@ async function saveMachineLedConfig(event) {
         const response = await fetch('/api/accessories/machine-led/config', { method: 'POST', body: form });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.detail || 'No se pudo guardar la escena');
-        machineLedLastState.delete(`${machineLedCurrentMachine.type}:${machineLedCurrentMachine.id}`);
+        const key = `${machineLedCurrentMachine.type}:${machineLedCurrentMachine.id}`;
+        machineLedLastState.delete(key);
+        machineLedEnabledCache.set(key, document.getElementById('machine-led-enabled').checked);
+        document.querySelectorAll('.machine-led-settings-btn').forEach(btn => {
+            if (btn.getAttribute('aria-label') === `Configurar alertas LED de ${machineLedCurrentMachine.name}`) {
+                btn.classList.toggle('is-enabled', machineLedEnabledCache.get(key));
+            }
+        });
         document.getElementById('machine-led-modal').hidden = true;
         showToast('Escena LED guardada');
     } catch (error) {
@@ -6150,6 +6249,116 @@ document.getElementById('machine-led-modal')?.addEventListener('click', event =>
         event.currentTarget.hidden = true;
         const nav = document.querySelector('[data-plugin-id="arduino-accessories"], [data-section="arduino-accessories"]');
         if (nav?.dataset.section) switchSection(nav.dataset.section); else switchSection('plugins');
+    }
+});
+
+// ── Actualizar placa (desde el aviso de protocolo en Alertas visuales) ──
+let firmwareUpdateAccessoryId = null;
+
+function resetFirmwareUpdateModal() {
+    const paths = document.getElementById('firmware-update-paths');
+    const status = document.getElementById('firmware-update-status');
+    const manualNext = document.getElementById('firmware-update-manual-next');
+    const ring = document.getElementById('firmware-update-ring');
+    const deviceInfo = document.getElementById('firmware-update-device-info');
+    if (paths) paths.hidden = false;
+    if (status) status.hidden = true;
+    if (manualNext) manualNext.hidden = true;
+    if (ring) {
+        ring.className = 'firmware-update-ring stage-searching';
+        const ringText = document.getElementById('firmware-update-ring-text');
+        if (ringText) ringText.textContent = 'Buscando…';
+    }
+    if (deviceInfo) deviceInfo.innerHTML = '';
+}
+
+function openFirmwareUpdateModal(accessoryId, boardLabel) {
+    firmwareUpdateAccessoryId = accessoryId;
+    resetFirmwareUpdateModal();
+    const subtitle = document.getElementById('firmware-update-subtitle');
+    if (subtitle) subtitle.textContent = `${boardLabel} · sube el firmware más reciente por WiFi, o descárgalo para hacerlo tú mismo.`;
+    document.getElementById('firmware-update-modal')?.classList.add('active');
+}
+
+function closeFirmwareUpdateModal() {
+    document.getElementById('firmware-update-modal')?.classList.remove('active');
+}
+
+document.getElementById('firmware-update-close-btn')?.addEventListener('click', closeFirmwareUpdateModal);
+document.getElementById('firmware-update-backdrop')?.addEventListener('click', closeFirmwareUpdateModal);
+
+document.getElementById('firmware-download-bin-btn')?.addEventListener('click', async () => {
+    try {
+        const response = await fetch('/api/accessories/firmware/builds');
+        const data = await response.json();
+        const build = (data.builds || [])[0];
+        if (!build) { showToast('No hay ningún firmware .bin subido todavía en NOPAL.', 'error'); return; }
+        window.location.href = `/api/accessories/firmware/builds/${encodeURIComponent(build.filename)}/download`;
+        document.getElementById('firmware-update-manual-next').hidden = false;
+    } catch (error) {
+        showToast('No se pudo descargar el firmware.', 'error');
+    }
+});
+
+document.getElementById('firmware-download-ino-btn')?.addEventListener('click', () => {
+    window.location.href = '/api/accessories/firmware/source';
+    document.getElementById('firmware-update-manual-next').hidden = false;
+});
+
+document.getElementById('firmware-goto-ota-btn')?.addEventListener('click', async () => {
+    if (!firmwareUpdateAccessoryId) return;
+    try {
+        const response = await fetch(`/api/accessories/${encodeURIComponent(firmwareUpdateAccessoryId)}/firmware-status`);
+        if (!response.ok) throw new Error();
+        const info = await response.json();
+        if (info.ip) window.open(`http://${info.ip}/update`, '_blank');
+        else showToast('No se pudo determinar la IP de la placa.', 'error');
+    } catch (error) {
+        showToast('No se pudo contactar la placa.', 'error');
+    }
+});
+
+document.getElementById('firmware-auto-update-btn')?.addEventListener('click', async () => {
+    if (!firmwareUpdateAccessoryId) return;
+    const pathsEl = document.getElementById('firmware-update-paths');
+    const statusEl = document.getElementById('firmware-update-status');
+    const ringEl = document.getElementById('firmware-update-ring');
+    const ringText = document.getElementById('firmware-update-ring-text');
+    const deviceInfoEl = document.getElementById('firmware-update-device-info');
+
+    pathsEl.hidden = true;
+    statusEl.hidden = false;
+    ringEl.className = 'firmware-update-ring stage-searching';
+    ringText.textContent = 'Buscando…';
+    deviceInfoEl.innerHTML = '';
+
+    try {
+        const statusResponse = await fetch(`/api/accessories/${encodeURIComponent(firmwareUpdateAccessoryId)}/firmware-status`);
+        const statusData = await statusResponse.json().catch(() => ({}));
+        if (!statusResponse.ok) throw new Error(statusData.detail || 'No se pudo contactar la placa');
+
+        ringEl.className = 'firmware-update-ring stage-connected';
+        ringText.textContent = 'Conectado';
+        deviceInfoEl.innerHTML = `<strong>${escapeHtml(statusData.board || statusData.chip || 'Placa')}</strong><span>Firmware actual: v${escapeHtml(statusData.firmware || '—')}</span>`;
+        await new Promise(resolve => setTimeout(resolve, 700));
+
+        ringEl.className = 'firmware-update-ring stage-uploading';
+        ringText.textContent = 'Subiendo…';
+
+        const flashResponse = await fetch(`/api/accessories/firmware/flash-ota-for/${encodeURIComponent(firmwareUpdateAccessoryId)}`, {
+            method: 'POST',
+            body: new URLSearchParams(),
+        });
+        const flashData = await flashResponse.json().catch(() => ({}));
+        if (!flashResponse.ok) throw new Error(flashData.detail || 'Fallo al actualizar la placa');
+
+        ringEl.className = 'firmware-update-ring stage-done';
+        ringText.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        deviceInfoEl.innerHTML += '<span class="firmware-update-done-label">Flasheo terminado — la placa se está reiniciando</span>';
+    } catch (error) {
+        ringEl.className = 'firmware-update-ring stage-error';
+        ringText.textContent = '✕';
+        deviceInfoEl.innerHTML = `<span class="firmware-update-error-label">${escapeHtml(error.message || 'No se pudo actualizar la placa.')}</span>`;
     }
 });
 
@@ -6209,6 +6418,12 @@ function renderPrinters(printersInput) {
         }
         const themeMode = visualState === 'idle' ? dashboardPrinterThemeMode.get(portKey) : null;
         const themeModeClass = themeMode ? ` printer-card-${themeMode}` : '';
+        // Progreso para el degradado LED de calentando/enfriando -- ver
+        // computeHeatProgress()/machineLedCardProgress() en la sección de
+        // alertas visuales del plugin de accesorios.
+        const heatProgress = displayState === 'heating'
+            ? computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget)
+            : (themeMode === 'cool' ? Math.max(bedPercent, extruderPercent) : null);
         // En modo lista la miniatura queda anclada (position:absolute, "sangra"
         // fuera de la fila) y el order de flexbox no la mueve — es la única de
         // las 4 secciones sin una posición de flujo real. Como gesto mínimo de
@@ -6218,7 +6433,7 @@ function renderPrinters(printersInput) {
             ? ' printer-card-thumb-right' : '';
 
         const html = `
-            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}${thumbRightClass}" data-port="${printer.port}">
+            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}${thumbRightClass}" data-port="${printer.port}" data-heat-progress="${heatProgress ?? ''}">
                 ${printerThermalWaves(
                     typeof bedTemp === 'number' ? bedTemp : null,
                     typeof extruderTemp === 'number' ? extruderTemp : null,
@@ -6491,7 +6706,7 @@ function renderUploadingRow(tableContainerId, filename) {
 function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDone) {
     const btn = document.getElementById(btnId);
     const input = document.getElementById(inputId);
-    if (!btn || !input) return;
+    if (!btn || !input) return null;
 
     btn.addEventListener('click', () => input.click());
 
@@ -6532,19 +6747,53 @@ function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDon
         });
     }
 
-    input.addEventListener('change', async () => {
-        const files = Array.from(input.files || []);
+    // Extraída del listener de 'change' del input para que el drag-and-drop
+    // (wireLibraryDropzone) pueda subir los mismos archivos por la misma
+    // vía, en vez de duplicar la lógica de subida.
+    async function uploadFiles(files) {
         if (!files.length) return;
-
         // Uno por vez (no en paralelo) para que la barra de progreso de cada
         // fila tenga sentido y no se sature el endpoint con varias subidas
         // grandes a la vez.
         for (const file of files) {
             await uploadOneFile(file);
         }
-        input.value = '';
         loadModels();
         onDone();
+    }
+
+    input.addEventListener('change', async () => {
+        const files = Array.from(input.files || []);
+        await uploadFiles(files);
+        input.value = '';
+    });
+
+    return uploadFiles;
+}
+
+// Arrastrar archivos desde el explorador del sistema y soltarlos sobre la
+// tarjeta de la biblioteca los sube por la misma vía que el botón "Subir
+// archivo" -- mismo criterio visual que ya usaba el dropzone del fondo de
+// tema personalizado (Configuración > Apariencia).
+function wireLibraryDropzone(zoneEl, uploadFiles) {
+    if (!zoneEl || !uploadFiles) return;
+    ['dragenter', 'dragover'].forEach(evt => {
+        zoneEl.addEventListener(evt, event => {
+            if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+            event.preventDefault();
+            zoneEl.classList.add('library-dropzone-active');
+        });
+    });
+    ['dragleave', 'dragend'].forEach(evt => {
+        zoneEl.addEventListener(evt, () => {
+            zoneEl.classList.remove('library-dropzone-active');
+        });
+    });
+    zoneEl.addEventListener('drop', event => {
+        if (!event.dataTransfer?.files?.length) return;
+        event.preventDefault();
+        zoneEl.classList.remove('library-dropzone-active');
+        uploadFiles(Array.from(event.dataTransfer.files));
     });
 }
 
@@ -6775,8 +7024,14 @@ function wireFileActionButtons(downloadBtnId, renameBtnId, moveBtnId, deleteBtnI
     if (deleteBtn) deleteBtn.addEventListener('click', () => deleteFile(section, getModel(), reloadFn, clearSelection));
 }
 
-wireUploadButton('upload-btn-models', 'upload-input-models', 'model', () => currentModelsPath, 'models-full', () => loadModelsFolder(currentModelsPath));
-wireUploadButton('upload-btn-gcode', 'upload-input-gcode', 'gcode', () => currentGcodePath, 'gcode-table', () => loadGcodeFolder(currentGcodePath));
+wireLibraryDropzone(
+    document.querySelector('.models-table-panel'),
+    wireUploadButton('upload-btn-models', 'upload-input-models', 'model', () => currentModelsPath, 'models-full', () => loadModelsFolder(currentModelsPath))
+);
+wireLibraryDropzone(
+    document.querySelector('.gcode-library-card'),
+    wireUploadButton('upload-btn-gcode', 'upload-input-gcode', 'gcode', () => currentGcodePath, 'gcode-table', () => loadGcodeFolder(currentGcodePath))
+);
 wireCreateFolderButton('create-folder-btn-models', 'model', () => currentModelsPath, () => loadModelsFolder(currentModelsPath));
 wireCreateFolderButton('create-folder-btn-gcode', 'gcode', () => currentGcodePath, () => loadGcodeFolder(currentGcodePath));
 wireReloadButton('reload-btn-models', () => loadModelsFolder(currentModelsPath));
@@ -7861,6 +8116,11 @@ function renderAccessories(accessories) {
         btn.addEventListener('click', async () => {
             const id = btn.dataset.id;
             const nextOn = btn.dataset.on !== 'true';
+            if (!nextOn) {
+                const acc = accessories.find(item => item.id === id);
+                const name = acc ? acc.name : '';
+                if (!(await appConfirm(t('accessoryTurnOffConfirm').replace('{name}', name), t('accessoryTurnOff'), 'warning'))) return;
+            }
             btn.disabled = true;
             try {
                 const body = new URLSearchParams();
@@ -12442,8 +12702,13 @@ function marlinPrinterCardHtml(printer, status) {
             </div>
         `;
 
+    const heatProgress = visualState === 'heating' ? computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget) : null;
+    // PRINTER_STATE_IMAGES no tiene entrada "offline" (ver printerIllustrationImg)
+    // -- se pisa por "idle" solo para elegir la imagen, el resto de la tarjeta
+    // sigue mostrando el estado real sin conexión.
+    const illustrationState = visualState === 'offline' ? 'idle' : visualState;
     return `
-        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}">
+        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}" data-heat-progress="${heatProgress ?? ''}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
             <div class="printer-card-top">
                 <div>
@@ -12463,8 +12728,8 @@ function marlinPrinterCardHtml(printer, status) {
                 <span class="printer-status-dot ${visualState}"></span>${stateLabel}
             </div>
 
-            <div class="printer-illustration printer-illustration-${visualState}">
-                ${printerIllustrationImg(visualState)}
+            <div class="printer-illustration printer-illustration-${illustrationState}">
+                ${printerIllustrationImg(illustrationState)}
             </div>
 
             ${isOnline ? `<div class="printer-temps${dualExtruder ? ' printer-temps-triple' : ''}">${tempItemsHtml}</div>` : ''}
@@ -12578,9 +12843,10 @@ function elegooPrinterCardHtml(printer) {
 
     const showActions = visualState === 'printing' || visualState === 'paused';
     const isPaused = visualState === 'paused';
+    const heatProgress = visualState === 'heating' ? computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget) : null;
 
     return `
-        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-elegoo-id="${escapeHtml(printer.id)}">
+        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-elegoo-id="${escapeHtml(printer.id)}" data-heat-progress="${heatProgress ?? ''}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline, printer.id)}
             <div class="printer-card-top">
                 <div>
@@ -12924,9 +13190,10 @@ function flashforgePrinterCardHtml(printer) {
 
     const showActions = visualState === 'printing' || visualState === 'paused';
     const isPaused = visualState === 'paused';
+    const heatProgress = visualState === 'heating' ? computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget) : null;
 
     return `
-        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-flashforge-id="${escapeHtml(printer.id)}">
+        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-flashforge-id="${escapeHtml(printer.id)}" data-heat-progress="${heatProgress ?? ''}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline, printer.id)}
             <div class="printer-card-top">
                 <div>
@@ -13279,9 +13546,10 @@ function bambuPrinterCardHtml(printer) {
 
     const showActions = visualState === 'printing' || visualState === 'paused';
     const isPaused = visualState === 'paused';
+    const heatProgress = visualState === 'heating' ? computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget) : null;
 
     return `
-        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-bambu-id="${escapeHtml(printer.id)}">
+        <div class="printer-card printer-card-type-3d ${isOnline ? 'online' : 'offline'} ${visualState}" data-bambu-id="${escapeHtml(printer.id)}" data-heat-progress="${heatProgress ?? ''}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline, printer.id)}
             <div class="printer-card-top">
                 <div>
@@ -16265,7 +16533,7 @@ function setActiveThemeCard(theme) {
 }
 if (themeOptionCards.length) {
     themeOptionCards.forEach(card => {
-        if (card.id === 'custom-theme-card') return;
+        if (card.id === 'custom-theme-card' || card.id === 'nopal-theme-card') return;
         card.addEventListener('click', () => {
             const selectedTheme = card.dataset.theme;
             if (settingsTheme) settingsTheme.value = selectedTheme;
@@ -16274,6 +16542,50 @@ if (themeOptionCards.length) {
         });
     });
 }
+
+// ── Fondo de NOPAL Style: 3 opciones fijas (no un upload libre como el tema
+// personalizado) -- el actual (fondo_NOPAL_RED.png, el de siempre) más 2
+// que se agregan como archivo en /static/img con esos nombres exactos. ──
+const NOPAL_WALLPAPER_KEY = 'nopalThemeWallpaper';
+const NOPAL_WALLPAPER_OPTIONS = [
+    '/static/img/fondo_NOPAL_RED.png',
+    '/static/img/fondo_NOPAL_GREEN_2.png',
+    '/static/img/fondo_NOPAL_GREEN_3.png',
+];
+
+function getNopalWallpaperIndex() {
+    const stored = Number(localStorage.getItem(NOPAL_WALLPAPER_KEY));
+    return NOPAL_WALLPAPER_OPTIONS[stored] ? stored : 0;
+}
+
+function applyNopalWallpaper() {
+    const index = getNopalWallpaperIndex();
+    document.documentElement.style.setProperty('--nopal-wallpaper', `url('${NOPAL_WALLPAPER_OPTIONS[index]}')`);
+    document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.wallpaperIndex) === index);
+    });
+}
+
+const nopalThemeSelectBtn = document.getElementById('nopal-theme-select-btn');
+if (nopalThemeSelectBtn) {
+    nopalThemeSelectBtn.addEventListener('click', () => {
+        if (settingsTheme) settingsTheme.value = 'green';
+        setActiveThemeCard('green');
+        saveSettings();
+    });
+}
+document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
+    btn.addEventListener('click', event => {
+        event.stopPropagation();
+        localStorage.setItem(NOPAL_WALLPAPER_KEY, btn.dataset.wallpaperIndex);
+        applyNopalWallpaper();
+    });
+    // Mientras el usuario no suba fondo_NOPAL_GREEN_2/3.png todavía no existen
+    // -- la miniatura rota se reemplaza por un placeholder en vez de dejar el
+    // ícono de imagen no encontrada del navegador.
+    btn.querySelector('img')?.addEventListener('error', () => btn.classList.add('is-missing'), { once: true });
+});
+applyNopalWallpaper();
 
 function getThemeCycleOrder() {
     const order = ['light', 'dark', 'green', 'red'];
@@ -16549,6 +16861,16 @@ if (viewListPrintersBtn) {
 }
 if (printersViewMode === 'list') {
     updatePrintersViewMode('list');
+}
+
+const viewGridMarlinBtn = document.getElementById('view-grid-marlin');
+const viewListMarlinBtn = document.getElementById('view-list-marlin');
+
+if (viewGridMarlinBtn) {
+    viewGridMarlinBtn.addEventListener('click', () => updatePrintersViewMode('grid'));
+}
+if (viewListMarlinBtn) {
+    viewListMarlinBtn.addEventListener('click', () => updatePrintersViewMode('list'));
 }
 
 const toggleOfflineMachinesBtn = document.getElementById('toggle-offline-machines-btn');
