@@ -862,6 +862,127 @@ async def _refresh_sd_job(device: str, job: Dict[str, Any]) -> Dict[str, Any]:
     return dict(job)
 
 
+# ── Subir a la SD (M28/M29) + arrancar con precalentado ──
+
+SD_PREHEAT_EXTRUDER_RE = re.compile(r"^M10[49]\b[^\n]*?\bS(-?\d+\.?\d*)", re.IGNORECASE | re.MULTILINE)
+SD_PREHEAT_BED_RE = re.compile(r"^M1[49]0\b[^\n]*?\bS(-?\d+\.?\d*)", re.IGNORECASE | re.MULTILINE)
+
+
+async def check_sd_available(device: str) -> bool:
+    """M21 (inicializa la SD). No hay una marca de éxito uniforme entre
+    versiones de Marlin (varía entre 'SD card ok', nada, etc.), así que se
+    detecta por AUSENCIA de las marcas de error conocidas en vez de
+    depender de un mensaje de éxito específico."""
+    lines = await _collect_device_command(
+        device, "M21", lambda text: marlin_driver.OK_RE.match(text.strip()) is not None, timeout=6.0,
+    )
+    if not lines:
+        return False
+    joined = " ".join(lines).lower()
+    if "init fail" in joined or "no sd card" in joined or "volume.init failed" in joined:
+        return False
+    return True
+
+
+def _extract_preheat_targets(gcode_text: str) -> Dict[str, float]:
+    """Primeros M104/M109 (extrusor) y M140/M190 (cama) que aparezcan en el
+    archivo -- es la temperatura que el propio slicer ya declaró para esta
+    impresión, no un valor que NOPAL inventa."""
+    targets: Dict[str, float] = {}
+    extruder_match = SD_PREHEAT_EXTRUDER_RE.search(gcode_text)
+    if extruder_match:
+        targets["extruder"] = float(extruder_match.group(1))
+    bed_match = SD_PREHEAT_BED_RE.search(gcode_text)
+    if bed_match:
+        targets["heater_bed"] = float(bed_match.group(1))
+    return targets
+
+
+async def _wait_for_preheat(device: str, targets: Dict[str, float], timeout: float = 900.0) -> bool:
+    """Espera (sondeando M105 cada 3s) a que cama/extrusor lleguen a ±3°C
+    del target -- así el M24 de más abajo arranca con la placa ya caliente
+    en vez de que el propio M109/M190 del archivo recién ahí empiece a
+    esperar. Timeout largo (15 min) a propósito: una cama grande puede
+    tardar de verdad, y esto corre en background, no bloquea al usuario."""
+    transport = _transport_for(device)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        temps = await marlin_driver.get_temperatures(transport, timeout=6.0)
+        if temps:
+            reached = True
+            for heater, target in targets.items():
+                current = (temps.get(heater) or {}).get("current")
+                if current is None or current < target - 3:
+                    reached = False
+                    break
+            if reached:
+                return True
+        await asyncio.sleep(3)
+    return False
+
+
+async def upload_gcode_to_sd(device: str, filename: str, gcode_text: str) -> Dict[str, Any]:
+    """Sube gcode_text a la SD de la impresora como `filename`, vía M28
+    (abre el archivo en modo captura) / M29 (lo cierra). Marlin trata cada
+    línea entre ambos exactamente igual que en ejecución normal (numerada +
+    checksum, reintentable con "Resend:"), así que se reutiliza el mismo
+    streaming estricto ok-por-línea de marlin_driver.run_job en vez de
+    reimplementarlo -- la única diferencia real es que las líneas quedan
+    escritas en un archivo de la placa en vez de ejecutarse."""
+    transport = _transport_for(device)
+
+    open_result = await marlin_driver.send_and_await_ok(transport, f"M28 {filename}", timeout=10.0)
+    if not open_result["success"]:
+        return {"success": False, "error": open_result.get("error") or "No se pudo abrir el archivo en la SD"}
+
+    lines = gcode_text.splitlines()
+    job = PrintJob(device, lines, filename, source="sd-upload")
+    await marlin_driver.run_job(transport, job)
+    if job.state != "completed":
+        # Best-effort: cierra igual el archivo para no dejar la placa en
+        # modo captura si algo falló a mitad de la subida.
+        await marlin_driver.send_and_await_ok(transport, "M29", timeout=10.0)
+        return {"success": False, "error": job.error_message or "Fallo al escribir el archivo en la SD"}
+
+    close_result = await marlin_driver.send_and_await_ok(transport, "M29", timeout=15.0)
+    if not close_result["success"]:
+        return {"success": False, "error": close_result.get("error") or "No se pudo cerrar el archivo en la SD"}
+
+    return {"success": True}
+
+
+async def upload_and_start_sd_print(
+    device: str, filename: str, gcode_text: str, preheat: bool = True
+) -> Dict[str, Any]:
+    """Sube `gcode_text` a la SD como `filename` y arranca la impresión —
+    equivalente a "Imprimir ahora" pero vía SD en vez de streaming directo.
+    Con preheat=True, manda M104/M140 con la temperatura que el propio
+    archivo declara y espera a alcanzarla ANTES de arrancar (M24), para que
+    la impresión no empiece con la placa fría."""
+    host_job = _jobs.get(device)
+    sd_job = _sd_jobs.get(device)
+    if host_job is not None and host_job.state in ("running", "paused"):
+        raise RuntimeError("Ya hay una impresión enviada por NOPAL en curso")
+    if sd_job is not None and sd_job.get("state") in ("running", "paused"):
+        raise RuntimeError("Ya hay una impresión desde la SD en curso")
+
+    if not await check_sd_available(device):
+        raise RuntimeError("La impresora no reporta una tarjeta SD disponible")
+
+    upload_result = await upload_gcode_to_sd(device, filename, gcode_text)
+    if not upload_result["success"]:
+        raise RuntimeError(upload_result.get("error") or "No se pudo subir el archivo a la SD")
+
+    if preheat:
+        targets = _extract_preheat_targets(gcode_text)
+        for heater, target in targets.items():
+            set_heater_target(device, heater, target)
+        if targets:
+            await _wait_for_preheat(device, targets)
+
+    return await start_sd_print(device, filename)
+
+
 async def get_job_status(device: str) -> Dict[str, Any]:
     job = _jobs.get(device)
     if job is not None and job.state in ("running", "paused"):

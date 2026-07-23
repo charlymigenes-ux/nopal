@@ -26,6 +26,8 @@ from backend.services.marlin_printer_service import (
     list_sd_files,
     start_print,
     start_sd_print,
+    check_sd_available,
+    upload_and_start_sd_print,
     get_job_status,
     get_active_job_devices,
     pause_job,
@@ -294,6 +296,40 @@ async def marlin_printers_sd_print_start_endpoint(
     """Arranca el archivo dentro de la SD con M23/M24, sin copia local."""
     try:
         return await start_sd_print(device, filename)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/api/marlin-printers/sd/available")
+async def marlin_printers_sd_available_endpoint(
+    device: str,
+    user: dict = Depends(require_auth),
+):
+    """M21 -- si la placa reporta una tarjeta SD insertada. Usado por el
+    modal "Enviar a impresora" para decidir si ofrece la opción de SD."""
+    return {"available": await check_sd_available(device)}
+
+
+@router.post("/api/marlin-printers/sd/upload-and-print")
+async def marlin_printers_sd_upload_and_print_endpoint(
+    device: str = Form(...),
+    path: str = Form(...),
+    section: str = Form("gcode"),
+    preheat: bool = Form(True),
+    user: dict = Depends(require_auth),
+):
+    """Sube un archivo de la biblioteca a la SD de la impresora (M28/M29) y
+    arranca la impresión (M23/M24) -- opcionalmente precalentando primero a
+    la temperatura que el propio archivo declara."""
+    file_path = safe_section_path(section, path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
+        gcode_text = handle.read()
+
+    try:
+        return await upload_and_start_sd_print(device, os.path.basename(path), gcode_text, preheat=preheat)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
