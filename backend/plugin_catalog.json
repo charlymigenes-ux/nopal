@@ -128,7 +128,7 @@
   {
     "id": "spoolman",
     "name": "Materiales",
-    "version": "0.1.0",
+    "version": "0.1.5",
     "publisher": "NOPAL Labs",
     "category": "Producción",
     "description": "Conecta NOPAL con un servidor Spoolman para ver tu inventario real de spools de filamento, asignarlos a tus impresoras Klipper y usar sus costos reales en el Cotizador.",
@@ -141,7 +141,7 @@
     "featured": true,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": null
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-spoolman.git"
   },
   {
     "id": "cotizador",
