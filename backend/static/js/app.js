@@ -262,12 +262,36 @@ function renderTopbarNotifications(data) {
         list.innerHTML = `<div class="topbar-notif-empty">${escapeHtml(t('notificationsEmpty'))}</div>`;
         return;
     }
-    list.innerHTML = items.map(item => `
-        <div class="topbar-notif-item severity-${escapeHtml(item.severity || 'info')}">
+    list.innerHTML = items.map((item, index) => `
+        <button type="button" class="topbar-notif-item severity-${escapeHtml(item.severity || 'info')}" data-notif-index="${index}">
             <span class="topbar-notif-item-dot"></span>
             <span>${escapeHtml(item.message)}</span>
-        </div>
+        </button>
     `).join('');
+    list.querySelectorAll('.topbar-notif-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            closeAllTopbarDropdowns();
+            goToNotificationTarget(items[Number(btn.dataset.notifIndex)]);
+        });
+    });
+}
+
+// Ruta de cada alerta a su destino concreto -- antes toda alerta de
+// impresora mandaba a la sección "dashboard" en general (que ES la grilla
+// de impresoras, pero sin foco en ninguna en particular) dejando al
+// usuario a buscar manualmente cuál de varias impresoras era la que
+// fallaba. Con "port" (ver notification_service.py) se abre directo el
+// modal de esa impresora puntual, igual que si el usuario clickeara su
+// tarjeta.
+function goToNotificationTarget(item) {
+    if (!item) return;
+    if (item.source === 'printer' && item.port != null) {
+        switchSection('dashboard');
+        const printer = allPrinters.find(p => p.port === item.port);
+        if (printer) openPrinterModal(printer);
+        return;
+    }
+    switchSection(item.section || 'dashboard');
 }
 
 let lastNotificationsData = { count: 0, items: [] };
@@ -3399,8 +3423,8 @@ function openPanelStatusPopup(alerts) {
     popup.className = 'panel-status-popup';
     popup.innerHTML = `
         <div class="panel-status-popup-header">${escapeHtml(t('panelCriticalPopupTitle'))}</div>
-        ${alerts.map(alert => `
-            <button type="button" class="panel-status-popup-item" data-section="${escapeHtml(alert.section || 'dashboard')}">
+        ${alerts.map((alert, index) => `
+            <button type="button" class="panel-status-popup-item" data-alert-index="${index}">
                 ${PANEL_ALERT_ICON_ERROR}
                 <span>${escapeHtml(alert.message)}</span>
             </button>
@@ -3409,7 +3433,7 @@ function openPanelStatusPopup(alerts) {
     popup.querySelectorAll('.panel-status-popup-item').forEach(btn => {
         btn.addEventListener('click', event => {
             event.stopPropagation();
-            switchSection(btn.dataset.section);
+            goToNotificationTarget(alerts[Number(btn.dataset.alertIndex)]);
             closePanelStatusPopup();
         });
     });
@@ -3420,7 +3444,7 @@ document.getElementById('panel-status-pill')?.addEventListener('click', event =>
     const alerts = getCriticalDeviceAlerts();
     if (!alerts.length) return;
     if (alerts.length === 1) {
-        switchSection(alerts[0].section || 'dashboard');
+        goToNotificationTarget(alerts[0]);
         return;
     }
     if (document.getElementById('panel-status-popup')) {
@@ -3998,30 +4022,18 @@ function closePrinterModal() {
     }
     const banner = document.getElementById('printer-modal-error-banner');
     if (banner) banner.hidden = true;
+    closeConfigFileEditor();
 }
 
-function renderPrinterErrorBanner(printer, stateValue) {
-    const banner = document.getElementById('printer-modal-error-banner');
-    if (!banner) return;
-
-    const errorStates = ['error', 'shutdown', 'disconnected'];
-    if (!errorStates.includes(stateValue) || !printer.port) {
-        banner.hidden = true;
-        return;
-    }
-
+// Compartido entre el banner de error (solo visible si Klipper está en un
+// estado de error) y el módulo persistente "Archivos de config" (siempre
+// visible) -- misma acción de reiniciar/ver logs, dos lugares distintos
+// desde donde se puede disparar. Recibe los elementos ya resueltos por el
+// llamador en vez de buscarlos por id acá adentro, porque el módulo nuevo
+// genera su propio markup dinámico (sin ids fijos, para poder recrearlo
+// cada vez que se abre el modal sin colisionar con el banner).
+function wirePrinterRestartActions({ restartBtn, firmwareRestartBtn, klippyLogBtn, moonrakerLogBtn }, printer) {
     const port = printer.port;
-    const message = printer.printer_info?.state_message || '';
-    const titleEl = document.getElementById('printer-error-banner-title');
-    const messageEl = document.getElementById('printer-error-banner-message');
-    const klippyLogBtn = document.getElementById('printer-error-klippy-log-btn');
-    const moonrakerLogBtn = document.getElementById('printer-error-moonraker-log-btn');
-    const restartBtn = document.getElementById('printer-error-restart-btn');
-    const firmwareRestartBtn = document.getElementById('printer-error-firmware-restart-btn');
-
-    if (titleEl) titleEl.textContent = `${t('printerReportsKlipper')}: ${stateValue.toUpperCase()}`;
-    if (messageEl) messageEl.textContent = message;
-
     const logHost = window.location.hostname;
     if (klippyLogBtn) klippyLogBtn.href = `http://${logHost}:${port}/server/files/logs/klippy.log`;
     if (moonrakerLogBtn) moonrakerLogBtn.href = `http://${logHost}:${port}/server/files/logs/moonraker.log`;
@@ -4050,9 +4062,170 @@ function renderPrinterErrorBanner(printer, stateValue) {
             }
         };
     }
+}
+
+function renderPrinterErrorBanner(printer, stateValue) {
+    const banner = document.getElementById('printer-modal-error-banner');
+    if (!banner) return;
+
+    const errorStates = ['error', 'shutdown', 'disconnected'];
+    if (!errorStates.includes(stateValue) || !printer.port) {
+        banner.hidden = true;
+        return;
+    }
+
+    const message = printer.printer_info?.state_message || '';
+    const titleEl = document.getElementById('printer-error-banner-title');
+    const messageEl = document.getElementById('printer-error-banner-message');
+
+    if (titleEl) titleEl.textContent = `${t('printerReportsKlipper')}: ${stateValue.toUpperCase()}`;
+    if (messageEl) messageEl.textContent = message;
+
+    wirePrinterRestartActions({
+        restartBtn: document.getElementById('printer-error-restart-btn'),
+        firmwareRestartBtn: document.getElementById('printer-error-firmware-restart-btn'),
+        klippyLogBtn: document.getElementById('printer-error-klippy-log-btn'),
+        moonrakerLogBtn: document.getElementById('printer-error-moonraker-log-btn'),
+    }, printer);
 
     banner.hidden = false;
 }
+
+async function loadPrinterConfigFiles(port, printer) {
+    const container = document.getElementById('printer-modal-configfiles');
+    if (!container) return;
+    try {
+        const response = await fetch(`/api/printers/${port}/config-files`);
+        if (!response.ok) throw new Error('No se pudo cargar los archivos de config');
+        const data = await response.json();
+        renderPrinterConfigFiles(container, port, printer, data.files || []);
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = `
+            <div class="temp-card">
+                <div class="temp-card-header">
+                    <div class="temp-card-header-left">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
+                </div>
+                <div class="temp-card-body"><div class="empty-state-small">${t('printerConfigFilesEmpty')}</div></div>
+            </div>`;
+    }
+}
+
+function renderPrinterConfigFiles(container, port, printer, files) {
+    const sorted = [...files].sort((a, b) => (a.path || '').localeCompare(b.path || ''));
+    container.innerHTML = `
+        <div class="temp-card">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
+            </div>
+            <div class="temp-card-body">
+                <div class="config-actions-row">
+                    <button type="button" class="btn-file-action btn-file-action-danger" data-restart-action="restart">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        <span>${t('printerRestart')}</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-danger" data-restart-action="firmware-restart">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        <span>${t('printerFirmwareRestart')}</span>
+                    </button>
+                    <a class="btn-file-action" data-restart-action="klippy-log" href="#" target="_blank" rel="noopener noreferrer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        <span>${t('printerKlipperLog')}</span>
+                    </a>
+                    <a class="btn-file-action" data-restart-action="moonraker-log" href="#" target="_blank" rel="noopener noreferrer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        <span>${t('printerMoonrakerLog')}</span>
+                    </a>
+                </div>
+                ${sorted.length ? `
+                <div class="config-file-list">
+                    ${sorted.map(file => `
+                        <button type="button" class="config-file-row" data-path="${escapeHtml(file.path || '')}">
+                            <span class="config-file-row-name">${escapeHtml(file.path || '')}</span>
+                            <span class="config-file-row-size">${formatSize(file.size || 0)}</span>
+                        </button>
+                    `).join('')}
+                </div>
+                ` : `<div class="empty-state-small">${t('printerConfigFilesEmpty')}</div>`}
+            </div>
+        </div>
+    `;
+
+    wirePrinterRestartActions({
+        restartBtn: container.querySelector('[data-restart-action="restart"]'),
+        firmwareRestartBtn: container.querySelector('[data-restart-action="firmware-restart"]'),
+        klippyLogBtn: container.querySelector('[data-restart-action="klippy-log"]'),
+        moonrakerLogBtn: container.querySelector('[data-restart-action="moonraker-log"]'),
+    }, printer);
+
+    container.querySelectorAll('.config-file-row').forEach(row => {
+        row.addEventListener('click', () => openConfigFileEditor(port, row.dataset.path, printer));
+    });
+}
+
+const printerConfigEditorModal = document.getElementById('printer-config-editor-modal');
+let printerConfigEditorContext = null;
+
+async function openConfigFileEditor(port, path, printer) {
+    if (!printerConfigEditorModal) return;
+    printerConfigEditorContext = { port, path, printer };
+    const titleEl = document.getElementById('printer-config-editor-title');
+    const textarea = document.getElementById('printer-config-editor-textarea');
+    if (titleEl) titleEl.textContent = path;
+    if (textarea) {
+        textarea.value = '';
+        textarea.disabled = true;
+    }
+    printerConfigEditorModal.classList.add('active');
+    try {
+        const response = await fetch(`/api/printers/${port}/config-files/content?path=${encodeURIComponent(path)}`);
+        if (!response.ok) throw new Error('No se pudo leer el archivo');
+        const data = await response.json();
+        if (textarea) {
+            textarea.value = data.content || '';
+            textarea.disabled = false;
+        }
+    } catch (error) {
+        console.error(error);
+        appAlert(t('printerConfigFileLoadError'), '', 'danger');
+        closeConfigFileEditor();
+    }
+}
+
+function closeConfigFileEditor() {
+    if (!printerConfigEditorModal) return;
+    printerConfigEditorModal.classList.remove('active');
+    printerConfigEditorContext = null;
+}
+
+document.getElementById('printer-config-editor-close')?.addEventListener('click', closeConfigFileEditor);
+document.querySelector('#printer-config-editor-modal .modal-backdrop')?.addEventListener('click', closeConfigFileEditor);
+document.getElementById('printer-config-editor-cancel-btn')?.addEventListener('click', closeConfigFileEditor);
+
+document.getElementById('printer-config-editor-save-btn')?.addEventListener('click', async () => {
+    if (!printerConfigEditorContext) return;
+    const { port, path, printer } = printerConfigEditorContext;
+    const confirmed = await appConfirm(
+        t('printerConfigFileSaveConfirm').replace('{path}', path),
+        t('printerModuleConfigFiles'),
+        'warning',
+    );
+    if (!confirmed) return;
+    const textarea = document.getElementById('printer-config-editor-textarea');
+    const formData = new FormData();
+    formData.append('path', path);
+    formData.append('content', textarea ? textarea.value : '');
+    try {
+        const response = await fetch(`/api/printers/${port}/config-files/content`, { method: 'POST', body: formData });
+        if (!response.ok) throw new Error('No se pudo guardar el archivo');
+        showToast(t('printerConfigFileSaved'));
+        closeConfigFileEditor();
+        loadPrinterConfigFiles(port, printer);
+    } catch (error) {
+        console.error(error);
+        appAlert(t('printerConfigFileSaveError'), '', 'danger');
+    }
+});
 
 function printerQueueJobLabel(job) {
     return job.filename || job.job_id || '—';
@@ -4211,12 +4384,23 @@ function refreshPrinterModalHeader(printer) {
     renderPrinterErrorBanner(printer, stateValue);
     // Con Klipper en error/shutdown, Toolhead/Temperaturas/Cola no tienen
     // datos reales que mostrar (el firmware no está corriendo) — se ocultan
-    // y solo queda visible el banner de error con sus acciones.
+    // y solo queda visible el banner de error con sus acciones. "Archivos de
+    // config" queda afuera de este apagón a propósito: Moonraker (que sirve
+    // esos archivos) sigue arriba aunque Klipper se haya caído, así que es
+    // precisamente en este estado donde más sirve poder editar printer.cfg.
     const printerErrorStates = ['error', 'shutdown', 'disconnected'];
     const isPrinterInError = printerErrorStates.includes(stateValue);
-    const modalBody = document.querySelector('.printer-modal-body');
-    if (modalBody) modalBody.hidden = isPrinterInError;
-    if (queueContainer) queueContainer.hidden = isPrinterInError;
+    if (isPrinterInError) {
+        document.querySelectorAll('.printer-modal-body > .printer-modal-column').forEach(col => {
+            if (col.dataset.module !== 'configfiles') col.hidden = true;
+        });
+    } else {
+        // Reaplica el layout guardado (orden + ocultos elegidos en el
+        // customizer) en vez de simplemente poner hidden=false -- si no, al
+        // salir del estado de error se le pisaría al usuario su preferencia
+        // de tener, por ejemplo, Cola oculta.
+        applyPrinterModulesLayout();
+    }
 
     return { stateValue, isPrinterInError };
 }
@@ -4228,16 +4412,24 @@ async function openPrinterModal(printer) {
     const temperaturesContainer = document.getElementById('printer-modal-temperatures');
     const toolheadContainer = document.getElementById('printer-modal-toolhead');
     const queueContainer = document.getElementById('printer-modal-queue');
+    const configFilesContainer = document.getElementById('printer-modal-configfiles');
 
     if (statsContainer) statsContainer.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
     if (temperaturesContainer) temperaturesContainer.innerHTML = '';
     if (toolheadContainer) toolheadContainer.innerHTML = '';
     if (queueContainer) queueContainer.innerHTML = '';
-
-    const { isPrinterInError } = refreshPrinterModalHeader(printer);
+    if (configFilesContainer) configFilesContainer.innerHTML = '';
 
     printerModal.classList.add('active');
     applyPrinterModulesLayout();
+
+    // Se llama después de applyPrinterModulesLayout() para que, si Klipper
+    // está en error, el ocultamiento forzado de Toolhead/Temperaturas/Cola
+    // (ver refreshPrinterModalHeader) sea la última palabra y no lo pise el
+    // layout guardado del customizer.
+    const { isPrinterInError } = refreshPrinterModalHeader(printer);
+
+    if (printer.port) loadPrinterConfigFiles(printer.port, printer);
 
     if (printerModalTemperatureInterval) {
         clearInterval(printerModalTemperatureInterval);
@@ -4287,6 +4479,7 @@ const PRINTER_MODULE_ICON_STATUS = '<svg width="16" height="16" viewBox="0 0 24 
 const PRINTER_MODULE_ICON_TOOLHEAD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
 const PRINTER_MODULE_ICON_TEMPERATURES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"/></svg>';
 const PRINTER_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
+const PRINTER_MODULE_ICON_CONFIGFILES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
 const PRINTER_MODULE_LOCK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 const PRINTER_MODULE_DRAG_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
 
@@ -4295,6 +4488,7 @@ const PRINTER_MODULE_DEFS = [
     { key: 'toolhead', group: 'available', labelKey: 'toolhead', iconSvg: PRINTER_MODULE_ICON_TOOLHEAD, locked: false },
     { key: 'temperatures', group: 'extra', labelKey: 'temperatures', iconSvg: PRINTER_MODULE_ICON_TEMPERATURES, locked: false },
     { key: 'queue', group: 'extra', labelKey: 'printerModuleQueue', iconSvg: PRINTER_MODULE_ICON_QUEUE, locked: false },
+    { key: 'configfiles', group: 'extra', labelKey: 'printerModuleConfigFiles', iconSvg: PRINTER_MODULE_ICON_CONFIGFILES, locked: false },
 ];
 
 const PRINTER_MODULE_NONLOCKED_KEYS = PRINTER_MODULE_DEFS.filter(mod => !mod.locked).map(mod => mod.key);
@@ -15095,7 +15289,8 @@ function pluginIconSvg(icon, size = 24) {
         layers: '<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
         cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
         camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
-        banknote: '<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>'
+        banknote: '<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+        spool: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>'
     };
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[icon] || paths.shapes}</svg>`;
 }

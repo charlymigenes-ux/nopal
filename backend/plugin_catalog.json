@@ -126,6 +126,24 @@
     "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-camera-viewer.git"
   },
   {
+    "id": "spoolman",
+    "name": "Materiales",
+    "version": "0.1.0",
+    "publisher": "NOPAL Labs",
+    "category": "Producción",
+    "description": "Conecta NOPAL con un servidor Spoolman para ver tu inventario real de spools de filamento, asignarlos a tus impresoras Klipper y usar sus costos reales en el Cotizador.",
+    "long_description": "Spoolman sigue siendo el dueño del inventario físico (spool, fabricante, peso, costo, ubicación); NOPAL agrega encima la capa de negocio: spool activo por impresora, reservas de material para producción y costos reales integrados al Cotizador.",
+    "icon": "spool",
+    "accent": "#22c55e",
+    "compatibility": ["Impresión 3D"],
+    "permissions": ["Conectar con un servidor Spoolman en tu red", "Guardar qué spool está cargado en cada impresora", "Guardar reservas de material para producción"],
+    "size": "Por definir",
+    "featured": true,
+    "availability": "available",
+    "pricing": { "type": "free" },
+    "repo_url": null
+  },
+  {
     "id": "cotizador",
     "name": "Cotizador",
     "version": "1.0.0",

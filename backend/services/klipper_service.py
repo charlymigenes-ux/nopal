@@ -277,6 +277,50 @@ class MoonrakerClient:
             logger.warning(f"[{self.port}] {e}")
             return False
 
+    def list_config_files(self) -> List[Dict[str, Any]]:
+        """Lista recursiva de todo lo que hay bajo config/ -- Moonraker ya
+        devuelve rutas relativas completas (ej. "boards/mks_robin.cfg"), no
+        hace falta navegar carpeta por carpeta del lado de NOPAL."""
+        result = self._get("/server/files/list?root=config")
+        return result if isinstance(result, list) else []
+
+    def get_config_file_content(self, path: str) -> Optional[str]:
+        """Contenido crudo de un archivo de config -- Moonraker lo sirve
+        como archivo estático bajo /server/files/config/<path>, no como
+        JSON envuelto en "result", por eso no pasa por _get()."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/server/files/config/{quote(path)}",
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.text
+        except requests.exceptions.ConnectionError:
+            return None
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return None
+
+    def save_config_file(self, path: str, content: str) -> bool:
+        """Sobreescribe un archivo ya existente bajo config/ -- mismo
+        endpoint y forma que upload_gcode_file, root='config' en vez de
+        'gcodes'. Pensado solo para sobreescribir archivos existentes
+        (printer.cfg, moonraker.conf, etc.), no para crear carpetas
+        nuevas -- sin hardware real en este entorno para confirmar cómo
+        se comporta Moonraker si la carpeta padre de `path` no existe."""
+        try:
+            response = requests.post(
+                f"{self.base_url}/server/files/upload",
+                files={"file": (path, content.encode("utf-8"), "text/plain")},
+                data={"root": "config"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"[{self.port}] {e}")
+            return False
+
     def start_print(self, filename: str) -> bool:
         try:
             response = requests.post(
@@ -417,6 +461,26 @@ def restart_printer_klipper(port: int) -> bool:
 
 def firmware_restart_printer(port: int) -> bool:
     return MoonrakerClient(port).firmware_restart()
+
+
+def is_safe_config_path(path: str) -> bool:
+    """Defensa en profundidad antes de reenviar un path a Moonraker --
+    Moonraker también restringe del lado suyo, pero no hay que reenviar
+    ciegamente lo que mande el navegador."""
+    normalized = path.replace("\\", "/")
+    return bool(path) and not normalized.startswith("/") and ".." not in normalized.split("/")
+
+
+def get_printer_config_files(port: int) -> List[Dict[str, Any]]:
+    return MoonrakerClient(port).list_config_files()
+
+
+def get_printer_config_file_content(port: int, path: str) -> Optional[str]:
+    return MoonrakerClient(port).get_config_file_content(path)
+
+
+def save_printer_config_file(port: int, path: str, content: str) -> bool:
+    return MoonrakerClient(port).save_config_file(path, content)
 
 
 def send_gcode_to_printer(port: int, file_path: str, mode: str = "print", section: str = "model") -> Dict[str, Any]:

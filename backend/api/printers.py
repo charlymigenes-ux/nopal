@@ -9,16 +9,20 @@ from backend.services.klipper_service import (
     find_moonraker_instances,
     firmware_restart_printer,
     get_all_printers_status,
+    get_printer_config_file_content,
+    get_printer_config_files,
     get_printer_job_queue,
     get_printer_status,
     get_recent_printer_files,
     get_scheduled_prints,
     get_total_queued_print_jobs,
+    is_safe_config_path,
     pause_printer_print,
     remove_printer_queue_job,
     remove_scheduled_print,
     restart_printer_klipper,
     resume_printer_print,
+    save_printer_config_file,
     send_gcode_to_printer,
     start_printer_job_queue,
 )
@@ -115,6 +119,32 @@ async def firmware_restart_endpoint(port: int, user: dict = Depends(require_auth
     """Reinicia el firmware del MCU (equivalente a FIRMWARE_RESTART)."""
     if not firmware_restart_printer(port):
         raise HTTPException(status_code=400, detail="No se pudo reiniciar el firmware")
+    return {"success": True}
+
+
+@router.get("/api/printers/{port}/config-files")
+async def printer_config_files_endpoint(port: int, user: dict = Depends(require_auth)):
+    return {"files": get_printer_config_files(port)}
+
+
+@router.get("/api/printers/{port}/config-files/content")
+async def printer_config_file_content_endpoint(port: int, path: str, user: dict = Depends(require_auth)):
+    if not is_safe_config_path(path):
+        raise HTTPException(status_code=400, detail="Ruta inválida")
+    content = get_printer_config_file_content(port, path)
+    if content is None:
+        raise HTTPException(status_code=404, detail="No se pudo leer el archivo")
+    return {"content": content}
+
+
+@router.post("/api/printers/{port}/config-files/content")
+async def save_printer_config_file_endpoint(
+    port: int, path: str = Form(...), content: str = Form(...), user: dict = Depends(require_auth)
+):
+    if not is_safe_config_path(path):
+        raise HTTPException(status_code=400, detail="Ruta inválida")
+    if not save_printer_config_file(port, path, content):
+        raise HTTPException(status_code=400, detail="No se pudo guardar el archivo")
     return {"success": True}
 
 

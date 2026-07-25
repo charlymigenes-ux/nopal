@@ -521,10 +521,11 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
     """Lista los puertos serie USB conectados que coinciden con chips
     típicos de controladoras láser (CH340, CP2102, ESP32), excluyendo los
     puertos que ya están configurados como MCU de alguna impresora Klipper
-    local o ya registrados como impresora Marlin en NOPAL (mismo criterio
-    simétrico que list_usb_marlin_ports aplica del lado de láser, para que
-    un mismo puerto físico no se ofrezca como candidato en las dos listas
-    de alta a la vez)."""
+    local, ya registrados como impresora Marlin en NOPAL, o ya registrados
+    como láser/CNC (mismo criterio simétrico que list_usb_marlin_ports
+    aplica del lado de láser, para que un mismo puerto físico no se ofrezca
+    como candidato "nuevo" en las listas de alta ni siga disparando el
+    aviso de "controladora detectada" para algo que ya está dado de alta)."""
     try:
         from serial.tools import list_ports
     except ImportError:
@@ -543,6 +544,11 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
         marlin_entries = []
     claimed_marlin_locations = {e["location"] for e in marlin_entries if e.get("location")}
     claimed_marlin_devices = {e["device"] for e in marlin_entries if not e.get("location") and e.get("device")}
+
+    claimed_laser_devices = {
+        entry["host"][4:] for entry in _load_registry()
+        if entry.get("transport") == "usb" and str(entry.get("host", "")).startswith("usb:")
+    }
 
     results = []
     for port in list_ports.comports():
@@ -564,6 +570,8 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
         if port.location and port.location in claimed_marlin_locations:
             continue
         if port.device in claimed_marlin_devices:
+            continue
+        if port.device in claimed_laser_devices:
             continue
 
         vid_pid = f"{port.vid:04X}:{port.pid:04X}" if port.pid is not None else f"{port.vid:04X}"

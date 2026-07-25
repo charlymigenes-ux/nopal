@@ -45,10 +45,21 @@
  *     NOPAL_BUZZER_SCENE_SOUNDS más abajo, que el panel lee de
  *     /api/status (buzzer.scene_sounds).
  *
- * Versión propia: 4.2.0-ff. Protocolo 4 (compatible con nopal_accessory.ino
+ * Versión propia: 4.2.1-ff. Protocolo 4 (compatible con nopal_accessory.ino
  * -- el buzzer solo agrega campos, no cambia ni quita ninguno existente).
  * "board" se reporta como esp32_generic_ff / esp8266_generic_ff para
  * distinguir esta variante con buzzer de un nopal_accessory.ino común.
+ *
+ * Cambios en 4.2.1-ff (confirmados en hardware real: una NodeMCU ESP8266 y
+ * una placa ESP32 corriendo esta firmware):
+ *   - Animación de arranque en la tira WS2812 (verde NOPAL) -- ver
+ *     playStartupAnimation(), corre una sola vez en setup().
+ *   - RELAY_ACTIVE_LOW ahora se puede sobrescribir desde secrets.h con
+ *     NOPAL_RELAY_ACTIVE_LOW (0 o 1) en vez de quedar fijo en el .ino --
+ *     confirmado en hardware real que algunos módulos de relé (sobre todo
+ *     los pensados para ESP32/NodeMCU) se activan con HIGH en vez de LOW,
+ *     lo que hacía que NOPAL reportara el estado de cada relé al revés del
+ *     físico real. Ver el comentario de NOPAL_RELAY_ACTIVE_LOW más abajo.
  *
  * Compatible con:
  *   - ESP8266
@@ -138,11 +149,36 @@
 // CONFIGURACIÓN GENERAL
 // ============================================================================
 
-#define FW_VERSION "4.2.0-ff"
+#define FW_VERSION "4.2.1-ff"
 #define NOPAL_PROTOCOL 4
 
-// La mayoría de módulos de relés se activan con LOW.
-const bool RELAY_ACTIVE_LOW = true;
+// La mayoría de módulos de relés se activan con LOW (pin en LOW = relé
+// encendido, HIGH = apagado). getRelay()/setRelay() más abajo aplican esta
+// MISMA polaridad tanto al escribir el pin (encender/apagar) como al
+// leerlo de vuelta para reportar el estado -- así que, sea cual sea el
+// valor de acá, lo que la placa reporta por Serial/`/api/status` siempre
+// coincide con lo que ella misma le mandó al pin.
+//
+// El problema es cuando el módulo de relé real NO respeta esa convención:
+// hay módulos (sobre todo los pensados para ESP32/NodeMCU, que evitan
+// arrancar con el pin en LOW por los pines de bootstrapping) que se activan
+// al revés, con HIGH. Confirmado en hardware real: con uno de esos módulos
+// conectado, prender un relé desde NOPAL lo deja físicamente apagado (y
+// viceversa) aunque el firmware reporte exactamente lo que él mismo
+// escribió -- el firmware "miente" sin saberlo porque asume la polaridad
+// equivocada para ESE módulo en particular.
+//
+// Se soluciona sin tocar este archivo: define NOPAL_RELAY_ACTIVE_LOW en tu
+// secrets.h (0 = tu módulo se activa con HIGH, 1 = con LOW -- el valor por
+// defecto de acá abajo si no lo definís, y coincide con la mayoría de
+// módulos genéricos de 1/2/4/8 canales). Cada placa tiene su propio
+// secrets.h, así que dos placas con módulos de relé distintos pueden usar
+// cada una el valor que les corresponda sin tocar el .ino.
+#ifndef NOPAL_RELAY_ACTIVE_LOW
+  #define NOPAL_RELAY_ACTIVE_LOW 1
+#endif
+
+const bool RELAY_ACTIVE_LOW = NOPAL_RELAY_ACTIVE_LOW != 0;
 
 const uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 const uint32_t WIFI_RECONNECT_INTERVAL_MS = 15000;
@@ -1186,6 +1222,55 @@ bool setWs2812Segment(
 }
 
 
+// Barrido de arranque en verde NOPAL (#22c55e / RGB 34,197,94 -- el mismo
+// verde de marca que usa el resto del proyecto, ver --green/--accent en
+// style.css y los mismos valores en app.js) sobre la tira WS2812: prende
+// los píxeles uno por uno de punta a punta, sostiene la tira completa
+// encendida un instante y la apaga de nuevo. Se llama UNA sola vez desde
+// setup(), antes de que arranque Wi-Fi -- a propósito NO es un efecto con
+// estado como serviceBuzzer()/serviceStatusLed(): no vuelve a llamarse
+// desde loop(), así que termina sola y no compite ni pisa ningún color real
+// que NOPAL o el panel web le pidan a la tira una vez que la placa terminó
+// de arrancar (la tira queda apagada al salir de acá, igual que ya la deja
+// el strip.clear() de más arriba en setup(), hasta que llegue el primer
+// comando WS/WSSEG real).
+//
+// Reutiliza setWs2812Color()/setWs2812Segment() (el mismo mecanismo que ya
+// exponen los comandos WS/WSSEG) en vez de tocar el objeto `strip`
+// directo, para no duplicar acá el driver NeoPixel.
+//
+// El tiempo total se reparte entre WS2812_COUNT píxeles con un presupuesto
+// fijo, así que aunque alguien suba la cantidad de LEDs en el mapeo de
+// pines el barrido no se alarga -- entre el barrido y la pausa final queda
+// bien por debajo del margen de 1-2 s que nos podemos permitir sin demorar
+// Wi-Fi/HTTP.
+void playStartupAnimation() {
+
+#if WS2812_ENABLE
+
+  const uint16_t sweepBudgetMs = 500;
+  const uint16_t stepDelayMs =
+    (sweepBudgetMs / WS2812_COUNT) > 0
+      ? (sweepBudgetMs / WS2812_COUNT)
+      : 1;
+
+  String discardResponse;
+
+  setWs2812Color(0, 0, 0);
+
+  for (uint16_t pixel = 0; pixel < WS2812_COUNT; pixel++) {
+    setWs2812Segment(pixel, 1, 34, 197, 94, discardResponse);
+    delay(stepDelayMs);
+  }
+
+  delay(150);
+
+  setWs2812Color(0, 0, 0);
+
+#endif
+}
+
+
 // ============================================================================
 // BUZZER ACTIVO — PATRONES NO BLOQUEANTES
 // ============================================================================
@@ -1740,6 +1825,14 @@ String buildStatusJson() {
   json += "\"io\":{";
   json += "\"relays\":";
   json += String(RELAY_COUNT);
+  json += ",";
+  // Mismo criterio que "buzzer.active_high": se expone acá para poder
+  // confirmar desde afuera (sin monitor Serial) con qué polaridad está
+  // compilada la placa, útil para diagnosticar un NOPAL_RELAY_ACTIVE_LOW
+  // mal configurado en secrets.h (ver el comentario de esa macro más
+  // arriba, junto a RELAY_ACTIVE_LOW).
+  json += "\"relay_active_low\":";
+  json += RELAY_ACTIVE_LOW ? "true" : "false";
   json += ",";
   json += "\"pwm_led\":";
   json += PWM_LED_ENABLE ? "true" : "false";
@@ -2478,6 +2571,11 @@ void setup() {
   strip.begin();
   strip.clear();
   strip.show();
+
+  // Animación breve de "la placa está viva" antes de meterse a conectar
+  // Wi-Fi -- ver el comentario de playStartupAnimation() más arriba (por
+  // qué no es un efecto en curso y no demora el arranque real).
+  playStartupAnimation();
 
 #endif
 

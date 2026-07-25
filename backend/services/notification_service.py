@@ -35,12 +35,16 @@ async def get_notifications() -> Dict[str, Any]:
 
     for printer in printers:
         name = printer.get("name", "Impresora")
+        # "port" identifica a la impresora Klipper puntual (ver
+        # klipper_service.get_all_printers_status) -- sin esto el frontend
+        # solo podía mandar al usuario a la sección "dashboard" en general,
+        # nunca abrir la tarjeta/modal de la impresora que reportó el error.
         if printer.get("status") == "offline":
-            items.append({"severity": "error", "source": "printer", "section": "dashboard", "message": f"{name} desconectada"})
+            items.append({"severity": "error", "source": "printer", "section": "dashboard", "port": printer.get("port"), "message": f"{name} desconectada"})
         else:
             job_state = printer.get("job", {}).get("state")
             if job_state in ("paused", "error"):
-                items.append({"severity": "warning", "source": "printer", "section": "dashboard", "message": f"{name}: {job_state}"})
+                items.append({"severity": "warning", "source": "printer", "section": "dashboard", "port": printer.get("port"), "message": f"{name}: {job_state}"})
 
     for laser in lasers:
         if not laser.get("online"):
