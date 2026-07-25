@@ -2370,6 +2370,27 @@
                 <div class="printer-modal-column" data-module="queue">
                     <div id="printer-modal-queue"></div>
                 </div>
+                <div class="printer-modal-column" data-module="configfiles">
+                    <div id="printer-modal-configfiles"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editor de archivos de config de Klipper/Moonraker (printer.cfg, moonraker.conf, etc.) -->
+    <div id="printer-config-editor-modal" class="modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content printer-config-editor-content">
+            <button class="modal-close" id="printer-config-editor-close" type="button">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="printer-config-editor-header">
+                <h2 id="printer-config-editor-title">—</h2>
+            </div>
+            <textarea id="printer-config-editor-textarea" class="printer-config-editor-textarea" spellcheck="false"></textarea>
+            <div class="printer-config-editor-footer">
+                <button type="button" class="btn-file-action" id="printer-config-editor-cancel-btn" data-i18n="cancelAction">Cancelar</button>
+                <button type="button" class="btn-file-action btn-file-action-accent" id="printer-config-editor-save-btn" data-i18n="save">Guardar</button>
             </div>
         </div>
     </div>

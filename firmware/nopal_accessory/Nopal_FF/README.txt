@@ -28,6 +28,9 @@ PLATAFORMAS SOPORTADAS
 
 FUNCIONES
 ---------
+- Animación breve (barrido en verde NOPAL, ~0.6 s) en la tira WS2812 al
+  arrancar la placa -- corre una sola vez en setup(), no demora Wi-Fi/HTTP
+  y no interfiere con el color real que le pidas a la tira después.
 - Hasta 4 relés (NOPAL:R1..R4).
 - Tira RGB analógica por PWM (NOPAL:LED:r,g,b).
 - Tira WS2812/NeoPixel: color global (NOPAL:WS:r,g,b) y por segmento
@@ -96,9 +99,15 @@ CONFIGURACIÓN
    - NOPAL_OTA_USERNAME / NOPAL_OTA_PASSWORD
    - NOPAL_AP_PASSWORD
    - (opcional) NOPAL_RELAY1_NAME..NOPAL_RELAY4_NAME
+   - (opcional) NOPAL_RELAY_ACTIVE_LOW
    - (opcional) NOPAL_BUZZER_ACTIVE_HIGH, NOPAL_BUZZER_SCENE_SOUNDS
 3. Si tu buzzer es pasivo o se activa en LOW en vez de en HIGH, ajusta
    NOPAL_BUZZER_ACTIVE_HIGH=0 en secrets.h.
+3b. Si al prender un relé desde NOPAL el estado físico real queda al
+    revés del que reporta el panel/`/api/status` (pasa con algunos
+    módulos de relé pensados para ESP32/NodeMCU, que se activan con
+    HIGH en vez de LOW), ajusta NOPAL_RELAY_ACTIVE_LOW=0 en secrets.h.
+    Por defecto vale 1 (se activa con LOW), lo más común.
 4. Revisa/ajusta los pines de RELAY_PINS / PWM_LED_PIN_* / WS2812_PIN /
    BUZZER_PIN dentro de Nopal_FF.ino según tu cableado real.
 5. Carga la primera versión por USB (Sketch -> Subir).

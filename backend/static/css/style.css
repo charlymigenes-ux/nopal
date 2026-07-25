@@ -3000,9 +3000,17 @@ body.green .settings-card {
     min-height: 0;
 }
 
+/* Lista de archivos + fila de acciones necesitan más ancho que una columna
+   de 1/3 -- ocupa el ancho completo de la grilla en la fila donde caiga,
+   sin importar en qué posición del customizer quede reordenada. */
+.printer-modal-column[data-module="configfiles"] {
+    grid-column: 1 / -1;
+}
+
 #printer-modal-toolhead,
 #printer-modal-temperatures,
-#printer-modal-queue {
+#printer-modal-queue,
+#printer-modal-configfiles {
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -3688,6 +3696,58 @@ body.green .settings-card {
     padding: 12px 14px 14px;
     display: grid;
     gap: 12px;
+}
+
+.config-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.config-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 80px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.config-file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--panel-bg);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.config-file-row:hover {
+    background: rgba(var(--accent-rgb), 0.1);
+    border-color: var(--accent);
+}
+
+.config-file-row-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.config-file-row-size {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 .temp-table {
@@ -13101,6 +13161,47 @@ header {
     opacity: 0.85;
 }
 
+.printer-config-editor-content {
+    padding: 28px;
+    gap: 14px;
+}
+
+.printer-config-editor-header {
+    padding-right: 56px;
+}
+
+.printer-config-editor-header h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 1.05rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    word-break: break-all;
+}
+
+.printer-config-editor-textarea {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    resize: none;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    color: var(--text);
+    font: 500 0.86rem/1.55 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    tab-size: 4;
+}
+
+.printer-config-editor-textarea:disabled {
+    opacity: 0.6;
+}
+
+.printer-config-editor-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
 .modal-body {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -14671,10 +14772,20 @@ body.light .btn-accent {
     display: flex;
     align-items: flex-start;
     gap: 8px;
+    width: 100%;
     padding: 8px;
+    border: none;
     border-radius: var(--radius-sm);
+    background: transparent;
+    font: inherit;
     font-size: 0.82rem;
     color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.topbar-notif-item:hover {
+    background: rgba(var(--accent-rgb), 0.1);
 }
 
 .topbar-notif-item-dot {

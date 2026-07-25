@@ -25,6 +25,10 @@ quotes_registry.json
 accessory_registry.json
 arduino_boards_config.json
 auth_users.json
+spoolman_config.json
+spoolman_printer_links.json
+spoolman_reservations.json
+spoolman_usage_log.json
 .session_secret
 
 # Credenciales reales de placas NOPAL (Wi-Fi/OTA) — usa secrets.h.example
