@@ -6125,6 +6125,13 @@ function checkLaserConnectionTransitions(laserEntries) {
 const machineLedPlugin = { checked: false, installed: false, available: false };
 const machineLedLastState = new Map();
 const machineLedEnabledCache = new Map();
+// {machine_key: runs[]} -- último "runs" (tramos start/count/color) que el
+// backend confirmó como realmente pintado en la tira física para esa
+// máquina, solo cuando el accesorio tiene "Mostrar en panel" activado (ver
+// machine_led_automation.apply_state). Se pinta desde acá (no en cada
+// respuesta) porque la tarjeta se reconstruye por innerHTML en cada ciclo
+// de polling -- ver decorateMachineCardsWithLedSettings.
+const machineLedRenderCache = new Map();
 let machineLedCurrentMachine = null;
 
 async function fetchMachineLedEnabledStates() {
@@ -6221,10 +6228,55 @@ async function publishMachineLedState(machine, state, progress) {
             machineLedPlugin.available = false;
             return;
         }
-        if (response.ok) machineLedLastState.set(key, dedupValue);
+        if (response.ok) {
+            machineLedLastState.set(key, dedupValue);
+            const data = await response.json().catch(() => null);
+            if (data?.show_on_panel && data.runs?.length) {
+                machineLedRenderCache.set(key, data.runs);
+            } else {
+                machineLedRenderCache.delete(key);
+            }
+        }
     } catch (error) {
         console.debug('Alertas LED no disponibles:', error);
     }
+}
+
+// Réplica visual (puntos de color) de los LEDs que la automatización ya
+// pintó físicamente para esta máquina -- de hasta 40 LEDs, uno por punto;
+// segmentos más largos se resumen como barras proporcionales por tramo
+// para no inflar el DOM con cientos de nodos.
+function machineLedIndicatorHtml(runs) {
+    const total = runs.reduce((sum, run) => sum + run.count, 0);
+    if (total <= 0) return '';
+    if (total > 40) {
+        const bars = runs.map(run => {
+            const color = `rgb(${run.color[0]}, ${run.color[1]}, ${run.color[2]})`;
+            return `<span class="machine-led-bar" style="width:${(run.count / total) * 100}%;background:${color}"></span>`;
+        }).join('');
+        return `<span class="machine-led-indicator machine-led-indicator-bars" title="Reflejo de la iluminación física (${total} LEDs)">${bars}</span>`;
+    }
+    const dots = [];
+    runs.forEach(run => {
+        const color = `rgb(${run.color[0]}, ${run.color[1]}, ${run.color[2]})`;
+        for (let i = 0; i < run.count; i++) dots.push(`<span class="machine-led-dot" style="background:${color}"></span>`);
+    });
+    return `<span class="machine-led-indicator" title="Reflejo de la iluminación física">${dots.join('')}</span>`;
+}
+
+function ensureMachineLedIndicator(card, key) {
+    const header = card.querySelector('.printer-card-top');
+    if (!header) return;
+    const actions = header.querySelector('.printer-quick-actions') || header;
+    const existing = actions.querySelector('.machine-led-indicator');
+    const runs = machineLedRenderCache.get(key);
+    const html = runs ? machineLedIndicatorHtml(runs) : '';
+    if (!html) {
+        existing?.remove();
+        return;
+    }
+    if (existing) existing.outerHTML = html;
+    else actions.insertAdjacentHTML('afterbegin', html);
 }
 
 function machineLedButtonHtml(machine) {
@@ -6258,11 +6310,10 @@ function decorateMachineCardsWithLedSettings(root) {
     if (!entries.length) return;
 
     entries.forEach(({ card, machine }) => {
+        const key = `${machine.type}:${machine.id}`;
         const button = ensureMachineLedButton(card, machine);
-        if (button) {
-            const key = `${machine.type}:${machine.id}`;
-            button.classList.toggle('is-enabled', Boolean(machineLedEnabledCache.get(key)));
-        }
+        if (button) button.classList.toggle('is-enabled', Boolean(machineLedEnabledCache.get(key)));
+        ensureMachineLedIndicator(card, key);
         publishMachineLedState(machine, machineLedCardState(card), machineLedCardProgress(card));
     });
 

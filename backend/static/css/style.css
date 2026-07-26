@@ -15121,6 +15121,10 @@ body.light .btn-accent {
 .machine-led-settings-btn:not(.is-enabled):hover { border-color: #94a3b8; background: rgba(148,163,184,.13); }
 .machine-led-settings-btn.is-enabled { border-color: rgba(34,197,94,.32); background: rgba(7,20,17,.78); color: #55e57d; }
 .machine-led-settings-btn.is-enabled:hover { border-color: #22c55e; background: rgba(34,197,94,.13); }
+.machine-led-indicator { display: flex; align-items: center; gap: 3px; padding: 5px 7px; flex: 0 0 auto; border: 1px solid rgba(148,163,184,.25); border-radius: 9px; background: rgba(15,23,32,.6); }
+.machine-led-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 4px currentColor; }
+.machine-led-indicator-bars { width: 46px; height: 16px; padding: 0; overflow: hidden; }
+.machine-led-bar { display: block; height: 100%; flex-shrink: 0; }
 .machine-led-modal { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 20px; background: rgba(1,7,12,.78); backdrop-filter: blur(9px); }
 .machine-led-modal[hidden] { display: none; }
 .machine-led-dialog { position: relative; width: min(680px, 96vw); max-height: min(850px, 92vh); overflow: auto; padding: 26px; border: 1px solid rgba(34,197,94,.48); border-radius: 24px; background: linear-gradient(145deg, rgba(14,27,31,.98), rgba(8,16,24,.99)); box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 40px rgba(34,197,94,.08); color: var(--text); }
