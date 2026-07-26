@@ -24,7 +24,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-SERVICE_NAME_PATTERN = re.compile(r"^(klipper|moonraker|crowsnest|go2rtc)", re.IGNORECASE)
+SERVICE_NAME_PATTERN = re.compile(r"^(klipper|moonraker|crowsnest|go2rtc|spoolman)", re.IGNORECASE)
 INSTANCE_SUFFIX_PATTERN = re.compile(r"-(\d+)$")
 DEFAULT_MOONRAKER_PORT = 7125
 HTTP_TIMEOUT = 5
@@ -87,10 +87,11 @@ def _base_url_for(unit_name: str, ports: Dict[Optional[int], int]) -> Optional[s
     """Para klipper-N/moonraker-N usa la instancia N (viven en el mismo
     printer_N_data); para crowsnest u otro servicio sin numerar, cualquier
     instancia disponible sirve -- Moonraker administra a sus hermanos.
-    go2rtc es un servicio propio de NOPAL, no un hermano de Klipper/Moonraker
-    -- Moonraker no tiene permiso para administrarlo, así que se muestra en
-    el panel (para ver su estado) pero sin acción de reiniciar/parar."""
-    if unit_name == "go2rtc":
+    go2rtc y spoolman son servicios propios de NOPAL, no hermanos de
+    Klipper/Moonraker -- Moonraker no tiene permiso para administrarlos, así
+    que se muestran en el panel (para ver su estado) pero sin acción de
+    reiniciar/parar."""
+    if unit_name.lower() in ("go2rtc", "spoolman"):
         return None
     match = INSTANCE_SUFFIX_PATTERN.search(unit_name)
     instance = int(match.group(1)) if match else None
