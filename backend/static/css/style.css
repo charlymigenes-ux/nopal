@@ -747,6 +747,43 @@ body.green .global-topbar {
     box-shadow: 0 0 14px rgba(139, 92, 246, 0.4);
 }
 
+/* ── Indicador de plugin en el sidebar ──
+   Todo botón que un plugin agrega a sí mismo al sidebar trae
+   data-plugin-nav="<id-del-plugin>" (ver mount() en cada frontend/*.js de
+   plugins/) sin importar en qué grupo del menú caiga (Cotizador vive en
+   "Trabajos", no en "Plugins"). Selecciona por ese atributo -- no por
+   data-section, que es la ruta interna de cada plugin (ej. cotizador usa
+   "pricing") y no sirve como identificador estable.
+   El pin (ícono de pieza de rompecabezas, mismo trazo que "Galería de
+   plugins") se pinta con --plugin-nav-rgb; el fallback es el acento del
+   tema para plugins nuevos que no tengan un color específico asignado
+   todavía acá abajo. */
+.nav-item[data-plugin-nav] {
+    --plugin-nav-rgb: var(--accent-rgb);
+}
+.nav-item[data-plugin-nav]::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    right: 7px;
+    width: 11px;
+    height: 11px;
+    background-color: rgb(var(--plugin-nav-rgb));
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M8.5%203H5a2%202%200%200%200-2%202v3.5a2.5%202.5%200%200%201%200%205V19a2%202%200%200%200%202%202h5.5a2.5%202.5%200%200%201%205%200H19a2%202%200%200%200%202-2v-3.5a2.5%202.5%200%200%201%200-5V5a2%202%200%200%200-2-2h-5.5a2.5%202.5%200%200%201-5%200Z'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M8.5%203H5a2%202%200%200%200-2%202v3.5a2.5%202.5%200%200%201%200%205V19a2%202%200%200%200%202%202h5.5a2.5%202.5%200%200%201%205%200H19a2%202%200%200%200%202-2v-3.5a2.5%202.5%200%200%201%200-5V5a2%202%200%200%200-2-2h-5.5a2.5%202.5%200%200%201-5%200Z'/%3E%3C/svg%3E");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    filter: drop-shadow(0 0 4px rgb(var(--plugin-nav-rgb)));
+    pointer-events: none;
+}
+
+.nav-item[data-plugin-nav="cotizador"] { --plugin-nav-rgb: 234, 179, 8; }
+.nav-item[data-plugin-nav="arduino-accessories"] { --plugin-nav-rgb: 59, 130, 246; }
+.nav-item[data-plugin-nav="camera-viewer"] { --plugin-nav-rgb: 236, 72, 153; }
+.nav-item[data-plugin-nav="spoolman"] { --plugin-nav-rgb: 20, 184, 166; }
+
 .sidebar-actions-card {
     display: flex;
     align-items: stretch;

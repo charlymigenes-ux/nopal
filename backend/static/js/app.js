@@ -8822,8 +8822,13 @@ async function handleUsbClassifyNameConfirm() {
 }
 
 function handleUsbClassifyPrinter() {
+    const target = usbClassifyTarget;
     closeUsbClassifyModal();
-    showToast(t('usbPrinterNotSupported'), 'error');
+    if (target?.transport === 'usb') {
+        openMarlinRegisterModal(target.device, target.chip);
+    } else {
+        showToast(t('usbPrinterNotSupported'), 'error');
+    }
 }
 
 const usbClassifyLaserBtn = document.getElementById('usb-classify-laser-btn');
@@ -15196,6 +15201,7 @@ function switchSection(sectionName) {
         loadElegooRegistryList();
         loadFlashforgeRegistryList();
         loadBambuRegistryList();
+        loadMarlinPrintersSettingsCard();
     } else {
         stopSystemLogPolling();
     }
