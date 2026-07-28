@@ -998,6 +998,7 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     bulkDeleteConfirm: '¿Eliminar los archivos seleccionados? Esta acción no se puede deshacer.',
     bulkMovePartialError: 'No se pudieron mover {n} archivo(s).',
     filesSelected: 'seleccionados',
+    bulkActionsDisabledHint: 'Tienes varios archivos seleccionados — usa Mover/Eliminar de la barra de selección.',
     moveHere: 'Mover aquí',
     sendToLaser: 'Enviar a láser',
     sendToLaserAdded: 'Se agregó a la cola del láser.',
@@ -1134,6 +1135,20 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     usersPasswordReset: 'Contraseña actualizada',
     usersRemove: 'Eliminar usuario',
     usersRemoveConfirm: '¿Eliminar este usuario? No podrá volver a iniciar sesión.',
+
+    // ── Configuración > TUNA-Screen ──
+    tunascreenTitle: 'TUNA-Screen',
+    tunascreenDescription: 'Emparejá tablets/teléfonos con la app TUNA-Screen para controlar tus máquinas como pantalla dedicada o consola de taller.',
+    tunascreenGenerateCode: 'Generar código de emparejamiento',
+    tunascreenGenerateError: 'No se pudo generar el código',
+    tunascreenCodeExpiry: 'Expira en {time}',
+    tunascreenDevicesTitle: 'Dispositivos emparejados',
+    tunascreenDevicesEmpty: 'Todavía no emparejaste ningún dispositivo.',
+    tunascreenLastSeen: 'Última conexión: {date}',
+    tunascreenNeverConnected: 'Nunca se conectó',
+    tunascreenRevoke: 'Quitar dispositivo',
+    tunascreenRevokeConfirm: '¿Quitar este dispositivo? Va a necesitar un código nuevo para volver a conectarse.',
+    tunascreenRevokeError: 'No se pudo quitar el dispositivo',
 
     // ── Asistente guiado de instalación de impresoras (Bambu Lab/Elegoo/FlashForge) ──
     guidedSetupTitle: 'Configuración guiada de impresoras 3D',
@@ -2255,6 +2270,7 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     bulkDeleteConfirm: 'Delete the selected files? This action cannot be undone.',
     bulkMovePartialError: 'Could not move {n} file(s).',
     filesSelected: 'selected',
+    bulkActionsDisabledHint: 'You have multiple files selected — use Move/Delete from the selection bar.',
     moveHere: 'Move here',
     sendToLaser: 'Send to laser',
     sendToLaserAdded: 'Added to the laser queue.',
@@ -2391,6 +2407,20 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     usersPasswordReset: 'Password updated',
     usersRemove: 'Remove user',
     usersRemoveConfirm: 'Remove this user? They will no longer be able to sign in.',
+
+    // ── Settings > TUNA-Screen ──
+    tunascreenTitle: 'TUNA-Screen',
+    tunascreenDescription: 'Pair tablets/phones with the TUNA-Screen app to control your machines as a dedicated screen or workshop console.',
+    tunascreenGenerateCode: 'Generate pairing code',
+    tunascreenGenerateError: 'Could not generate the code',
+    tunascreenCodeExpiry: 'Expires in {time}',
+    tunascreenDevicesTitle: 'Paired devices',
+    tunascreenDevicesEmpty: "You haven't paired any devices yet.",
+    tunascreenLastSeen: 'Last seen: {date}',
+    tunascreenNeverConnected: 'Never connected',
+    tunascreenRevoke: 'Remove device',
+    tunascreenRevokeConfirm: 'Remove this device? It will need a new code to reconnect.',
+    tunascreenRevokeError: 'Could not remove the device',
 
     // ── Guided printer setup wizard (Bambu Lab/Elegoo/FlashForge) ──
     guidedSetupTitle: 'Guided Printer Setup',

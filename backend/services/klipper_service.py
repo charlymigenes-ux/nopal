@@ -148,7 +148,7 @@ class MoonrakerClient:
         self.base_url = f"http://localhost:{port}"
         self.timeout = 2
 
-    def _get(self, endpoint: str) -> Dict[str, Any]:
+    def _get(self, endpoint: str, *, log_errors: bool = True) -> Dict[str, Any]:
         try:
             response = requests.get(
                 f"{self.base_url}{endpoint}",
@@ -164,7 +164,8 @@ class MoonrakerClient:
             return {}
 
         except Exception as e:
-            logger.warning(f"[{self.port}] {e}")
+            if log_errors:
+                logger.warning(f"[{self.port}] {e}")
             return {}
 
     def get_server_info(self):
@@ -187,10 +188,16 @@ class MoonrakerClient:
 
     def get_mainsail_printername(self):
         """Nombre configurado por el usuario en Mainsail (Machine > General)."""
+        cached = _mainsail_name_cache.get(self.port)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
         value = self._get(
-            "/server/database/item?namespace=mainsail&key=general.printername"
+            "/server/database/item?namespace=mainsail&key=general.printername",
+            log_errors=False,
         ).get("value")
-        return str(value).strip() if value else None
+        name = str(value).strip() if value else None
+        _mainsail_name_cache[self.port] = (time.monotonic() + 300, name)
+        return name
 
     def get_recent_jobs(self, limit: int = 3):
         """Últimos trabajos de impresión (historial de Moonraker)."""
@@ -374,6 +381,10 @@ class MoonrakerClient:
 
 
 _moonraker_ports_seen: set = set()
+_moonraker_discovery_cache: List[Dict[str, Any]] = []
+_moonraker_discovery_cache_at = 0.0
+_mainsail_name_cache: Dict[int, tuple] = {}
+MOONRAKER_DISCOVERY_TTL_SECONDS = 5.0
 
 
 def find_moonraker_instances() -> List[Dict[str, Any]]:
@@ -382,6 +393,11 @@ def find_moonraker_instances() -> List[Dict[str, Any]]:
 
     Escanea desde el puerto 7125 hasta el 7127.
     """
+
+    global _moonraker_discovery_cache, _moonraker_discovery_cache_at
+    now = time.monotonic()
+    if _moonraker_discovery_cache and now - _moonraker_discovery_cache_at < MOONRAKER_DISCOVERY_TTL_SECONDS:
+        return [dict(printer) for printer in _moonraker_discovery_cache]
 
     printers = []
     ports_found = set()
@@ -401,7 +417,9 @@ def find_moonraker_instances() -> List[Dict[str, Any]]:
 
         printers.append({
             "name": str(real_name),
-            "port": port
+            "port": port,
+            "_server": server,
+            "_printer_info": printer_info,
         })
         ports_found.add(port)
 
@@ -417,7 +435,9 @@ def find_moonraker_instances() -> List[Dict[str, Any]]:
     _moonraker_ports_seen.clear()
     _moonraker_ports_seen.update(ports_found)
 
-    return printers
+    _moonraker_discovery_cache = printers
+    _moonraker_discovery_cache_at = time.monotonic()
+    return [dict(printer) for printer in printers]
 
 
 def get_claimed_serial_devices() -> List[str]:
@@ -628,7 +648,7 @@ def get_all_printers_status(host: Optional[str] = None) -> List[Dict[str, Any]]:
 
         client = MoonrakerClient(printer["port"])
 
-        info = client.get_printer_info()
+        info = printer.get("_printer_info") or client.get_printer_info()
         status = client.get_printer_status()
 
         printers.append(

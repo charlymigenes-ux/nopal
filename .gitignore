@@ -29,6 +29,8 @@ spoolman_config.json
 spoolman_printer_links.json
 spoolman_reservations.json
 spoolman_usage_log.json
+tunascreen_devices.json
+*.corrupt-*.bak
 .session_secret
 
 # Credenciales reales de placas NOPAL (Wi-Fi/OTA) — usa secrets.h.example

@@ -347,7 +347,7 @@ function installModernModelsLibraryMarkup() {
                     </div>
                     <div class="gcode-browser-layout">
                         <aside class="gcode-inner-sidebar"><section><div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="models-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-favorites-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◷ <span data-i18n="libraryRecent">Recientes</span></strong><button id="models-recents-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-recents-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◇ <span data-i18n="libraryFormats">Formatos</span></strong></div><div id="models-tags-list" class="gcode-sidebar-list"></div></section></aside>
-                        <div class="gcode-browser-content"><div id="models-folder-strip" class="gcode-folder-strip"></div><div class="bulk-actions-bar" id="models-bulk-bar" hidden><span id="models-bulk-count">0</span><button type="button" class="btn-file-action" id="models-bulk-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="models-bulk-delete-btn">Eliminar</button><button type="button" class="bulk-actions-clear-btn" id="models-bulk-clear-btn">Cancelar selección</button></div><div id="models-full" class="models-table-wrapper gcode-modern-table models-modern-table"></div><footer class="gcode-pagination" id="models-pagination"></footer></div>
+                        <div class="gcode-browser-content" data-bg-label="IMPRESIÓN 3D"><div id="models-folder-strip" class="gcode-folder-strip"></div><div class="bulk-actions-bar" id="models-bulk-bar" hidden><span id="models-bulk-count">0</span><button type="button" class="btn-file-action" id="models-bulk-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="models-bulk-delete-btn">Eliminar</button><button type="button" class="bulk-actions-clear-btn" id="models-bulk-clear-btn">Cancelar selección</button></div><div id="models-full" class="models-table-wrapper gcode-modern-table models-modern-table"></div><footer class="gcode-pagination" id="models-pagination"></footer></div>
                     </div>
                 </section>
                 <aside class="models-preview-card gcode-modern-preview models-modern-preview"><div class="preview-card-inner">
@@ -396,6 +396,14 @@ const modalClose = document.getElementById('modal-close');
 const modalBackdrop = document.querySelector('.modal-backdrop');
 let allModels = [];
 let allPrinters = [];
+let printersLoading = false;
+const boundPrinterCards = new WeakSet();
+const boundMarlinCards = new WeakSet();
+const boundStandaloneCards = new WeakSet();
+const boundStandaloneActionButtons = new WeakSet();
+const boundLaserCards = new WeakSet();
+const boundQuickActionButtons = new WeakSet();
+const boundMarlinTemperatureButtons = new WeakSet();
 const dashboardPrinterThemeMode = new Map(); // port(String) -> 'warm' | 'cool'
 let recentPrinterFiles = [];
 let selectedGcodeId = null;
@@ -980,6 +988,15 @@ function setupPreviewControls(renderer, camera, scene, mesh) {
     let isDragging = false;
     const pointer = new THREE.Vector2();
     const rotation = { x: 0, y: 0 };
+    // Distancia relativa a donde el caller ya dejó la cámara (proporcional al
+    // tamaño real de la pieza, mm o cm según el caso) en vez de límites
+    // absolutos fijos -- esos rompían el zoom en piezas grandes (G-code de
+    // impresora, decenas/cientos de mm: la primera rueda de mouse hacía un
+    // salto brusco al tope). Además escala los 3 ejes de la posición, no solo
+    // Z, para no desviar el ángulo de vista al hacer zoom.
+    const baseDistance = camera.position.length() || 1;
+    const minDistance = baseDistance * 0.2;
+    const maxDistance = baseDistance * 5;
     const onPointerDown = event => {
         isDragging = true;
         pointer.x = event.clientX;
@@ -1005,16 +1022,75 @@ function setupPreviewControls(renderer, camera, scene, mesh) {
     };
     const onWheel = event => {
         event.preventDefault();
-        const delta = Math.sign(event.deltaY) * 0.12;
-        camera.position.z += delta;
-        camera.position.z = Math.max(2, Math.min(60, camera.position.z));
-        camera.updateProjectionMatrix();
+        const factor = event.deltaY > 0 ? 1.1 : 0.9;
+        const newDistance = Math.max(minDistance, Math.min(maxDistance, camera.position.length() * factor));
+        camera.position.setLength(newDistance);
     };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
     renderer.domElement.addEventListener('pointerleave', onPointerUp);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
+}
+
+// Vista previa de G-code de IMPRESORA 3D (a diferencia de renderGcodePreview,
+// pensada para láser/CNC en el plano XY con cámara ortográfica fija desde
+// arriba): acá la pieza tiene volumen real en Z, así que hace falta cámara en
+// perspectiva y poder rotarla — mismo criterio que ya usa setupPreviewControls
+// para STL/3MF. Centrar la trayectoria en su propio bounding box (no en el
+// origen de la cama) es lo que permite verla desde cualquier ángulo sin que
+// se salga del cuadro.
+async function renderPrinterGcodePreview(container, fileUrl) {
+    if (!container || !window.THREE || typeof window.THREE.Scene !== 'function') return;
+    container.innerHTML = '';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x081410);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x081410, 1);
+    container.appendChild(renderer.domElement);
+
+    const light = new THREE.DirectionalLight(0xffffff, 0.9);
+    light.position.set(5, 5, 5);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x999999, 1.2));
+
+    const line = await getGcodePreviewScene(fileUrl, 200000);
+    if (!line) {
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;padding:1rem;text-align:center;">No se pudo generar la vista previa.</div>';
+        return;
+    }
+
+    const box = new THREE.Box3().setFromObject(line);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    line.position.sub(center);
+    scene.add(line);
+
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+    camera.position.set(maxDim * 1.1, maxDim * 0.9, maxDim * 1.3);
+    camera.lookAt(0, 0, 0);
+
+    const resize = () => {
+        const width = container.clientWidth || 320;
+        const height = container.clientHeight || 320;
+        renderer.setSize(width, height);
+        camera.aspect = width / height || 1;
+        camera.updateProjectionMatrix();
+    };
+
+    setupPreviewControls(renderer, camera, scene, line);
+
+    const animate = () => {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    };
+    resize();
+    animate();
+    window.addEventListener('resize', resize);
 }
 
 async function renderGcodeThumbnail(thumb, fileUrl) {
@@ -1345,11 +1421,14 @@ function renderSelectedPreview(model) {
     const fileUrl = model.file_url;
     const extension = (fileUrl || '').toLowerCase();
     if (isGcodeFile(model) || GCODE_FILE_EXTENSIONS.some(ext => extension.endsWith(ext))) {
-        // El visor de G-code dibuja sobre fondo blanco (como en la página de
-        // G-code); el degradado oscuro es solo para el visor de modelos STL/3MF.
         previewImage.style.backgroundImage = 'none';
         previewImage.classList.add('gcode-mode');
-        renderGcodePreview(previewImage, fileUrl);
+        // A diferencia del visor de G-code de la biblioteca de Archivos
+        // (láser/CNC, plano en XY con cámara ortográfica fija), acá el
+        // G-code es de una impresora 3D real: la pieza tiene volumen en Z,
+        // así que necesita perspectiva y poder rotarla desde cualquier
+        // ángulo -- ver renderPrinterGcodePreview.
+        renderPrinterGcodePreview(previewImage, fileUrl);
         return;
     }
 
@@ -1549,6 +1628,23 @@ function renderBulkBar(section) {
     const countEl = document.getElementById(`${prefix}-bulk-count`);
     if (bar) bar.hidden = selection.size === 0;
     if (countEl) countEl.textContent = `${selection.size} ${t('filesSelected')}`;
+
+    // Con selección múltiple activa, los botones de un solo archivo del
+    // panel de vista previa (Renombrar/Mover/Eliminar) actúan sobre el
+    // archivo previsualizado, no sobre los marcados -- ambiguo y confuso
+    // (bug real: "Eliminar" del panel borraba solo uno en vez de los varios
+    // marcados). Se deshabilitan mientras haya selección múltiple para
+    // forzar el uso de Mover/Eliminar de esta barra, que sí opera sobre
+    // todos los marcados.
+    const singleFileBtnIds = section === 'gcode'
+        ? ['gcode-rename-btn', 'gcode-move-btn', 'gcode-delete-btn']
+        : ['preview-rename-btn', 'preview-move-btn', 'preview-delete-btn'];
+    singleFileBtnIds.forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = selection.size > 0;
+        btn.title = selection.size > 0 ? t('bulkActionsDisabledHint') : '';
+    });
 }
 
 function wireBulkSelection(section, container, files) {
@@ -1649,7 +1745,7 @@ async function renameFolder(section, path) {
 }
 
 async function deleteFolder(section, path) {
-    if (!confirm(t('deleteFolderConfirm'))) return;
+    if (!(await appConfirm(t('deleteFolderConfirm'), t('delete'), 'danger'))) return;
 
     try {
         const response = await fetch(`/api/folders?path=${encodeURIComponent(path)}&type=${section}`, { method: 'DELETE' });
@@ -2256,6 +2352,21 @@ function renderGcodeTable(filterQuery = gcodeSearchQuery) {
             const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
             if (model) selectGcodePreview(model);
         });
+        // Un raster de imagen grande puede tardar varios segundos en
+        // generarse la primera vez (ver thumbnail_service) -- si esa
+        // solicitud se cae o se cancela (p.ej. el usuario cambió de vista
+        // antes de que terminara), el <img> se queda en blanco para
+        // siempre sin este fallback, porque no hay reintento automático.
+        const thumbImg = row.querySelector('.cnc-files-thumb');
+        const rowModel = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
+        if (thumbImg && rowModel) {
+            thumbImg.addEventListener('error', () => {
+                const replacement = document.createElement('div');
+                replacement.className = 'cnc-files-thumb';
+                thumbImg.replaceWith(replacement);
+                renderGcodeThumbnail(replacement, rowModel.file_url);
+            }, { once: true });
+        }
     });
     pageFiles.forEach(model => {
         if (gcodeDimensionsCache.has(model.file_url)) return;
@@ -3668,7 +3779,11 @@ function renderDashboardPanel(data) {
     renderPanelMiniCards(data);
 }
 
+let dashboardPanelLoading = false;
+
 async function loadDashboardPanel() {
+    if (dashboardPanelLoading || document.hidden) return;
+    dashboardPanelLoading = true;
     try {
         const response = await fetch('/api/dashboard/summary');
         if (!response.ok) throw new Error('No se pudo cargar el resumen del panel');
@@ -3680,6 +3795,8 @@ async function loadDashboardPanel() {
         if (typeof maybeAutoOpenGuidedSetup === 'function') maybeAutoOpenGuidedSetup(data);
     } catch (error) {
         console.error(error);
+    } finally {
+        dashboardPanelLoading = false;
     }
 }
 
@@ -4784,6 +4901,7 @@ const SETTINGS_MODULE_ICON_APPEARANCE = '<svg width="16" height="16" viewBox="0 
 const SETTINGS_MODULE_ICON_UPDATES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>';
 const SETTINGS_MODULE_ICON_LOGS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>';
 const SETTINGS_MODULE_ICON_USERS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const SETTINGS_MODULE_ICON_TUNASCREEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
 const SETTINGS_MODULE_ICON_DEVICES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>';
 const SETTINGS_MODULE_ICON_ACCESSORIES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>';
 const SETTINGS_MODULE_ICON_ABOUT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
@@ -4795,7 +4913,7 @@ const SETTINGS_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 
 const SETTINGS_MODULE_ICON_MACROS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
 const SETTINGS_MODULE_ICON_SETTINGS_HELP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
-// Las 7 tarjetas reales de #settings-modules-pool.
+// Las 8 tarjetas reales de #settings-modules-pool.
 const SETTINGS_MODULE_DEFS = [
     { key: 'general', labelKey: 'generalSettings', iconSvg: SETTINGS_MODULE_ICON_GENERAL },
     { key: 'appearance', labelKey: 'appearanceSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_APPEARANCE },
@@ -4804,6 +4922,7 @@ const SETTINGS_MODULE_DEFS = [
     { key: 'users', labelKey: 'usersTitle', iconSvg: SETTINGS_MODULE_ICON_USERS },
     { key: 'devices', labelKey: 'devicesTitle', iconSvg: SETTINGS_MODULE_ICON_DEVICES },
     { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
+    { key: 'tunascreen', labelKey: 'tunascreenTitle', iconSvg: SETTINGS_MODULE_ICON_TUNASCREEN },
 ];
 // Centro de ayuda (layout fijo, sin personalización por arrastre -- ver
 // renderHelpCenter() más abajo en este archivo) reusa estos mismos íconos
@@ -5444,6 +5563,8 @@ function renderInitialDeviceLoaders() {
 }
 
 async function loadPrinters() {
+    if (printersLoading || document.hidden) return;
+    printersLoading = true;
     try {
         const response = await fetch('/api/printers/status');
         if (!response.ok) throw new Error('No se pudo cargar el estado de impresoras');
@@ -5460,6 +5581,8 @@ async function loadPrinters() {
         dashboardPrintersLoaded = true;
         dashboardPrintersLoadError = true;
         renderPrinters(allPrinters);
+    } finally {
+        printersLoading = false;
     }
 }
 
@@ -5497,7 +5620,7 @@ async function refreshDashboardMarlinStatuses(printers) {
 }
 
 async function loadDashboardStandalonePrinters({ skipMarlinStatusRefresh = false } = {}) {
-    if (dashboardStandalonePrintersLoading) return;
+    if (dashboardStandalonePrintersLoading || document.hidden) return;
     dashboardStandalonePrintersLoading = true;
     try {
         const requests = [
@@ -5722,7 +5845,10 @@ function laserDashboardCardHtml(entry) {
 
 function bindMarlinTemperatureActions(root) {
     root.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
-        card.querySelectorAll('[data-marlin-temp-action]').forEach(button => button.addEventListener('click', async event => {
+        card.querySelectorAll('[data-marlin-temp-action]').forEach(button => {
+            if (boundMarlinTemperatureButtons.has(button)) return;
+            boundMarlinTemperatureButtons.add(button);
+            button.addEventListener('click', async event => {
             event.stopPropagation();
             const device = card.dataset.marlinDevice;
             const printer = marlinPrintersRegistryCache.find(item => item.device === device) || {};
@@ -5734,13 +5860,15 @@ function bindMarlinTemperatureActions(root) {
                 try { await Promise.all(heaters.map(heater => setMarlinHeaterTarget(device, heater, 0))); showToast('Calentadores Marlin apagados'); }
                 catch (error) { showToast(error.message, 'error'); }
             }
-        }));
+            });
+        });
     });
 }
 
 let dashboardLaserEntries = [];
 
 async function refreshDashboardLaserCard() {
+    if (document.hidden) return;
     try {
         const registryResponse = await fetch('/api/laser/registry');
         const registryData = await registryResponse.json();
@@ -6607,6 +6735,77 @@ document.getElementById('firmware-auto-update-btn')?.addEventListener('click', a
     }
 });
 
+function syncDashboardNode(current, incoming) {
+    if (current.nodeType !== incoming.nodeType || current.nodeName !== incoming.nodeName) {
+        current.replaceWith(incoming.cloneNode(true));
+        return;
+    }
+    if (current.nodeType === Node.TEXT_NODE) {
+        if (current.nodeValue !== incoming.nodeValue) current.nodeValue = incoming.nodeValue;
+        return;
+    }
+    if (current.nodeType !== Node.ELEMENT_NODE) return;
+
+    [...current.attributes].forEach(attribute => {
+        if (!incoming.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
+    });
+    [...incoming.attributes].forEach(attribute => {
+        if (current.getAttribute(attribute.name) !== attribute.value) {
+            current.setAttribute(attribute.name, attribute.value);
+        }
+    });
+
+    const currentChildren = [...current.childNodes];
+    const incomingChildren = [...incoming.childNodes];
+    const commonLength = Math.min(currentChildren.length, incomingChildren.length);
+    for (let index = 0; index < commonLength; index += 1) {
+        syncDashboardNode(currentChildren[index], incomingChildren[index]);
+    }
+    for (let index = commonLength; index < incomingChildren.length; index += 1) {
+        current.appendChild(incomingChildren[index].cloneNode(true));
+    }
+    while (current.childNodes.length > incomingChildren.length) {
+        current.removeChild(current.lastChild);
+    }
+}
+
+function dashboardCardKey(element) {
+    if (!(element instanceof HTMLElement)) return null;
+    const key = element.dataset.port
+        || element.dataset.marlinDevice
+        || element.dataset.elegooId
+        || element.dataset.flashforgeId
+        || element.dataset.bambuId
+        || element.dataset.laserHost;
+    return key ? `${element.classList.contains('printer-card-type-cnc') ? 'cnc' : 'machine'}:${key}` : null;
+}
+
+function reconcileDashboardGrid(grid, nextHtml) {
+    if (grid.innerHTML === nextHtml) return;
+    const template = document.createElement('template');
+    template.innerHTML = nextHtml;
+    const incoming = [...template.content.children];
+    const current = [...grid.children];
+    const currentByKey = new Map(current.map(node => [dashboardCardKey(node), node]).filter(([key]) => key));
+
+    if (!incoming.length || incoming.some(node => !dashboardCardKey(node))) {
+        grid.innerHTML = nextHtml;
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    incoming.forEach(nextNode => {
+        const existing = currentByKey.get(dashboardCardKey(nextNode));
+        if (existing) {
+            syncDashboardNode(existing, nextNode);
+            fragment.appendChild(existing);
+        } else {
+            fragment.appendChild(nextNode);
+        }
+    });
+    grid.replaceChildren(fragment);
+}
+
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
@@ -6777,9 +6976,10 @@ function renderPrinters(printersInput) {
         }
         let filtered = showOffline ? entries : entries.filter(entry => entry.isOnline);
         filtered = [...filtered].sort((a, b) => a.sortPriority - b.sortPriority);
-        grid.innerHTML = filtered.length
+        const nextHtml = filtered.length
             ? filtered.map(entry => entry.html).join('')
             : `<div class="empty-state">${t(emptyKey)}</div>`;
+        reconcileDashboardGrid(grid, nextHtml);
         return filtered.length;
     };
 
@@ -6807,6 +7007,8 @@ function renderPrinters(printersInput) {
     bindMarlinTemperatureActions(columnsRoot);
 
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
+        if (boundPrinterCards.has(card)) return;
+        boundPrinterCards.add(card);
         card.addEventListener('click', () => {
             const port = Number(card.dataset.port);
             const printer = allPrinters.find(p => p.port === port);
@@ -6815,6 +7017,8 @@ function renderPrinters(printersInput) {
     });
 
     columnsRoot.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
+        if (boundMarlinCards.has(card)) return;
+        boundMarlinCards.add(card);
         card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
     });
 
@@ -6825,8 +7029,13 @@ function renderPrinters(printersInput) {
     ];
     standaloneSections.forEach(([section, dataKey]) => {
         columnsRoot.querySelectorAll(`.printer-card[data-${section}-id]`).forEach(card => {
-            card.addEventListener('click', () => switchSection(section));
+            if (!boundStandaloneCards.has(card)) {
+                boundStandaloneCards.add(card);
+                card.addEventListener('click', () => switchSection(section));
+            }
             card.querySelectorAll('.elegoo-card-action-btn').forEach(btn => {
+                if (boundStandaloneActionButtons.has(btn)) return;
+                boundStandaloneActionButtons.add(btn);
                 btn.addEventListener('click', event => {
                     event.stopPropagation();
                     const action = btn.dataset.action;
@@ -6840,6 +7049,8 @@ function renderPrinters(printersInput) {
     });
 
     columnsRoot.querySelectorAll('.printer-card[data-laser-host]').forEach(card => {
+        if (boundLaserCards.has(card)) return;
+        boundLaserCards.add(card);
         card.addEventListener('click', async () => {
             const host = card.dataset.laserHost;
             try {
@@ -6854,6 +7065,8 @@ function renderPrinters(printersInput) {
     });
 
     columnsRoot.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
+        if (boundQuickActionButtons.has(btn)) return;
+        boundQuickActionButtons.add(btn);
         btn.addEventListener('click', async (event) => {
             event.stopPropagation();
             const port = btn.dataset.port;
@@ -7131,7 +7344,7 @@ async function renameFile(section, model, reloadFn) {
 
 async function deleteFile(section, model, reloadFn, clearSelection) {
     if (!model) return;
-    if (!confirm(t('deleteFileConfirm'))) return;
+    if (!(await appConfirm(t('deleteFileConfirm'), t('delete'), 'danger'))) return;
 
     const relPath = stripSectionPrefix(model.id, section);
 
@@ -7270,11 +7483,11 @@ function wireFileActionButtons(downloadBtnId, renameBtnId, moveBtnId, deleteBtnI
 }
 
 wireLibraryDropzone(
-    document.querySelector('.models-table-panel'),
+    document.querySelector('#models-section .gcode-library-card'),
     wireUploadButton('upload-btn-models', 'upload-input-models', 'model', () => currentModelsPath, 'models-full', () => loadModelsFolder(currentModelsPath))
 );
 wireLibraryDropzone(
-    document.querySelector('.gcode-library-card'),
+    document.querySelector('#gcode-section .gcode-library-card'),
     wireUploadButton('upload-btn-gcode', 'upload-input-gcode', 'gcode', () => currentGcodePath, 'gcode-table', () => loadGcodeFolder(currentGcodePath))
 );
 wireCreateFolderButton('create-folder-btn-models', 'model', () => currentModelsPath, () => loadModelsFolder(currentModelsPath));
@@ -12422,6 +12635,20 @@ async function renderCncFilesTable() {
             });
         });
 
+        // Mismo respaldo que en la biblioteca de Archivos: si la miniatura
+        // generada por el servidor no carga (archivo grande aún
+        // procesándose, request cancelado, etc.), no se queda en blanco para
+        // siempre -- cae al render 3D del lado del cliente.
+        tbody.querySelectorAll('.cnc-files-thumb').forEach(img => {
+            img.addEventListener('error', () => {
+                const replacement = document.createElement('div');
+                replacement.className = 'cnc-files-thumb';
+                img.replaceWith(replacement);
+                const fileUrl = img.closest('tr')?.dataset.fileUrl;
+                if (fileUrl) renderCncGcodeThumbnail(replacement, fileUrl);
+            }, { once: true });
+        });
+
         tbody.querySelectorAll('[data-run-file]').forEach(btn => {
             btn.addEventListener('click', async event => {
                 event.stopPropagation();
@@ -15194,6 +15421,7 @@ function switchSection(sectionName) {
         renderLaserMarkerSettings();
         renderGamepadBadge();
         loadUsersSettings();
+        loadTunascreenSettings();
         applySettingsModulesLayout();
         // Solo la lista de registradas (GET local, sin costo) — el escaneo
         // UDP de red queda para cuando el usuario aprieta "Actualizar", igual
@@ -17311,8 +17539,8 @@ refreshDeviceNavVisibility();
 refreshFlashforgeNavVisibility();
 maybeStartTour('dashboard');
 
-// Refresh printers every 5 seconds
-setInterval(loadPrinters, 5000);
+// loadPrinters ya queda programado por setupPrinterRefresh(), que además
+// respeta la preferencia del usuario. No crear un segundo intervalo aquí.
 setInterval(loadDashboardStandalonePrinters, 10000);
 setInterval(loadDashboardPanel, 10000);
 setInterval(updatePanelClock, 1000);
@@ -17433,6 +17661,118 @@ function renderUsersList(users) {
             } catch (error) {
                 console.error(error);
                 appAlert(error.message || t('usersUpdateError'), '', 'danger');
+            }
+        });
+    });
+}
+
+// ── Configuración > TUNA-Screen ──
+
+let tunascreenCodeCountdownTimer = null;
+
+async function loadTunascreenSettings() {
+    const card = document.getElementById('tunascreen-settings-card');
+    if (!card) return;
+    if (!currentAuthUser || currentAuthUser.role !== 'admin') {
+        card.hidden = true;
+        return;
+    }
+    card.hidden = false;
+    // El botón "Generar código" se bindea una sola vez -- este loader se
+    // vuelve a llamar cada vez que se entra a Configuración (ver
+    // switchSection), y re-bindear en cada visita apilaría listeners.
+    if (!card.dataset.bound) {
+        card.dataset.bound = '1';
+        document.getElementById('tunascreen-generate-code-btn')?.addEventListener('click', handleTunascreenGenerateCode);
+    }
+    loadTunascreenDevices();
+}
+
+async function loadTunascreenDevices() {
+    const container = document.getElementById('tunascreen-devices-list');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/tunascreen/devices');
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        renderTunascreenDevicesList(data.devices || []);
+    } catch (error) {
+        console.error(error);
+        renderTunascreenDevicesList([]);
+    }
+}
+
+async function handleTunascreenGenerateCode() {
+    try {
+        const response = await fetch('/api/tunascreen/pair/start', { method: 'POST' });
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        showTunascreenCode(data.code, data.expires_in);
+    } catch (error) {
+        console.error(error);
+        appAlert(t('tunascreenGenerateError'), '', 'danger');
+    }
+}
+
+// Cuenta regresiva en vivo -- el código dura 5 minutos y es de un solo uso
+// (ver tunascreen_service.py), así que mostrar cuánto le queda evita que
+// alguien lo tipee en la tablet después de que ya venció.
+function showTunascreenCode(code, expiresInSeconds) {
+    const display = document.getElementById('tunascreen-code-display');
+    const valueEl = document.getElementById('tunascreen-code-value');
+    const expiryEl = document.getElementById('tunascreen-code-expiry');
+    if (!display || !valueEl || !expiryEl) return;
+
+    display.hidden = false;
+    valueEl.textContent = code;
+
+    if (tunascreenCodeCountdownTimer) clearInterval(tunascreenCodeCountdownTimer);
+    let remaining = expiresInSeconds;
+    const renderCountdown = () => {
+        if (remaining <= 0) {
+            clearInterval(tunascreenCodeCountdownTimer);
+            display.hidden = true;
+            return;
+        }
+        const minutes = Math.floor(remaining / 60);
+        const seconds = String(remaining % 60).padStart(2, '0');
+        expiryEl.textContent = t('tunascreenCodeExpiry').replace('{time}', `${minutes}:${seconds}`);
+        remaining -= 1;
+    };
+    renderCountdown();
+    tunascreenCodeCountdownTimer = setInterval(renderCountdown, 1000);
+}
+
+function renderTunascreenDevicesList(devices) {
+    const container = document.getElementById('tunascreen-devices-list');
+    if (!container) return;
+    if (!devices.length) {
+        container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('tunascreenDevicesEmpty'))}</div>`;
+        return;
+    }
+
+    container.innerHTML = devices.map(device => `
+        <div class="usb-port-item" data-id="${escapeHtml(device.device_id)}">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(device.name)}</strong>
+                <span>${device.last_seen ? escapeHtml(t('tunascreenLastSeen').replace('{date}', new Date(device.last_seen * 1000).toLocaleString())) : escapeHtml(t('tunascreenNeverConnected'))}</span>
+            </div>
+            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger tunascreen-device-revoke-btn" data-id="${escapeHtml(device.device_id)}" title="${escapeHtml(t('tunascreenRevoke'))}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.tunascreen-device-revoke-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!(await appConfirm(t('tunascreenRevokeConfirm'), t('tunascreenRevoke')))) return;
+            try {
+                const response = await fetch(`/api/tunascreen/devices/${encodeURIComponent(btn.dataset.id)}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error();
+                loadTunascreenDevices();
+            } catch (error) {
+                console.error(error);
+                appAlert(t('tunascreenRevokeError'), '', 'danger');
             }
         });
     });

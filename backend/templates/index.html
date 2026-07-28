@@ -592,7 +592,7 @@
                                     </section>
                                 </aside>
 
-                                <div class="gcode-browser-content">
+                                <div class="gcode-browser-content" data-bg-label="ARCHIVOS">
                                     <div id="gcode-folder-strip" class="gcode-folder-strip"></div>
                                     <div class="bulk-actions-bar" id="gcode-bulk-bar" hidden>
                                         <span id="gcode-bulk-count">0</span>
@@ -2003,6 +2003,28 @@
                                     <span data-i18n="usersAdd">Agregar usuario</span>
                                 </button>
                             </div>
+                        </div>
+                        <div class="settings-card card-collapsible" id="tunascreen-settings-card" hidden data-settings-module="tunascreen">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="tunascreenTitle">TUNA-Screen</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="tunascreenDescription">Emparejá tablets/teléfonos con la app TUNA-Screen para controlar tus máquinas como pantalla dedicada o consola de taller.</p>
+                            <button type="button" class="btn-file-action" id="tunascreen-generate-code-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2" ry="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                                <span data-i18n="tunascreenGenerateCode">Generar código de emparejamiento</span>
+                            </button>
+                            <div class="tunascreen-code-display" id="tunascreen-code-display" hidden>
+                                <span class="tunascreen-code-value" id="tunascreen-code-value"></span>
+                                <span class="tunascreen-code-expiry" id="tunascreen-code-expiry"></span>
+                            </div>
+                            <h3 class="tunascreen-devices-title" data-i18n="tunascreenDevicesTitle">Dispositivos emparejados</h3>
+                            <div class="usb-ports-list" id="tunascreen-devices-list"></div>
                         </div>
                         <div class="settings-card card-collapsible usb-ports-settings-card" data-settings-module="devices">
                             <div class="card-header-std">
@@ -4077,7 +4099,7 @@
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=216"></script>
+    <script src="/static/js/app.js?v=217"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
