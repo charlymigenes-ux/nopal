@@ -37,12 +37,14 @@ from backend.api.auth import router as auth_router
 from backend.api.notifications import router as notifications_router
 from backend.api.plugins import router as plugins_router
 from backend.api.dashboard import router as dashboard_router
+from backend.api.tunascreen import router as tunascreen_router
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
 from backend.services.laser_service import set_main_event_loop
 from backend.services.marlin_printer_service import set_main_event_loop as set_marlin_printer_event_loop
 from backend.services.plugin_loader_service import load_installed_plugin_routers
+from backend.services import tunascreen_service
 from backend.utils import get_app_version
 
 # Log a archivo (con rotación) + consola — antes NOPAL no persistía nada,
@@ -121,6 +123,7 @@ app.include_router(auth_router)
 app.include_router(notifications_router)
 app.include_router(plugins_router)
 app.include_router(dashboard_router)
+app.include_router(tunascreen_router)
 
 
 @app.on_event("startup")
@@ -163,6 +166,13 @@ async def _start_scheduled_prints_loop():
                 logger.exception("Error en el loop de impresiones programadas")
             await asyncio.sleep(30)
     asyncio.create_task(loop())
+
+
+@app.on_event("startup")
+async def _start_tunascreen_broadcaster():
+    """Empuja el estado normalizado de máquinas a los clientes TUNA-Screen
+    conectados por WS cada ~2s (ver tunascreen_service.broadcaster_loop)."""
+    asyncio.create_task(tunascreen_service.broadcaster_loop())
 
 
 templates = Jinja2Templates(directory="backend/templates")

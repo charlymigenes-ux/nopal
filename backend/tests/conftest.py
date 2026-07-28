@@ -6,6 +6,7 @@ import backend.services.elegoo_service as elegoo_service
 import backend.services.flashforge_service as flashforge_service
 import backend.services.marlin_printer_service as marlin_printer_service
 import backend.services.plugin_installer_service as plugin_installer_service
+import backend.services.tunascreen_service as tunascreen_service
 from backend.auth_deps import require_auth
 from backend.main import app
 
@@ -49,6 +50,7 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     monkeypatch.setattr(elegoo_service, "REGISTRY_PATH", str(tmp_path / "elegoo_printer_registry.json"))
     monkeypatch.setattr(flashforge_service, "REGISTRY_PATH", str(tmp_path / "flashforge_printer_registry.json"))
     monkeypatch.setattr(marlin_printer_service, "REGISTRY_PATH", str(tmp_path / "marlin_printer_registry.json"))
+    monkeypatch.setattr(tunascreen_service, "REGISTRY_PATH", str(tmp_path / "tunascreen_devices.json"))
     # Plugins: aísla tanto la carpeta de clones (plugins/) como el estado de
     # instalación (data/plugins/installed.json) -- sin esto, instalar/
     # desinstalar un plugin en un test haría un `git clone` real y tocaría

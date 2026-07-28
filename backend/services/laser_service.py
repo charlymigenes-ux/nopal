@@ -432,6 +432,26 @@ KNOWN_USB_CHIPS = [
     {"vid": 0x10C4, "pid": 0xEA60, "label": "CP2102/CP2109"},
     {"vid": 0x303A, "pid": None, "label": "ESP32 (USB nativo)"},
 ]
+_last_usb_enumeration_warning = 0.0
+
+
+def _safe_comports() -> List[Any]:
+    """pyserial puede ver sysfs a medio cambiar durante un hotplug.
+
+    En ese instante ``comports()`` llega a lanzar TypeError al convertir un
+    idVendor vacío. Un fallo de un puerto no debe tumbar los endpoints de
+    Marlin, láser y TUNA-Screen completos.
+    """
+    global _last_usb_enumeration_warning
+    try:
+        from serial.tools import list_ports
+        return list(list_ports.comports())
+    except (ImportError, OSError, TypeError, ValueError) as exc:
+        now = time.monotonic()
+        if now - _last_usb_enumeration_warning >= 30:
+            logger.warning("No se pudieron enumerar puertos USB; se conserva el registro actual: %s", exc)
+            _last_usb_enumeration_warning = now
+        return []
 
 
 def _resolve_usb_location(location: str) -> Optional[str]:
@@ -442,11 +462,7 @@ def _resolve_usb_location(location: str) -> Optional[str]:
     exclusión de reclamados de list_usb_laser_ports(): una placa ya
     registrada está, por definición, excluida de esa lista, así que no sirve
     para resolver la ubicación de algo que ya está dado de alta."""
-    try:
-        from serial.tools import list_ports
-    except ImportError:
-        return None
-    for port in list_ports.comports():
+    for port in _safe_comports():
         if port.location and port.location == location:
             return port.device
     return None
@@ -455,11 +471,7 @@ def _resolve_usb_location(location: str) -> Optional[str]:
 def _location_for_device(device: str) -> Optional[str]:
     """Inversa de _resolve_usb_location: dado un /dev/ttyUSBx, la ubicación
     física del puerto donde está conectado ahora, si sigue conectado."""
-    try:
-        from serial.tools import list_ports
-    except ImportError:
-        return None
-    for port in list_ports.comports():
+    for port in _safe_comports():
         if port.device == device:
             return port.location
     return None
@@ -527,11 +539,6 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
     como candidato "nuevo" en las listas de alta ni siga disparando el
     aviso de "controladora detectada" para algo que ya está dado de alta)."""
     try:
-        from serial.tools import list_ports
-    except ImportError:
-        return []
-
-    try:
         from backend.services.klipper_service import get_claimed_serial_devices
         claimed = set(get_claimed_serial_devices())
     except Exception:
@@ -551,7 +558,7 @@ def list_usb_laser_ports() -> List[Dict[str, Any]]:
     }
 
     results = []
-    for port in list_ports.comports():
+    for port in _safe_comports():
         if port.vid is None:
             continue
 
