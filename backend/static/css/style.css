@@ -694,6 +694,14 @@ body.green .global-topbar {
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Sombra suave (con blur, no un offset duro) para separar el texto del nav
+   de la textura del wallpaper que ahora se ve a través del sidebar
+   translúcido en Desert. Un offset duro sin blur se ve como texto
+   duplicado -- por eso NO se usa ese patrón acá. */
+body.light .nav-item {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
 .nav-item svg {
     flex-shrink: 0;
 }
@@ -5259,7 +5267,7 @@ body.green .settings-card {
 }
 
 .laser-info-compact-row span {
-    color: #fff;
+    color: var(--text);
     flex-shrink: 0;
 }
 
@@ -14747,45 +14755,26 @@ body.green .option-switch {
     }
 }
 
-/* ── Modo claro: sombra de contraste para textos/íconos blancos ──
-   Varias fichas (acento morado, toolhead, stats, botones) usan blanco fijo
-   asumiendo un fondo oscuro; en tema claro algunos de esos fondos son claros
-   y el texto queda invisible. Una sombra negra a -2px/-2px da contraste sin
-   afectar los casos donde ya se ve bien (blanco sobre fondo oscuro). */
-body.light .badge,
-body.light .nav-item-badge,
-body.light .models-table td.model-name svg,
-body.light .toolhead-card .temp-card-header-actions,
-body.light .toolhead-card .temp-icon-btn,
-body.light .toolhead-card .temp-card-body,
-body.light .toolhead-card .card-header-std-title,
-body.light .toolhead-card .card-collapse-toggle,
-body.light .toolhead-card .laser-metrics span,
-body.light .toolhead-card .laser-jog-btn,
-body.light .toolhead-card .laser-jog-slot-home,
-body.light .toolhead-card .laser-step-btn.active,
-body.light .toolhead-card .laser-jog-actions .btn-file-action,
-body.light .toolhead-position-value,
-body.light .toolhead-jog-btn,
-body.light .toolhead-axis-home-row button,
-body.light .toolhead-step-btn.active,
-body.light .toolhead-zoffset-btn,
-body.light .toolhead-speed-badge,
-body.light .toolhead-speed-slider-row button,
-body.light .laser-card-accent,
-body.light .laser-card-accent .laser-card-title,
-body.light .laser-card-accent .laser-queue-item-name,
-body.light .laser-card-accent .laser-sd-row-name,
-body.light .laser-illustration-settings-badge,
-body.light .laser-info-compact-row span,
-body.light .laser-card-accent .card-header-std-title,
-body.light .laser-fire-btn-wide,
-body.light .laser-air-btn-wide,
-body.light .button,
-body.light .modal-close,
-body.light .btn-primary,
-body.light .btn-accent {
-    text-shadow: -2px -2px 0 rgba(0, 0, 0, 0.85);
+/* ── Modo claro: colores propios de Desert para los pocos textos que
+   quedaban con poco contraste ──
+   Antes esto era una sombra negra dura (-2px/-2px, sin blur) aplicada a
+   una lista enorme de selectores para "salvar" texto blanco/verde brillante
+   pensado para fondo oscuro. Con colores ya no válidos (el texto real
+   ahora es var(--text)/var(--black), oscuros en Desert) esa sombra se veía
+   como un texto duplicado/fantasma. La mayoría de esos selectores ya
+   heredan var(--text) correctamente y no necesitan nada especial; acá solo
+   quedan los pocos que sí usan un verde/rojo brillante fijo (pensado para
+   pop sobre fondo oscuro) con bajo contraste sobre el fondo claro
+   (.laser-info-compact-row span ya quedó fijo como var(--text) más arriba,
+   junto al resto de esa ficha). */
+body.light .laser-step-btn.active,
+body.light .btn-file-action,
+body.light .laser-air-btn-wide {
+    color: var(--accent-green-strong);
+}
+
+body.light .laser-fire-btn-wide {
+    color: var(--state-danger);
 }
 
 /* ── Barra superior: íconos, dropdowns, campana, menú de usuario ── */
