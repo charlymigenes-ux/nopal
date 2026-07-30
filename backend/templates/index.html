@@ -806,6 +806,11 @@
                         </div>
                     </div>
 
+                    <div class="option-switch laser-source-switch" id="laser-source-switch" hidden>
+                        <button type="button" class="option-switch-btn" data-value="sd" data-i18n="laserSourceMemory">Memoria (SD)</button>
+                        <button type="button" class="option-switch-btn active" data-value="queue" data-i18n="laserSourceQueue">Cola (NOPAL)</button>
+                    </div>
+
                     <div class="laser-card laser-card-accent laser-card-half card-collapsible laser-card-compact" id="laser-sd-card" hidden>
                         <div class="card-header-std">
                             <span class="card-header-std-icon">
@@ -1812,10 +1817,9 @@
                                         </div>
                                     </button>
                                     <div class="theme-option-wallpapers" id="light-theme-wallpapers" data-i18n-title="lightWallpaperPick" title="Elige el fondo del tema Desert">
-                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="0" title="Desert"><img src="/static/img/nopaldesert.png" alt=""></button>
-                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="1" title="Fondo 2"><img src="/static/img/fondoClaro1.png" alt=""></button>
-                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="2" title="Fondo 3"><img src="/static/img/fondoClaro2.png" alt=""></button>
-                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="3" title="Fondo 4"><img src="/static/img/fondoClaro3.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="0" title="Fondo 1"><img src="/static/img/fondoClaro1.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="1" title="Fondo 2"><img src="/static/img/fondoClaro2.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="2" title="Fondo 3"><img src="/static/img/fondoClaro3.png" alt=""></button>
                                     </div>
                                 </div>
                                 <button type="button" class="theme-option-card" data-theme="dark">

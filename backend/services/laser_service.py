@@ -1425,12 +1425,20 @@ async def _run_job(job: LaserJob):
 
 
 async def _run_sd_job(job: LaserJob):
-    """Corre un archivo ya subido a la SD directo en la placa ($F=archivo),
-    sin transmitir línea por línea. El progreso se seduce del estado GRBL
-    (Run -> Idle = terminado; Alarm = error)."""
+    """Corre un archivo ya subido a la SD directo en la placa
+    ($SD/Run=archivo), sin transmitir línea por línea. El progreso se
+    sigue del estado GRBL (Run -> Idle = terminado; Alarm = error).
+
+    $SD/Run= (no $F=) es el comando real de FluidNC para esto -- ver
+    wiki.fluidnc.com/en/features/jobs y el wiki "FluidNC Commands and
+    Settings" de bdring/FluidNC en GitHub. Un intento anterior con $F=
+    quedaba deshabilitado en la API (ver laser_sd_run_endpoint en
+    backend/api/laser.py) porque probado contra hardware real (TTS-55 Pro,
+    FluidNC) no arrancaba el trabajo -- $F= no es un comando de FluidNC
+    para correr desde SD, por eso la placa lo ignoraba sin error."""
     sd_filename = job.filename
     sent = await asyncio.get_event_loop().run_in_executor(
-        None, send_raw_command, job.host, f"$F={sd_filename}"
+        None, send_raw_command, job.host, f"$SD/Run={sd_filename}"
     )
     if not sent:
         job.state = "error"
