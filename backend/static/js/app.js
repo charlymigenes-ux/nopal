@@ -11049,7 +11049,45 @@ async function loadSdLibraryOptions() {
     }
 }
 
+// Antes esto era automático y mutuamente excluyente (si la placa tenía SD,
+// la Cola se ocultaba del todo, sin poder volver a verla). Ahora que
+// /api/laser/sd/run sí puede correr un archivo real de la SD, tiene sentido
+// dejar elegir -- el selector solo aparece cuando la placa REALMENTE tiene
+// SD (si no, no hay nada que elegir y se muestra la Cola de siempre).
+const LASER_SOURCE_MODE_KEY = 'laserSourceMode';
+
+function getLaserSourceMode() {
+    const stored = localStorage.getItem(LASER_SOURCE_MODE_KEY);
+    return stored === 'sd' || stored === 'queue' ? stored : 'sd';
+}
+
+function applyLaserSourceMode(mode) {
+    const queueCard = document.getElementById('laser-queue-card');
+    const sdCard = document.getElementById('laser-sd-card');
+    if (!queueCard || !sdCard) return;
+    const showSd = mode === 'sd';
+    sdCard.hidden = !showSd;
+    queueCard.hidden = showSd;
+    document.querySelectorAll('#laser-source-switch .option-switch-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value === mode);
+    });
+    if (showSd) {
+        loadSdLibraryOptions();
+        loadSdFolder('/');
+    }
+}
+
+function setLaserSourceMode(mode) {
+    localStorage.setItem(LASER_SOURCE_MODE_KEY, mode);
+    applyLaserSourceMode(mode);
+}
+
+document.querySelectorAll('#laser-source-switch .option-switch-btn').forEach(btn => {
+    btn.addEventListener('click', () => setLaserSourceMode(btn.dataset.value));
+});
+
 async function checkSdAvailability() {
+    const sourceSwitch = document.getElementById('laser-source-switch');
     const queueCard = document.getElementById('laser-queue-card');
     const sdCard = document.getElementById('laser-sd-card');
     if (!queueCard || !sdCard) return;
@@ -11057,16 +11095,16 @@ async function checkSdAvailability() {
         const response = await fetch('/api/laser/sd/available');
         const data = await response.json();
         if (data.available) {
-            queueCard.hidden = true;
-            sdCard.hidden = false;
-            loadSdLibraryOptions();
-            loadSdFolder('/');
+            if (sourceSwitch) sourceSwitch.hidden = false;
+            applyLaserSourceMode(getLaserSourceMode());
         } else {
+            if (sourceSwitch) sourceSwitch.hidden = true;
             queueCard.hidden = false;
             sdCard.hidden = true;
         }
     } catch (error) {
         console.error(error);
+        if (sourceSwitch) sourceSwitch.hidden = true;
         queueCard.hidden = false;
         sdCard.hidden = true;
     }
@@ -17171,7 +17209,6 @@ applyNopalWallpaper();
 // fondo acá no pise la selección de NOPAL Style ni viceversa. ──
 const LIGHT_WALLPAPER_KEY = 'lightThemeWallpaper';
 const LIGHT_WALLPAPER_OPTIONS = [
-    '/static/img/nopaldesert.png',
     '/static/img/fondoClaro1.png',
     '/static/img/fondoClaro2.png',
     '/static/img/fondoClaro3.png',

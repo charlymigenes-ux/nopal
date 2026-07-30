@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NOPAL — Node Operation, Printer And Laser</title>
-<meta name="description" content="Panel de control autoalojado que unifica impresoras 3D (Klipper/Moonraker) y cortadoras láser GRBL en un solo dashboard.">
+<meta name="description" content="Panel de control autoalojado que unifica impresoras 3D (Klipper, Marlin, Bambu Lab, Elegoo, FlashForge), láser/CNC GRBL, plugins y una app Android complementaria en un solo dashboard.">
 <link rel="icon" href="assets/img/logo.jpg">
 <style>
   :root{
@@ -246,12 +246,15 @@
     <img class="logo" src="assets/img/logo.jpg" alt="NOPAL logo">
     <h1>NOPAL<span>.</span></h1>
     <p class="tagline">Node Operation, Printer And Laser — un dashboard autoalojado que unifica el control de
-      impresoras 3D (Klipper/Moonraker) y cortadoras láser GRBL en un solo lugar.</p>
+      impresoras 3D de 5 marcas, cortadoras láser y ruteadoras CNC GRBL, una galería de plugins y
+      TUNA-Screen (su app Android complementaria), todo en un solo lugar.</p>
     <div class="badges">
       <span class="badge">GPLv3</span>
       <span class="badge">Python 3.9+</span>
       <span class="badge">FastAPI</span>
       <span class="badge">ES / EN</span>
+      <span class="badge">Plugins</span>
+      <span class="badge">TUNA-Screen</span>
     </div>
     <div class="btnrow">
       <a class="btn btn-primary" href="#instalacion">Instalación rápida</a>
@@ -265,33 +268,28 @@
   <div class="wrap">
     <div class="eyebrow">Características</div>
     <h2>Todo tu taller, en un solo panel</h2>
-    <p class="lead">Impresoras 3D, láseres GRBL y tu biblioteca de modelos, en una sola aplicación web servida desde
-      un host en tu red local.</p>
+    <p class="lead">Impresoras 3D de 5 marcas, láser/CNC GRBL, una galería de plugins y tu biblioteca de modelos,
+      en una sola aplicación web servida desde un host en tu red local.</p>
     <div class="grid-features">
       <div class="fcard">
         <div class="ficon">◆</div>
         <h3>Dashboard unificado</h3>
-        <p>Todas las máquinas de la red en una vista, clasificadas por color según tipo y estado, en tarjetas o lista compacta.</p>
+        <p>Todas las impresoras, láseres y CNC de la red en una vista, clasificados por color según tipo y estado, en tarjetas o lista compacta.</p>
       </div>
       <div class="fcard">
         <div class="ficon">3D</div>
-        <h3>Control de impresoras (Klipper/Moonraker)</h3>
-        <p>Temperaturas en vivo, movimiento del cabezal, Z-offset, factor de velocidad y cola de impresión con progreso y ETA.</p>
+        <h3>Impresoras 3D — 5 marcas, una interfaz</h3>
+        <p>Klipper/Moonraker, Marlin standalone, Bambu Lab, Elegoo y FlashForge: temperaturas en vivo, movimiento del cabezal, cola de impresión con progreso y ETA. Cada marca con su propio driver, fiel a cómo habla ese hardware.</p>
       </div>
       <div class="fcard">
         <div class="ficon">⌁</div>
-        <h3>Control de láser (GRBL)</h3>
-        <p>Placas por red (ESP3D/DLC32) o USB/serial, con jog, home, aire asistido, potencia y consola GRBL en vivo.</p>
-      </div>
-      <div class="fcard">
-        <div class="ficon">$</div>
-        <h3>Editor de parámetros GRBL</h3>
-        <p>Lee y escribe cada parámetro <code>$$</code> de la controladora, con descripción en lenguaje claro.</p>
+        <h3>Láser y CNC (GRBL)</h3>
+        <p>Placas por red (ESP3D/FluidNC) o USB/serial, varias a la vez. El mismo hardware se registra como láser (potencia/aire asistido) o CNC (spindle/refrigerante) según el rol, con jog, home, editor <code>$$</code> y consola GRBL en vivo.</p>
       </div>
       <div class="fcard">
         <div class="ficon">▣</div>
         <h3>Biblioteca de modelos y G-code</h3>
-        <p>Explora, busca y previsualiza en 3D archivos STL/3MF/STEP y G-code. Envíalos a la cola o a la tarjeta SD.</p>
+        <p>Explora, busca y previsualiza en 3D archivos STL/3MF/STEP y G-code. Envíalos a la cola, a la tarjeta SD o directo a una máquina.</p>
       </div>
       <div class="fcard">
         <div class="ficon">▤</div>
@@ -299,19 +297,24 @@
         <p>Registro buscable, por máquina, de cada impresión o corte completado, cancelado o con error.</p>
       </div>
       <div class="fcard">
-        <div class="ficon">⭘</div>
-        <h3>Mapeo de joystick</h3>
-        <p>Vincula un control físico USB a acciones del láser: mover, home, pausar, iniciar, láser on/off, enmarcar.</p>
+        <div class="ficon">▧</div>
+        <h3>Galería de plugins</h3>
+        <p>Suma Materiales (inventario real de filamento vía Spoolman), Cotizador (costo estimado de cada trabajo), Cámaras y Automatización de Taller (Arduino/ESP32) — sin modificar el núcleo de NOPAL.</p>
+      </div>
+      <div class="fcard">
+        <div class="ficon">📱</div>
+        <h3>TUNA-Screen (app Android)</h3>
+        <p>Vincula un celular o tablet con un código de 6 dígitos y controla cualquier máquina — o montá una tablet directo en una impresora como pantalla de estado dedicada.</p>
+      </div>
+      <div class="fcard">
+        <div class="ficon">$</div>
+        <h3>Editor de parámetros GRBL</h3>
+        <p>Lee y escribe cada parámetro <code>$$</code> de la controladora, con descripción en lenguaje claro.</p>
       </div>
       <div class="fcard">
         <div class="ficon">◐</div>
         <h3>Temas personalizados</h3>
-        <p>Presets Light, Dark y NOPAL Style, más un editor completo de colores e imagen de fondo del dashboard.</p>
-      </div>
-      <div class="fcard">
-        <div class="ficon">A/文</div>
-        <h3>Interfaz bilingüe</h3>
-        <p>Cambia toda la interfaz entre español e inglés en cualquier momento.</p>
+        <p>Light, Dark, NOPAL Style y Desert, más un editor completo de colores e imagen de fondo del dashboard. Interfaz bilingüe (ES/EN).</p>
       </div>
     </div>
   </div>
@@ -323,37 +326,41 @@
     <h2>La interfaz en acción</h2>
     <p class="lead">Capturas reales de una instancia de NOPAL corriendo en red local. Haz clic en cualquiera para ampliarla.</p>
     <div class="grid-gallery">
-      <div class="gitem" data-full="assets/img/panel-control.png">
-        <img src="assets/img/panel-control.png" alt="Panel de Control">
-        <div class="cap"><b>Panel de Control</b>Estado del host, biblioteca y cada máquina conectada de un vistazo.</div>
+      <div class="gitem" data-full="images/dashboard.png">
+        <img src="images/dashboard.png" alt="Dashboard de NOPAL">
+        <div class="cap"><b>Dashboard</b>Estado de cada impresora, láser y CNC conectados, de un vistazo.</div>
       </div>
-      <div class="gitem" data-full="assets/img/laser-detail.png">
-        <img src="assets/img/laser-detail.png" alt="Detalle de láser">
-        <div class="cap"><b>Detalle de Láser</b>Conexión, movimiento, potencia y consola GRBL en vivo.</div>
+      <div class="gitem" data-full="images/printers.png">
+        <img src="images/printers.png" alt="Panel de impresoras 3D">
+        <div class="cap"><b>Impresoras 3D</b>Klipper, Marlin, Bambu Lab, Elegoo y FlashForge en un solo panel.</div>
       </div>
-      <div class="gitem" data-full="assets/img/printer-detail.png">
-        <img src="assets/img/printer-detail.png" alt="Detalle de impresora 3D">
-        <div class="cap"><b>Detalle de Impresora 3D</b>Posición del cabezal, Z-offset y temperaturas en vivo.</div>
+      <div class="gitem" data-full="images/laser-cnc.png">
+        <img src="images/laser-cnc.png" alt="Panel de láser y CNC">
+        <div class="cap"><b>Láser y CNC</b>Control GRBL por red o USB, con consola en vivo.</div>
       </div>
-      <div class="gitem" data-full="assets/img/models-library.jpg">
-        <img src="assets/img/models-library.jpg" alt="Biblioteca de modelos">
-        <div class="cap"><b>Biblioteca de Modelos</b>Vista previa 3D en el navegador y acciones rápidas.</div>
+      <div class="gitem" data-full="images/materials.png">
+        <img src="images/materials.png" alt="Plugin de materiales (Spoolman)">
+        <div class="cap"><b>Materiales</b>Inventario real de filamento conectado al taller vía Spoolman.</div>
       </div>
-      <div class="gitem" data-full="assets/img/send-to-printer.jpg">
-        <img src="assets/img/send-to-printer.jpg" alt="Enviar a impresora">
-        <div class="cap"><b>Enviar a Impresora</b>Impresión inmediata, agregar a la cola o programar para después.</div>
+      <div class="gitem" data-full="images/cotizador.png">
+        <img src="images/cotizador.png" alt="Herramienta de cotización">
+        <div class="cap"><b>Cotizador</b>Costo estimado de cada trabajo de impresión, láser o CNC.</div>
       </div>
-      <div class="gitem" data-full="assets/img/console.png">
-        <img src="assets/img/console.png" alt="Consola">
-        <div class="cap"><b>Consola</b>Comandos G-code directos a cualquier máquina, con log en vivo.</div>
+      <div class="gitem" data-full="images/cameras.png">
+        <img src="images/cameras.png" alt="Visor de cámaras">
+        <div class="cap"><b>Cámaras</b>Mira cada máquina en vivo desde el propio panel.</div>
       </div>
-      <div class="gitem" data-full="assets/img/history.png">
-        <img src="assets/img/history.png" alt="Historial de impresión">
-        <div class="cap"><b>Historial</b>Registro de cada trabajo completado, cancelado o con error.</div>
+      <div class="gitem" data-full="images/plugins.png">
+        <img src="images/plugins.png" alt="Galería de plugins">
+        <div class="cap"><b>Galería de Plugins</b>Suma herramientas nuevas sin tocar el núcleo de NOPAL.</div>
       </div>
-      <div class="gitem" data-full="assets/img/themes.jpg">
-        <img src="assets/img/themes.jpg" alt="Temas">
-        <div class="cap"><b>Temas</b>NOPAL Verde, Blanco, Negro y Rojo, aplicados al mismo dashboard.</div>
+      <div class="gitem" data-full="images/tunascreen.png">
+        <img src="images/tunascreen.png" alt="App Android TUNA-Screen">
+        <div class="cap"><b>TUNA-Screen</b>Controla el taller desde una tablet o el celular.</div>
+      </div>
+      <div class="gitem" data-full="images/library.png">
+        <img src="images/library.png" alt="Biblioteca de modelos y G-code">
+        <div class="cap"><b>Biblioteca</b>Modelos y G-code, con vista previa 3D en el navegador.</div>
       </div>
     </div>
   </div>
@@ -367,14 +374,18 @@
       <img src="assets/img/network-diagram.jpg" alt="Diagrama de red de NOPAL">
       <div>
         <p class="lead" style="margin-bottom:20px;">El servidor de NOPAL (Python/FastAPI) corre en un host Debian/Raspberry Pi OS/Ubuntu,
-          junto con una instancia de Moonraker por impresora Klipper. Los láseres se conectan por WiFi
-          (ESP3D/GRBL-ESP) o por USB/serial.</p>
+          junto con una instancia de Moonraker por impresora Klipper. Las demás marcas hablan cada una su
+          propio protocolo directo con el equipo (MQTT para Bambu Lab, WebSocket/SDCP para Elegoo, HTTP para
+          FlashForge), y los láseres/CNC GRBL se conectan por WiFi (ESP3D/FluidNC) o por USB/serial. Los
+          plugins son repositorios aparte, clonados y cargados en caliente; TUNA-Screen habla con NOPAL por
+          su propia API REST + WebSocket, nunca directo con el hardware.</p>
         <table class="ports">
           <tr><th>Puerto</th><th>Servicio</th></tr>
           <tr><td><code>8420</code></td><td>Interfaz web de NOPAL (configurable con <code>NOPAL_PORT</code>)</td></tr>
-          <tr><td><code>7125–7127…</code></td><td>Una instancia de Moonraker por impresora 3D</td></tr>
+          <tr><td><code>7125–7127…</code></td><td>Una instancia de Moonraker por impresora Klipper</td></tr>
+          <tr><td>MQTT / WebSocket / HTTP</td><td>Bambu Lab, Elegoo y FlashForge — directo al equipo, sin puerto adicional en el host</td></tr>
           <tr><td><code>8080</code></td><td>Crowsnest (streaming de cámaras), si está habilitado</td></tr>
-          <tr><td>Serial</td><td>Placas láser GRBL por USB (<code>/dev/ttyUSB*</code>)</td></tr>
+          <tr><td>Serial</td><td>Placas láser/CNC GRBL por USB (<code>/dev/ttyUSB*</code>)</td></tr>
         </table>
       </div>
     </div>
@@ -432,6 +443,11 @@ NOPAL_PORT=9000 ./install.sh</div>
         <h3>README (English)</h3>
         <p>Same project overview, architecture, stack and install steps, in English.</p>
         <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/nopal/blob/main/README.md" target="_blank">View README.md</a>
+      </div>
+      <div class="dcard">
+        <h3>TUNA-Screen</h3>
+        <p>App Android complementaria (Kotlin + Compose) para controlar NOPAL desde un celular o una tablet montada en una máquina.</p>
+        <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/TUNA-Screen" target="_blank">Ver repositorio</a>
       </div>
     </div>
   </div>

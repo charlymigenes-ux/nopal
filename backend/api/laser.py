@@ -40,6 +40,7 @@ from backend.services.laser_service import (
     sd_create_folder,
     sd_delete_entry,
     sd_upload_file,
+    start_sd_job,
     has_sd_card,
     get_laser_history,
     attach_laser_history_snapshot,
@@ -411,20 +412,26 @@ async def laser_sd_run_endpoint(
 ):
     """Corre directamente un archivo que ya está en la SD, sin volver a subirlo.
 
-    Deshabilitado: se confirmó contra hardware real que $F=archivo no arranca
-    el trabajo en este firmware (DLC32) — la placa se queda en Idle sin
-    moverse, sin reportar error. Hasta identificar el comando correcto de
-    este firmware, no hay forma confiable de ejecutar un archivo que ya
-    está en la SD (no tenemos su texto para transmitirlo por streaming).
+    Antes esto quedaba deshabilitado (501 fijo) porque un intento con
+    $F=archivo, probado contra hardware real (TTS-55 Pro / FluidNC), no
+    arrancaba el trabajo. $F= no es el comando real de FluidNC para esto —
+    es $SD/Run=archivo (ver wiki.fluidnc.com/en/features/jobs), que es lo
+    que manda start_sd_job/_run_sd_job en laser_service.py. Acá solo se arma
+    la ruta relativa a la raíz de la SD juntando `path` (puede venir vacío
+    o "/subcarpeta") con `name`.
     """
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "No se pudo confirmar el comando correcto para correr archivos "
-            "directo desde la SD en este firmware. Usa la Cola (Biblioteca "
-            "G-code) para enviar el archivo por streaming."
-        ),
-    )
+    target = host or get_active_host()
+    clean_path = (path or "").strip("/")
+    full_path = f"{clean_path}/{name}" if clean_path else name
+    try:
+        # Sin executor a propósito: start_sd_job hace asyncio.create_task(...)
+        # para programar _run_sd_job, y eso necesita correr sobre el loop de
+        # eventos real (mismo criterio que start_job en /api/laser/queue/start,
+        # unas líneas más arriba en este archivo) -- en un hilo de executor
+        # no habría loop corriendo y create_task fallaría.
+        return start_sd_job(target, full_path)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.post("/api/laser/sd/folder")
