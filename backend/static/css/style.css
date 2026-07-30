@@ -136,40 +136,46 @@ body {
 }
 
 body.light {
-    /* Paleta clara NOPAL. Estas variables solo existen en el tema blanco;
-       los temas oscuro, verde, rojo y personalizado conservan su paleta. */
-    --bg-app: #F4F7F6;
-    --bg-surface: #EEF3F1;
-    --bg-modal: #F8FBFA;
-    --bg-card: #FFFFFF;
-    --bg-control: #F2F5F7;
+    /* Paleta "Desert", alineada con el tema desert de la app TUNA-Screen
+       (ui/theme/Color.kt::DesertColors) en vez del blanco/verde-menta que
+       tenía antes. Los estados que esa paleta mobile no define (hover,
+       "strong", soft/border de badges) se derivan del acento oliva
+       (--accent-green) y no son parte del set de colores dado; --purple y
+       --state-info tampoco tienen equivalente ahí, así que quedan con el
+       valor de siempre. Estas variables solo existen en el tema claro; los
+       temas oscuro, verde, rojo y personalizado conservan su paleta. */
+    --bg-app: #E8D8B5;
+    --bg-surface: #FDF8EC;
+    --bg-modal: #FDF8EC;
+    --bg-card: #F5EBD4;
+    --bg-control: #D8C69D;
 
-    --text-primary: #1D2A32;
-    --text-secondary: #5E6C76;
-    --text-muted: #8A98A3;
-    --text-on-accent: #FFFFFF;
+    --text-primary: #30291F;
+    --text-secondary: #6B5E49;
+    --text-muted: #6B5E49;
+    --text-on-accent: #FDF8EC;
 
-    --border-soft: #D8E2DF;
-    --border-medium: #C7D4CF;
+    --border-soft: #9A8258;
+    --border-medium: #9A8258;
 
-    --accent-green: #2EB872;
-    --accent-green-hover: #28A565;
-    --accent-green-soft: #E8F7EF;
-    --accent-green-border: #B8E4C9;
-    --accent-green-strong: #1E9A5D;
+    --accent-green: #687A32;
+    --accent-green-hover: #5C6C2C;
+    --accent-green-soft: #E3E4C9;
+    --accent-green-border: #C3C79A;
+    --accent-green-strong: #4E5C25;
 
-    --state-success: #27AE60;
-    --state-success-soft: #EAF8F0;
-    --state-warning: #E5A11A;
-    --state-warning-soft: #FFF6DF;
-    --state-danger: #E15656;
-    --state-danger-soft: #FDECEC;
+    --state-success: #4E5C25;
+    --state-success-soft: #E3E4C9;
+    --state-warning: #B66A1F;
+    --state-warning-soft: #F3DFC4;
+    --state-danger: #A63D32;
+    --state-danger-soft: #F0D8D3;
     --state-info: #3B82C4;
     --state-info-soft: #EAF3FB;
     --state-purple: #8A63D2;
     --state-purple-soft: #F1ECFB;
-    --state-orange: #F08A24;
-    --state-orange-soft: #FFF1E4;
+    --state-orange: #B66A1F;
+    --state-orange-soft: #F3DFC4;
 
     /* Compatibilidad con los componentes actuales. */
     --bg: var(--bg-app);
@@ -179,19 +185,26 @@ body.light {
     --border: var(--border-soft);
     --text: var(--text-primary);
     --green: var(--accent-green);
-    --green-rgb: 46, 184, 114;
+    --green-rgb: 104, 122, 50;
     --green-dark: var(--accent-green-strong);
     --accent: var(--accent-green);
-    --accent-rgb: 46, 184, 114;
+    --accent-rgb: 104, 122, 50;
     --accent-hover: var(--accent-green-hover);
     --accent-active: var(--accent-green-strong);
     --orange: var(--state-warning);
     --orange-light: var(--state-orange);
     --purple: var(--state-purple);
     --purple-rgb: 138, 99, 210;
-    --black: var(--text-primary);
+    /* --black se usa como texto/fondo de alto contraste (nav lateral,
+       botones íconos, .button) -- el valor literal "black" de la paleta
+       Kotlin (crema #FDF8EC) quedaba casi blanco sobre el sidebar claro,
+       invisible. Acá va un ladrillo/terracota cálido, no el crema. */
+    --black: #8B4226;
 
-    background-image: url('/static/img/fondo_NOPAL_WHITE.png');
+    /* --light-wallpaper la fija applyLightWallpaper() según lo elegido en
+       Configuración > Apariencia -- el url() de acá es solo el fallback
+       para cuando no hay nada guardado todavía. */
+    background-image: var(--light-wallpaper, url('/static/img/nopaldesert.png'));
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -326,6 +339,16 @@ body.custom::before {
     gap: 32px;
     height: 100%;
     overflow-y: auto;
+}
+
+/* En el tema Desert el sidebar quedaba un bloque sólido opaco encima del
+   fondo temático (wallpaper con textura), tapándolo por completo -- acá se
+   le da el mismo vidrio translúcido + blur que ya usan las tarjetas del
+   resto de la app. */
+body.light .sidebar {
+    background: color-mix(in srgb, var(--sidebar-bg) 40%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 /* Fondo oscuro detrás del cajón lateral en mobile (ver @media max-width:
@@ -529,7 +552,13 @@ body.green .global-topbar {
 }
 
 .app-shell.sidebar-collapsed .sidebar-actions-card {
+    flex-direction: column;
     justify-content: center;
+    /* Con la sidebar angosta (76px) los 3 botones en fila quedaban
+       amontonados y minúsculos con el zoom:0.7 base -- en columna entran
+       cómodos, y subimos el zoom ~10% (0.7 -> 0.77) para que no se vean
+       tan chicos sin volver a desbordar el ancho colapsado. */
+    zoom: 0.77;
 }
 
 .app-shell.sidebar-collapsed .lang-switch {
@@ -811,7 +840,9 @@ body.green .global-topbar {
     height: auto;
     padding: 9px 6px;
     background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.85);
+    /* Antes blanco fijo -- invisible en temas claros (Desert). var(--black)
+       es el mismo tono de alto contraste que ya usan los ítems del nav. */
+    color: var(--black);
     border: none;
     border-radius: 10px;
 }
@@ -4005,10 +4036,14 @@ body.green .settings-card {
 }
 
 .laser-card.toolhead-card {
-    background: rgba(15, 23, 42, 0.55);
+    /* Antes un navy fijo (rgba(15,23,42,...)), que solo combinaba bien con
+       el tema oscuro original -- con temas claros/desert se veía un
+       recuadro azul oscuro pegado encima del fondo. color-mix con
+       --card-bg sigue siendo un vidrio translúcido pero tomando el color
+       de tarjeta del tema activo. */
+    background: color-mix(in srgb, var(--card-bg) 55%, transparent);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
-    zoom: 0.8;
 }
 
 .temp-card.toolhead-card {
@@ -4711,7 +4746,7 @@ body.green .settings-card {
     padding: 8px 12px;
     border: 1px solid rgba(148, 163, 184, 0.2);
     border-radius: 999px;
-    background: rgba(15, 23, 42, 0.55);
+    background: color-mix(in srgb, var(--card-bg) 55%, transparent);
     color: var(--text-muted);
     cursor: pointer;
 }
@@ -4727,15 +4762,18 @@ body.green .settings-card {
     padding: 24px;
     border: 1px solid rgba(168, 85, 247, 0.38);
     border-radius: 18px;
-    background: radial-gradient(circle at 86% 20%, rgba(168, 85, 247, 0.25), transparent 34%), linear-gradient(135deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.9));
+    /* Antes un navy/morado sólido fijo -- no seguía el tema (se quedaba
+       oscuro incluso en Desert). El brillo morado decorativo usa --purple
+       (varía por tema); la superficie base ahora sale de --card-bg. */
+    background: radial-gradient(circle at 86% 20%, color-mix(in srgb, var(--purple) 20%, transparent), transparent 34%), color-mix(in srgb, var(--card-bg) 90%, transparent);
 }
 
 .plugins-featured-copy { position: relative; z-index: 1; }
-.plugins-featured-label { display: inline-flex; margin-bottom: 12px; padding: 5px 9px; border-radius: 999px; background: rgba(168, 85, 247, 0.2); color: #d8b4fe; font-size: 0.68rem; font-weight: 800; }
+.plugins-featured-label { display: inline-flex; margin-bottom: 12px; padding: 5px 9px; border-radius: 999px; background: color-mix(in srgb, var(--purple) 20%, transparent); color: var(--purple); font-size: 0.68rem; font-weight: 800; }
 .plugins-featured h2 { margin: 0 0 8px; color: var(--text); font-size: 1.45rem; }
 .plugins-featured p { max-width: 650px; margin: 0 0 16px; color: var(--text-muted); line-height: 1.55; }
 .plugins-featured-visual { display: grid; place-items: center; }
-.plugins-featured-icon { display: grid; width: 118px; height: 118px; place-items: center; border: 1px solid rgba(216, 180, 254, 0.35); border-radius: 30px; background: rgba(88, 28, 135, 0.25); color: #d8b4fe; transform: rotate(-5deg); }
+.plugins-featured-icon { display: grid; width: 118px; height: 118px; place-items: center; border: 1px solid color-mix(in srgb, var(--purple) 35%, transparent); border-radius: 30px; background: color-mix(in srgb, var(--purple) 18%, transparent); color: var(--purple); transform: rotate(-5deg); }
 
 .plugins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
 .plugin-card {
@@ -4745,19 +4783,19 @@ body.green .settings-card {
     padding: 17px;
     border: 1px solid rgba(148, 163, 184, 0.17);
     border-radius: 15px;
-    background: rgba(15, 23, 42, 0.72);
+    background: color-mix(in srgb, var(--card-bg) 72%, transparent);
     transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
-.plugin-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--plugin-accent) 55%, transparent); background: rgba(20, 30, 50, 0.88); }
+.plugin-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--plugin-accent) 55%, transparent); background: color-mix(in srgb, var(--card-bg) 88%, transparent); }
 .plugin-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .plugin-card-icon { display: grid; width: 46px; height: 46px; place-items: center; border: 1px solid color-mix(in srgb, var(--plugin-accent) 45%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--plugin-accent) 15%, transparent); color: var(--plugin-accent); }
 .plugin-card-status { padding: 4px 7px; border-radius: 999px; background: rgba(148, 163, 184, 0.12); color: var(--text-muted); font-size: 0.65rem; font-weight: 700; }
-.plugin-card-status.is-installed { background: rgba(34, 197, 94, 0.14); color: #86efac; }
+.plugin-card-status.is-installed { background: rgba(34, 197, 94, 0.14); color: var(--green); }
 .plugin-card h3 { margin: 14px 0 3px; color: var(--text); font-size: 1rem; }
 .plugin-card-publisher { color: var(--text-muted); font-size: 0.68rem; }
 .plugin-card-description { flex: 1; margin: 11px 0 13px; color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
 .plugin-card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
-.plugin-card-tag { padding: 4px 7px; border-radius: 6px; background: rgba(148, 163, 184, 0.09); color: #cbd5e1; font-size: 0.64rem; }
+.plugin-card-tag { padding: 4px 7px; border-radius: 6px; background: rgba(148, 163, 184, 0.09); color: var(--text-muted); font-size: 0.64rem; }
 .plugin-card-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid rgba(148, 163, 184, 0.12); }
 .plugin-card-meta { min-width: 0; color: var(--text-muted); font-size: 0.66rem; }
 .plugin-card-actions { display: flex; min-width: 0; max-width: 100%; align-items: center; justify-content: flex-end; gap: 8px; }
@@ -5039,11 +5077,14 @@ body.green .settings-card {
 }
 
 .laser-card-compact {
-    zoom: 0.7;
+    /* Antes zoom:0.7 -- dejaba estos títulos/botones notablemente más
+       chicos que el resto de la app (nav, dashboard, etc). Sin zoom,
+       coherente con el pedido de tamaño uniforme; el card ya scrollea
+       solo si el contenido no entra. */
 }
 
 .laser-card-translucent {
-    background: rgba(15, 23, 42, 0.55);
+    background: color-mix(in srgb, var(--card-bg) 55%, transparent);
     backdrop-filter: blur(6px);
 }
 
@@ -5383,8 +5424,8 @@ body.green .settings-card {
 
 .laser-console-dock-header h3 {
     margin: 0;
-    font-size: 0.88rem;
-    font-weight: 600;
+    font-size: 1.05rem;
+    font-weight: 700;
     color: var(--text);
 }
 
@@ -12517,7 +12558,7 @@ main {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: rgba(15, 23, 42, 0.55);
+    background: color-mix(in srgb, var(--card-bg) 55%, transparent);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     border: 1px solid rgba(255, 255, 255, 0.08);

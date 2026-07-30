@@ -2,25 +2,25 @@
 
 <table>
   <tr>
-    <td><img width="630" alt="NOPAL dashboard" src="https://github.com/user-attachments/assets/600beacf-157c-4bd1-a5c0-9307415da5d6" /></td>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/6e6f3622-f5bb-4b16-9e23-166a8d663b4f" /></td>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/5463fedf-8814-4b6b-9ec6-96d551ad5b13" /></td>
+    <td><img width="630" alt="NOPAL dashboard" src="docs/images/dashboard.png" /></td>
+    <td><img width="630" alt="3D printers panel" src="docs/images/printers.png" /></td>
+    <td><img width="630" alt="Laser / CNC panel" src="docs/images/laser-cnc.png" /></td>
   </tr>
   <tr>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/b8ac4145-4832-4090-a647-2408e987b2f2" /></td>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/a84b8abf-4958-4f74-a369-c1d8fcaeeaaa" /></td>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/3b90870f-a46d-4b62-8aec-c0ad5387e812" /></td>
+    <td><img width="630" alt="Materials (Spoolman) panel" src="docs/images/materials.png" /></td>
+    <td><img width="630" alt="Quoting tool" src="docs/images/cotizador.png" /></td>
+    <td><img width="630" alt="Camera viewer" src="docs/images/cameras.png" /></td>
   </tr>
   <tr>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/9c682844-5b96-4828-b52c-0bded137b954" /></td>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/a058caab-656c-47b9-91bb-5a50cbe8c393" /></td>
-    <td><img width="630" alt="NOPAL screenshot" src="https://github.com/user-attachments/assets/1d1f7ee0-c43a-425a-beaf-339e33201df7" /></td>
+    <td><img width="630" alt="Plugin gallery" src="docs/images/plugins.png" /></td>
+    <td><img width="630" alt="TUNA-Screen Android app" src="docs/images/tunascreen.png" /></td>
+    <td><img width="630" alt="Model / G-code library" src="docs/images/library.png" /></td>
   </tr>
 </table>
 
 **Read this in other languages:** [Español](README.es.md)
 
-**NOPAL** is a self-hosted, browser-based control panel that unifies **3D printer management (Klipper/Moonraker)** and **GRBL laser cutter/engraver control** in a single dashboard, on top of a full **3D model / G-code library**. It's built for makers, small print farms, and anyone running a mixed 3D-printing + laser workshop who is tired of juggling Mainsail/Fluidd tabs, LightBurn/LaserGRBL windows, and a file explorer at the same time.
+**NOPAL** is a self-hosted, browser-based control panel that unifies **3D printer management** (Klipper/Moonraker, standalone Marlin, Bambu Lab, Elegoo, FlashForge), **GRBL laser and CNC control**, and a full **3D model / G-code library** in one dashboard — with a **plugin system** for material inventory, job quoting, cameras, and Arduino-based workshop automation, plus **TUNA-Screen**, a companion Android app to control any of it from a tablet or phone. It's built for makers, small print farms, and anyone running a mixed workshop who is tired of juggling Mainsail/Fluidd tabs, brand-specific apps, LightBurn/LaserGRBL windows, and a file explorer at the same time.
 
 ---
 
@@ -43,13 +43,15 @@
 
 ## Overview
 
-NOPAL is designed to solve three problems that show up together in most home/small-shop fabrication setups:
+NOPAL is designed to solve the problems that show up together in most home/small-shop fabrication setups:
 
 1. **Managing large collections of printable and cuttable files** (STL, 3MF, STEP, G-code) spread across folders and formats.
-2. **Monitoring and controlling several 3D printers at once**, without switching between separate Mainsail/Fluidd instances.
-3. **Controlling GRBL laser cutters/engravers** — over WiFi (ESP3D-style boards) or directly over USB — from the same place, including multiple lasers side by side.
+2. **Monitoring and controlling several 3D printers at once** — across five different brands/protocols — without switching between separate vendor apps.
+3. **Controlling GRBL laser cutters/engravers and CNC routers** — over WiFi (ESP3D-style boards) or directly over USB — from the same place, including multiple machines side by side.
+4. **Tracking material, cost, and job history** without a spreadsheet on the side, through an optional plugin layer.
+5. **Operating the whole shop from a phone or a tablet mounted on a machine**, not just from a desktop browser.
 
-NOPAL brings all three into one browser-based application: a model/G-code library, a live dashboard for every printer and laser it detects, and per-machine control panels (temperatures, toolhead movement, jog/fire controls, job queues) — all from a single self-hosted service.
+NOPAL brings all of this into one browser-based application: a model/G-code library, a live dashboard for every printer/laser/CNC it detects, per-machine control panels, an installable plugin gallery, and a mobile client — all from a single self-hosted service, no external database required.
 
 ---
 
@@ -58,69 +60,96 @@ NOPAL brings all three into one browser-based application: a model/G-code librar
 ### 3D model & G-code library
 
 * Browse and organize printable/cuttable assets: **STL**, **3MF**, **STEP**, **G-code**.
-* Folder organization, rename/move/delete, upload from the browser.
+* Folder organization, rename/move/delete, upload from the browser, bulk actions.
 * In-browser **3D preview** (Three.js) for models and G-code toolpaths.
-* Generate G-code from a model or send a file straight to a printer or the laser queue.
+* Generate G-code from a model or send a file straight to a printer or the laser/CNC queue.
 
 ### Unified dashboard
 
-* Auto-detects local **Moonraker** instances and registered **GRBL lasers** (network + USB) and shows them together, sorted by connection/status (printing/engraving first, then idle, then offline).
+* Auto-detects local **Moonraker** instances and registered **Marlin, Bambu Lab, Elegoo, FlashForge** printers, plus **GRBL lasers and CNCs** (network + USB), and shows them together, sorted by connection/status.
 * Color-coded by machine type and by state, with a quick toggle to hide offline machines.
-* Grid or list view.
-* Quick actions right on the card: cool down / preheat a printer without opening its detail panel.
+* Grid or list view, four themes (light, dark, NOPAL Style, and a fully custom theme).
 
-### 3D printer control (Klipper/Moonraker)
+### 3D printer control — five brands, one interface
 
-* Live temperatures (bed/extruder) with a heat-map color scale (blue → white → yellow → orange → red).
-* One-click preset heating and cooldown, with editable presets.
-* **Toolhead panel**: live position, X/Y/Z jog, home (all or per-axis), motors off, Z-offset babystepping, speed factor.
-* Real **active print queue**: current file, live progress and estimated remaining time pulled straight from Moonraker — not a placeholder.
-* Print history per printer, with thumbnails when available.
-* **Macros**: lists whatever is configured in `printer.cfg` and runs them with one tap.
+* **Klipper/Moonraker**: live temperatures with a heat-map color scale, one-click preset heating/cooldown, full toolhead panel (jog, home, motors off, Z-offset babystepping, speed factor), real active print queue with live progress pulled from Moonraker, print history with thumbnails, and macros straight from `printer.cfg`.
+* **Standalone Marlin** printers over USB serial or an MKS WiFi bridge, sharing a common command spooler and driver.
+* **Bambu Lab** printers over MQTT (the printer acts as the broker).
+* **Elegoo** printers over the SDCP WebSocket protocol.
+* **FlashForge** printers over their HTTP REST API.
 
-### GRBL laser control (network + USB)
+Each brand is its own independent driver — matched to how that hardware actually talks — not a lowest-common-denominator abstraction, so brand-specific features aren't sanded down to fit a generic model.
 
-* Works with **network boards** (ESP3D-style WiFi controllers, e.g. common DLC32-based laser boards) and **USB/serial** boards (CH340, CP210x, ESP32-native) — auto-detects USB laser controllers plugged into the host.
-* Manage **multiple lasers simultaneously**, each with its own independent job, connection and settings.
-* Manual jog controls, homing, GRBL ($$) settings editor.
-* Firing control with a deliberate double-click-to-arm safety pattern, plus an air-assist toggle.
-* SD card browser (for boards with onboard storage): browse, upload, delete.
-* Reliable G-code streaming using a proper character-counting buffered protocol (keeps GRBL's motion planner fed instead of stalling between lines).
-* Live GRBL console.
-* Job queue with framing (trace the job's bounding box before firing) and multi-copy runs.
+### Laser and CNC control (GRBL, network + USB)
+
+* Works with **network boards** (ESP3D-style WiFi controllers) and **USB/serial** boards (CH340, CP210x, ESP32-native) — auto-detects USB controllers plugged into the host.
+* The same GRBL hardware can be registered and panelled as a **laser** (power/air-assist) or a **CNC router** (spindle/coolant) — NOPAL shows the right controls for the role you assign it.
+* Manage **multiple machines simultaneously**, each with its own independent job, connection, and settings.
+* Manual jog controls, homing, GRBL ($$) settings editor, live GRBL console.
+* Firing control with a deliberate double-click-to-arm safety pattern.
+* Reliable G-code streaming using a character-counting buffered protocol (keeps GRBL's motion planner fed instead of stalling between lines).
+* SD card browser for boards with onboard storage, job queue with framing (trace the job's bounding box before firing) and multi-copy runs.
+
+### Plugins
+
+NOPAL ships a small core and an installable **plugin gallery** (Configuration → Plugins) for everything else. Each plugin is a separate repository, cloned and loaded on demand:
+
+* **Materials** (Spoolman integration): connects to a Spoolman server to read your real filament inventory, assign an active spool per printer, reserve material for a job, and feed real per-gram costs into the quoting tool.
+* **Quoting tool** (Cotizador): estimates the cost of a 3D printing, laser, or CNC job from your own material/machine cost profiles, with global settings (currency, kWh price, margin, labor) and a quote history with printable/PDF output and WhatsApp resend.
+* **Cameras**: add camera feeds by MJPEG/ONVIF/URL or a locally connected USB webcam, and watch them live per machine.
+* **Workshop automation** (Arduino/ESP32 accessories): map the pins on a generic Arduino/ESP32 board and build per-machine automation scenes (lights, relays, sensors) without third-party WiFi plugs.
+
+More plugins (shape generation, G-code optimization, SVG cleanup, a shared material-parameter library) are in the gallery as "coming soon."
+
+### TUNA-Screen (companion Android app)
+
+A separate Android app (Kotlin + Jetpack Compose) that acts purely as a **remote screen** for NOPAL — it never talks to Klipper/Marlin/GRBL/Bambu/Elegoo/FlashForge directly, only to NOPAL's own API. Pair a phone or tablet with a 6-digit code generated from Configuration → TUNA-Screen, then:
+
+* See every machine's live status in a "workshop" view, updated over a WebSocket.
+* Open a single machine's screen for temperatures, job progress, and Home/Pause/Resume/Cancel.
+* Mount a cheap tablet directly on a printer as a dedicated status screen for that one machine (kiosk mode).
+
+See the [TUNA-Screen repository](https://github.com/charlymigenes-ux/TUNA-Screen) and [docs/TUNASCREEN_API.md](docs/TUNASCREEN_API.md) for the client-facing API contract.
+
+### Accounts & access
+
+* Session-based login with two roles: **Admin** (manages users, devices, and settings) and **Operator** (operates the machines).
+* A role change or account removal takes effect immediately, not just on next login.
 
 ### Interface
 
 * Four themes: light, dark, **NOPAL Style** (green, with its own background art), and a fully **custom theme** (pick your own accent/surface/text colors and upload your own background image).
 * Adjustable interface text size.
-* Bilingual UI (Spanish / English).
-* In-app **Help** section with a quick guide to every part of the app and a link back to this repository.
+* Bilingual UI (Spanish / English), with community-contributed machine translations for German, French, and Brazilian Portuguese.
+* In-app **Help** section with a quick guide to every part of the app.
 
 ### Self-hosted deployment
 
 * Designed for Linux environments commonly used with Klipper.
 * Installs and runs as a **systemd service**.
-* Suitable for **Raspberry Pi OS**, **Debian**, **Ubuntu**, and similar distributions.
+* Suitable for **Raspberry Pi OS**, **Debian**, **Ubuntu**, and similar distributions — including the Linux boards bundled inside some 3D printers.
 
 ---
 
 ## Architecture
 
-NOPAL is a lightweight self-hosted web application, no external database required.
+NOPAL is a lightweight self-hosted web application, no external database required — persistent state is flat JSON files.
 
 ### Main components
 
 * **Backend**: Python (FastAPI) served with **Uvicorn**.
 * **Frontend**: server-rendered HTML + vanilla JS, no build step; 3D/G-code preview via Three.js.
-* **Moonraker integration**: REST calls to every detected local Moonraker instance for printer status, temperatures, jobs and G-code commands.
-* **GRBL integration**: HTTP + WebSocket for network (ESP3D-style) boards, direct serial (pyserial) for USB boards — with per-host connection and job state, so several machines can run truly independently at the same time.
+* **Printer drivers**: five independent integrations (Klipper/Moonraker REST polling, Marlin over USB/MKS-WiFi, Bambu over MQTT, Elegoo over SDCP WebSocket, FlashForge over HTTP REST) — matched to each brand's real transport, not unified behind a shared abstraction.
+* **Laser/CNC integration**: HTTP + WebSocket for network (ESP3D-style) boards, direct serial (pyserial) for USB boards, with per-host connection and job state so several machines run truly independently at the same time.
+* **Plugin system**: plugins are separate git repositories cloned into `plugins/<id>/` and loaded dynamically at startup; a broken plugin logs a warning instead of blocking NOPAL.
+* **TUNA-Screen API**: a versioned, unified `/api/tunascreen/*` REST surface + a `/ws/tunascreen` WebSocket that normalizes every machine (regardless of brand) to a common set of capabilities/actions for the Android client.
 
 ### High-level flow
 
 1. NOPAL scans and indexes supported model/G-code files from the local library.
 2. The web UI exposes those assets for browsing, previewing, and sending to a machine.
-3. NOPAL discovers local Moonraker instances and registered GRBL lasers, and opens a persistent connection to each.
-4. The dashboard aggregates model, printer, and laser state into a single interface, refreshed in near real time.
+3. NOPAL discovers local Moonraker instances and registered printers/lasers/CNCs, and opens a connection to each using that brand's own protocol.
+4. The dashboard aggregates model, printer, laser/CNC, and plugin state into a single interface, refreshed in near real time — and the same normalized state is what TUNA-Screen consumes over its own API.
 
 ---
 
@@ -137,10 +166,11 @@ NOPAL is a lightweight self-hosted web application, no external database require
 
 ### Optional but recommended
 
-* A working **Klipper + Moonraker** installation on the same machine (or reachable on the network) for 3D printer features.
-* A **GRBL-based laser controller** (network/ESP3D-style or USB/serial) for laser features.
+* A working **Klipper + Moonraker** installation (or a Bambu Lab/Elegoo/FlashForge/standalone Marlin printer) reachable on the network, for 3D printer features.
+* A **GRBL-based laser or CNC controller** (network/ESP3D-style or USB/serial) for laser/CNC features.
+* A **Spoolman** server on the network, for the Materials plugin.
 
-Neither Moonraker nor a laser controller is required to run NOPAL — the model library and UI work on their own; each integration only activates what it can find.
+Nothing above is required to run NOPAL — the model library and UI work on their own; each integration and plugin only activates what it can find.
 
 ---
 
@@ -167,18 +197,21 @@ After installation, NOPAL is available at:
 http://<your-machine-ip>:8420
 ```
 
+The first time you open it, you'll be asked to create the initial **Admin** account.
+
 ---
 
 ## Configuration
 
-NOPAL is designed to work out of the box in a local, self-hosted Klipper/GRBL environment — there's no config file to hand-edit for basic use:
+NOPAL is designed to work out of the box in a local, self-hosted environment — there's no config file to hand-edit for basic use:
 
 * The model library lives under the app's `uploads/` folder.
-* Moonraker instances are auto-discovered on the local host.
-* GRBL lasers are found by scanning the local network (network boards) and the system's serial ports (USB boards), then registered from the UI.
+* Moonraker instances are auto-discovered on the local host; other printer brands, lasers, and CNCs are registered from the UI.
+* Plugins are installed and enabled from Configuration → Plugins.
+* TUNA-Screen pairing codes are generated from Configuration → TUNA-Screen (Admin only).
 * UI preferences (theme, language, interface size) are stored per-browser.
 
-If you plan to expose NOPAL beyond your local network, put it behind a reverse proxy such as **Nginx** or **Caddy** and add authentication at that layer — NOPAL itself does not yet ship with built-in auth (see [Roadmap](#roadmap)).
+Access is controlled by NOPAL's own Admin/Operator login. If you plan to expose NOPAL beyond your local network, still put it behind a reverse proxy such as **Nginx** or **Caddy** for TLS.
 
 ---
 
@@ -188,18 +221,20 @@ Once the service is running, open the NOPAL web interface from a browser on your
 
 ### Typical workflow
 
-1. Open the dashboard and check the status of every printer and laser at a glance.
+1. Open the dashboard and check the status of every printer, laser, and CNC at a glance.
 2. Browse your model library, preview a model in 3D, and generate or pick its G-code.
-3. Send the job to a printer, or add it to the laser queue and send it to the laser you want.
-4. Watch live temperatures, toolhead position, or laser position/feed while the job runs.
-5. Review recent jobs and print history per machine.
+3. Send the job to a printer, or add it to the laser/CNC queue and send it to the machine you want.
+4. Watch live temperatures, toolhead position, or laser/CNC position/feed while the job runs.
+5. Quote the job's cost, track the material it used, and check the camera feed — if those plugins are installed.
+6. Check the same status, or act on a job, from TUNA-Screen on a phone or a tablet mounted on the machine.
 
 ### Example use cases
 
-* Managing a shared library of printable and laser-ready files.
-* Monitoring and controlling several Klipper printers from one dashboard.
-* Running a laser cutter/engraver alongside 3D printers without a separate app.
-* Switching between two or three registered lasers (network + USB) without unplugging anything.
+* Managing a shared library of printable and laser/CNC-ready files.
+* Monitoring and controlling a mixed fleet of Klipper, Bambu Lab, Elegoo, FlashForge, and standalone Marlin printers from one dashboard.
+* Running a laser cutter and a CNC router alongside 3D printers without a separate app for each.
+* Quoting a job and tracking real filament cost through Spoolman before you commit to printing it.
+* Mounting a small tablet on a printer as its dedicated status screen via TUNA-Screen.
 * Building a small, self-hosted control panel for a home workshop or a small print farm.
 
 ---
@@ -211,7 +246,7 @@ To run NOPAL locally in development mode:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8420
 ```
 
@@ -224,8 +259,9 @@ http://localhost:8420
 ### Suggested development workflow
 
 * Use a Python virtual environment for local work.
-* Keep Moonraker and/or a GRBL board reachable locally if you're testing printer or laser integration.
+* Keep at least one printer brand and/or a GRBL board reachable locally if you're testing printer or laser/CNC integration.
 * Run with `--reload` during development for faster iteration.
+* `pytest` runs the backend test suite (`pytest.ini` points it at `backend/tests`); plugin tests live inside each plugin's own repository under `plugins/<id>/tests`.
 
 ---
 
@@ -260,9 +296,10 @@ rm -rf ~/nopal
 Potential future areas for NOPAL include:
 
 * richer metadata for model libraries — tags, collections, and search filters
-* better print/laser job analytics and history
-* authentication and multi-user access control
+* better print/laser/CNC job analytics and history
 * external storage integration
+* mDNS advertising so TUNA-Screen can discover a NOPAL server automatically, without typing an IP
+* TUNA-Screen's Advanced Machine mode (temperature graphs, fine jog, console, macros) and a real kiosk/dedicated-screen mode
 * discovering the correct SD-card run command for more GRBL/DLC32-style firmware variants (direct-from-SD execution, instead of streaming)
 
 ---

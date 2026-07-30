@@ -1798,18 +1798,26 @@
                                 <option value="custom" id="settings-theme-custom-option" data-i18n="customMode" hidden>Custom</option>
                             </select>
                             <div class="theme-presets" id="settings-theme-presets">
-                                <button type="button" class="theme-option-card" data-theme="light">
-                                    <div class="theme-option-title">
-                                        <span data-i18n="lightMode">Light</span>
+                                <div class="theme-option-card theme-option-card-nopal" id="light-theme-card" data-theme="light">
+                                    <button type="button" class="theme-option-select" id="light-theme-select-btn">
+                                        <div class="theme-option-title">
+                                            <span data-i18n="lightMode">Light</span>
+                                        </div>
+                                        <div class="theme-option-swatches">
+                                            <span class="theme-option-swatch" style="background:#E8D8B5"></span>
+                                            <span class="theme-option-swatch" style="background:#F5EBD4"></span>
+                                            <span class="theme-option-swatch" style="background:#D8C69D"></span>
+                                            <span class="theme-option-swatch" style="background:#687A32"></span>
+                                            <span class="theme-option-swatch" style="background:#30291F"></span>
+                                        </div>
+                                    </button>
+                                    <div class="theme-option-wallpapers" id="light-theme-wallpapers" data-i18n-title="lightWallpaperPick" title="Elige el fondo del tema Desert">
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="0" title="Desert"><img src="/static/img/nopaldesert.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="1" title="Fondo 2"><img src="/static/img/fondoClaro1.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="2" title="Fondo 3"><img src="/static/img/fondoClaro2.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="3" title="Fondo 4"><img src="/static/img/fondoClaro3.png" alt=""></button>
                                     </div>
-                                    <div class="theme-option-swatches">
-                                        <span class="theme-option-swatch" style="background:#ffffff"></span>
-                                        <span class="theme-option-swatch" style="background:#f5f5f5"></span>
-                                        <span class="theme-option-swatch" style="background:#d1d5db"></span>
-                                        <span class="theme-option-swatch" style="background:#6b7280"></span>
-                                        <span class="theme-option-swatch" style="background:#1a1a1a"></span>
-                                    </div>
-                                </button>
+                                </div>
                                 <button type="button" class="theme-option-card" data-theme="dark">
                                     <div class="theme-option-title">
                                         <span data-i18n="darkMode">Dark</span>

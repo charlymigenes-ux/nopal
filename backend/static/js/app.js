@@ -9700,6 +9700,18 @@ async function refreshLaserQueue() {
     }
 }
 
+// Las claves de conexión USB (get_board_info en laser_service.py) son fijas
+// y las controlamos nosotros -- se pueden traducir. Las de red vienen del
+// firmware (respuesta [ESP420] de ESP3D/FluidNC, "Chip ID"/"FW version"/etc.)
+// y varían según la placa, así que no hay un set cerrado para mapear: esas
+// se muestran tal cual, igual que el resto de NOPAL cuando un valor no
+// mapeado no se adivina.
+const LASER_INFO_KEY_LABELS = {
+    Device: 'laserInfoDevice',
+    Chip: 'laserInfoChip',
+    Description: 'laserInfoDescription',
+};
+
 function renderLaserBoardInfo(info) {
     const container = document.getElementById('laser-info-grid');
     if (!container) return;
@@ -9710,7 +9722,7 @@ function renderLaserBoardInfo(info) {
     }
     container.innerHTML = entries.map(([key, value]) => `
         <div class="laser-info-compact-row">
-            <span>${escapeHtml(key)}</span>
+            <span>${escapeHtml(LASER_INFO_KEY_LABELS[key] ? t(LASER_INFO_KEY_LABELS[key]) : key)}</span>
             <strong>${escapeHtml(String(value))}</strong>
         </div>
     `).join('');
@@ -17099,7 +17111,7 @@ function setActiveThemeCard(theme) {
 }
 if (themeOptionCards.length) {
     themeOptionCards.forEach(card => {
-        if (card.id === 'custom-theme-card' || card.id === 'nopal-theme-card') return;
+        if (card.id === 'custom-theme-card' || card.id === 'nopal-theme-card' || card.id === 'light-theme-card') return;
         card.addEventListener('click', () => {
             const selectedTheme = card.dataset.theme;
             if (settingsTheme) settingsTheme.value = selectedTheme;
@@ -17127,7 +17139,7 @@ function getNopalWallpaperIndex() {
 function applyNopalWallpaper() {
     const index = getNopalWallpaperIndex();
     document.documentElement.style.setProperty('--nopal-wallpaper', `url('${NOPAL_WALLPAPER_OPTIONS[index]}')`);
-    document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
+    document.querySelectorAll('#nopal-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
         btn.classList.toggle('active', Number(btn.dataset.wallpaperIndex) === index);
     });
 }
@@ -17140,7 +17152,7 @@ if (nopalThemeSelectBtn) {
         saveSettings();
     });
 }
-document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
+document.querySelectorAll('#nopal-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
     btn.addEventListener('click', event => {
         event.stopPropagation();
         localStorage.setItem(NOPAL_WALLPAPER_KEY, btn.dataset.wallpaperIndex);
@@ -17152,6 +17164,48 @@ document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
     btn.querySelector('img')?.addEventListener('error', () => btn.classList.add('is-missing'), { once: true });
 });
 applyNopalWallpaper();
+
+// ── Fondo del tema Light (Desert): mismo patrón que el de NOPAL Style
+// arriba, pero con su propia clave de localStorage y su propia variable
+// CSS (--light-wallpaper, usada solo en body.light) para que elegir un
+// fondo acá no pise la selección de NOPAL Style ni viceversa. ──
+const LIGHT_WALLPAPER_KEY = 'lightThemeWallpaper';
+const LIGHT_WALLPAPER_OPTIONS = [
+    '/static/img/nopaldesert.png',
+    '/static/img/fondoClaro1.png',
+    '/static/img/fondoClaro2.png',
+    '/static/img/fondoClaro3.png',
+];
+
+function getLightWallpaperIndex() {
+    const stored = Number(localStorage.getItem(LIGHT_WALLPAPER_KEY));
+    return LIGHT_WALLPAPER_OPTIONS[stored] ? stored : 0;
+}
+
+function applyLightWallpaper() {
+    const index = getLightWallpaperIndex();
+    document.documentElement.style.setProperty('--light-wallpaper', `url('${LIGHT_WALLPAPER_OPTIONS[index]}')`);
+    document.querySelectorAll('#light-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.wallpaperIndex) === index);
+    });
+}
+
+const lightThemeSelectBtn = document.getElementById('light-theme-select-btn');
+if (lightThemeSelectBtn) {
+    lightThemeSelectBtn.addEventListener('click', () => {
+        if (settingsTheme) settingsTheme.value = 'light';
+        setActiveThemeCard('light');
+        saveSettings();
+    });
+}
+document.querySelectorAll('#light-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
+    btn.addEventListener('click', event => {
+        event.stopPropagation();
+        localStorage.setItem(LIGHT_WALLPAPER_KEY, btn.dataset.wallpaperIndex);
+        applyLightWallpaper();
+    });
+});
+applyLightWallpaper();
 
 function getThemeCycleOrder() {
     const order = ['light', 'dark', 'green', 'red'];
