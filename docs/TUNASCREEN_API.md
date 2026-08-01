@@ -48,6 +48,27 @@ Cada máquina contiene:
 reportar `temperature`, pero si su integración no permite cambiar el
 objetivo no anuncia `set_temperature`.
 
+### Cámara vinculada
+
+Si el plugin `camera-viewer` está instalado y esta máquina puntual tiene una
+cámara vinculada (propósito "timelapse" + dispositivo asociado, configurado
+desde el panel de NOPAL), la máquina anuncia la capability `camera` y
+`status.camera` viene con:
+
+```json
+{
+  "stream_url": "http://192.168.1.50:8080/stream",
+  "name": "Cámara del taller"
+}
+```
+
+`stream_url` puede ser relativa (cámaras USB servidas por el propio NOPAL,
+ej. `/api/cameras/usb/{id}/stream`) o absoluta (URL directa/ONVIF/RTSP
+puenteada) -- si es relativa, resolverla contra el mismo host base que ya se
+usa para `/api/tunascreen/*`. Sin la capability `camera`, `status.camera` es
+`null` -- no hay cámara vinculada a esa máquina (o el plugin no está
+instalado).
+
 ## Acciones
 
 `POST /api/tunascreen/action`

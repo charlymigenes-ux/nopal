@@ -131,6 +131,12 @@ def _active_jobs(
         if job.get("state") in ("printing", "paused"):
             jobs.append({
                 "machine_type": "printer",
+                # device_type/device_id identifican la máquina física puntual
+                # -- misma convención que bound_device del plugin camera-viewer
+                # (Klipper no tiene un id/serial propio expuesto acá, así que
+                # usa el nombre, igual que la asociación cámara-dispositivo).
+                "device_type": "klipper",
+                "device_id": printer.get("name"),
                 "name": printer.get("name"),
                 "filename": job.get("filename"),
                 "state": job.get("state"),
@@ -145,6 +151,8 @@ def _active_jobs(
         if job.get("state") in ("printing", "paused"):
             jobs.append({
                 "machine_type": "printer",
+                "device_type": "elegoo",
+                "device_id": printer.get("mainboard_id"),
                 "name": printer.get("name"),
                 "filename": job.get("filename"),
                 "state": job.get("state"),
@@ -159,6 +167,8 @@ def _active_jobs(
         if job.get("state") in ("printing", "paused"):
             jobs.append({
                 "machine_type": "printer",
+                "device_type": "flashforge",
+                "device_id": printer.get("serial_number"),
                 "name": printer.get("name"),
                 "filename": job.get("filename"),
                 "state": job.get("state"),
@@ -173,6 +183,8 @@ def _active_jobs(
         if job.get("state") in ("printing", "paused"):
             jobs.append({
                 "machine_type": "printer",
+                "device_type": "bambu",
+                "device_id": printer.get("id"),
                 "name": printer.get("name"),
                 "filename": job.get("filename"),
                 "state": job.get("state"),
@@ -191,6 +203,8 @@ def _active_jobs(
         current = job.get("current") or 0
         jobs.append({
             "machine_type": "printer",
+            "device_type": "marlin",
+            "device_id": job.get("device"),
             "name": marlin_names.get(job.get("device")) or job.get("device"),
             "filename": job.get("filename"),
             "state": job.get("state"),
@@ -203,10 +217,13 @@ def _active_jobs(
     laser_meta = {entry.get("host"): entry for entry in laser_cnc_registry}
     for job in laser_cnc_jobs:
         entry = laser_meta.get(job.get("host"), {})
+        kind = "cnc" if entry.get("kind") == "cnc" else "laser"
         total = job.get("total") or 0
         current = job.get("current") or 0
         jobs.append({
-            "machine_type": "cnc" if entry.get("kind") == "cnc" else "laser",
+            "machine_type": kind,
+            "device_type": kind,
+            "device_id": job.get("host"),
             "name": entry.get("name") or job.get("host"),
             "filename": job.get("filename"),
             "state": job.get("state"),

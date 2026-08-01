@@ -287,6 +287,36 @@ def _klipper_spool_capability(port: int) -> List[str]:
         return []
 
 
+def _camera_fields(device_type: str, device_id: str) -> Any:
+    """Las cámaras son un plugin, no un módulo de core -- si no está
+    instalado/cargado, o si esta máquina puntual no tiene ninguna cámara
+    vinculada (purpose="timelapse" + bound_device, ver camera_service.py del
+    plugin), no se anuncia la capability (mismo criterio que
+    _klipper_spool_capability). Devuelve (capabilities_extra, camera_dict) --
+    cada *_machine llama esto una sola vez y usa ambas partes: la lista para
+    sumar a "capabilities", el dict para el sub-objeto "camera" del status.
+
+    `device_id` debe coincidir con el mismo identificador que ya usa
+    dashboard_service._active_jobs() por marca (nombre para Klipper, serial/
+    mainboard_id para Bambu/Elegoo/FlashForge, ruta de dispositivo para
+    Marlin, host para láser/CNC) -- es el mismo valor que la UI de "vincular
+    cámara" del plugin ya usa para guardar bound_device."""
+    module = get_loaded_plugin_module("camera-viewer", "services.camera_service")
+    if module is None or not device_id:
+        return [], None
+    try:
+        bound = module.get_camera_bound_to(device_type, device_id)
+        if bound is None:
+            return [], None
+        camera = module.get_camera_by_id(bound["id"])
+    except Exception:
+        logger.exception("No se pudo consultar la cámara vinculada para %s:%s", device_type, device_id)
+        return [], None
+    if camera is None:
+        return [], None
+    return ["camera"], {"stream_url": camera.get("stream_url"), "name": camera.get("name")}
+
+
 def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     port = entry["port"]
     online = entry.get("status") == "online"
@@ -294,6 +324,10 @@ def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     job = entry.get("job") or {}
     hotend = data.get("extruder") or {}
     bed = data.get("heater_bed") or {}
+    # Klipper no tiene id/serial propio expuesto acá (a diferencia de las
+    # otras marcas) -- el vínculo de cámara usa el nombre, misma convención
+    # que dashboard_service._active_jobs() y que la UI de "vincular cámara".
+    camera_capabilities, camera = _camera_fields("klipper", entry.get("name"))
     return {
         "id": f"klipper:{port}",
         "name": entry.get("name") or f"Klipper {port}",
@@ -305,6 +339,7 @@ def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
             "movement",
             "extrusion",
             *_klipper_spool_capability(port),
+            *camera_capabilities,
         ],
         "actions": KLIPPER_ACTIONS,
         "status": {
@@ -312,6 +347,7 @@ def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
             "hotend": _temp_pair(hotend.get("temperature"), hotend.get("target")),
             "bed": _temp_pair(bed.get("temperature"), bed.get("target")),
             "job": _job_progress_from_normalized(job),
+            "camera": camera,
         },
     }
 
@@ -325,6 +361,7 @@ def _bambu_like_machine(entry: Dict[str, Any], brand: str) -> Dict[str, Any]:
     job = entry.get("job") or {}
     hotend = temps.get("extruder") or {}
     bed = temps.get("heater_bed") or {}
+    camera_capabilities, camera = _camera_fields(brand, entry.get("id"))
     return {
         "id": f"{brand}:{entry['id']}",
         "name": entry.get("name") or str(entry["id"]),
@@ -334,13 +371,14 @@ def _bambu_like_machine(entry: Dict[str, Any], brand: str) -> Dict[str, Any]:
         # Sin REST de home/jog/extrude para estas marcas todavía -- ver
         # docstring del módulo. Sin evidencia de link a Spoolman tampoco (a
         # diferencia de Klipper), así que no se anuncia "spool" acá.
-        "capabilities": ["temperature"],
+        "capabilities": ["temperature", *camera_capabilities],
         "actions": TRANSPORT_ACTIONS,
         "status": {
             "state": _normalize_job_state(job.get("state")) if online else "offline",
             "hotend": _temp_pair(hotend.get("current"), hotend.get("target")),
             "bed": _temp_pair(bed.get("current"), bed.get("target")),
             "job": _job_progress_from_normalized(job),
+            "camera": camera,
         },
     }
 
@@ -353,13 +391,14 @@ async def _marlin_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     online = registered_online and status is not None
     hotend = (status or {}).get("extruder") or {}
     bed = (status or {}).get("heater_bed") or {}
+    camera_capabilities, camera = _camera_fields("marlin", device)
     return {
         "id": f"marlin:{device}",
         "name": entry.get("name") or device,
         "type": "printer",
         "driver": "marlin",
         "online": online,
-        "capabilities": ["temperature", "movement", "extrusion"],
+        "capabilities": ["temperature", "movement", "extrusion", *camera_capabilities],
         "actions": MARLIN_ACTIONS,
         "status": {
             "state": _normalize_job_state((status or {}).get("state")) if online else "offline",
@@ -369,6 +408,7 @@ async def _marlin_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
                 {"x": status["x"], "y": status["y"], "z": status["z"]} if status else None
             ),
             "job": _job_progress_from_counts(job),
+            "camera": camera,
         },
     }
 
@@ -394,13 +434,18 @@ async def _laser_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
         # documentado para extracción todavía.
         capabilities = ["movement", "laser_power", "air_assist", "limits"]
 
+    # bound_device.type de una cámara vinculada a láser/CNC es "laser" o
+    # "cnc" (no un prefijo compartido) -- mismo `kind` que ya resolvimos
+    # arriba, ver dashboard_service._active_jobs() para la misma convención.
+    camera_capabilities, camera = _camera_fields(kind, host)
+
     return {
         "id": f"laser:{host}",
         "name": entry.get("name") or host,
         "type": kind,
         "driver": "grbl",
         "online": online,
-        "capabilities": capabilities,
+        "capabilities": [*capabilities, *camera_capabilities],
         "actions": CNC_ACTIONS if kind == "cnc" else LASER_ACTIONS,
         "status": {
             "state": _normalize_job_state((job or {}).get("state")) if online else "offline",
@@ -414,6 +459,7 @@ async def _laser_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
             "laser_power": (status or {}).get("speed") if kind != "cnc" else None,
             "spindle_rpm": (status or {}).get("speed") if kind == "cnc" else None,
             "job": _job_progress_from_counts(job),
+            "camera": camera,
         },
     }
 
