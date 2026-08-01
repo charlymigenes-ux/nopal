@@ -18,6 +18,7 @@ elegoo_printer_registry.json
 flashforge_printer_registry.json
 bambu_printer_registry.json
 camera_registry.json
+camera_captures/
 temperature_presets.json
 scheduled_prints.json
 pricing_config.json

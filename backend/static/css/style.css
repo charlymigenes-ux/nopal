@@ -14252,6 +14252,14 @@ body.green .option-switch {
    inicio). */
 .printer-card-camera:empty { display: none; }
 
+/* Tarjetas de cámara en las secciones dedicadas de Láser/CNC (ver
+   #laser-modal-camera / #cnc-modal-camera en index.html, montadas desde
+   renderLaserHostOptions/renderCncHostOptions) -- ocultas por completo
+   (encabezado incluido) cuando el dispositivo activo no tiene cámara
+   vinculada, no solo el contenedor interno vacío. */
+.laser-card-camera:has(#laser-modal-camera:empty),
+.cnc-card-camera:has(#cnc-modal-camera:empty) { display: none; }
+
 /* Ondas térmicas: una única capa SVG decorativa por impresora, alimentada
    por las temperaturas reales. Todas las transformaciones corren en CSS y
    no crean ciclos JavaScript adicionales durante el sondeo del dashboard. */
@@ -15414,6 +15422,16 @@ body.light .laser-fire-btn-wide {
 .tour-btn-primary:active {
     background: var(--accent-active);
 }
+
+/* Mostrar/ocultar la miniatura de cámara vinculada de la tarjeta (ver
+   ensureCameraToggleButton) -- solo se inyecta cuando el dispositivo tiene
+   de verdad una cámara vinculada, mismo estilo que el engranaje de escenas
+   LED de abajo para que ambos íconos se sientan parte de la misma familia. */
+.printer-card-camera-toggle { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border: 1px solid rgba(148,163,184,.35); border-radius: 9px; background: rgba(15,23,32,.75); color: #94a3b8; cursor: pointer; transition: border-color .15s, background-color .15s, color .15s; }
+.printer-card-camera-toggle:not(.is-enabled) { color: #64748b; opacity: .55; }
+.printer-card-camera-toggle:not(.is-enabled):hover { border-color: #94a3b8; background: rgba(148,163,184,.13); opacity: .85; }
+.printer-card-camera-toggle.is-enabled { border-color: rgba(var(--accent-rgb), .32); background: rgba(7,20,17,.78); color: var(--accent); }
+.printer-card-camera-toggle.is-enabled:hover { border-color: var(--accent); background: rgba(var(--accent-rgb), .13); }
 
 /* Configuración de escenas LED por máquina */
 .machine-led-settings-btn { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border: 1px solid rgba(148,163,184,.35); border-radius: 9px; background: rgba(15,23,32,.75); color: #94a3b8; cursor: pointer; transition: border-color .15s, background-color .15s, color .15s; }

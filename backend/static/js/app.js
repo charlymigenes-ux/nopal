@@ -6950,20 +6950,107 @@ function reconcileDashboardGrid(grid, nextHtml) {
     grid.replaceChildren(fragment);
 }
 
+// Preferencia por dispositivo de "¿se muestra la miniatura de cámara en su
+// tarjeta?" -- separada de si HAY una cámara vinculada (eso lo resuelve
+// mountCameraCardsIn contra /api/cameras): esto es solo la elección del
+// usuario de tenerla visible u oculta, persistida entre sesiones. Default
+// visible=true (mantiene el comportamiento previo) para quien ya la veía.
+const CAMERA_CARD_VISIBILITY_KEY = 'cameraCardVisibleDevices';
+
+function getCameraCardVisibilityMap() {
+    try {
+        return JSON.parse(localStorage.getItem(CAMERA_CARD_VISIBILITY_KEY) || '{}');
+    } catch (error) {
+        return {};
+    }
+}
+
+function isCameraCardVisible(deviceKey) {
+    const map = getCameraCardVisibilityMap();
+    return map[deviceKey] !== false;
+}
+
+function setCameraCardVisible(deviceKey, visible) {
+    const map = getCameraCardVisibilityMap();
+    if (visible) delete map[deviceKey]; else map[deviceKey] = false;
+    localStorage.setItem(CAMERA_CARD_VISIBILITY_KEY, JSON.stringify(map));
+}
+
+// Ícono de mostrar/ocultar cámara inyectado junto al resto de los controles
+// rápidos de la tarjeta (mismo patrón que ensureMachineLedButton para el
+// engranaje de escenas LED) -- solo aparece si el dispositivo tiene de
+// verdad una cámara vinculada, así que se crea desde mountCameraCardsIn una
+// vez que ya sabe la respuesta, nunca de entrada en el HTML estático.
+function ensureCameraToggleButton(card, deviceKey) {
+    const header = card.querySelector('.printer-card-top');
+    if (!header) return;
+    let button = header.querySelector('.printer-card-camera-toggle');
+    if (!button) {
+        const actions = header.querySelector('.printer-quick-actions') || header;
+        actions.insertAdjacentHTML('afterbegin', `
+            <button type="button" class="printer-card-camera-toggle" data-cam-toggle-key="${escapeHtml(deviceKey)}" title="${escapeHtml(t('cameraToggleTitle'))}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>`);
+        button = header.querySelector('.printer-card-camera-toggle');
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            const key = button.dataset.camToggleKey;
+            const nextVisible = !isCameraCardVisible(key);
+            setCameraCardVisible(key, nextVisible);
+            button.classList.toggle('is-enabled', nextVisible);
+            const container = card.querySelector('[data-cam-container]');
+            if (!container) return;
+            if (nextVisible) {
+                const [deviceType, deviceId] = (container.dataset.camContainer || '').split(':');
+                if (deviceType && deviceId) window.NopalCameraCard?.mount(container, { deviceType, deviceId, compact: true });
+            } else {
+                window.NopalCameraCard?.unmount(container);
+                container.innerHTML = '';
+            }
+        });
+    }
+    button.classList.toggle('is-enabled', isCameraCardVisible(deviceKey));
+}
+
 // Monta la tarjeta de cámara (ver camera-card.js) en cada placeholder
 // `[data-cam-container]` de un grid ya renderizado -- formato del atributo:
 // "deviceType:deviceId" (ver elegooPrinterCardHtml/bambuPrinterCardHtml/
-// flashforgePrinterCardHtml/laserDashboardCardHtml). No hace nada si el
-// contenedor ya tiene una tarjeta montada (evita reiniciar el stream en
-// vivo en cada refresh -- ver el guard en syncDashboardNode para el grid
-// reconciliado, y el chequeo de abajo para los grids que sí reemplazan su
-// innerHTML por completo, como las secciones propias de cada marca).
-function mountCameraCardsIn(root) {
+// flashforgePrinterCardHtml/laserDashboardCardHtml). Resuelve contra
+// /api/cameras una sola vez por llamada (no una por tarjeta) para saber
+// cuáles de estos placeholders corresponden de verdad a un dispositivo con
+// cámara vinculada -- ahí, y solo ahí, aparece el ícono de mostrar/ocultar
+// (ensureCameraToggleButton) y se monta la miniatura si la preferencia
+// guardada la deja visible.
+async function mountCameraCardsIn(root) {
     if (!root || !window.NopalCameraCard) return;
-    root.querySelectorAll('[data-cam-container]').forEach(container => {
-        if (container.childElementCount > 0) return;
+    const containers = [...root.querySelectorAll('[data-cam-container]')];
+    if (!containers.length) return;
+    let cameras = [];
+    try {
+        const response = await fetch('/api/cameras');
+        if (!response.ok) return;
+        cameras = (await response.json()).cameras || [];
+    } catch (error) {
+        return;
+    }
+    containers.forEach(container => {
         const [deviceType, deviceId] = (container.dataset.camContainer || '').split(':');
         if (!deviceType || !deviceId) return;
+        const card = container.closest('.printer-card');
+        const camera = cameras.find(c => c.purpose === 'timelapse' && c.bound_device
+            && c.bound_device.type === deviceType && String(c.bound_device.id) === String(deviceId));
+        if (!camera) {
+            card?.querySelector('.printer-card-camera-toggle')?.remove();
+            if (container.childElementCount > 0) {
+                window.NopalCameraCard.unmount(container);
+                container.innerHTML = '';
+            }
+            return;
+        }
+        const deviceKey = `${deviceType}:${deviceId}`;
+        if (card) ensureCameraToggleButton(card, deviceKey);
+        if (!isCameraCardVisible(deviceKey)) return;
+        if (container.childElementCount > 0) return;
         window.NopalCameraCard.mount(container, { deviceType, deviceId, compact: true });
     });
 }
@@ -7167,7 +7254,12 @@ function renderPrinters(printersInput) {
 
     decorateMachineCardsWithLedSettings(columnsRoot);
     bindMarlinTemperatureActions(columnsRoot);
-    mountCameraCardsIn(columnsRoot);
+    // La vista de cámara en la tarjeta solo aplica al modo "mixto" (todos
+    // los tipos en una sola grilla) -- en columnas separadas por tipo
+    // (Impresoras/Láser/CNC) las tarjetas quedan más angostas y la miniatura
+    // se ve desproporcionada, además de duplicar lo que ya se ve en modo
+    // mixto. Pedido explícito del usuario sobre una captura de ambos modos.
+    if (groupMode === 'mixed') mountCameraCardsIn(columnsRoot);
 
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         if (boundPrinterCards.has(card)) return;
@@ -9954,6 +10046,8 @@ function renderLaserHostOptions(activeHost) {
         consoleNameEl.textContent = (device && device.hostname) || laserHostLabel(activeHost) || '—';
     }
     renderLaserBedMap(activeHost);
+    const cameraContainer = document.getElementById('laser-modal-camera');
+    if (cameraContainer && activeHost) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'laser', deviceId: activeHost });
 }
 
 let laserBedMapWorkArea = null;
@@ -11753,6 +11847,8 @@ function renderCncHostOptions(activeHost) {
     if (resolvedHost) selectEl.value = resolvedHost;
     const activeDevice = cncDevices.find(device => device.host === resolvedHost);
     applyCncMachineProfile(activeDevice?.machineProfile);
+    const cameraContainer = document.getElementById('cnc-modal-camera');
+    if (cameraContainer && resolvedHost) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'cnc', deviceId: resolvedHost });
 }
 
 // La cola de trabajos es compartida entre láser y CNC a nivel de backend (un
@@ -15626,13 +15722,17 @@ function switchSection(sectionName) {
     }
     if (sectionName === 'laser') {
         stopCncPolling();
+        window.NopalCameraCard?.unmount(document.getElementById('cnc-modal-camera'));
         loadLaserSection();
     } else if (sectionName === 'cnc') {
         stopLaserPolling();
+        window.NopalCameraCard?.unmount(document.getElementById('laser-modal-camera'));
         loadCncSection();
     } else {
         stopLaserPolling();
         stopCncPolling();
+        window.NopalCameraCard?.unmount(document.getElementById('laser-modal-camera'));
+        window.NopalCameraCard?.unmount(document.getElementById('cnc-modal-camera'));
     }
     if (document.getElementById('laser-gamepad-modal')?.classList.contains('active')) {
         updateGamepadConsoleForSection();

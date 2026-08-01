@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=274">
+    <link rel="stylesheet" href="/static/css/style.css?v=275">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -812,6 +812,16 @@
                         </div>
                     </div>
 
+                    <div class="laser-card laser-card-camera" id="laser-camera-card">
+                        <div class="card-header-std">
+                            <span class="card-header-std-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                            </span>
+                            <h2 class="card-header-std-title" data-i18n="printerModuleCamera">Cámara</h2>
+                        </div>
+                        <div id="laser-modal-camera"></div>
+                    </div>
+
                     <div class="option-switch laser-source-switch" id="laser-source-switch" hidden>
                         <button type="button" class="option-switch-btn" data-value="sd" data-i18n="laserSourceMemory">Memoria (SD)</button>
                         <button type="button" class="option-switch-btn active" data-value="queue" data-i18n="laserSourceQueue">Cola (NOPAL)</button>
@@ -1223,6 +1233,13 @@
                                 <span class="cnc-pin-pill" data-pin="D">Door</span>
                                 <span class="cnc-pin-pill" data-pin="A">Lim A</span>
                             </div>
+                        </div>
+
+                        <div class="cnc-card cnc-card-camera" id="cnc-camera-card">
+                            <div class="cnc-card-header">
+                                <span class="cnc-card-title" data-i18n="printerModuleCamera">CÁMARA</span>
+                            </div>
+                            <div id="cnc-modal-camera"></div>
                         </div>
 
                         <div class="cnc-card" id="cnc-job-card">
@@ -4123,7 +4140,7 @@
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=219"></script>
+    <script src="/static/js/app.js?v=220"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
