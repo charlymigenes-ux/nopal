@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 
 from backend.auth_deps import require_auth
 from backend.services.klipper_service import (
@@ -51,7 +52,12 @@ async def get_printers(user: dict = Depends(require_auth)):
 async def get_all_status(request: Request, user: dict = Depends(require_auth)):
     """Obtener estado de todas las impresoras"""
     try:
-        printers = get_all_printers_status(host=request.url.hostname)
+        # get_all_printers_status hace requests HTTP sincrónicas a cada
+        # Moonraker detectado -- si una instancia responde lento (ej. con una
+        # impresión en curso consumiendo CPU/prioridad en el host de
+        # Klipper), correrla directo acá bloquearía el event loop de FastAPI
+        # entero (todas las demás tarjetas/endpoints) hasta que termine.
+        printers = await run_in_threadpool(get_all_printers_status, host=request.url.hostname)
 
         return {
             "count": len(printers),
