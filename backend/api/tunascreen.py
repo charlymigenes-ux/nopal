@@ -101,6 +101,26 @@ async def tunascreen_machine_detail(machine_id: str, device: dict = Depends(requ
     return machine
 
 
+@router.get("/api/tunascreen/machine/{machine_id}/macros")
+async def tunascreen_machine_macros(machine_id: str, device: dict = Depends(require_device_token)):
+    try:
+        return {"macros": await tunascreen_service.get_machine_macros(machine_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/tunascreen/machine/{machine_id}/console")
+async def tunascreen_machine_console(
+    machine_id: str,
+    count: int = 50,
+    device: dict = Depends(require_device_token),
+):
+    try:
+        return {"messages": await tunascreen_service.get_machine_console(machine_id, count)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/api/tunascreen/action")
 async def tunascreen_action(payload: Dict[str, Any], device: dict = Depends(require_device_token)):
     machine_id = payload.get("machine_id")

@@ -92,13 +92,21 @@ Acciones versión 1:
 
 - Comunes: `pause`, `resume`, `cancel`.
 - Movimiento: `home`, `move`.
-- Impresora: `extrude`, `set_temperature`.
+- Impresora: `extrude`, `set_temperature`, `set_fan`,
+  `set_speed_factor`, `set_flow_factor`.
+- Klipper: `set_z_offset`, `run_macro`, `send_console_command`.
+- Marlin: `send_console_command` (sin macros ni offset Z normalizado).
 - Láser: `set_laser_power`, `set_air_assist`.
 - CNC: `set_work_zero`, `set_spindle`, `set_coolant`.
 
 Todas las entradas se validan en NOPAL. Una acción desconocida, un eje
 inválido, un valor fuera de rango o una máquina fuera de línea devuelve
 HTTP 400 y nunca se envía al hardware.
+
+Los macros y el historial de consola de Klipper se consultan con:
+
+- `GET /api/tunascreen/machine/{id}/macros`
+- `GET /api/tunascreen/machine/{id}/console?count=50`
 
 ## Responsabilidad de la interfaz
 

@@ -135,7 +135,10 @@ class TestListMachinesShape:
         assert machine["id"] == "klipper:7125"
         assert machine["type"] == "printer"
         assert machine["driver"] == "klipper"
-        assert machine["capabilities"] == ["temperature", "movement", "extrusion"]
+        assert {
+            "temperature", "movement", "extrusion", "fan", "speed_override",
+            "flow_override", "z_offset", "macros", "console",
+        }.issubset(machine["capabilities"])
         assert "move" in machine["actions"]
         assert "set_temperature" in machine["actions"]
         assert machine["status"]["state"] == "printing"
@@ -222,6 +225,59 @@ class TestDispatchAction:
         }])
         with pytest.raises(ValueError, match="fuera de línea"):
             await tunascreen_service.dispatch_action("klipper:7125", "home", {})
+
+    @pytest.mark.parametrize(
+        ("action", "params", "expected"),
+        [
+            ("set_fan", {"percent": 50}, "M106 S128"),
+            ("set_speed_factor", {"percent": 125}, "M220 S125"),
+            ("set_flow_factor", {"percent": 95}, "M221 S95"),
+            ("set_z_offset", {"offset": -0.15}, "SET_GCODE_OFFSET Z=-0.15 MOVE=1"),
+        ],
+    )
+    async def test_klipper_advanced_controls_emit_validated_gcode(
+        self, monkeypatch, action, params, expected
+    ):
+        monkeypatch.setattr(klipper_service, "get_all_printers_status", lambda host=None: [{
+            "name": "ET4-AC", "port": 7125, "status": "online",
+            "data": {"extruder": {}, "heater_bed": {}}, "job": {},
+        }])
+        called = {}
+        monkeypatch.setattr(
+            klipper_service,
+            "send_console_command",
+            lambda port, command: called.update(port=port, command=command) or True,
+        )
+
+        result = await tunascreen_service.dispatch_action("klipper:7125", action, params)
+
+        assert result == {"success": True}
+        assert called == {"port": 7125, "command": expected}
+
+    async def test_macro_name_is_validated_before_dispatch(self, monkeypatch):
+        monkeypatch.setattr(klipper_service, "get_all_printers_status", lambda host=None: [{
+            "name": "ET4-AC", "port": 7125, "status": "online",
+            "data": {"extruder": {}, "heater_bed": {}}, "job": {},
+        }])
+        with pytest.raises(ValueError, match="Macro inv"):
+            await tunascreen_service.dispatch_action(
+                "klipper:7125", "run_macro", {"macro": "SAFE_MACRO\nM112"}
+            )
+
+    async def test_klipper_macros_are_exposed_only_for_supported_machine(self, monkeypatch):
+        monkeypatch.setattr(klipper_service, "get_all_printers_status", lambda host=None: [{
+            "name": "ET4-AC", "port": 7125, "status": "online",
+            "data": {"extruder": {}, "heater_bed": {}}, "job": {},
+        }])
+        monkeypatch.setattr(
+            klipper_service,
+            "get_macros",
+            lambda port: [{"name": "PURGE", "description": "Purga"}],
+        )
+
+        assert await tunascreen_service.get_machine_macros("klipper:7125") == [
+            {"name": "PURGE", "description": "Purga"}
+        ]
 
     async def test_invalid_move_params_are_rejected(self, monkeypatch):
         monkeypatch.setattr(klipper_service, "get_all_printers_status", lambda host=None: [{

@@ -52,6 +52,12 @@ KLIPPER_ACTIONS = [
     "move",
     "extrude",
     "set_temperature",
+    "set_fan",
+    "set_speed_factor",
+    "set_flow_factor",
+    "set_z_offset",
+    "run_macro",
+    "send_console_command",
 ]
 MARLIN_ACTIONS = [
     *TRANSPORT_ACTIONS,
@@ -59,6 +65,10 @@ MARLIN_ACTIONS = [
     "move",
     "extrude",
     "set_temperature",
+    "set_fan",
+    "set_speed_factor",
+    "set_flow_factor",
+    "send_console_command",
 ]
 LASER_ACTIONS = [
     *TRANSPORT_ACTIONS,
@@ -338,6 +348,12 @@ def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
             "temperature",
             "movement",
             "extrusion",
+            "fan",
+            "speed_override",
+            "flow_override",
+            "z_offset",
+            "macros",
+            "console",
             *_klipper_spool_capability(port),
             *camera_capabilities,
         ],
@@ -346,6 +362,11 @@ def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
             "state": _normalize_job_state(job.get("state")) if online else "offline",
             "hotend": _temp_pair(hotend.get("temperature"), hotend.get("target")),
             "bed": _temp_pair(bed.get("temperature"), bed.get("target")),
+            "position": data.get("position"),
+            "fan_percent": data.get("fan_percent"),
+            "speed_factor": data.get("speed_factor"),
+            "flow_factor": data.get("flow_factor"),
+            "z_offset": data.get("z_offset"),
             "job": _job_progress_from_normalized(job),
             "camera": camera,
         },
@@ -398,7 +419,10 @@ async def _marlin_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
         "type": "printer",
         "driver": "marlin",
         "online": online,
-        "capabilities": ["temperature", "movement", "extrusion", *camera_capabilities],
+        "capabilities": [
+            "temperature", "movement", "extrusion", "fan",
+            "speed_override", "flow_override", "console", *camera_capabilities,
+        ],
         "actions": MARLIN_ACTIONS,
         "status": {
             "state": _normalize_job_state((status or {}).get("state")) if online else "offline",
@@ -624,6 +648,12 @@ _ACTION_CAPABILITY = {
     "move": "movement",
     "extrude": "extrusion",
     "set_temperature": "temperature",
+    "set_fan": "fan",
+    "set_speed_factor": "speed_override",
+    "set_flow_factor": "flow_override",
+    "set_z_offset": "z_offset",
+    "run_macro": "macros",
+    "send_console_command": "console",
     "set_laser_power": "laser_power",
     "set_air_assist": "air_assist",
     "set_spindle": "spindle",
@@ -704,6 +734,22 @@ async def _dispatch_klipper(port: int, action: str, params: Dict[str, Any]) -> D
             "RESTORE_GCODE_STATE NAME=TUNA_SCREEN_EXTRUDE"
         )
         ok = klipper_service.send_console_command(port, script)
+    elif action == "set_fan":
+        percent = _float_param(params, "percent", 0, 100)
+        ok = klipper_service.send_console_command(port, f"M106 S{round(percent * 255 / 100)}" if percent else "M107")
+    elif action == "set_speed_factor":
+        percent = _float_param(params, "percent", 10, 300)
+        ok = klipper_service.send_console_command(port, f"M220 S{percent:g}")
+    elif action == "set_flow_factor":
+        percent = _float_param(params, "percent", 10, 300)
+        ok = klipper_service.send_console_command(port, f"M221 S{percent:g}")
+    elif action == "set_z_offset":
+        offset = _float_param(params, "offset", -10, 10)
+        ok = klipper_service.send_console_command(port, f"SET_GCODE_OFFSET Z={offset:g} MOVE=1")
+    elif action == "run_macro":
+        ok = klipper_service.run_macro(port, _macro_param(params))
+    elif action == "send_console_command":
+        ok = klipper_service.send_console_command(port, _command_param(params))
     else:
         raise ValueError(f"Acción no soportada para Klipper: {action}")
     return {"success": bool(ok)}
@@ -738,6 +784,19 @@ async def _dispatch_marlin(device: str, action: str, params: Dict[str, Any]) -> 
             _heater_param(params),
             _float_param(params, "target", 0, 500),
         )
+    elif action == "set_fan":
+        percent = _float_param(params, "percent", 0, 100)
+        ok = await marlin_printer_service.send_console_command(
+            device, f"M106 S{round(percent * 255 / 100)}" if percent else "M107"
+        )
+    elif action == "set_speed_factor":
+        percent = _float_param(params, "percent", 10, 300)
+        ok = await marlin_printer_service.send_console_command(device, f"M220 S{percent:g}")
+    elif action == "set_flow_factor":
+        percent = _float_param(params, "percent", 10, 300)
+        ok = await marlin_printer_service.send_console_command(device, f"M221 S{percent:g}")
+    elif action == "send_console_command":
+        ok = await marlin_printer_service.send_console_command(device, _command_param(params))
     else:
         raise ValueError(f"Acción no soportada para Marlin: {action}")
     return {"success": bool(ok)}
@@ -883,6 +942,46 @@ def _heater_param(params: Dict[str, Any]) -> str:
     if normalized is None:
         raise ValueError("Calentador inválido")
     return normalized
+
+
+def _command_param(params: Dict[str, Any]) -> str:
+    command = str(params.get("command", "")).strip()
+    if not command:
+        raise ValueError("Falta el parámetro command")
+    if len(command) > 4096 or "\x00" in command:
+        raise ValueError("Comando inválido")
+    return command
+
+
+def _macro_param(params: Dict[str, Any]) -> str:
+    macro = str(params.get("macro", "")).strip().upper()
+    if not macro or len(macro) > 128 or not all(char.isalnum() or char == "_" for char in macro):
+        raise ValueError("Macro inválido")
+    return macro
+
+
+async def get_machine_macros(machine_id: str) -> List[Dict[str, str]]:
+    brand, raw_id = _split_machine_id(machine_id)
+    machine = await get_machine(machine_id)
+    if machine is None:
+        raise ValueError("Máquina no encontrada")
+    if not machine.get("online"):
+        raise ValueError("La máquina está fuera de línea")
+    if brand != "klipper" or "macros" not in machine.get("capabilities", []):
+        raise ValueError("Macros no soportados para esta máquina")
+    return klipper_service.get_macros(int(raw_id))
+
+
+async def get_machine_console(machine_id: str, count: int = 50) -> List[Dict[str, Any]]:
+    brand, raw_id = _split_machine_id(machine_id)
+    machine = await get_machine(machine_id)
+    if machine is None:
+        raise ValueError("Máquina no encontrada")
+    if not machine.get("online"):
+        raise ValueError("La máquina está fuera de línea")
+    if brand != "klipper" or "console" not in machine.get("capabilities", []):
+        return []
+    return klipper_service.get_console_messages(int(raw_id), count=max(1, min(count, 200)))
 
 
 # ── WebSocket: difusión de estado en vivo ──
