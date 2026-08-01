@@ -296,6 +296,61 @@ function goToNotificationTarget(item) {
 
 let lastNotificationsData = { count: 0, items: [] };
 
+// ── Alertas descartadas ("no molestar de nuevo" para una máquina que se
+// sabe apagada a propósito, etc.) — se guardan por "id" estable (ver
+// notification_service.py) en localStorage, no en el servidor: no hay
+// concepto de usuario/sesión en ese registro y el descarte es una
+// preferencia puramente local del navegador. Se podan solas cuando la
+// condición que las generó desaparece (ver pruneDismissedAlertIds), así que
+// si la misma máquina vuelve a fallar más tarde la alerta reaparece.
+const DISMISSED_ALERTS_KEY = 'dismissedAlertIds';
+
+function getDismissedAlertIds() {
+    try {
+        return new Set(JSON.parse(localStorage.getItem(DISMISSED_ALERTS_KEY) || '[]'));
+    } catch (error) {
+        return new Set();
+    }
+}
+
+function saveDismissedAlertIds(idSet) {
+    localStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify([...idSet]));
+}
+
+function dismissAlert(id) {
+    if (!id) return;
+    const dismissed = getDismissedAlertIds();
+    dismissed.add(id);
+    saveDismissedAlertIds(dismissed);
+}
+
+function pruneDismissedAlertIds(activeItems) {
+    const activeIds = new Set((activeItems || []).map(item => item.id).filter(Boolean));
+    const dismissed = getDismissedAlertIds();
+    let changed = false;
+    dismissed.forEach(id => {
+        if (!activeIds.has(id)) {
+            dismissed.delete(id);
+            changed = true;
+        }
+    });
+    if (changed) saveDismissedAlertIds(dismissed);
+}
+
+// Salud "efectiva" del sistema tal como la ve el usuario: igual al cálculo
+// del backend (dashboard_service.get_dashboard_summary) pero descontando
+// las alertas que el usuario ya descartó -- si la única alerta de error era
+// una impresora apagada a propósito y la descarta, el pill/título de la
+// pestaña deben dejar de mostrar "error" sin esperar al próximo poll del
+// panel completo.
+function computeEffectiveHealth() {
+    const dismissed = getDismissedAlertIds();
+    const active = (lastNotificationsData.items || []).filter(item => !(item.id && dismissed.has(item.id)));
+    if (active.some(item => item.severity === 'error')) return 'error';
+    if (active.some(item => item.severity === 'warning')) return 'warning';
+    return 'ok';
+}
+
 async function loadTopbarNotifications() {
     if (!currentAuthUser) return;
     try {
@@ -303,7 +358,10 @@ async function loadTopbarNotifications() {
         if (!response.ok) return;
         const data = await response.json();
         lastNotificationsData = data;
+        pruneDismissedAlertIds(data.items || []);
         renderTopbarNotifications(data);
+        updateStatusPill();
+        updateStatusTabTitle();
     } catch (error) {
         console.error(error);
     }
@@ -3490,42 +3548,58 @@ function renderPanelHealth(data) {
     if (grid) {
         const uptimeText = system.uptime_seconds != null ? formatUptime(system.uptime_seconds) : '—';
         const updateText = system.update_status === 'update_available' ? t('panelUpdateAvailable') : t('panelUpdateUpToDate');
-        const healthValueClass = system.health === 'error' ? 'panel-info-row-value-error'
-            : system.health === 'warning' ? 'panel-info-row-value-warning'
+        const health = computeEffectiveHealth();
+        const healthValueClass = health === 'error' ? 'panel-info-row-value-error'
+            : health === 'warning' ? 'panel-info-row-value-warning'
             : '';
         grid.innerHTML = [
-            panelInfoRow(PANEL_ICON_SHIELD, t('panelHealthLabel'), panelHealthLabel(system.health), healthValueClass),
+            panelInfoRow(PANEL_ICON_SHIELD, t('panelHealthLabel'), panelHealthLabel(health), healthValueClass),
             panelInfoRow(PANEL_ICON_SERVER, t('panelServicesLabel'), `${system.services_online ?? 0} / ${system.services_total ?? 0}`),
             panelInfoRow(PANEL_ICON_CLOCK, t('panelUptimeLabel'), uptimeText),
             panelInfoRow(PANEL_ICON_REFRESH, t('panelUpdatesLabel'), updateText),
         ].join('');
     }
 
+    updateStatusPill();
+}
+
+// Aplica el estado (color/texto/parpadeo/indicador de actualización) al pill
+// del panel superior. Separado de renderPanelHealth para poder refrescarlo
+// al instante al descartar una alerta, sin esperar al próximo poll de
+// /api/system (loadDashboardPanel) que es el que trae `data.system`.
+function updateStatusPill() {
     const pill = document.getElementById('panel-status-pill');
     const pillText = document.getElementById('panel-status-text');
-    if (pill && pillText) {
-        pill.classList.remove('panel-status-ok', 'panel-status-warning', 'panel-status-error');
-        pill.classList.add(`panel-status-${system.health || 'ok'}`);
-        pillText.textContent = system.health === 'error' ? t('panelSystemError')
-            : system.health === 'warning' ? t('panelSystemWarning')
-            : t('panelSystemActive');
-        // Parpadea solo cuando hay algo crítico en impresoras/láser/CNC —
-        // "error" es la única severidad que esas fuentes usan hoy (ver
-        // notification_service.py), así que health==='error' ya implica eso.
-        pill.classList.toggle('panel-status-blink', system.health === 'error');
-    }
+    if (!pill || !pillText) return;
+    const health = computeEffectiveHealth();
+    pill.classList.remove('panel-status-ok', 'panel-status-warning', 'panel-status-error');
+    pill.classList.add(`panel-status-${health}`);
+    pillText.textContent = health === 'error' ? t('panelSystemError')
+        : health === 'warning' ? t('panelSystemWarning')
+        : t('panelSystemActive');
+    // Parpadea solo cuando hay algo crítico en impresoras/láser/CNC sin
+    // descartar -- "error" es la única severidad que esas fuentes usan hoy
+    // (ver notification_service.py), así que health==='error' ya implica eso.
+    pill.classList.toggle('panel-status-blink', health === 'error');
+    pill.classList.toggle('panel-status-has-update', !!getUpdateNotification());
 }
 
 function getCriticalDeviceAlerts() {
+    const dismissed = getDismissedAlertIds();
     return (lastNotificationsData.items || []).filter(item =>
-        item.severity === 'error' && (item.source === 'printer' || item.source === 'laser'));
+        item.severity === 'error' && (item.source === 'printer' || item.source === 'laser')
+        && !(item.id && dismissed.has(item.id)));
+}
+
+function getUpdateNotification() {
+    return (lastNotificationsData.items || []).find(item => item.source === 'update');
 }
 
 function closePanelStatusPopup() {
     document.getElementById('panel-status-popup')?.remove();
 }
 
-function openPanelStatusPopup(alerts) {
+function openPanelStatusPopup(alerts, updateItem) {
     closePanelStatusPopup();
     const pill = document.getElementById('panel-status-pill');
     if (!pill) return;
@@ -3535,33 +3609,63 @@ function openPanelStatusPopup(alerts) {
     popup.innerHTML = `
         <div class="panel-status-popup-header">${escapeHtml(t('panelCriticalPopupTitle'))}</div>
         ${alerts.map((alert, index) => `
-            <button type="button" class="panel-status-popup-item" data-alert-index="${index}">
-                ${PANEL_ALERT_ICON_ERROR}
-                <span>${escapeHtml(alert.message)}</span>
+            <div class="panel-status-popup-item">
+                <button type="button" class="panel-status-popup-item-main" data-alert-index="${index}">
+                    ${PANEL_ALERT_ICON_ERROR}
+                    <span>${escapeHtml(alert.message)}</span>
+                </button>
+                ${alert.id ? `<button type="button" class="panel-status-popup-dismiss" data-dismiss-id="${escapeHtml(alert.id)}" title="${escapeHtml(t('panelAlertDismiss'))}" aria-label="${escapeHtml(t('panelAlertDismiss'))}">&times;</button>` : ''}
+            </div>
+        `).join('')}
+        ${updateItem ? `
+            <button type="button" class="panel-status-popup-update">
+                ${PANEL_ALERT_ICON_INFO}
+                <span>${escapeHtml(updateItem.message)}</span>
+                <span class="panel-status-popup-update-badge">${escapeHtml(t('panelUpdateAvailable'))}</span>
             </button>
-        `).join('')}`;
+        ` : ''}`;
     pill.appendChild(popup);
-    popup.querySelectorAll('.panel-status-popup-item').forEach(btn => {
+    popup.querySelectorAll('.panel-status-popup-item-main').forEach(btn => {
         btn.addEventListener('click', event => {
             event.stopPropagation();
             goToNotificationTarget(alerts[Number(btn.dataset.alertIndex)]);
             closePanelStatusPopup();
         });
     });
+    popup.querySelectorAll('.panel-status-popup-dismiss').forEach(btn => {
+        btn.addEventListener('click', event => {
+            event.stopPropagation();
+            dismissAlert(btn.dataset.dismissId);
+            updateStatusPill();
+            updateStatusTabTitle();
+            const remaining = getCriticalDeviceAlerts();
+            const update = getUpdateNotification();
+            if (remaining.length || update) {
+                openPanelStatusPopup(remaining, update);
+            } else {
+                closePanelStatusPopup();
+            }
+        });
+    });
+    const updateBtn = popup.querySelector('.panel-status-popup-update');
+    if (updateBtn) {
+        updateBtn.addEventListener('click', event => {
+            event.stopPropagation();
+            goToNotificationTarget(updateItem);
+            closePanelStatusPopup();
+        });
+    }
 }
 
 document.getElementById('panel-status-pill')?.addEventListener('click', event => {
     event.stopPropagation();
     const alerts = getCriticalDeviceAlerts();
-    if (!alerts.length) return;
-    if (alerts.length === 1) {
-        goToNotificationTarget(alerts[0]);
-        return;
-    }
+    const updateItem = getUpdateNotification();
+    if (!alerts.length && !updateItem) return;
     if (document.getElementById('panel-status-popup')) {
         closePanelStatusPopup();
     } else {
-        openPanelStatusPopup(alerts);
+        openPanelStatusPopup(alerts, updateItem);
     }
 });
 document.addEventListener('click', closePanelStatusPopup);
@@ -3724,8 +3828,10 @@ function renderPanelJobs(data) {
                     ${layerText ? `<span>${escapeHtml(t('panelLayer'))}<strong>${escapeHtml(layerText)}</strong></span>` : ''}
                     <span class="panel-job-state">${escapeHtml(job.state || '—')}</span>
                 </div>
+                ${job.device_type && job.device_id ? `<div class="panel-job-camera" data-cam-container="${escapeHtml(job.device_type)}:${escapeHtml(job.device_id)}"></div>` : ''}
             </div>`;
     }).join('');
+    mountCameraCardsIn(list);
 }
 
 function renderPanelAlerts(data) {
@@ -4140,6 +4246,8 @@ function closePrinterModal() {
     const banner = document.getElementById('printer-modal-error-banner');
     if (banner) banner.hidden = true;
     closeConfigFileEditor();
+    const cameraContainer = document.getElementById('printer-modal-camera');
+    if (cameraContainer) window.NopalCameraCard?.unmount(cameraContainer);
 }
 
 // Compartido entre el banner de error (solo visible si Klipper está en un
@@ -4530,12 +4638,14 @@ async function openPrinterModal(printer) {
     const toolheadContainer = document.getElementById('printer-modal-toolhead');
     const queueContainer = document.getElementById('printer-modal-queue');
     const configFilesContainer = document.getElementById('printer-modal-configfiles');
+    const cameraContainer = document.getElementById('printer-modal-camera');
 
     if (statsContainer) statsContainer.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
     if (temperaturesContainer) temperaturesContainer.innerHTML = '';
     if (toolheadContainer) toolheadContainer.innerHTML = '';
     if (queueContainer) queueContainer.innerHTML = '';
     if (configFilesContainer) configFilesContainer.innerHTML = '';
+    if (cameraContainer) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'klipper', deviceId: printer.name });
 
     printerModal.classList.add('active');
     applyPrinterModulesLayout();
@@ -4597,6 +4707,7 @@ const PRINTER_MODULE_ICON_TOOLHEAD = '<svg width="16" height="16" viewBox="0 0 2
 const PRINTER_MODULE_ICON_TEMPERATURES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"/></svg>';
 const PRINTER_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
 const PRINTER_MODULE_ICON_CONFIGFILES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+const PRINTER_MODULE_ICON_CAMERA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
 const PRINTER_MODULE_LOCK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 const PRINTER_MODULE_DRAG_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
 
@@ -4606,6 +4717,12 @@ const PRINTER_MODULE_DEFS = [
     { key: 'temperatures', group: 'extra', labelKey: 'temperatures', iconSvg: PRINTER_MODULE_ICON_TEMPERATURES, locked: false },
     { key: 'queue', group: 'extra', labelKey: 'printerModuleQueue', iconSvg: PRINTER_MODULE_ICON_QUEUE, locked: false },
     { key: 'configfiles', group: 'extra', labelKey: 'printerModuleConfigFiles', iconSvg: PRINTER_MODULE_ICON_CONFIGFILES, locked: false },
+    // Solo se completa con contenido si hay una cámara vinculada (purpose
+    // "timelapse" + bound_device) a esta impresora puntual -- ver
+    // window.NopalCameraCard en el plugin camera-viewer. Sin el plugin
+    // instalado, o sin cámara vinculada, la columna queda vacía (nunca
+    // rompe el resto del modal, mismo criterio "opcional" de siempre).
+    { key: 'camera', group: 'extra', labelKey: 'printerModuleCamera', iconSvg: PRINTER_MODULE_ICON_CAMERA, locked: false },
 ];
 
 const PRINTER_MODULE_NONLOCKED_KEYS = PRINTER_MODULE_DEFS.filter(mod => !mod.locked).map(mod => mod.key);
@@ -5842,6 +5959,7 @@ function laserDashboardCardHtml(entry) {
                     </div>
                 </div>
             ` : ''}
+            <div class="printer-card-camera" data-cam-container="${kind === 'cnc' ? 'cnc' : 'laser'}:${escapeHtml(host)}"></div>
         </div>
     `;
 }
@@ -5937,14 +6055,28 @@ function requestNotificationPermission() {
 // que suena una alerta — así queda claro por qué sonó, esté o no enfocada.
 const ORIGINAL_TAB_TITLE = document.title;
 let tabTitleFlashTimeout = null;
+// Prefijo persistente que refleja la salud del sistema (ver
+// computeEffectiveHealth) para que se pueda ver un error/advertencia con
+// solo mirar la pestaña del navegador, sin tener NOPAL enfocado. El flash de
+// una alerta puntual (ver notifyUser) tiene prioridad temporal sobre esto,
+// pero al terminar restaura este prefijo en vez del título original a secas.
+let statusTabTitlePrefix = '';
 
 function flashBrowserTabTitle(text) {
     if (tabTitleFlashTimeout) clearTimeout(tabTitleFlashTimeout);
     document.title = `🔔 ${text}`;
     tabTitleFlashTimeout = setTimeout(() => {
-        document.title = ORIGINAL_TAB_TITLE;
+        document.title = `${statusTabTitlePrefix}${ORIGINAL_TAB_TITLE}`;
         tabTitleFlashTimeout = null;
     }, 5000);
+}
+
+function updateStatusTabTitle() {
+    const health = computeEffectiveHealth();
+    statusTabTitlePrefix = health === 'error' ? '⛔ ' : health === 'warning' ? '⚠️ ' : '';
+    if (!tabTitleFlashTimeout) {
+        document.title = `${statusTabTitlePrefix}${ORIGINAL_TAB_TITLE}`;
+    }
 }
 
 function notifyUser(title, body, tone = 'warning') {
@@ -6749,6 +6881,15 @@ function syncDashboardNode(current, incoming) {
     }
     if (current.nodeType !== Node.ELEMENT_NODE) return;
 
+    // La tarjeta de cámara (ver camera-card.js) monta su propio subárbol
+    // dentro de este contenedor de forma asincrónica, fuera de este ciclo de
+    // render -- si se la dejara diffear como cualquier otro nodo, el
+    // "incoming" siempre la ve vacía (el HTML del server no sabe qué cámara
+    // se montó) y la poda de "sobran hijos" de más abajo la destruiría en
+    // cada refresh del grid. El atributo es estable entre renders (mismo
+    // deviceType:deviceId), así que no hace falta sincronizarlo tampoco.
+    if (current.hasAttribute('data-cam-container')) return;
+
     [...current.attributes].forEach(attribute => {
         if (!incoming.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
     });
@@ -6807,6 +6948,24 @@ function reconcileDashboardGrid(grid, nextHtml) {
         }
     });
     grid.replaceChildren(fragment);
+}
+
+// Monta la tarjeta de cámara (ver camera-card.js) en cada placeholder
+// `[data-cam-container]` de un grid ya renderizado -- formato del atributo:
+// "deviceType:deviceId" (ver elegooPrinterCardHtml/bambuPrinterCardHtml/
+// flashforgePrinterCardHtml/laserDashboardCardHtml). No hace nada si el
+// contenedor ya tiene una tarjeta montada (evita reiniciar el stream en
+// vivo en cada refresh -- ver el guard en syncDashboardNode para el grid
+// reconciliado, y el chequeo de abajo para los grids que sí reemplazan su
+// innerHTML por completo, como las secciones propias de cada marca).
+function mountCameraCardsIn(root) {
+    if (!root || !window.NopalCameraCard) return;
+    root.querySelectorAll('[data-cam-container]').forEach(container => {
+        if (container.childElementCount > 0) return;
+        const [deviceType, deviceId] = (container.dataset.camContainer || '').split(':');
+        if (!deviceType || !deviceId) return;
+        window.NopalCameraCard.mount(container, { deviceType, deviceId, compact: true });
+    });
 }
 
 function renderPrinters(printersInput) {
@@ -7008,6 +7167,7 @@ function renderPrinters(printersInput) {
 
     decorateMachineCardsWithLedSettings(columnsRoot);
     bindMarlinTemperatureActions(columnsRoot);
+    mountCameraCardsIn(columnsRoot);
 
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         if (boundPrinterCards.has(card)) return;
@@ -13517,6 +13677,7 @@ function elegooPrinterCardHtml(printer) {
                 </div>
             ` : ''}
             ${printerDiagToggleHtml('elegoo', printer.id)}
+            <div class="printer-card-camera" data-cam-container="elegoo:${escapeHtml(printer.id)}"></div>
         </div>
     `;
 }
@@ -13562,6 +13723,7 @@ async function refreshElegooPrintersGrid() {
                 handleElegooPrinterAction(btn.dataset.action, btn.dataset.elegooId);
             });
         });
+        mountCameraCardsIn(grid);
     } catch (error) {
         console.error(error);
     }
@@ -13864,6 +14026,7 @@ function flashforgePrinterCardHtml(printer) {
                 </div>
             ` : ''}
             ${printerDiagToggleHtml('flashforge', printer.id)}
+            <div class="printer-card-camera" data-cam-container="flashforge:${escapeHtml(printer.id)}"></div>
         </div>
     `;
 }
@@ -13909,6 +14072,7 @@ async function refreshFlashforgePrintersGrid() {
                 handleFlashforgePrinterAction(btn.dataset.action, btn.dataset.flashforgeId);
             });
         });
+        mountCameraCardsIn(grid);
     } catch (error) {
         console.error(error);
     }
@@ -14220,6 +14384,7 @@ function bambuPrinterCardHtml(printer) {
                 </div>
             ` : ''}
             ${printerDiagToggleHtml('bambu', printer.id)}
+            <div class="printer-card-camera" data-cam-container="bambu:${escapeHtml(printer.id)}"></div>
         </div>
     `;
 }
@@ -14265,6 +14430,7 @@ async function refreshBambuPrintersGrid() {
                 handleBambuPrinterAction(btn.dataset.action, btn.dataset.bambuId);
             });
         });
+        mountCameraCardsIn(grid);
     } catch (error) {
         console.error(error);
     }
@@ -14618,6 +14784,8 @@ function closeMarlinPrinterModal() {
     if (marlinModalFastInterval) { clearInterval(marlinModalFastInterval); marlinModalFastInterval = null; }
     if (marlinModalSlowInterval) { clearInterval(marlinModalSlowInterval); marlinModalSlowInterval = null; }
     marlinModalDevice = null;
+    const cameraContainer = document.getElementById('marlin-printer-modal-camera');
+    if (cameraContainer) window.NopalCameraCard?.unmount(cameraContainer);
 }
 
 document.getElementById('marlin-printer-modal-close')?.addEventListener('click', closeMarlinPrinterModal);
@@ -14629,6 +14797,9 @@ async function openMarlinPrinterModal(device) {
     const nameEl = document.getElementById('marlin-printer-modal-name');
     if (nameEl) nameEl.textContent = (entry && entry.name) || device;
     document.getElementById('marlin-printer-modal')?.classList.add('active');
+
+    const cameraContainer = document.getElementById('marlin-printer-modal-camera');
+    if (cameraContainer) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'marlin', deviceId: device });
 
     await renderMarlinPrintCardShell(device);
 

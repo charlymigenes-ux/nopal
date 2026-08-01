@@ -961,6 +961,25 @@ body.light .nav-item {
     animation: panelStatusBlink 1.1s ease-in-out infinite;
 }
 
+/* Punto discreto (sin parpadeo, no es una emergencia) que indica que hay una
+   actualización disponible aunque el sistema esté sano -- así el indicador
+   sigue siendo visible/clickeable sin pintar todo el pill de "error". */
+.panel-status-pill.panel-status-has-update {
+    cursor: pointer;
+}
+
+.panel-status-pill.panel-status-has-update::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--card-bg);
+}
+
 @keyframes panelStatusBlink {
     0%, 100% { border-color: #ef4444; box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
     50% { border-color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.55); }
@@ -1004,6 +1023,19 @@ body.light .nav-item {
 .panel-status-popup-item {
     display: flex;
     align-items: center;
+    gap: 2px;
+    border-radius: var(--radius-sm);
+}
+
+.panel-status-popup-item:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.panel-status-popup-item-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
     gap: 8px;
     padding: 8px 10px;
     border: none;
@@ -1015,15 +1047,69 @@ body.light .nav-item {
     cursor: pointer;
 }
 
-.panel-status-popup-item:hover {
-    background: rgba(239, 68, 68, 0.12);
+.panel-status-popup-item-main span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .panel-status-popup-item img,
-.panel-status-popup-item svg {
+.panel-status-popup-item svg,
+.panel-status-popup-update img,
+.panel-status-popup-update svg {
     flex-shrink: 0;
     width: 16px;
     height: 16px;
+}
+
+.panel-status-popup-dismiss {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-right: 6px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.panel-status-popup-dismiss:hover {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+}
+
+.panel-status-popup-update {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+    padding: 8px 10px;
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.78rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.panel-status-popup-update:hover {
+    background: rgba(var(--accent-rgb), 0.12);
+}
+
+.panel-status-popup-update-badge {
+    margin-left: auto;
+    flex-shrink: 0;
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--accent);
 }
 
 .panel-status-dot {
@@ -1148,12 +1234,33 @@ body.light .nav-item {
     gap: 12px;
 }
 
-.panel-row-3 {
-    grid-template-columns: 1.1fr 1fr 1fr;
+/* Grid único del hero (antes dos filas independientes, panel-row-3 +
+   panel-row-2): "Dispositivos conectados" va apilada debajo de "Estado del
+   sistema", "Red y conectividad" apilada debajo de "Rendimiento del host",
+   y "Trabajos en curso" ocupa las 2 filas como columna alta a la derecha --
+   layout pedido explícitamente por el usuario sobre una captura de la app. */
+.panel-hero-grid {
+    grid-template-columns: 1.1fr 1fr 1.3fr;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+        "estado host trabajos"
+        "dispositivos red trabajos";
 }
 
-.panel-row-2 {
-    grid-template-columns: 1fr 1fr;
+.panel-card-pos-estado { grid-area: estado; }
+.panel-card-pos-host { grid-area: host; }
+.panel-card-pos-dispositivos { grid-area: dispositivos; }
+.panel-card-pos-red { grid-area: red; }
+.panel-card-pos-trabajos {
+    grid-area: trabajos;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.panel-card-pos-trabajos .panel-jobs-list {
+    flex: 1;
+    max-height: none;
 }
 
 .panel-row-bottom {
@@ -1542,7 +1649,8 @@ body.light .nav-item {
     grid-template-columns: auto 1fr auto;
     grid-template-areas:
         "icon info progress"
-        "icon meta meta";
+        "icon meta meta"
+        "camera camera camera";
     column-gap: 10px;
     row-gap: 4px;
     padding: 10px 12px;
@@ -1551,6 +1659,14 @@ body.light .nav-item {
     border: 1px solid var(--border);
     align-items: center;
 }
+
+/* Miniatura de la cámara vinculada al dispositivo de este trabajo (ver
+   camera-card.js) -- solo existe en el HTML cuando el trabajo trae
+   device_type/device_id Y esa máquina tiene una cámara vinculada, así que
+   la fila de abajo no ocupa espacio en el caso común (sin cámara). */
+.panel-job-camera { grid-area: camera; }
+.panel-job-camera:empty { display: none; }
+.panel-job-camera .cam-live-wrap { max-height: 90px; }
 
 .panel-job-icon {
     grid-area: icon;
@@ -14128,6 +14244,14 @@ body.green .option-switch {
     cursor: pointer;
 }
 
+/* Contenedor de la miniatura de cámara vinculada (ver camera-card.js,
+   plugin camera-viewer) -- vacío por default (la mayoría de las tarjetas no
+   tienen ninguna cámara vinculada), así que no debe ocupar espacio ni sumar
+   el gap del flex column de .printer-card cuando no hay nada montado
+   adentro (mismo criterio que .panel-load-chart:empty en el panel de
+   inicio). */
+.printer-card-camera:empty { display: none; }
+
 /* Ondas térmicas: una única capa SVG decorativa por impresora, alimentada
    por las temperaturas reales. Todas las transformaciones corren en CSS y
    no crean ciclos JavaScript adicionales durante el sondeo del dashboard. */
@@ -14610,7 +14734,15 @@ body.green .option-switch {
         grid-template-columns: 1fr;
     }
 
-    .panel-row-3,
+    .panel-hero-grid {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto;
+        grid-template-areas:
+            "estado host"
+            "dispositivos red"
+            "trabajos trabajos";
+    }
+
     .panel-row-bottom {
         grid-template-columns: 1fr 1fr;
     }
@@ -14778,8 +14910,16 @@ body.green .option-switch {
         max-height: 90vh;
     }
 
-    .panel-row-3,
-    .panel-row-2,
+    .panel-hero-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: none;
+        grid-template-areas: none;
+    }
+
+    .panel-card-pos-trabajos .panel-jobs-list {
+        max-height: 190px;
+    }
+
     .panel-row-bottom {
         grid-template-columns: 1fr;
     }

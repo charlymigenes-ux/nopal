@@ -1,10 +1,37 @@
 import asyncio
+import time
 from typing import Any, Dict, List
 
 from backend.services.klipper_service import get_all_printers_status
 from backend.services.laser_service import get_laser_jobs_with_errors, get_registered_lasers_status
 from backend.services.plugin_loader_service import get_loaded_plugin_module
 from backend.utils import is_git_update_available
+
+# Ventana de eventos de movimiento a mostrar como "atención requerida" --
+# get_recent_motion_events() del plugin es un buffer en memoria, no
+# persistido, así que sin este corte un evento viejo quedaría en la lista
+# para siempre (o hasta que se llene el buffer por otras cámaras).
+CAMERA_MOTION_WINDOW_S = 300
+
+
+def _get_camera_motion_alerts() -> List[Dict[str, Any]]:
+    """Las cámaras son un plugin, no un módulo de core -- si no está
+    instalado/cargado no hay eventos que agregar, se trata como [] en vez
+    de romper el resto de las notificaciones."""
+    module = get_loaded_plugin_module("camera-viewer", "services.timelapse_service")
+    if module is None:
+        return []
+    events = module.get_recent_motion_events(since=time.time() - CAMERA_MOTION_WINDOW_S)
+    return [
+        {
+            "id": f"camera-motion:{event['camera_id']}:{int(event['timestamp'])}",
+            "severity": "warning",
+            "source": "camera",
+            "section": "settings",
+            "message": f"Movimiento detectado en {event.get('camera_name') or 'una cámara'}",
+        }
+        for event in events
+    ]
 
 
 async def _get_accessories_status() -> List[Dict[str, Any]]:
@@ -40,28 +67,30 @@ async def get_notifications() -> Dict[str, Any]:
         # solo podía mandar al usuario a la sección "dashboard" en general,
         # nunca abrir la tarjeta/modal de la impresora que reportó el error.
         if printer.get("status") == "offline":
-            items.append({"severity": "error", "source": "printer", "section": "dashboard", "port": printer.get("port"), "message": f"{name} desconectada"})
+            items.append({"id": f"printer:{printer.get('port')}", "severity": "error", "source": "printer", "section": "dashboard", "port": printer.get("port"), "message": f"{name} desconectada"})
         else:
             job_state = printer.get("job", {}).get("state")
             if job_state in ("paused", "error"):
-                items.append({"severity": "warning", "source": "printer", "section": "dashboard", "port": printer.get("port"), "message": f"{name}: {job_state}"})
+                items.append({"id": f"printer-job:{printer.get('port')}", "severity": "warning", "source": "printer", "section": "dashboard", "port": printer.get("port"), "message": f"{name}: {job_state}"})
 
     for laser in lasers:
         if not laser.get("online"):
             label = laser.get("name") or laser.get("host", "Dispositivo")
             section = "cnc" if laser.get("kind") == "cnc" else "laser"
-            items.append({"severity": "error", "source": "laser", "section": section, "message": f"{label} desconectado"})
+            items.append({"id": f"laser:{laser.get('host')}", "severity": "error", "source": "laser", "section": section, "message": f"{label} desconectado"})
 
     for job in get_laser_jobs_with_errors():
         section = laser_kind_by_host.get(job["host"], "laser")
-        items.append({"severity": "error", "source": "laser", "section": section, "message": f"Trabajo en {job['host']} con error"})
+        items.append({"id": f"laser-job:{job['host']}", "severity": "error", "source": "laser", "section": section, "message": f"Trabajo en {job['host']} con error"})
 
     for accessory in accessories:
         if accessory.get("on") is None:
             label = accessory.get("name", "Accesorio")
-            items.append({"severity": "warning", "source": "accessory", "section": "dashboard", "message": f"{label} no responde"})
+            items.append({"id": f"accessory:{label}", "severity": "warning", "source": "accessory", "section": "dashboard", "message": f"{label} no responde"})
 
     if update_available:
-        items.append({"severity": "info", "source": "update", "section": "settings", "message": "Actualización disponible"})
+        items.append({"id": "update", "severity": "info", "source": "update", "section": "settings", "message": "Actualización disponible"})
+
+    items.extend(_get_camera_motion_alerts())
 
     return {"count": len(items), "items": items}

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=273">
+    <link rel="stylesheet" href="/static/css/style.css?v=274">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -225,8 +225,8 @@
                 <section class="panel-hero">
                     <div class="panel-hero-collapsible" id="panel-hero-collapsible">
                     <div class="panel-hero-collapsible-inner">
-                    <div class="panel-row panel-row-3">
-                        <article class="panel-card">
+                    <div class="panel-row panel-hero-grid">
+                        <article class="panel-card panel-card-pos-estado">
                             <h3 class="panel-card-title" data-i18n="panelHealthTitle">Estado del sistema</h3>
                             <div class="panel-health-body">
                                 <div class="panel-health-logo">
@@ -236,23 +236,7 @@
                             </div>
                         </article>
 
-                        <article class="panel-card">
-                            <h3 class="panel-card-title" data-i18n="panelHostTitle">Rendimiento del host</h3>
-                            <div class="panel-host-gauges" id="panel-host-gauges"></div>
-                            <div class="panel-load-chart" id="panel-load-chart"></div>
-                        </article>
-
-                        <article class="panel-card">
-                            <div class="panel-card-header">
-                                <h3 class="panel-card-title" data-i18n="panelNetworkTitle">Red y conectividad</h3>
-                                <svg class="panel-network-wifi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
-                            </div>
-                            <div class="panel-network-grid" id="panel-network-grid"></div>
-                        </article>
-                    </div>
-
-                    <div class="panel-row panel-row-2">
-                        <article class="panel-card">
+                        <article class="panel-card panel-card-pos-dispositivos">
                             <div class="panel-card-header">
                                 <h3 class="panel-card-title" data-i18n="panelDevicesConnectedTitle">Dispositivos conectados</h3>
                                 <button type="button" class="panel-see-all-btn" id="panel-devices-see-all" data-i18n="panelSeeAll">Ver todos</button>
@@ -260,7 +244,21 @@
                             <div class="panel-devices-row" id="panel-devices-row"></div>
                         </article>
 
-                        <article class="panel-card">
+                        <article class="panel-card panel-card-pos-host">
+                            <h3 class="panel-card-title" data-i18n="panelHostTitle">Rendimiento del host</h3>
+                            <div class="panel-host-gauges" id="panel-host-gauges"></div>
+                            <div class="panel-load-chart" id="panel-load-chart"></div>
+                        </article>
+
+                        <article class="panel-card panel-card-pos-red">
+                            <div class="panel-card-header">
+                                <h3 class="panel-card-title" data-i18n="panelNetworkTitle">Red y conectividad</h3>
+                                <svg class="panel-network-wifi-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                            </div>
+                            <div class="panel-network-grid" id="panel-network-grid"></div>
+                        </article>
+
+                        <article class="panel-card panel-card-pos-trabajos">
                             <div class="panel-card-header">
                                 <h3 class="panel-card-title" data-i18n="panelJobsTitle">Trabajos en curso</h3>
                                 <button type="button" class="panel-see-all-btn" id="panel-jobs-see-all" data-i18n="panelSeeAll">Ver todos</button>
@@ -2415,6 +2413,9 @@
                 <div class="printer-modal-column" data-module="configfiles">
                     <div id="printer-modal-configfiles"></div>
                 </div>
+                <div class="printer-modal-column" data-module="camera">
+                    <div id="printer-modal-camera"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -2639,6 +2640,9 @@
                 <div class="printer-modal-column">
                     <div id="marlin-printer-modal-print"></div>
                     <div id="marlin-printer-modal-console"></div>
+                </div>
+                <div class="printer-modal-column">
+                    <div id="marlin-printer-modal-camera"></div>
                 </div>
             </div>
         </div>
@@ -4119,7 +4123,7 @@
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=218"></script>
+    <script src="/static/js/app.js?v=219"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
