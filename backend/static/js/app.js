@@ -5565,8 +5565,10 @@ function renderInitialDeviceLoaders() {
 async function loadPrinters() {
     if (printersLoading || document.hidden) return;
     printersLoading = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
     try {
-        const response = await fetch('/api/printers/status');
+        const response = await fetch('/api/printers/status', { signal: controller.signal });
         if (!response.ok) throw new Error('No se pudo cargar el estado de impresoras');
         const data = await response.json();
         allPrinters = data.printers || [];
@@ -5582,6 +5584,7 @@ async function loadPrinters() {
         dashboardPrintersLoadError = true;
         renderPrinters(allPrinters);
     } finally {
+        clearTimeout(timer);
         printersLoading = false;
     }
 }

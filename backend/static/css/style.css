@@ -15420,3 +15420,82 @@ body.light .laser-fire-btn-wide {
 .material-preset-remove { height: 34px; border: 1px solid rgba(239,68,68,.35); border-radius: 8px; background: rgba(239,68,68,.08); color: #ff6b6b; cursor: pointer; }
 .material-preset-add { margin-top: 10px; }
 @media (max-width: 620px) { .material-preheat-list { grid-template-columns: 1fr; } .material-preset-editor-row { grid-template-columns: 1fr 1fr 32px; } .material-preset-editor-row > input { grid-column: 1 / -1; } }
+
+/* ── Aviso de bloqueo en celular ── */
+/* NOPAL es un dashboard denso (grillas, previews 3D, editores) pensado para
+   escritorio/tablet -- en un celular es inutilizable, no solo incómodo. En
+   vez de dejar entrar y que se vea roto, se bloquea el acceso y se manda al
+   usuario a la app TUNA-Screen, hecha específicamente para pantalla chica.
+   Vive fuera de .app-shell, oculto por defecto: solo aparece por debajo de
+   640px de ancho (mismo corte que el resto de los media queries del
+   archivo), sin necesidad de JS -- así nunca hay un parpadeo de contenido
+   antes de que se aplique. */
+#mobile-block-overlay {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    #mobile-block-overlay {
+        display: flex;
+        position: fixed;
+        inset: 0;
+        z-index: 20000;
+        align-items: center;
+        justify-content: center;
+        padding: 28px 22px;
+        background: var(--bg);
+    }
+    /* La app real queda montada detrás pero inalcanzable -- bloquear scroll
+       evita que quede "colgando" debajo del overlay al hacer swipe. */
+    body {
+        overflow: hidden;
+    }
+}
+
+.mobile-block-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px 26px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.mobile-block-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-md);
+    background: rgba(var(--accent-rgb), .12);
+    color: var(--accent);
+    display: grid;
+    place-items: center;
+    font-size: 1.6rem;
+    margin-bottom: 4px;
+}
+
+.mobile-block-card h1 {
+    font-size: 1.15rem;
+    color: var(--text);
+    margin: 0;
+}
+
+.mobile-block-card p {
+    font-size: .88rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.mobile-block-card .btn {
+    width: 100%;
+    margin-top: 6px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}

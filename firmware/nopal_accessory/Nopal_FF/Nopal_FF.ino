@@ -88,6 +88,10 @@
  *   NOPAL:LED:255,0,0
  *   NOPAL:WS:0,255,0
  *   NOPAL:WSSEG:0,4,255,80,0
+ *   NOPAL:WS2:0,255,0        (tira 2, opcional -- ver WS2812_2_ENABLE)
+ *   NOPAL:WS3:0,255,0        (tira 3, opcional -- ver WS2812_3_ENABLE)
+ *   NOPAL:WSSEG2:0,4,255,80,0
+ *   NOPAL:WSSEG3:0,4,255,80,0
  *   NOPAL:BUZZER?
  *   NOPAL:BUZZER:BEEP
  *   NOPAL:BUZZER:DOUBLE
@@ -98,7 +102,8 @@
  *
  * Respuesta de NOPAL:ID? (protocolo 4):
  *   NOPAL,role=accessory,chip=...,fw=4.2.0-ff,protocol=4,relays=4,pwm_led=1,
- *   ws2812=1,ws2812_count=8,buzzer=1,buzzer_pin=...,buzzer_pattern=...,
+ *   ws2812=1,ws2812_count=8,ws2812_2=0,ws2812_2_count=0,ws2812_3=0,
+ *   ws2812_3_count=0,buzzer=1,buzzer_pin=...,buzzer_pattern=...,
  *   wifi=1,wifi_connected=...,wifi_mode=...,hostname=...,ip=...,ota=1,
  *   ota_path=/update,uptime_ms=...,free_heap=...
  *
@@ -114,6 +119,8 @@
  *                              las mismas credenciales que ElegantOTA)
  *   http://IP/api/led      -> control completo o por segmento:
  *                              POST mode=ws2812&start=0&count=4&r=..&g=..&b=..
+ *                              &strip=0 (opcional, 0/1/2 -- tiras 2 y 3,
+ *                              ver WS2812_2_ENABLE/WS2812_3_ENABLE)
  *                              (misma autenticación)
  *   http://IP/api/buzzer   -> GET consulta el patrón activo, POST
  *                              action=BEEP|DOUBLE|ON|OFF|ALARM|READY|...
@@ -143,6 +150,42 @@
 #endif
 
 #include <ElegantOTA.h>
+
+// Adafruit_NeoPixel se incluye acá arriba (junto con el resto de
+// #include), aunque los objetos de tira recién se declaran mucho más
+// abajo (necesitan WS2812_PIN/WS2812_COUNT, definidos en "CONFIGURACIÓN
+// DE PINES") -- así el tipo Adafruit_NeoPixel ya existe antes de que
+// Arduino inserte sus prototipos autogenerados, evitando el mismo
+// problema que BuzzerStep/BuzzerPattern (ver el comentario grande donde
+// vivían antes, antes de moverse acá arriba, en "ESTADO DEL BUZZER
+// ACTIVO" más abajo).
+#include <Adafruit_NeoPixel.h>
+
+// BuzzerStep/BuzzerPattern también se definen bien arriba, por el mismo
+// motivo: son parámetros de buzzerPatternName()/startBuzzerPattern(), y
+// necesitan existir antes de que Arduino intente autogenerar prototipos
+// para esas funciones (algo que hace SIEMPRE, sin importar si ya hay un
+// forward declaration puesto más adelante en el archivo -- confirmado
+// compilando de verdad, Arduino IDE). El resto de su documentación
+// (patrones, arrays BUZZER_PATTERN_*) sigue viviendo en su lugar
+// original, más abajo, en "ESTADO DEL BUZZER ACTIVO".
+struct BuzzerStep {
+  bool on;
+  uint16_t durationMs;
+};
+
+enum class BuzzerPattern : uint8_t {
+  OFF,
+  CONTINUOUS,
+  BEEP,
+  DOUBLE_BEEP,
+  READY,
+  WORKING,
+  WAITING,
+  ALARM,
+  MAINTENANCE,
+  DISCONNECTED
+};
 
 
 // ============================================================================
@@ -222,6 +265,19 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define WS2812_PIN 23
 #define WS2812_COUNT 20
 
+// Tiras 2 y 3 (opcionales, desactivadas por defecto): mismo mecanismo que
+// la tira 1, en pines libres de este mapeo (no los usa ningún relé, el
+// PWM RGB, la tira 1, el LED de estado ni el buzzer) y que tampoco son de
+// strapping. Poné el _ENABLE en true y ajustá el pin/cantidad si cableás
+// una segunda o tercera tira NeoPixel.
+#define WS2812_2_ENABLE false
+#define WS2812_2_PIN 21
+#define WS2812_2_COUNT 8
+
+#define WS2812_3_ENABLE false
+#define WS2812_3_PIN 22
+#define WS2812_3_COUNT 8
+
 // LED integrado de la placa ("Dev Module" típico) -- indica que el
 // firmware está vivo. GPIO2 está libre en este mapeo de pines (no lo usa
 // ningún relé/PWM/WS2812), a diferencia de ESP8266 (ver abajo).
@@ -236,6 +292,28 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 // segura para un buzzer activo.
 #define BUZZER_ENABLE true
 #define BUZZER_PIN 4
+
+// Sensor analógico de temperatura/humedad (2 salidas de voltaje separadas,
+// T y H, sin protocolo digital -- no es un SHT10 real pese a como lo
+// vendían, es una placa con un op-amp LM324 acondicionando dos sensores
+// crudos). Sin datasheet de esta placa puntual, el firmware NO convierte
+// a °C/%HR todavía -- reporta milivolts crudos de cada canal, para
+// calibrar después comparando con un termómetro/higrómetro de referencia.
+// GPIO34/35 son ADC1 (funcionan con WiFi activo, a diferencia de ADC2) y
+// son "input only" -- no los usa ningún relé/PWM/WS2812/LED/buzzer de
+// arriba, y al ser de solo entrada son ideales para un sensor analógico
+// que nunca necesita ser salida.
+//
+// *** OJO ANTES DE CABLEAR ***: esta placa se alimenta a +5V, y no hay
+// datasheet que confirme que sus salidas T/H se quedan por debajo de
+// 3.3V (el máximo seguro de un GPIO/ADC del ESP32 -- pasarse daña el
+// pin). Si al medir con un multímetro T o H superan ~3.3V con la placa
+// alimentada, no los conectes directo: hace falta un divisor resistivo
+// (dos resistencias, ej. 10k+20k) entre esa salida y el GPIO para bajar
+// el voltaje a un rango seguro antes de wirearlo.
+#define TH_SENSOR_ENABLE true
+#define TH_SENSOR_T_PIN 34
+#define TH_SENSOR_H_PIN 35
 
 
 #elif defined(ESP8266)
@@ -284,6 +362,20 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define WS2812_PIN 2      // D4
 #define WS2812_COUNT 20
 
+// Tiras 2 y 3: en este mapeo de ESP8266 los GPIO disponibles ya están
+// todos asignados (relés 5/4/14/12, PWM RGB 13/15/0, tira 1 en GPIO2,
+// buzzer en GPIO16) -- no queda un pin libre y seguro para una segunda o
+// tercera tira sin reordenar el mapa de pines de arriba. Quedan
+// desactivadas acá (mismo mecanismo que en ESP32) solo para que el resto
+// del código compile igual en las dos plataformas.
+#define WS2812_2_ENABLE false
+#define WS2812_2_PIN 2
+#define WS2812_2_COUNT 8
+
+#define WS2812_3_ENABLE false
+#define WS2812_3_PIN 2
+#define WS2812_3_COUNT 8
+
 // GPIO2 (D4), el LED integrado habitual de las NodeMCU/Wemos, ya lo usa
 // WS2812_PIN en este mapeo -- no queda un pin libre y seguro para un LED
 // de estado dedicado sin arriesgar un conflicto con la tira WS2812. Sin
@@ -298,6 +390,15 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 // porque PWM_LED_PIN_B se movió arriba a GPIO0 (sin cablear en esta placa).
 #define BUZZER_ENABLE true
 #define BUZZER_PIN 16  // D0
+
+// Sensor T/H analógico: no soportado en ESP8266 -- solo trae un pin
+// analógico (A0), y este sensor necesita dos canales independientes (T y
+// H) al mismo tiempo. Queda desactivado acá solo para que el resto del
+// código compile igual en las dos plataformas (mismo criterio que
+// WS2812_2/3_ENABLE más arriba).
+#define TH_SENSOR_ENABLE false
+#define TH_SENSOR_T_PIN 0
+#define TH_SENSOR_H_PIN 0
 
 #endif
 
@@ -353,6 +454,24 @@ const char* const RELAY_NAMES[RELAY_COUNT] = {
   #define NOPAL_BUZZER_ACTIVE_HIGH 1
 #endif
 
+// Buzzer PASIVO (sin oscilador propio: necesita una señal PWM oscilando a
+// una frecuencia audible para sonar, no alcanza con digitalWrite HIGH/LOW
+// como con uno activo). En 0 (por defecto) se mantiene el comportamiento
+// de siempre (digitalWrite simple, ver setBuzzerOutput). En 1, el pin se
+// maneja con PWM por hardware (LEDC en ESP32, tone()/noTone() en ESP8266)
+// a NOPAL_BUZZER_TONE_HZ mientras esté "on", igual que cualquier buzzer
+// pasivo de 2 pines conectado a un GPIO.
+#ifndef NOPAL_BUZZER_PASSIVE
+  #define NOPAL_BUZZER_PASSIVE 0
+#endif
+
+// Frecuencia del tono para buzzer pasivo. 2700 Hz es un valor típico de
+// buen volumen para los zumbadores pasivos de 12mm más comunes -- ajusta
+// si el tuyo suena mejor en otra frecuencia (prueba entre 2000 y 4000 Hz).
+#ifndef NOPAL_BUZZER_TONE_HZ
+  #define NOPAL_BUZZER_TONE_HZ 2700
+#endif
+
 // Si vale 1 (por defecto), el panel web hace sonar un patrón de buzzer
 // acorde cada vez que se aplica una escena rápida (Listo/Trabajando/En
 // espera/Alarma/Mantenimiento/Desconectado/Apagar), igual que hacía
@@ -365,6 +484,15 @@ const char* const RELAY_NAMES[RELAY_COUNT] = {
 #endif
 
 const bool BUZZER_ACTIVE_HIGH = NOPAL_BUZZER_ACTIVE_HIGH != 0;
+const bool BUZZER_PASSIVE = NOPAL_BUZZER_PASSIVE != 0;
+const uint16_t BUZZER_TONE_HZ = NOPAL_BUZZER_TONE_HZ;
+
+#if defined(ESP32)
+  // Canal LEDC 3: el PWM RGB ya usa 0/1/2 (ver PWM_CHANNEL_R/G/B) -- solo
+  // se usa en Core 2.x, donde ledcSetup/ledcAttachPin/ledcWrite piden un
+  // canal explícito. En Core 3.x la API es directamente por pin.
+  const uint8_t PWM_CHANNEL_BUZZER = 3;
+#endif
 
 
 // ============================================================================
@@ -373,13 +501,120 @@ const bool BUZZER_ACTIVE_HIGH = NOPAL_BUZZER_ACTIVE_HIGH != 0;
 
 #if WS2812_ENABLE
 
-#include <Adafruit_NeoPixel.h>
+// Adafruit_NeoPixel.h ya se incluyó arriba de todo, junto con el resto de
+// #include (ver el comentario ahí) -- acá abajo solo van los objetos de
+// tira, que sí necesitan WS2812_PIN/WS2812_COUNT recién definidos en
+// "CONFIGURACIÓN DE PINES".
 
-Adafruit_NeoPixel strip(
-  WS2812_COUNT,
-  WS2812_PIN,
-  NEO_GRB + NEO_KHZ800
-);
+// Hasta 3 tiras independientes, cada una en su propio pin. La tira 0 es
+// la de siempre (WS2812_PIN/WS2812_COUNT, siempre activa si
+// WS2812_ENABLE); las tiras 1 y 2 son opcionales (WS2812_2_ENABLE /
+// WS2812_3_ENABLE, ver "CONFIGURACIÓN DE PINES") y se declaran siempre
+// (aunque estén desactivadas) para no complicar el resto del código con
+// más #if anidados -- si están desactivadas simplemente nunca se llaman
+// begin()/show() y ws2812StripEnabled() las rechaza.
+Adafruit_NeoPixel strip(WS2812_COUNT, WS2812_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip2(WS2812_2_COUNT, WS2812_2_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip3(WS2812_3_COUNT, WS2812_3_PIN, NEO_GRB + NEO_KHZ800);
+
+// Acceso indexado (0/1/2) a las 3 tiras, para no repetir un switch/if en
+// cada función que necesita "la tira número N" (setWs2812Color,
+// setWs2812Segment, setup(), estado JSON, etc).
+
+bool ws2812StripEnabled(uint8_t stripIndex) {
+  switch (stripIndex) {
+    case 0: return true;  // WS2812_ENABLE ya envuelve todo este bloque
+    case 1: return WS2812_2_ENABLE;
+    case 2: return WS2812_3_ENABLE;
+    default: return false;
+  }
+}
+
+uint16_t ws2812StripCount(uint8_t stripIndex) {
+  switch (stripIndex) {
+    case 0: return WS2812_COUNT;
+    case 1: return WS2812_2_COUNT;
+    case 2: return WS2812_3_COUNT;
+    default: return 0;
+  }
+}
+
+uint8_t ws2812StripPin(uint8_t stripIndex) {
+  switch (stripIndex) {
+    case 0: return WS2812_PIN;
+    case 1: return WS2812_2_PIN;
+    case 2: return WS2812_3_PIN;
+    default: return 0;
+  }
+}
+
+Adafruit_NeoPixel* ws2812StripObject(uint8_t stripIndex) {
+  switch (stripIndex) {
+    case 0: return &strip;
+    case 1: return &strip2;
+    case 2: return &strip3;
+    default: return nullptr;
+  }
+}
+
+#endif
+
+
+// ============================================================================
+// SENSOR T/H (analógico, sin calibrar)
+// ============================================================================
+//
+// Placa con salida analógica de temperatura y humedad por separado (no un
+// SHT10 digital real pese al nombre con el que se vendía -- ver el
+// comentario de TH_SENSOR_ENABLE en "CONFIGURACIÓN DE PINES"). Sin
+// datasheet de esta placa puntual, NO se convierte a °C/%HR acá -- se
+// reportan milivolts crudos de cada canal, listos para calibrar después
+// comparando con un termómetro/higrómetro de referencia (ver
+// thSensorReadMilliVolts()).
+
+#if TH_SENSOR_ENABLE
+
+float thSensorReadMilliVolts(uint8_t pin) {
+  // analogReadMilliVolts() ya compensa la curva no lineal del ADC del
+  // ESP32 (a diferencia de analogRead() + una regla de tres simple con
+  // 3300/4095, que en los extremos del rango se desvía bastante) -- mismo
+  // criterio que evitar "inventar" una fórmula de calibración: usar la
+  // función más precisa disponible en vez de la más simple.
+  return static_cast<float>(analogReadMilliVolts(pin));
+}
+
+// Calibración preliminar del canal T (temperatura), sacada de solo DOS
+// puntos de referencia tomados con un termómetro externo:
+//   719 mV -> 22°C
+//   778 mV -> 23°C
+// Con apenas 1°C de separación entre los dos puntos, la pendiente
+// (~59 mV/°C) tiene muy poco margen: ruido del ADC o imprecisión del
+// termómetro de referencia pueden desviar el estimado varios grados. Es
+// un punto de partida para mostrar algo útil en el panel, NO una
+// calibración confiable todavía -- por eso "calibrated" se sigue
+// reportando en false. Hay que seguir juntando puntos de referencia
+// (frío/calor real, no solo temperatura ambiente) y ajustar estas dos
+// constantes a medida que se junten más datos. Todavía no hay ningún
+// punto de referencia para el canal H (humedad), así que ese canal sigue
+// reportando solo milivolts crudos.
+#define TH_SENSOR_T_CAL_SLOPE_C_PER_MV   0.016949f
+#define TH_SENSOR_T_CAL_OFFSET_C         9.814f
+
+float thSensorEstimateTempC(float t_mv) {
+  return TH_SENSOR_T_CAL_SLOPE_C_PER_MV * t_mv + TH_SENSOR_T_CAL_OFFSET_C;
+}
+
+// Mismo criterio que handleBuzzerCommand(): devuelve la respuesta por
+// referencia para reusarse desde Serial (NOPAL:TH?) y desde /api/sensors
+// (HTTP) sin duplicar la lectura.
+void handleThSensorCommand(String& response) {
+  float t_mv = thSensorReadMilliVolts(TH_SENSOR_T_PIN);
+  response =
+    String("TH,t_mv=") + t_mv +
+    ",t_c_est=" + thSensorEstimateTempC(t_mv) +
+    ",h_mv=" + thSensorReadMilliVolts(TH_SENSOR_H_PIN) +
+    ",calibrated=0";
+}
 
 #endif
 
@@ -539,6 +774,8 @@ footer{margin:18px 2px;color:var(--muted);font-size:12px}
   <article class="card" id="cardWs">
     <h2>NeoPixel global</h2>
     <div class="row">
+      <label id="wsStripLabel" style="display:none">Tira</label>
+      <select id="wsStrip" style="display:none" onchange="onWsStripChange()"></select>
       <input id="wsColor" type="color" value="#41d17d">
       <button onclick="sendWsColor()">Aplicar color</button>
       <button class="red" onclick="sendWsOff()">Apagar tira</button>
@@ -556,8 +793,10 @@ footer{margin:18px 2px;color:var(--muted);font-size:12px}
       <input id="pixelColor" type="color" value="#ff8c32">
       <button onclick="sendPixel()">Aplicar</button>
     </div>
-    <p class="sub">La numeración empieza en 1. "Cant." son LEDs consecutivos
-      a partir de ese número.</p>
+    <p class="sub">Usa el selector de tira de "NeoPixel global" de arriba
+      -- esta ficha manda el segmento a la misma tira que esté elegida ahí.
+      La numeración empieza en 1. "Cant." son LEDs consecutivos a partir
+      de ese número.</p>
   </article>
 
   <article class="card" id="cardPwm">
@@ -582,6 +821,22 @@ footer{margin:18px 2px;color:var(--muted);font-size:12px}
     <p class="sub" id="buzzerInfo">—</p>
   </article>
 
+  <article class="card" id="cardThSensor">
+    <h2>Sensor T/H (sin calibrar)</h2>
+    <div class="statgrid">
+      <div class="stat"><b id="thT">—</b><span>Canal T (mV)</span></div>
+      <div class="stat"><b id="thTEst">—</b><span>Temp. estimada</span></div>
+      <div class="stat"><b id="thH">—</b><span>Canal H (mV)</span></div>
+    </div>
+    <p class="sub">La temperatura estimada sale de una calibración
+      preliminar de solo 2 puntos (719 mV=22°C, 778 mV=23°C) -- puede estar
+      desviada varios grados, todavía no es confiable. El canal H sigue en
+      milivolts crudos, sin ningún punto de referencia de humedad todavía.
+      Este módulo no trae datasheet propio: anotá estos valores junto a una
+      lectura de referencia (termómetro/higrómetro) para seguir ajustando
+      la calibración.</p>
+  </article>
+
   <article class="card full">
     <h2>Estado del dispositivo</h2>
     <div class="statgrid">
@@ -601,6 +856,7 @@ footer{margin:18px 2px;color:var(--muted);font-size:12px}
 const enc=o=>new URLSearchParams(o);
 let lastScene='—';
 let buzzerSceneSounds=false;
+let lastStatus=null;
 
 async function post(path,data){
   const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:enc(data)});
@@ -613,18 +869,25 @@ function rgb(hex){return [parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16
 
 async function relay(n,on){try{await post('/api/relay',{n,on})}catch(e){alert(e.message)}}
 
+function currentWsStrip(){
+  const sel=document.getElementById('wsStrip');
+  return sel&&sel.value?parseInt(sel.value,10):0;
+}
 async function sendWsColor(){
   const [r,g,b]=rgb(document.getElementById('wsColor').value);
-  try{await post('/api/led',{mode:'ws2812',r,g,b})}catch(e){alert(e.message)}
+  try{await post('/api/led',{mode:'ws2812',strip:currentWsStrip(),r,g,b})}catch(e){alert(e.message)}
 }
 async function sendWsOff(){
-  try{await post('/api/led',{mode:'ws2812',r:0,g:0,b:0})}catch(e){alert(e.message)}
+  try{await post('/api/led',{mode:'ws2812',strip:currentWsStrip(),r:0,g:0,b:0})}catch(e){alert(e.message)}
 }
 async function sendPixel(){
   const [r,g,b]=rgb(document.getElementById('pixelColor').value);
   const n=parseInt(document.getElementById('pixel').value,10)||1;
   const count=parseInt(document.getElementById('pixelCount').value,10)||1;
-  try{await post('/api/led',{mode:'ws2812',start:n-1,count,r,g,b})}catch(e){alert(e.message)}
+  try{await post('/api/led',{mode:'ws2812',strip:currentWsStrip(),start:n-1,count,r,g,b})}catch(e){alert(e.message)}
+}
+function onWsStripChange(){
+  updateWsInfo(lastStatus);
 }
 async function sendPwmColor(){
   const [r,g,b]=rgb(document.getElementById('pwmColor').value);
@@ -664,6 +927,44 @@ function renderRelays(relays){
   document.getElementById('relaysOn').textContent=list.filter(x=>x.on).length+'/'+list.length;
 }
 
+function wsStripLabelFor(n){
+  return n===0?'Tira 1 (principal)':n===1?'Tira 2':'Tira 3';
+}
+
+// El selector de tira solo aparece si de verdad hay más de una tira
+// habilitada (WS2812_2_ENABLE/WS2812_3_ENABLE) -- con una sola tira (el
+// caso más común) la UI queda igual que antes, sin selector de por medio.
+function populateWsStripSelect(s){
+  const sel=document.getElementById('wsStrip');
+  const label=document.getElementById('wsStripLabel');
+  const enabled=[0];
+  if(s.io.ws2812_2) enabled.push(1);
+  if(s.io.ws2812_3) enabled.push(2);
+
+  if(enabled.length<2){
+    sel.style.display='none';
+    label.style.display='none';
+    sel.innerHTML='';
+    return;
+  }
+
+  const prevValue=sel.value;
+  sel.style.display='';
+  label.style.display='';
+  sel.innerHTML=enabled.map(n=>`<option value="${n}">${wsStripLabelFor(n)}</option>`).join('');
+  if(enabled.includes(parseInt(prevValue,10))) sel.value=prevValue;
+}
+
+function updateWsInfo(s){
+  if(!s||!s.io) return;
+  const n=currentWsStrip();
+  const count=n===0?s.io.ws2812_count:(n===1?s.io.ws2812_2_count:s.io.ws2812_3_count);
+  const pin=n===0?s.io.ws2812_pin:(n===1?s.io.ws2812_2_pin:s.io.ws2812_3_pin);
+  document.getElementById('pixel').max=count||1;
+  document.getElementById('wsInfo').textContent=
+    (count||0)+' LED(s), GPIO '+(pin!==undefined?pin:'—');
+}
+
 async function refresh(){
   try{
     const r=await fetch('/api/status',{cache:'no-store'});
@@ -682,16 +983,18 @@ async function refresh(){
     const hasWs=!!(s.io&&s.io.ws2812);
     const hasPwm=!!(s.io&&s.io.pwm_led);
     const hasBuzzer=!!(s.io&&s.io.buzzer);
+    const hasThSensor=!!(s.th_sensor&&s.th_sensor.enabled);
     document.getElementById('cardWs').style.display=hasWs?'':'none';
     document.getElementById('cardWsPixel').style.display=hasWs?'':'none';
     document.getElementById('cardScenes').style.display=hasWs?'':'none';
     document.getElementById('cardPwm').style.display=hasPwm?'':'none';
     document.getElementById('cardBuzzer').style.display=hasBuzzer?'':'none';
+    document.getElementById('cardThSensor').style.display=hasThSensor?'':'none';
 
+    lastStatus=s;
     if(hasWs){
-      document.getElementById('pixel').max=s.io.ws2812_count;
-      document.getElementById('wsInfo').textContent=
-        s.io.ws2812_count+' LED(s), GPIO '+(s.io.ws2812_pin!==undefined?s.io.ws2812_pin:'—');
+      populateWsStripSelect(s);
+      updateWsInfo(s);
     }
 
     buzzerSceneSounds=hasBuzzer&&!!(s.buzzer&&s.buzzer.scene_sounds);
@@ -703,14 +1006,23 @@ async function refresh(){
         (buzzerSceneSounds?' · suena con las escenas':' · silencioso con las escenas');
     }
 
+    if(hasThSensor){
+      document.getElementById('thT').textContent=s.th_sensor.t_mv.toFixed(0)+' mV';
+      document.getElementById('thTEst').textContent=s.th_sensor.t_c_est.toFixed(1)+' °C';
+      document.getElementById('thH').textContent=s.th_sensor.h_mv.toFixed(0)+' mV';
+    }
+
     document.getElementById('details').textContent=
       `SSID: ${s.wifi.ssid||'—'}\nRSSI: ${s.wifi.rssi} dBm\n`+
       `AP recuperación: ${s.wifi.recovery_ap?('activo ('+(s.wifi.recovery_ssid||'—')+')'):'inactivo'}\n`+
       `Hostname: ${s.hostname||'—'}\nChip: ${s.chip||'—'}\n`+
       `Firmware: ${s.firmware} (protocolo ${s.protocol})\n`+
       (hasWs?`NeoPixel: ${s.io.ws2812_count} LED(s), GPIO ${s.io.ws2812_pin}\n`:``)+
+      (hasWs&&s.io.ws2812_2?`NeoPixel 2: ${s.io.ws2812_2_count} LED(s), GPIO ${s.io.ws2812_2_pin}\n`:``)+
+      (hasWs&&s.io.ws2812_3?`NeoPixel 3: ${s.io.ws2812_3_count} LED(s), GPIO ${s.io.ws2812_3_pin}\n`:``)+
       (hasPwm&&s.io.pwm_pins?`PWM RGB: GPIO ${s.io.pwm_pins.join('/')}\n`:``)+
       (hasBuzzer?`Buzzer: GPIO ${s.buzzer.gpio}, patrón ${s.buzzer.pattern}, salida ${s.buzzer.on?'ON':'OFF'}\n`:``)+
+      (hasThSensor?`Sensor T/H: T ${s.th_sensor.t_mv.toFixed(0)} mV ≈ ${s.th_sensor.t_c_est.toFixed(1)}°C est. (GPIO ${s.th_sensor.t_pin}), H ${s.th_sensor.h_mv.toFixed(0)} mV (GPIO ${s.th_sensor.h_pin}), sin calibrar\n`:``)+
       `Heap libre: ${s.free_heap} bytes\nUptime: ${Math.floor(s.uptime_ms/1000)} s\n`+
       `Reset: ${s.reset_reason||'—'}`;
   }catch(e){
@@ -773,23 +1085,18 @@ const uint8_t PWM_CHANNEL_B = 2;
 // ACTIVO — PATRONES NO BLOQUEANTES" más abajo).
 //
 
-struct BuzzerStep {
-  bool on;
-  uint16_t durationMs;
-};
-
-enum class BuzzerPattern : uint8_t {
-  OFF,
-  CONTINUOUS,
-  BEEP,
-  DOUBLE_BEEP,
-  READY,
-  WORKING,
-  WAITING,
-  ALARM,
-  MAINTENANCE,
-  DISCONNECTED
-};
+// BuzzerStep/BuzzerPattern (struct/enum) se definen al principio del
+// archivo, justo después de los #include -- no acá donde se usaban antes.
+// El auto-prototipado de Arduino inserta sus propios prototipos generados
+// cerca del principio del archivo, y si una función usa un tipo propio
+// (enum/struct) como parámetro y ese tipo todavía no existe en ese punto,
+// el prototipo autogenerado queda roto ("'BuzzerPattern' was not declared
+// in this scope") -- confirmado compilando de verdad (Arduino IDE): ni
+// siquiera alcanzaba con un forward declaration puesto acá, en el medio
+// del archivo. Definiendo el tipo real arriba de todo, antes de cualquier
+// función, el problema desaparece sin importar dónde inserte Arduino sus
+// prototipos. Mismo criterio aplicado a Adafruit_NeoPixel (ver el
+// #include de esa librería, movido junto a los demás #include arriba).
 
 const BuzzerStep BUZZER_PATTERN_CONTINUOUS[] = {
   {true, 1000}
@@ -1182,19 +1489,68 @@ void setPwmLedColor(uint8_t red, uint8_t green, uint8_t blue) {
 // WS2812
 // ============================================================================
 
-void setWs2812Color(uint8_t red, uint8_t green, uint8_t blue) {
+// Implementación real, compartida por las 3 tiras -- setWs2812Color()/
+// setWs2812Color2()/setWs2812Color3() de abajo son wrappers de 3
+// argumentos (mismo criterio que setPwmLedColor) para poder seguir
+// pasándose como function pointer a parseAndSetColor(), que no sabe nada
+// de índices de tira.
+void setWs2812ColorAt(uint8_t stripIndex, uint8_t red, uint8_t green, uint8_t blue) {
 
 #if WS2812_ENABLE
 
-  strip.fill(
-    strip.Color(red, green, blue)
-  );
+  if (!ws2812StripEnabled(stripIndex)) return;
 
-  strip.show();
+  Adafruit_NeoPixel* target = ws2812StripObject(stripIndex);
+  target->fill(target->Color(red, green, blue));
+  target->show();
 
 #endif
 }
 
+void setWs2812Color(uint8_t red, uint8_t green, uint8_t blue) {
+  setWs2812ColorAt(0, red, green, blue);
+}
+
+void setWs2812Color2(uint8_t red, uint8_t green, uint8_t blue) {
+  setWs2812ColorAt(1, red, green, blue);
+}
+
+void setWs2812Color3(uint8_t red, uint8_t green, uint8_t blue) {
+  setWs2812ColorAt(2, red, green, blue);
+}
+
+
+bool setWs2812SegmentAt(
+  uint8_t stripIndex,
+  int start,
+  int count,
+  uint8_t red,
+  uint8_t green,
+  uint8_t blue,
+  String& response
+) {
+#if WS2812_ENABLE
+  if (!ws2812StripEnabled(stripIndex)) {
+    response = "ERR:UNSUPPORTED";
+    return true;
+  }
+  const uint16_t stripCount = ws2812StripCount(stripIndex);
+  if (start < 0 || count < 1 || start + count > stripCount) {
+    response = "ERR:INVALID_SEGMENT";
+    return true;
+  }
+  Adafruit_NeoPixel* target = ws2812StripObject(stripIndex);
+  const uint32_t color = target->Color(red, green, blue);
+  for (int pixel = start; pixel < start + count; pixel++) {
+    target->setPixelColor(pixel, color);
+  }
+  target->show();
+  response = "OK";
+#else
+  response = "ERR:UNSUPPORTED";
+#endif
+  return true;
+}
 
 bool setWs2812Segment(
   int start,
@@ -1204,21 +1560,7 @@ bool setWs2812Segment(
   uint8_t blue,
   String& response
 ) {
-#if WS2812_ENABLE
-  if (start < 0 || count < 1 || start + count > WS2812_COUNT) {
-    response = "ERR:INVALID_SEGMENT";
-    return true;
-  }
-  const uint32_t color = strip.Color(red, green, blue);
-  for (int pixel = start; pixel < start + count; pixel++) {
-    strip.setPixelColor(pixel, color);
-  }
-  strip.show();
-  response = "OK";
-#else
-  response = "ERR:UNSUPPORTED";
-#endif
-  return true;
+  return setWs2812SegmentAt(0, start, count, red, green, blue, response);
 }
 
 
@@ -1288,12 +1630,42 @@ void setBuzzerOutput(bool on) {
 
   buzzerOutputOn = on;
 
-  const uint8_t level =
-    BUZZER_ACTIVE_HIGH
-      ? (on ? HIGH : LOW)
-      : (on ? LOW : HIGH);
+  #if BUZZER_PASSIVE
 
-  digitalWrite(BUZZER_PIN, level);
+    // Pasivo: no alcanza con un nivel fijo, hace falta una señal
+    // oscilando -- PWM por hardware a BUZZER_TONE_HZ mientras esté "on",
+    // 0 Hz (silencio) mientras esté "off". Mismo criterio de rama por
+    // versión de Core que ya usa el PWM RGB (ver setupPwmLed más arriba).
+    #if defined(ESP32)
+
+      #if ESP_ARDUINO_VERSION_MAJOR >= 3
+        ledcWriteTone(BUZZER_PIN, on ? BUZZER_TONE_HZ : 0);
+      #else
+        ledcWriteTone(PWM_CHANNEL_BUZZER, on ? BUZZER_TONE_HZ : 0);
+      #endif
+
+    #elif defined(ESP8266)
+
+      if (on) {
+        tone(BUZZER_PIN, BUZZER_TONE_HZ);
+      } else {
+        noTone(BUZZER_PIN);
+      }
+
+    #endif
+
+  #else
+
+    // Activo: alcanza con un nivel fijo, el buzzer trae su propio
+    // oscilador -- comportamiento de siempre, sin cambios.
+    const uint8_t level =
+      BUZZER_ACTIVE_HIGH
+        ? (on ? HIGH : LOW)
+        : (on ? LOW : HIGH);
+
+    digitalWrite(BUZZER_PIN, level);
+
+  #endif
 
 #endif
 }
@@ -1303,14 +1675,40 @@ void initializeBuzzerSafely() {
 
 #if BUZZER_ENABLE
 
-  const uint8_t offLevel = BUZZER_ACTIVE_HIGH ? LOW : HIGH;
+  #if BUZZER_PASSIVE
 
-  // Precarga el nivel apagado antes de cambiar a OUTPUT, igual que ya
-  // hacen los relés en setup(), para reducir al mínimo cualquier pulso
-  // accidental durante el arranque.
-  digitalWrite(BUZZER_PIN, offLevel);
-  pinMode(BUZZER_PIN, OUTPUT);
-  setBuzzerOutput(false);
+    #if defined(ESP32)
+
+      // Igual que setupPwmLed(): en Core 3.x se asocia el pin directo,
+      // en Core 2.x hace falta un canal LEDC explícito y separado del
+      // que ya usa el PWM RGB (ver PWM_CHANNEL_BUZZER más arriba).
+      #if ESP_ARDUINO_VERSION_MAJOR >= 3
+        ledcAttach(BUZZER_PIN, BUZZER_TONE_HZ, 10);
+      #else
+        ledcSetup(PWM_CHANNEL_BUZZER, BUZZER_TONE_HZ, 10);
+        ledcAttachPin(BUZZER_PIN, PWM_CHANNEL_BUZZER);
+      #endif
+
+    #elif defined(ESP8266)
+
+      // tone()/noTone() ya manejan el pinMode solos en ESP8266.
+
+    #endif
+
+    setBuzzerOutput(false);
+
+  #else
+
+    const uint8_t offLevel = BUZZER_ACTIVE_HIGH ? LOW : HIGH;
+
+    // Precarga el nivel apagado antes de cambiar a OUTPUT, igual que ya
+    // hacen los relés en setup(), para reducir al mínimo cualquier pulso
+    // accidental durante el arranque.
+    digitalWrite(BUZZER_PIN, offLevel);
+    pinMode(BUZZER_PIN, OUTPUT);
+    setBuzzerOutput(false);
+
+  #endif
 
 #endif
 }
@@ -1817,6 +2215,29 @@ String buildStatusJson() {
   json += (NOPAL_BUZZER_SCENE_SOUNDS != 0) ? "true" : "false";
   json += "},";
 
+  // Sensor T/H analógico sin calibrar -- ver el comentario grande en
+  // "SENSOR T/H" más arriba. "calibrated":false a propósito, para que el
+  // panel/NOPAL avisen que t_mv/h_mv son milivolts crudos, no °C/%HR.
+  json += "\"th_sensor\":{";
+  json += "\"enabled\":";
+#if TH_SENSOR_ENABLE
+  json += "true,";
+  json += "\"t_pin\":";
+  json += String(TH_SENSOR_T_PIN);
+  json += ",\"h_pin\":";
+  json += String(TH_SENSOR_H_PIN);
+  json += ",\"t_mv\":";
+  json += String(thSensorReadMilliVolts(TH_SENSOR_T_PIN), 1);
+  json += ",\"t_c_est\":";
+  json += String(thSensorEstimateTempC(thSensorReadMilliVolts(TH_SENSOR_T_PIN)), 1);
+  json += ",\"h_mv\":";
+  json += String(thSensorReadMilliVolts(TH_SENSOR_H_PIN), 1);
+  json += ",\"calibrated\":false";
+#else
+  json += "false";
+#endif
+  json += "},";
+
   json += "\"ota\":{";
   json += "\"enabled\":true,";
   json += "\"path\":\"/update\"";
@@ -1857,6 +2278,23 @@ String buildStatusJson() {
 #if WS2812_ENABLE
   json += ",\"ws2812_pin\":";
   json += String(WS2812_PIN);
+
+  // Tiras 2 y 3: siempre se reportan (aunque estén desactivadas) para que
+  // el panel sepa cuáles ofrecer en el selector de tira, igual que ya
+  // hace con "ws2812"/"ws2812_count" para la tira 0.
+  json += ",\"ws2812_2\":";
+  json += ws2812StripEnabled(1) ? "true" : "false";
+  json += ",\"ws2812_2_count\":";
+  json += String(ws2812StripEnabled(1) ? ws2812StripCount(1) : 0);
+  json += ",\"ws2812_2_pin\":";
+  json += String(ws2812StripPin(1));
+
+  json += ",\"ws2812_3\":";
+  json += ws2812StripEnabled(2) ? "true" : "false";
+  json += ",\"ws2812_3_count\":";
+  json += String(ws2812StripEnabled(2) ? ws2812StripCount(2) : 0);
+  json += ",\"ws2812_3_pin\":";
+  json += String(ws2812StripPin(2));
 #endif
 
   json += ",\"buzzer\":";
@@ -1896,7 +2334,7 @@ bool parseAndSetColor(
   void (*setColor)(uint8_t, uint8_t, uint8_t),
   String& response
 );
-bool parseAndSetSegment(const String& command, uint8_t prefixLength, String& response);
+bool parseAndSetSegment(const String& command, uint8_t prefixLength, String& response, uint8_t stripIndex = 0);
 
 
 bool checkApiAuth() {
@@ -1999,14 +2437,21 @@ void setupWebServer() {
 
 #if WS2812_ENABLE
     if (mode == "ws2812") {
+      // strip=0 (o sin mandar el parámetro) es la tira de siempre -- 1 y 2
+      // son las opcionales (ver WS2812_2_ENABLE/WS2812_3_ENABLE).
+      const int stripArg = server.hasArg("strip") ? server.arg("strip").toInt() : 0;
+      const uint8_t stripIndex = (stripArg == 1 || stripArg == 2) ? stripArg : 0;
+
       if (server.hasArg("start") || server.hasArg("count")) {
         const String command = String("WSSEG:") + server.arg("start") + "," + server.arg("count") + "," +
           server.arg("r") + "," + server.arg("g") + "," + server.arg("b");
-        parseAndSetSegment(command, 6, response);
+        parseAndSetSegment(command, 6, response, stripIndex);
       } else {
         const String command =
           String("WS:") + server.arg("r") + "," + server.arg("g") + "," + server.arg("b");
-        parseAndSetColor(command, 3, setWs2812Color, response);
+        void (*setColor)(uint8_t, uint8_t, uint8_t) =
+          stripIndex == 1 ? setWs2812Color2 : (stripIndex == 2 ? setWs2812Color3 : setWs2812Color);
+        parseAndSetColor(command, 3, setColor, response);
       }
     }
 #endif
@@ -2137,6 +2582,20 @@ void sendIdentification() {
       ? WS2812_COUNT
       : 0
   );
+
+#if WS2812_ENABLE
+  // Tiras 2 y 3 -- mismo criterio que los campos extra del buzzer más
+  // abajo: campos aditivos, un backend viejo que no los conoce los ignora.
+  Serial.print(",ws2812_2=");
+  Serial.print(ws2812StripEnabled(1) ? 1 : 0);
+  Serial.print(",ws2812_2_count=");
+  Serial.print(ws2812StripEnabled(1) ? ws2812StripCount(1) : 0);
+
+  Serial.print(",ws2812_3=");
+  Serial.print(ws2812StripEnabled(2) ? 1 : 0);
+  Serial.print(",ws2812_3_count=");
+  Serial.print(ws2812StripEnabled(2) ? ws2812StripCount(2) : 0);
+#endif
 
   // Campos del buzzer -- no existían en nopal_accessory.ino, los agrega
   // Nopal_FF. Mismo criterio que el resto de campos "extra" de esta
@@ -2367,7 +2826,7 @@ bool parseAndSetColor(
 }
 
 
-bool parseAndSetSegment(const String& command, uint8_t prefixLength, String& response) {
+bool parseAndSetSegment(const String& command, uint8_t prefixLength, String& response, uint8_t stripIndex) {
   int start;
   int count;
   int red;
@@ -2386,7 +2845,8 @@ bool parseAndSetSegment(const String& command, uint8_t prefixLength, String& res
     response = "ERR:INVALID_SEGMENT";
     return true;
   }
-  return setWs2812Segment(
+  return setWs2812SegmentAt(
+    stripIndex,
     start,
     count,
     clampColor(red),
@@ -2462,6 +2922,15 @@ void handleCommand(String line) {
     return;
   }
 
+#if TH_SENSOR_ENABLE
+  if (command == "TH?") {
+    String response;
+    handleThSensorCommand(response);
+    Serial.println(response);
+    return;
+  }
+#endif
+
 
   // ------------------------------------------------------------------------
   // Relés
@@ -2515,7 +2984,21 @@ void handleCommand(String line) {
 
   if (command.startsWith("WSSEG:")) {
     String response;
-    parseAndSetSegment(command, 6, response);
+    parseAndSetSegment(command, 6, response, 0);
+    Serial.println(response);
+    return;
+  }
+
+  if (command.startsWith("WSSEG2:")) {
+    String response;
+    parseAndSetSegment(command, 7, response, 1);
+    Serial.println(response);
+    return;
+  }
+
+  if (command.startsWith("WSSEG3:")) {
+    String response;
+    parseAndSetSegment(command, 7, response, 2);
     Serial.println(response);
     return;
   }
@@ -2523,6 +3006,20 @@ void handleCommand(String line) {
   if (command.startsWith("WS:")) {
     String response;
     parseAndSetColor(command, 3, setWs2812Color, response);
+    Serial.println(response);
+    return;
+  }
+
+  if (command.startsWith("WS2:")) {
+    String response;
+    parseAndSetColor(command, 4, setWs2812Color2, response);
+    Serial.println(response);
+    return;
+  }
+
+  if (command.startsWith("WS3:")) {
+    String response;
+    parseAndSetColor(command, 4, setWs2812Color3, response);
     Serial.println(response);
     return;
   }
@@ -2572,9 +3069,25 @@ void setup() {
   strip.clear();
   strip.show();
 
+  // Tiras 2 y 3: mismo begin()/clear()/show(), solo si están habilitadas
+  // (ver WS2812_2_ENABLE/WS2812_3_ENABLE en "CONFIGURACIÓN DE PINES") --
+  // si no, sus objetos Adafruit_NeoPixel existen pero nunca se inicializan
+  // ni se usan.
+  if (ws2812StripEnabled(1)) {
+    strip2.begin();
+    strip2.clear();
+    strip2.show();
+  }
+  if (ws2812StripEnabled(2)) {
+    strip3.begin();
+    strip3.clear();
+    strip3.show();
+  }
+
   // Animación breve de "la placa está viva" antes de meterse a conectar
   // Wi-Fi -- ver el comentario de playStartupAnimation() más arriba (por
-  // qué no es un efecto en curso y no demora el arranque real).
+  // qué no es un efecto en curso y no demora el arranque real). Corre
+  // solo sobre la tira 0 (la principal) para no alargar el arranque.
   playStartupAnimation();
 
 #endif
