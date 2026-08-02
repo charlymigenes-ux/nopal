@@ -1,8 +1,9 @@
+import asyncio
 import json
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 
 from backend.auth_deps import require_role
@@ -123,7 +124,11 @@ async def tunascreen_machine_console(
 
 
 @router.get("/api/tunascreen/cameras/{camera_id}/stream")
-async def tunascreen_camera_stream(camera_id: str, device: dict = Depends(require_device_token)):
+async def tunascreen_camera_stream(
+    camera_id: str,
+    request: Request,
+    device: dict = Depends(require_device_token),
+):
     """MJPEG de una webcam vinculada, autenticado con token TUNA-Screen."""
     try:
         queue, usb_module = await tunascreen_service.subscribe_camera_stream(camera_id)
@@ -134,18 +139,76 @@ async def tunascreen_camera_stream(camera_id: str, device: dict = Depends(requir
 
     async def generator():
         try:
-            while True:
-                frame = await queue.get()
+            while not await request.is_disconnected():
+                try:
+                    # No esperar indefinidamente un frame: así se vuelve a
+                    # observar la desconexión y Uvicorn puede cerrar el
+                    # generador durante un restart aun si la cámara se paró.
+                    frame = await asyncio.wait_for(queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
                 yield (
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n"
                     b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n" +
                     frame + b"\r\n"
                 )
+        except asyncio.CancelledError:
+            # Cancelar el stream durante shutdown es una salida normal.
+            pass
         finally:
             await usb_module.unsubscribe(camera_id, queue)
 
     return StreamingResponse(generator(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+@router.get("/api/tunascreen/materials")
+async def tunascreen_materials(device: dict = Depends(require_device_token)):
+    return await tunascreen_service.get_materials_snapshot()
+
+
+@router.post("/api/tunascreen/materials/active")
+async def tunascreen_set_active_material(
+    payload: Dict[str, Any],
+    device: dict = Depends(require_device_token),
+):
+    try:
+        return await tunascreen_service.set_active_material(
+            str(payload.get("machine_id") or ""),
+            payload.get("spool_id"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/tunascreen/accessories")
+async def tunascreen_accessories(device: dict = Depends(require_device_token)):
+    return await tunascreen_service.get_accessories_snapshot()
+
+
+@router.post("/api/tunascreen/accessories/{accessory_id}/power")
+async def tunascreen_accessory_power(
+    accessory_id: str,
+    payload: Dict[str, Any],
+    device: dict = Depends(require_device_token),
+):
+    if "on" not in payload:
+        raise HTTPException(status_code=400, detail="Falta el estado 'on'")
+    try:
+        return await tunascreen_service.set_accessory_power(accessory_id, bool(payload["on"]))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/tunascreen/accessory-scenes/{scene_id}/run")
+async def tunascreen_run_accessory_scene(
+    scene_id: str,
+    device: dict = Depends(require_device_token),
+):
+    try:
+        return await tunascreen_service.run_accessory_scene(scene_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/api/tunascreen/action")

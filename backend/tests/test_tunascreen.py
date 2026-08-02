@@ -10,6 +10,10 @@ import backend.services.marlin_printer_service as marlin_printer_service
 import backend.services.tunascreen_service as tunascreen_service
 
 
+async def _async_value(value):
+    return value
+
+
 @pytest.fixture(autouse=True)
 def _quiet_brands(monkeypatch):
     """list_machines() barre las 6 marcas -- sin esto, cualquier test de
@@ -155,6 +159,105 @@ class TestCameraStream:
         )
 
         assert response.status_code == 404
+
+
+class TestWorkshopResources:
+    async def test_materials_are_normalized_with_machine_links(self, monkeypatch):
+        client = SimpleNamespace(list_spools=lambda allow_archived: [{
+            "id": 7,
+            "remaining_weight": 412.5,
+            "initial_weight": 1000,
+            "filament": {
+                "name": "Negro Mate",
+                "material": "PETG",
+                "color_hex": "101010",
+                "vendor": {"name": "Polymaker"},
+            },
+        }])
+        modules = {
+            "services.config_service": SimpleNamespace(get_client=lambda: client),
+            "services.spool_link_service": SimpleNamespace(
+                get_all_links=lambda: {"7125": {"spool_id": 7}},
+            ),
+            "services.reservation_service": SimpleNamespace(
+                reserved_grams_for_spool=lambda spool_id: 12.5,
+            ),
+        }
+        monkeypatch.setattr(
+            tunascreen_service,
+            "get_loaded_plugin_module",
+            lambda plugin_id, module: modules.get(module) if plugin_id == "spoolman" else None,
+        )
+
+        result = await tunascreen_service.get_materials_snapshot()
+
+        assert result["available"] is True
+        assert result["links"] == {"klipper:7125": 7}
+        assert result["spools"][0] == {
+            "id": 7,
+            "name": "Negro Mate",
+            "material": "PETG",
+            "vendor": "Polymaker",
+            "color_hex": "101010",
+            "remaining_g": 412.5,
+            "reserved_g": 12.5,
+            "available_g": 400.0,
+            "initial_g": 1000,
+            "archived": False,
+        }
+
+    async def test_active_material_validates_spool_before_linking(self, monkeypatch):
+        linked = {}
+        client = SimpleNamespace(get_spool=lambda spool_id: {"id": spool_id})
+        modules = {
+            "services.config_service": SimpleNamespace(get_client=lambda: client),
+            "services.spool_link_service": SimpleNamespace(
+                set_link=lambda port, spool_id: linked.update(port=port, spool_id=spool_id),
+            ),
+            "services.reservation_service": None,
+        }
+        monkeypatch.setattr(
+            tunascreen_service,
+            "get_loaded_plugin_module",
+            lambda plugin_id, module: modules.get(module) if plugin_id == "spoolman" else None,
+        )
+
+        result = await tunascreen_service.set_active_material("klipper:7125", 9)
+
+        assert result == {"success": True, "machine_id": "klipper:7125", "spool_id": 9}
+        assert linked == {"port": 7125, "spool_id": 9}
+
+    async def test_accessories_and_scenes_are_normalized(self, monkeypatch):
+        modules = {
+            "services.accessory_service": SimpleNamespace(
+                get_accessories_status=lambda: _async_value([{
+                    "id": "fan01", "name": "Extractor", "kind": "fan",
+                    "driver": "arduino_wifi", "on": True,
+                }, {
+                    "id": "led01", "name": "Luz", "kind": "led",
+                    "driver": "arduino_wifi", "on": {"on": False, "color": [1, 2, 3]},
+                }]),
+            ),
+            "services.accessory_scenes": SimpleNamespace(
+                get_scenes=lambda: [{"id": "scene01", "name": "Taller", "actions": [{}, {}]}],
+            ),
+        }
+        monkeypatch.setattr(
+            tunascreen_service,
+            "get_loaded_plugin_module",
+            lambda plugin_id, module: modules.get(module) if plugin_id == "arduino-accessories" else None,
+        )
+
+        result = await tunascreen_service.get_accessories_snapshot()
+
+        assert result["accessories"][0]["on"] is True
+        assert result["accessories"][0]["online"] is True
+        assert result["accessories"][1]["on"] is False
+        assert result["scenes"] == [{"id": "scene01", "name": "Taller", "action_count": 2}]
+
+    def test_resources_require_device_token(self, client):
+        assert client.get("/api/tunascreen/materials").status_code == 401
+        assert client.get("/api/tunascreen/accessories").status_code == 401
 
 
 class TestDeviceManagement:
