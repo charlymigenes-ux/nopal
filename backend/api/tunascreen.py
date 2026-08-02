@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 
 from backend.auth_deps import require_role
 from backend.services import tunascreen_service
@@ -119,6 +120,32 @@ async def tunascreen_machine_console(
         return {"messages": await tunascreen_service.get_machine_console(machine_id, count)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/tunascreen/cameras/{camera_id}/stream")
+async def tunascreen_camera_stream(camera_id: str, device: dict = Depends(require_device_token)):
+    """MJPEG de una webcam vinculada, autenticado con token TUNA-Screen."""
+    try:
+        queue, usb_module = await tunascreen_service.subscribe_camera_stream(camera_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Cámara USB vinculada no encontrada") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    async def generator():
+        try:
+            while True:
+                frame = await queue.get()
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n" +
+                    frame + b"\r\n"
+                )
+        finally:
+            await usb_module.unsubscribe(camera_id, queue)
+
+    return StreamingResponse(generator(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @router.post("/api/tunascreen/action")

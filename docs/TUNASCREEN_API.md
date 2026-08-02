@@ -63,9 +63,9 @@ desde el panel de NOPAL), la máquina anuncia la capability `camera` y
 ```
 
 `stream_url` puede ser relativa (cámaras USB servidas por el propio NOPAL,
-ej. `/api/cameras/usb/{id}/stream`) o absoluta (URL directa/ONVIF/RTSP
+ej. `/api/tunascreen/cameras/{id}/stream`) o absoluta (URL directa/ONVIF/RTSP
 puenteada) -- si es relativa, resolverla contra el mismo host base que ya se
-usa para `/api/tunascreen/*`. Sin la capability `camera`, `status.camera` es
+usa para `/api/tunascreen/*` y enviar el mismo token de dispositivo. Sin la capability `camera`, `status.camera` es
 `null` -- no hay cámara vinculada a esa máquina (o el plugin no está
 instalado).
 

@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 import backend.services.bambu_service as bambu_service
 import backend.services.elegoo_service as elegoo_service
@@ -86,6 +87,74 @@ class TestDeviceAuth:
         device = tunascreen_service.resolve_device(token)
         assert device is not None
         assert device["name"] == "Tablet"
+
+
+class TestCameraStream:
+    def test_relative_usb_camera_uses_device_authenticated_route(self, monkeypatch):
+        camera_module = SimpleNamespace(
+            get_camera_bound_to=lambda device_type, device_id: {"id": "cam123"},
+            get_camera_by_id=lambda camera_id: {
+                "id": camera_id,
+                "name": "General Webcam",
+                "stream_url": f"/api/cameras/usb/{camera_id}/stream",
+                "device_path": "/dev/video0",
+                "bound_device": {"type": "klipper", "id": "ET4-AC"},
+            },
+        )
+        monkeypatch.setattr(
+            tunascreen_service,
+            "get_loaded_plugin_module",
+            lambda plugin_id, module: camera_module if module == "services.camera_service" else None,
+        )
+
+        capabilities, camera = tunascreen_service._camera_fields("klipper", "ET4-AC")
+
+        assert capabilities == ["camera"]
+        assert camera == {
+            "stream_url": "/api/tunascreen/cameras/cam123/stream",
+            "name": "General Webcam",
+        }
+
+    def test_external_camera_url_remains_direct(self, monkeypatch):
+        camera_module = SimpleNamespace(
+            get_camera_bound_to=lambda device_type, device_id: {"id": "cam-ip"},
+            get_camera_by_id=lambda camera_id: {
+                "id": camera_id,
+                "name": "IP Camera",
+                "stream_url": "http://192.168.0.50:8080/video",
+                "bound_device": {"type": "klipper", "id": "ET4-AC"},
+            },
+        )
+        monkeypatch.setattr(
+            tunascreen_service,
+            "get_loaded_plugin_module",
+            lambda plugin_id, module: camera_module if module == "services.camera_service" else None,
+        )
+
+        _, camera = tunascreen_service._camera_fields("klipper", "ET4-AC")
+
+        assert camera["stream_url"] == "http://192.168.0.50:8080/video"
+
+    def test_stream_requires_device_token(self, client):
+        assert client.get("/api/tunascreen/cameras/cam123/stream").status_code == 401
+
+    def test_unknown_camera_returns_404(self, client, as_admin, monkeypatch):
+        code = client.post("/api/tunascreen/pair/start").json()["code"]
+        token = client.post(
+            "/api/tunascreen/pair/confirm",
+            json={"code": code, "device_name": "TUNA-Screen"},
+        ).json()["token"]
+
+        async def _missing(camera_id):
+            raise KeyError(camera_id)
+
+        monkeypatch.setattr(tunascreen_service, "subscribe_camera_stream", _missing)
+        response = client.get(
+            "/api/tunascreen/cameras/missing/stream",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404
 
 
 class TestDeviceManagement:

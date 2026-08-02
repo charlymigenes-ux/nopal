@@ -21,7 +21,7 @@ import secrets
 import tempfile
 import threading
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import WebSocket
 
@@ -324,7 +324,32 @@ def _camera_fields(device_type: str, device_id: str) -> Any:
         return [], None
     if camera is None:
         return [], None
-    return ["camera"], {"stream_url": camera.get("stream_url"), "name": camera.get("name")}
+    stream_url = camera.get("stream_url")
+    # Las rutas relativas del plugin usan la sesión web de NOPAL y por eso
+    # rechazan correctamente el token de dispositivo. TUNA-Screen recibe una
+    # ruta equivalente bajo su propio namespace de autenticación; las URLs
+    # absolutas de cámaras IP permanecen directas y nunca pasan por NOPAL.
+    if isinstance(stream_url, str) and stream_url.startswith("/") and camera.get("device_path"):
+        stream_url = f"/api/tunascreen/cameras/{camera['id']}/stream"
+    return ["camera"], {"stream_url": stream_url, "name": camera.get("name")}
+
+
+async def subscribe_camera_stream(camera_id: str) -> Tuple[Any, Any]:
+    """Abre una webcam USB vinculada usando el servicio compartido del plugin.
+
+    Solo se aceptan cámaras registradas, vinculadas a una máquina y con un
+    ``device_path`` local. Las cámaras IP siguen usando su URL absoluta para no
+    convertir NOPAL en un proxy abierto hacia destinos arbitrarios.
+    """
+    camera_module = get_loaded_plugin_module("camera-viewer", "services.camera_service")
+    usb_module = get_loaded_plugin_module("camera-viewer", "services.usb_camera_service")
+    if camera_module is None or usb_module is None:
+        raise RuntimeError("El plugin de cámaras no está disponible")
+    camera = camera_module.get_camera_by_id(camera_id)
+    if camera is None or not camera.get("bound_device") or not camera.get("device_path"):
+        raise KeyError(camera_id)
+    queue = await usb_module.subscribe(camera_id, camera["device_path"])
+    return queue, usb_module
 
 
 def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
