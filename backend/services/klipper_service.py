@@ -115,6 +115,15 @@ def normalize_printer_payload(
                 "temperature": status_data.get("extruder", {}).get("temperature"),
                 "target": status_data.get("extruder", {}).get("target"),
             },
+            "position": {
+                "x": (status_data.get("toolhead", {}).get("position") or [None, None, None])[0],
+                "y": (status_data.get("toolhead", {}).get("position") or [None, None, None])[1],
+                "z": (status_data.get("toolhead", {}).get("position") or [None, None, None])[2],
+            },
+            "fan_percent": round(float(status_data.get("fan", {}).get("speed") or 0) * 100),
+            "speed_factor": float(gcode_move.get("speed_factor") or 1.0) * 100,
+            "flow_factor": float(gcode_move.get("extrude_factor") or 1.0) * 100,
+            "z_offset": (gcode_move.get("homing_origin") or [0, 0, 0, 0])[2],
         },
         "job": {
             "filename": filename,
@@ -176,7 +185,7 @@ class MoonrakerClient:
 
     def get_printer_status(self):
         return self._get(
-            "/printer/objects/query?extruder&heater_bed&print_stats&toolhead&virtual_sdcard&gcode_move"
+            "/printer/objects/query?extruder&heater_bed&fan&print_stats&toolhead&virtual_sdcard&gcode_move"
         )
 
     def get_file_metadata(self, filename: str):
