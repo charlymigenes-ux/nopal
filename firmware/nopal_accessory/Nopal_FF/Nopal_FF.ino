@@ -61,6 +61,36 @@
  *     lo que hacía que NOPAL reportara el estado de cada relé al revés del
  *     físico real. Ver el comentario de NOPAL_RELAY_ACTIVE_LOW más abajo.
  *
+ * Cambios en 4.3.0-ff:
+ *   - Puente BLE hacia una pantalla LED (solo ESP32 -- el ESP8266 no tiene
+ *     radio Bluetooth). Esta placa NO arma el protocolo de la pantalla
+ *     (fuentes, bitmaps, CRC32) -- eso lo hace NOPAL en Python con la
+ *     librería pypixelcolor, y se lo manda a esta placa ya listo por HTTP;
+ *     la placa solo reenvía esos bytes por BLE. Ver el bloque "PANTALLA
+ *     LED BLE (relay, solo ESP32)" más abajo para el detalle completo y el
+ *     porqué de esta división de responsabilidades.
+ *
+ * Cambios en 4.4.0-ff (confirmados en hardware real: una pantalla LED BLE
+ * "iPixel Color" 16x32 conectada por esta placa):
+ *   - La pantalla LED BLE usa la librería NimBLE-Arduino (h2zero) en vez
+ *     de la BLE integrada del core (Bluedroid) -- Bluedroid no entraba en
+ *     el esquema de particiones por defecto ("Sketch too big", confirmado
+ *     en esta misma placa). Ver "PANTALLA LED BLE" más abajo y el
+ *     README.txt de esta carpeta para instalar la librería que hace falta.
+ *   - connect() de NimBLE NO dispara solo el descubrimiento de servicios
+ *     BLE -- hacía falta getServices(true) explícito, si no
+ *     bleScreenWriteChar/bleScreenNotifyChar nunca se encontraban aunque
+ *     la conexión BLE en sí fuera exitosa.
+ *   - Primer intento de conexión ya durante setup(), no en el primer
+ *     ciclo de maintainBleScreen() (20s después) -- diagnóstico más
+ *     rápido al arrancar.
+ *   - Diagnóstico real por Serial si connect() falla (código + texto del
+ *     error de NimBLE) y volcado de la tabla GATT si no aparecen los
+ *     characteristics esperados, en vez de fallar en silencio.
+ *   - Confirmado extremo a extremo: NOPAL arma texto real con
+ *     pypixelcolor (fuente + color), esta placa lo reenvía por BLE, y la
+ *     pantalla lo muestra correctamente.
+ *
  * Compatible con:
  *   - ESP8266
  *   - ESP32
@@ -99,13 +129,15 @@
  *   NOPAL:BUZZER:OFF
  *   NOPAL:BUZZER:ALARM
  *   NOPAL:BUZZER:READY | WORKING | WAITING | MAINTENANCE | DISCONNECTED
+ *   NOPAL:BLE:STATUS?        (solo ESP32, ver "PANTALLA LED BLE" más abajo)
  *
  * Respuesta de NOPAL:ID? (protocolo 4):
  *   NOPAL,role=accessory,chip=...,fw=4.2.0-ff,protocol=4,relays=4,pwm_led=1,
  *   ws2812=1,ws2812_count=8,ws2812_2=0,ws2812_2_count=0,ws2812_3=0,
  *   ws2812_3_count=0,buzzer=1,buzzer_pin=...,buzzer_pattern=...,
  *   wifi=1,wifi_connected=...,wifi_mode=...,hostname=...,ip=...,ota=1,
- *   ota_path=/update,uptime_ms=...,free_heap=...
+ *   ota_path=/update,uptime_ms=...,free_heap=...,
+ *   ble_screen=...,ble_screen_connected=...
  *
  * Portal web (cuando hay Wi-Fi):
  *   http://IP/             -> panel NOPAL embebido (relés, NeoPixel, PWM
@@ -126,6 +158,26 @@
  *                              action=BEEP|DOUBLE|ON|OFF|ALARM|READY|...
  *                              dispara un patrón (misma autenticación)
  *
+ * PANTALLA LED BLE (relay, solo ESP32):
+ *   Ver el comentario del cambio 4.3.0-ff más arriba para el porqué de
+ *   esta división de responsabilidades (NOPAL arma el protocolo en
+ *   Python, esta placa solo reenvía). Configurar NOPAL_BLE_SCREEN_MAC en
+ *   secrets.h con la MAC de la pantalla (se obtiene con la app iPixel
+ *   Color o un escáner BLE genérico como nRF Connect -- este firmware no
+ *   escanea, solo conecta).
+ *
+ *   http://IP/api/ble/status  -> GET, sin auth: {"configured":..,"connected":..}
+ *   http://IP/api/ble/window  -> POST, mismas credenciales que /api/relay.
+ *                                 Cuerpo: bytes de una "ventana" del
+ *                                 protocolo de la pantalla, en hexadecimal
+ *                                 (texto plano, no binario -- evita que un
+ *                                 byte 0x00, que este protocolo trae
+ *                                 seguido, corte el cuerpo del POST).
+ *                                 Responde "OK" si la pantalla confirmó
+ *                                 por BLE, o ERR:BLE_NOT_CONNECTED /
+ *                                 ERR:BLE_NO_ACK / ERR:INVALID_HEX /
+ *                                 ERR:BLE_NOT_CONFIGURED.
+ *
  * Antes de compilar copia secrets.h.example a secrets.h y pon tus propios
  * datos (ver README.txt de esta carpeta).
  */
@@ -140,6 +192,17 @@
   #include <ESPmDNS.h>
   #include <esp_arduino_version.h>
   #include <esp_system.h>
+  // Puente BLE hacia la pantalla LED, con la librería NimBLE-Arduino
+  // (h2zero/NimBLE-Arduino, instalar desde el Library Manager) en vez de
+  // la librería BLE integrada del core (Bluedroid) -- Bluedroid agrega
+  // ~500-700KB al binario y no entra en el esquema de particiones por
+  // defecto (confirmado: "Sketch too big" con Bluedroid, en esta misma
+  // placa). NimBLE ocupa más o menos la mitad. Un solo #include alcanza
+  // (ver el ejemplo oficial NimBLE_Client.ino del propio repo de la
+  // librería). El ESP8266 no tiene radio BLE, por eso este bloque queda
+  // fuera de su rama del #if/#elif.
+  #include <NimBLEDevice.h>
+  #include <NimBLEUtils.h>
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
   #include <WiFiClient.h>
@@ -192,7 +255,7 @@ enum class BuzzerPattern : uint8_t {
 // CONFIGURACIÓN GENERAL
 // ============================================================================
 
-#define FW_VERSION "4.2.1-ff"
+#define FW_VERSION "4.4.0-ff"
 #define NOPAL_PROTOCOL 4
 
 // La mayoría de módulos de relés se activan con LOW (pin en LOW = relé
@@ -437,6 +500,14 @@ const char* const RELAY_NAMES[RELAY_COUNT] = {
   NOPAL_RELAY4_NAME
 };
 
+// MAC de la pantalla LED BLE (formato "AA:BB:CC:DD:EE:FF"). Vacío por
+// defecto = función desactivada, ningún secrets.h viejo se rompe por no
+// tener esto definido (mismo criterio que los nombres de relé de arriba).
+// Solo tiene efecto en ESP32 -- ver bloque "PANTALLA LED BLE" más abajo.
+#ifndef NOPAL_BLE_SCREEN_MAC
+  #define NOPAL_BLE_SCREEN_MAC ""
+#endif
+
 
 // ============================================================================
 // PARÁMETROS DEL BUZZER (opcionales, con valor por defecto)
@@ -558,6 +629,289 @@ Adafruit_NeoPixel* ws2812StripObject(uint8_t stripIndex) {
 }
 
 #endif
+
+
+// ============================================================================
+// PANTALLA LED BLE (relay, solo ESP32)
+// ============================================================================
+//
+// Esta placa NO sabe armar los comandos de la pantalla (eso requiere
+// renderizar fuentes a bitmaps, CRC32, empaquetado en ventanas -- ver el
+// comentario del cambio 4.3.0-ff en el encabezado del archivo). Todo eso
+// lo arma NOPAL en Python con la librería pypixelcolor y se lo manda a
+// esta placa ya listo por HTTP (POST /api/ble/window, cuerpo en
+// hexadecimal); la placa solo lo reenvía por BLE y espera la confirmación
+// (ack) del dispositivo.
+//
+// Deliberadamente NO se implementa escaneo BLE acá: la API de escaneo
+// (BLEScan/BLEScanResults) cambió de forma incompatible entre versiones
+// del core de ESP32, y este firmware se escribe sin poder compilarlo en
+// este entorno -- mejor conectar directo por MAC fija (NOPAL_BLE_SCREEN_MAC
+// en secrets.h, obtenida una vez con la app iPixel Color o un escáner BLE
+// genérico como nRF Connect) que arriesgar un error de compilación en la
+// parte más frágil del código.
+//
+// Confirmado en hardware real (4.4.0-ff): conexión, escritura de ventana
+// con ack, y texto renderizado por NOPAL mostrado correctamente en una
+// pantalla LED BLE "iPixel Color" 16x32.
+
+#if defined(ESP32)
+
+static NimBLEUUID BLE_SCREEN_WRITE_UUID("0000fa02-0000-1000-8000-00805f9b34fb");
+static NimBLEUUID BLE_SCREEN_NOTIFY_UUID("0000fa03-0000-1000-8000-00805f9b34fb");
+
+// Bytes por escritura BLE. El protocolo de referencia (pypixelcolor) usa
+// 244, pensado para un MTU negociado de 247 -- acá se usa un valor más
+// chico a propósito: es puramente un detalle de transporte (cuántas
+// escrituras GATT hacen falta para mandar una ventana), no cambia nada del
+// protocolo en sí, y así no depende de que el ESP32 negocie el MTU más
+// grande con éxito en cualquier pantalla/adaptador.
+const size_t BLE_SCREEN_CHUNK_SIZE = 180;
+
+const uint32_t BLE_SCREEN_RECONNECT_INTERVAL_MS = 20000;
+const uint32_t BLE_SCREEN_ACK_TIMEOUT_MS = 8000;
+
+// Bytes máximos de una ventana ya decodificada (ver hexToBytes) -- de
+// sobra para mensajes de texto cortos, que es el uso real esperado; una
+// ventana del protocolo puede llegar a 12 KB, así que el límite queda por
+// debajo de eso a propósito, para no reservar memoria de más en una placa
+// que también corre Wi-Fi + WebServer + buzzer.
+const size_t BLE_SCREEN_MAX_WINDOW_BYTES = 8192;
+
+NimBLEClient* bleScreenClient = nullptr;
+NimBLERemoteCharacteristic* bleScreenWriteChar = nullptr;
+NimBLERemoteCharacteristic* bleScreenNotifyChar = nullptr;
+
+volatile bool bleScreenAckReceived = false;
+uint32_t bleScreenLastAttemptMs = 0;
+
+
+bool bleScreenConfigured() {
+  return strlen(NOPAL_BLE_SCREEN_MAC) > 0;
+}
+
+
+bool bleScreenIsConnected() {
+  return bleScreenClient != nullptr && bleScreenClient->isConnected();
+}
+
+
+// Firma exigida por NimBLERemoteCharacteristic::subscribe(). El
+// dispositivo contesta con un frame de 5 bytes [0x05, _, _, _, código] --
+// código 0/1/3 son las únicas confirmaciones válidas documentadas
+// (ver iPIXEL-Protocol-Documentation.md del proyecto ha-ipixel-color).
+void bleScreenNotifyCallback(
+  NimBLERemoteCharacteristic* characteristic,
+  uint8_t* data,
+  size_t length,
+  bool isNotify
+) {
+  if (length != 5 || data[0] != 0x05) {
+    return;
+  }
+
+  if (data[4] == 0 || data[4] == 1 || data[4] == 3) {
+    bleScreenAckReceived = true;
+  }
+}
+
+
+// Intenta conectar (no bloquea el resto del loop() más que lo que tarda
+// NimBLEClient::connect(), igual que ya hace maintainWifiConnection() con
+// WiFi.begin()). Se llama sola desde maintainBleScreen() cada
+// BLE_SCREEN_RECONNECT_INTERVAL_MS mientras no haya conexión.
+bool connectBleScreen() {
+  if (!bleScreenConfigured()) {
+    return false;
+  }
+
+  if (bleScreenClient == nullptr) {
+    bleScreenClient = NimBLEDevice::createClient();
+    // El timeout default de connect() es 30s -- un intento fallido (fuera
+    // de rango, apagada, etc.) bloquearía serviceNetwork() y por lo tanto
+    // Wi-Fi/HTTP por ese tiempo. 5s alcanza de sobra para una pantalla en
+    // rango y deja el resto de la placa responsiva si no lo está.
+    bleScreenClient->setConnectTimeout(5000);
+  }
+
+  if (bleScreenClient->isConnected()) {
+    return true;
+  }
+
+  bleScreenWriteChar = nullptr;
+  bleScreenNotifyChar = nullptr;
+
+  // NimBLEAddress toma un std::string (no un String de Arduino, al revés
+  // que casi toda la API de Arduino) y un tipo de dirección explícito, sin
+  // default -- BLE_ADDR_PUBLIC es lo correcto para prácticamente cualquier
+  // periférico BLE de consumo como esta pantalla. Ver NimBLEAddress.h.
+  NimBLEAddress address(std::string(NOPAL_BLE_SCREEN_MAC), BLE_ADDR_PUBLIC);
+
+  if (!bleScreenClient->connect(address)) {
+    // Diagnóstico real en vez de fallar en silencio -- maintainBleScreen()
+    // reintenta solo, así que esto va a aparecer cada
+    // BLE_SCREEN_RECONNECT_INTERVAL_MS mientras la pantalla no conecte.
+    Serial.print("NOPAL:BLE_CONNECT_FAILED,code=");
+    Serial.print(bleScreenClient->getLastError());
+    Serial.print(",reason=");
+    Serial.println(NimBLEUtils::returnCodeToString(bleScreenClient->getLastError()));
+    return false;
+  }
+
+  // getServices() devuelve un vector (no un map como en la librería BLE
+  // clásica del core). El refresh=true es obligatorio acá -- confirmado en
+  // hardware real: connect() NO dispara solo el descubrimiento de
+  // servicios (a pesar de su parámetro deleteAttributes), y sin refresh
+  // getServices() devuelve un caché vacío -- ningún servicio, aunque la
+  // conexión BLE haya sido exitosa.
+  const std::vector<NimBLERemoteService*>& services = bleScreenClient->getServices(true);
+
+  for (NimBLERemoteService* service : services) {
+    if (bleScreenWriteChar == nullptr) {
+      NimBLERemoteCharacteristic* candidate = service->getCharacteristic(BLE_SCREEN_WRITE_UUID);
+
+      if (candidate != nullptr) {
+        bleScreenWriteChar = candidate;
+      }
+    }
+
+    if (bleScreenNotifyChar == nullptr) {
+      NimBLERemoteCharacteristic* candidate = service->getCharacteristic(BLE_SCREEN_NOTIFY_UUID);
+
+      if (candidate != nullptr) {
+        bleScreenNotifyChar = candidate;
+      }
+    }
+  }
+
+  if (bleScreenWriteChar == nullptr || bleScreenNotifyChar == nullptr) {
+    // Diagnóstico: la pantalla puede no hablar exactamente el protocolo
+    // "iPixel Color" documentado (otro chipset, otros UUIDs) -- volcar
+    // todo lo que sí se descubrió para poder comparar contra
+    // BLE_SCREEN_WRITE_UUID/BLE_SCREEN_NOTIFY_UUID.
+    Serial.println("NOPAL:BLE_CHARACTERISTICS_NOT_FOUND,dumping_gatt_table:");
+    for (NimBLERemoteService* service : services) {
+      Serial.print("  service ");
+      Serial.println(service->toString().c_str());
+      for (NimBLERemoteCharacteristic* characteristic : service->getCharacteristics(false)) {
+        Serial.print("    char ");
+        Serial.println(characteristic->toString().c_str());
+      }
+    }
+    bleScreenClient->disconnect();
+    return false;
+  }
+
+  if (bleScreenNotifyChar->canNotify()) {
+    bleScreenNotifyChar->subscribe(true, bleScreenNotifyCallback);
+  }
+
+  return true;
+}
+
+
+void maintainBleScreen() {
+  if (!bleScreenConfigured() || bleScreenIsConnected()) {
+    return;
+  }
+
+  const uint32_t now = millis();
+
+  if (now - bleScreenLastAttemptMs < BLE_SCREEN_RECONNECT_INTERVAL_MS) {
+    return;
+  }
+
+  bleScreenLastAttemptMs = now;
+  connectBleScreen();
+}
+
+
+// Reenvía `length` bytes ya armados por NOPAL a la pantalla, en escrituras
+// de a lo sumo BLE_SCREEN_CHUNK_SIZE bytes, y espera el ack. Devuelve
+// false y deja el motivo en `response` si algo falla -- nunca lanza ni
+// bloquea más allá de BLE_SCREEN_ACK_TIMEOUT_MS.
+bool bleScreenWriteWindow(const uint8_t* data, size_t length, String& response) {
+  if (!bleScreenIsConnected() || bleScreenWriteChar == nullptr) {
+    response = "ERR:BLE_NOT_CONNECTED";
+    return false;
+  }
+
+  bleScreenAckReceived = false;
+
+  size_t offset = 0;
+
+  while (offset < length) {
+    const size_t chunkLength = min(BLE_SCREEN_CHUNK_SIZE, length - offset);
+
+    // true = "write with response": mismo comportamiento que
+    // write_gatt_char(..., response=True) del lado Python de referencia.
+    bleScreenWriteChar->writeValue(data + offset, chunkLength, true);
+
+    offset += chunkLength;
+  }
+
+  const uint32_t startedAt = millis();
+
+  while (!bleScreenAckReceived && (millis() - startedAt) < BLE_SCREEN_ACK_TIMEOUT_MS) {
+    delay(10);
+  }
+
+  if (!bleScreenAckReceived) {
+    response = "ERR:BLE_NO_ACK";
+    return false;
+  }
+
+  response = "OK";
+  return true;
+}
+
+
+int hexNibble(char digit) {
+  if (digit >= '0' && digit <= '9') {
+    return digit - '0';
+  }
+
+  if (digit >= 'a' && digit <= 'f') {
+    return digit - 'a' + 10;
+  }
+
+  if (digit >= 'A' && digit <= 'F') {
+    return digit - 'A' + 10;
+  }
+
+  return -1;
+}
+
+
+// Decodifica un string hexadecimal a bytes crudos en `out` (capacidad
+// `maxLength`). Se manda en hex y no en binario a propósito: el cuerpo de
+// un POST leído como String de Arduino puede cortarse en el primer byte
+// 0x00 (String no está pensado para binario arbitrario), y estos paquetes
+// SIEMPRE van a traer bytes 0x00 (longitudes/CRC en little-endian). Texto
+// hexadecimal es puro ASCII imprimible, así que no tiene ese problema.
+bool hexToBytes(const String& hex, uint8_t* out, size_t maxLength, size_t& outLength) {
+  const size_t hexLength = hex.length();
+
+  if (hexLength == 0 || hexLength % 2 != 0 || (hexLength / 2) > maxLength) {
+    return false;
+  }
+
+  for (size_t i = 0; i < hexLength; i += 2) {
+    const int highValue = hexNibble(hex.charAt(i));
+    const int lowValue = hexNibble(hex.charAt(i + 1));
+
+    if (highValue < 0 || lowValue < 0) {
+      return false;
+    }
+
+    out[i / 2] = static_cast<uint8_t>((highValue << 4) | lowValue);
+  }
+
+  outLength = hexLength / 2;
+  return true;
+}
+
+#endif // defined(ESP32)
 
 
 // ============================================================================
@@ -2238,6 +2592,17 @@ String buildStatusJson() {
 #endif
   json += "},";
 
+  json += "\"ble_screen\":{";
+#if defined(ESP32)
+  json += "\"configured\":";
+  json += bleScreenConfigured() ? "true" : "false";
+  json += ",\"connected\":";
+  json += bleScreenIsConnected() ? "true" : "false";
+#else
+  json += "\"configured\":false,\"connected\":false";
+#endif
+  json += "},";
+
   json += "\"ota\":{";
   json += "\"enabled\":true,";
   json += "\"path\":\"/update\"";
@@ -2501,6 +2866,61 @@ void setupWebServer() {
   });
 
 
+  // ------------------------------------------------------------------------
+  // Pantalla LED BLE -- ver bloque "PANTALLA LED BLE (relay, solo ESP32)"
+  // más arriba para el porqué de esta división de responsabilidades.
+  // ------------------------------------------------------------------------
+
+  server.on("/api/ble/status", HTTP_GET, []() {
+    String json = "{\"configured\":";
+
+#if defined(ESP32)
+    json += bleScreenConfigured() ? "true" : "false";
+    json += ",\"connected\":";
+    json += bleScreenIsConnected() ? "true" : "false";
+#else
+    json += "false,\"connected\":false";
+#endif
+
+    json += "}";
+
+    server.send(200, "application/json; charset=utf-8", json);
+  });
+
+  server.on("/api/ble/window", HTTP_POST, []() {
+    if (!checkApiAuth()) return;
+
+#if defined(ESP32)
+    if (!bleScreenConfigured()) {
+      server.send(400, "text/plain", "ERR:BLE_NOT_CONFIGURED");
+      return;
+    }
+
+    // server.arg("plain") trae el cuerpo crudo del POST cuando no es
+    // application/x-www-form-urlencoded -- acá siempre es texto
+    // hexadecimal (ver hexToBytes), nunca binario.
+    const String hexBody = server.arg("plain");
+    uint8_t* buffer = new uint8_t[BLE_SCREEN_MAX_WINDOW_BYTES];
+    size_t decodedLength = 0;
+    String response;
+    bool ok = false;
+
+    if (!hexToBytes(hexBody, buffer, BLE_SCREEN_MAX_WINDOW_BYTES, decodedLength)) {
+      response = "ERR:INVALID_HEX";
+    } else {
+      ok = bleScreenWriteWindow(buffer, decodedLength, response);
+    }
+
+    delete[] buffer;
+
+    const int statusCode = ok ? 200 : (response == "ERR:INVALID_HEX" ? 400 : 502);
+    server.send(statusCode, "text/plain", response);
+#else
+    server.send(501, "text/plain", "ERR:UNSUPPORTED_PLATFORM");
+#endif
+  });
+
+
   server.onNotFound([]() {
     server.send(
       404,
@@ -2530,6 +2950,10 @@ void setupWebServer() {
 
 void serviceNetwork() {
   maintainWifiConnection();
+
+#if defined(ESP32)
+  maintainBleScreen();
+#endif
 
 #if STATUS_LED_ENABLE
   serviceStatusLed();
@@ -2628,6 +3052,15 @@ void sendIdentification() {
 
   Serial.print(",ota=1");
   Serial.print(",ota_path=/update");
+
+#if defined(ESP32)
+  Serial.print(",ble_screen=");
+  Serial.print(bleScreenConfigured() ? 1 : 0);
+  Serial.print(",ble_screen_connected=");
+  Serial.print(bleScreenIsConnected() ? 1 : 0);
+#else
+  Serial.print(",ble_screen=0,ble_screen_connected=0");
+#endif
 
   // Telemetría real disponible en ambas plataformas sin sensores extra
   // (no hay forma de medir voltaje/corriente/temperatura en este firmware
@@ -2922,6 +3355,18 @@ void handleCommand(String line) {
     return;
   }
 
+  if (command == "BLE:STATUS?") {
+#if defined(ESP32)
+    Serial.print("BLE,configured=");
+    Serial.print(bleScreenConfigured() ? 1 : 0);
+    Serial.print(",connected=");
+    Serial.println(bleScreenIsConnected() ? 1 : 0);
+#else
+    Serial.println("ERR:UNSUPPORTED_PLATFORM");
+#endif
+    return;
+  }
+
 #if TH_SENSOR_ENABLE
   if (command == "TH?") {
     String response;
@@ -3094,6 +3539,24 @@ void setup() {
 
   setupWifi();
   setupWebServer();
+
+#if defined(ESP32)
+  // Solo se inicializa el stack BLE si de verdad hay una pantalla
+  // configurada -- no tiene sentido gastar RAM/radio en una placa que no
+  // usa esta función (mismo criterio que WS2812_ENABLE/BUZZER_ENABLE).
+  if (bleScreenConfigured()) {
+    NimBLEDevice::init("");
+    NimBLEDevice::setMTU(247);
+
+    // Primer intento ya durante el arranque, en vez de esperar los
+    // BLE_SCREEN_RECONNECT_INTERVAL_MS (20s) del ciclo normal de
+    // maintainBleScreen() -- así el resultado (éxito o el diagnóstico de
+    // connectBleScreen()) sale pegado a NOPAL:READY en el log de
+    // arranque, sin tener que cronometrar cuándo mirar el monitor Serial.
+    bleScreenLastAttemptMs = millis();
+    connectBleScreen();
+  }
+#endif
 
   delay(100);
 
