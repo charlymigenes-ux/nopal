@@ -1,5 +1,23 @@
 [
   {
+    "id": "matriz-led",
+    "name": "Matriz LED",
+    "version": "0.1.0",
+    "publisher": "NOPAL Labs",
+    "category": "Accesorios",
+    "description": "Conecta una pantalla LED matriz BLE (tipo iPixel Color) y muéstrale texto y animaciones según el estado de tus máquinas.",
+    "long_description": "Un accesorio ESP32 hace de puente BLE hacia la pantalla; NOPAL arma el protocolo real (fuentes, colores, animaciones, GIFs) con la librería pypixelcolor y se lo manda por HTTP. Probado contra una pantalla iPixel Color 16x32.",
+    "icon": "grid",
+    "accent": "#22c55e",
+    "compatibility": ["Impresión 3D", "Láser", "CNC"],
+    "permissions": ["Enviar mensajes por Bluetooth a través de un accesorio ESP32"],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "available",
+    "pricing": { "type": "free" },
+    "repo_url": null
+  },
+  {
     "id": "shape-creator",
     "name": "Creador de formas",
     "version": "1.1.1",
