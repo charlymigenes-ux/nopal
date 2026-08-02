@@ -86,6 +86,12 @@ LIBRERÍAS PARA ARDUINO IDE
 ---------------------------
 1. ElegantOTA         (Ayush Sharma — ayushsharma82/ElegantOTA)
 2. Adafruit NeoPixel
+3. NimBLE-Arduino     (h2zero/NimBLE-Arduino -- solo hace falta si vas a
+                        usar la pantalla LED BLE, ver más abajo. La BLE
+                        integrada del core (Bluedroid) NO se usa a
+                        propósito: agrega ~500-700KB al binario y no entra
+                        en el esquema de particiones por defecto -- NimBLE
+                        ocupa más o menos la mitad)
 
 Wi-Fi, WebServer/ESP8266WebServer y mDNS ya vienen incluidas con los cores
 de ESP32 / ESP8266 -- no hace falta instalarlas aparte.
@@ -151,6 +157,47 @@ NOPAL:BUZZER:WORKING
 NOPAL:BUZZER:WAITING
 NOPAL:BUZZER:MAINTENANCE
 NOPAL:BUZZER:DISCONNECTED
+NOPAL:BLE:STATUS?   (solo ESP32, ver sección "PANTALLA LED BLE" abajo)
+
+PANTALLA LED BLE (relay, solo ESP32)
+--------------------------------------
+Confirmado en hardware real (4.4.0-ff): conexión BLE, escritura con ack,
+y texto renderizado por NOPAL mostrado correctamente en una pantalla LED
+BLE "iPixel Color" 16x32.
+
+Este .ino puede hacer de puente entre NOPAL y una pantalla LED tipo
+"iPixel Color" / iDotMatrix que se controla por Bluetooth Low Energy. La
+placa NO entiende el protocolo de la pantalla (fuentes, bitmaps, CRC32) --
+eso lo arma NOPAL en Python con la librería pypixelcolor y se lo manda ya
+listo por HTTP; la placa solo reenvía esos bytes por BLE y confirma si el
+dispositivo los recibió.
+
+Requisitos:
+- Placa ESP32 (el ESP8266 no tiene Bluetooth, esta función queda
+  desactivada sola en esa plataforma).
+- Librería NimBLE-Arduino instalada (ver "LIBRERÍAS PARA ARDUINO IDE" más
+  arriba) -- si al compilar da "text section exceeds available space in
+  board" / "Sketch too big", falta esta librería o el sketch está usando
+  la BLE integrada del core por error.
+- La MAC de la pantalla, configurada en secrets.h como
+  NOPAL_BLE_SCREEN_MAC. Se obtiene con la app iPixel Color o con un
+  escáner BLE genérico (nRF Connect, LightBlue, etc.) -- este firmware
+  deliberadamente NO escanea por BLE, solo se conecta directo a una MAC ya
+  conocida (la API de escaneo cambia de forma incompatible entre versiones
+  del core de ESP32, así que se evitó a propósito).
+
+Endpoints nuevos:
+- GET  /api/ble/status  -> {"configured":bool,"connected":bool}, sin auth.
+- POST /api/ble/window  -> mismas credenciales que /api/relay. Cuerpo:
+  texto hexadecimal con los bytes de una "ventana" del protocolo de la
+  pantalla (se manda en hex, no binario, para no arriesgar que un byte
+  0x00 corte el cuerpo del POST). Responde "OK" si la pantalla confirmó
+  por BLE, o un ERR:* si no.
+
+Wi-Fi y BLE conviven en el mismo ESP32 sin configuración extra, con
+contención esperable si se usan las dos funciones muy intensamente al
+mismo tiempo -- no es un problema para mandar mensajes de texto cortos
+ocasionales.
 
 ESCENAS RÁPIDAS Y BUZZER
 -------------------------

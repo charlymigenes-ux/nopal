@@ -352,6 +352,147 @@ async def subscribe_camera_stream(camera_id: str) -> Tuple[Any, Any]:
     return queue, usb_module
 
 
+# ── Recursos opcionales del taller (plugins) ──
+
+def _spool_modules() -> Tuple[Any, Any, Any]:
+    config = get_loaded_plugin_module("spoolman", "services.config_service")
+    links = get_loaded_plugin_module("spoolman", "services.spool_link_service")
+    reservations = get_loaded_plugin_module("spoolman", "services.reservation_service")
+    if config is None or links is None:
+        raise ValueError("El plugin Spoolman no está disponible")
+    return config, links, reservations
+
+
+def _normalize_spool(spool: Dict[str, Any], reserved_g: float = 0) -> Dict[str, Any]:
+    filament = spool.get("filament") or {}
+    remaining = float(spool.get("remaining_weight") or 0)
+    return {
+        "id": int(spool["id"]),
+        "name": filament.get("name") or spool.get("lot_nr") or f"Bobina #{spool['id']}",
+        "material": filament.get("material") or "Sin material",
+        "vendor": (filament.get("vendor") or {}).get("name") if isinstance(filament.get("vendor"), dict) else None,
+        "color_hex": filament.get("color_hex"),
+        "remaining_g": remaining,
+        "reserved_g": float(reserved_g or 0),
+        "available_g": max(remaining - float(reserved_g or 0), 0),
+        "initial_g": spool.get("initial_weight"),
+        "archived": bool(spool.get("archived", False)),
+    }
+
+
+async def get_materials_snapshot() -> Dict[str, Any]:
+    try:
+        config, links, reservations = _spool_modules()
+        client = config.get_client()
+        if client is None:
+            return {"available": False, "reason": "Spoolman no está configurado", "spools": [], "links": {}}
+        raw_spools = await asyncio.to_thread(client.list_spools, False)
+        normalized = []
+        for spool in raw_spools:
+            reserved = reservations.reserved_grams_for_spool(spool["id"]) if reservations else 0
+            normalized.append(_normalize_spool(spool, reserved))
+        machine_links = {
+            f"klipper:{port}": int(link["spool_id"])
+            for port, link in links.get_all_links().items()
+            if isinstance(link, dict) and link.get("spool_id") is not None
+        }
+        return {"available": True, "reason": None, "spools": normalized, "links": machine_links}
+    except ValueError:
+        return {"available": False, "reason": "El plugin Spoolman no está disponible", "spools": [], "links": {}}
+    except Exception:
+        logger.exception("No se pudo obtener el inventario de Spoolman")
+        return {"available": False, "reason": "No se pudo consultar Spoolman", "spools": [], "links": {}}
+
+
+async def set_active_material(machine_id: str, spool_id: Any) -> Dict[str, Any]:
+    if not machine_id.startswith("klipper:"):
+        raise ValueError("La asignación de material solo está disponible para impresoras Klipper")
+    try:
+        port = int(machine_id.split(":", 1)[1])
+    except (ValueError, IndexError) as exc:
+        raise ValueError("Identificador de impresora inválido") from exc
+    config, links, _ = _spool_modules()
+    client = config.get_client()
+    if client is None:
+        raise ValueError("Spoolman no está configurado")
+    if spool_id is None:
+        await asyncio.to_thread(links.clear_link, port)
+        return {"success": True, "machine_id": machine_id, "spool_id": None}
+    try:
+        parsed_spool_id = int(spool_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Identificador de bobina inválido") from exc
+    spool = await asyncio.to_thread(client.get_spool, parsed_spool_id)
+    if spool is None:
+        raise ValueError("Bobina no encontrada en Spoolman")
+    await asyncio.to_thread(links.set_link, port, parsed_spool_id)
+    return {"success": True, "machine_id": machine_id, "spool_id": parsed_spool_id}
+
+
+def _accessory_modules() -> Tuple[Any, Any]:
+    service = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    scenes = get_loaded_plugin_module("arduino-accessories", "services.accessory_scenes")
+    if service is None:
+        raise ValueError("El plugin de accesorios no está disponible")
+    return service, scenes
+
+
+async def get_accessories_snapshot() -> Dict[str, Any]:
+    try:
+        service, scenes_module = _accessory_modules()
+        statuses = await service.get_accessories_status()
+        accessories = []
+        for item in statuses:
+            raw_state = item.get("on")
+            # Algunos drivers (p. ej. tiras LED) reportan un objeto con
+            # color + encendido, mientras que los relés reportan bool.
+            # El contrato Android mantiene `on` estrictamente booleano.
+            on = raw_state if isinstance(raw_state, bool) else (
+                raw_state.get("on") if isinstance(raw_state, dict) and isinstance(raw_state.get("on"), bool) else None
+            )
+            accessories.append({
+                "id": str(item.get("id") or ""),
+                "name": item.get("name") or "Accesorio",
+                "kind": item.get("kind") or "other",
+                "driver": item.get("driver") or "unknown",
+                "online": raw_state is not None,
+                "on": on,
+            })
+        scenes = [{
+            "id": str(scene.get("id") or ""),
+            "name": scene.get("name") or "Escena",
+            "action_count": len(scene.get("actions") or []),
+        } for scene in (scenes_module.get_scenes() if scenes_module else [])]
+        return {"available": True, "reason": None, "accessories": accessories, "scenes": scenes}
+    except ValueError:
+        return {"available": False, "reason": "El plugin de accesorios no está disponible", "accessories": [], "scenes": []}
+    except Exception:
+        logger.exception("No se pudo obtener el estado de los accesorios")
+        return {"available": False, "reason": "No se pudieron consultar los accesorios", "accessories": [], "scenes": []}
+
+
+async def set_accessory_power(accessory_id: str, on: bool) -> Dict[str, Any]:
+    service, _ = _accessory_modules()
+    result = await service.set_accessory_power(accessory_id, on)
+    if result is None:
+        raise ValueError("Accesorio no encontrado")
+    if not result:
+        raise ValueError("El accesorio no confirmó el cambio")
+    return {"success": True, "accessory_id": accessory_id, "on": on}
+
+
+async def run_accessory_scene(scene_id: str) -> Dict[str, Any]:
+    _, scenes = _accessory_modules()
+    if scenes is None:
+        raise ValueError("Las escenas de accesorios no están disponibles")
+    result = await scenes.run_scene(scene_id)
+    if result is None:
+        raise ValueError("Escena no encontrada")
+    if not result:
+        raise ValueError("Una o más acciones de la escena fallaron")
+    return {"success": True, "scene_id": scene_id}
+
+
 def _klipper_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     port = entry["port"]
     online = entry.get("status") == "online"
