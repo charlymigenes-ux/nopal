@@ -2,7 +2,7 @@
   {
     "id": "matriz-led",
     "name": "Matriz LED",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "publisher": "NOPAL Labs",
     "category": "Accesorios",
     "description": "Conecta una pantalla LED matriz BLE (tipo iPixel Color) y muéstrale texto y animaciones según el estado de tus máquinas.",
