@@ -15834,6 +15834,7 @@ let pluginsCatalog = [];
 let pluginsCategories = [];
 let pluginsActiveCategory = 'all';
 let pluginsLoaded = false;
+let pluginsFeaturedId = null;
 
 window.NopalPluginRegistry = window.NopalPluginRegistry || {};
 
@@ -15956,7 +15957,7 @@ function renderPluginCard(plugin) {
     const status = plugin.installed ? t('pluginsStatusInstalled') : plugin.availability === 'available' ? t('pluginsStatusAvailable') : t('pluginsComingSoon');
     const disabled = plugin.availability !== 'available';
     return `
-        <article class="plugin-card" style="--plugin-accent:${escapeHtml(plugin.accent || '#a855f7')}">
+        <article class="plugin-card" data-plugin-id="${escapeHtml(plugin.id)}" style="--plugin-accent:${escapeHtml(plugin.accent || '#a855f7')}">
             <div class="plugin-card-top">
                 <div class="plugin-card-icon">${pluginIconSvg(plugin.icon)}</div>
                 <span class="plugin-card-status${plugin.installed ? ' is-installed' : ''}">${escapeHtml(status)}</span>
@@ -15977,10 +15978,24 @@ function renderPluginCard(plugin) {
 
 function renderPluginsFeatured() {
     if (!pluginsFeatured) return;
-    const featured = pluginsCatalog.find(plugin => plugin.featured);
-    const show = featured && pluginsActiveCategory === 'all' && !pluginsSearchInput?.value.trim();
+    // Clic en una tarjeta selecciona ese plugin para el banner (persiste
+    // aunque cambie el filtro/búsqueda); sin selección, cae al plugin
+    // marcado "featured" en el catálogo, como antes.
+    const selected = pluginsFeaturedId && pluginsCatalog.find(plugin => plugin.id === pluginsFeaturedId);
+    const featured = selected || pluginsCatalog.find(plugin => plugin.featured);
+    const show = featured && (selected || (pluginsActiveCategory === 'all' && !pluginsSearchInput?.value.trim()));
     pluginsFeatured.hidden = !show;
     if (!show) return;
+    // La imagen del plugin va de fondo del contenedor completo (debajo del
+    // degradado que ya trae la tarjeta), no como una miniatura aparte --
+    // así el degradado sigue haciendo de transición hacia el texto.
+    pluginsFeatured.classList.toggle('has-banner-image', !!featured.banner_image);
+    if (featured.banner_image) {
+        pluginsFeatured.style.setProperty('--plugins-featured-image', `url('${featured.banner_image.replace(/'/g, "%27")}')`);
+    } else {
+        pluginsFeatured.style.removeProperty('--plugins-featured-image');
+    }
+    const visual = featured.banner_image ? '' : `<div class="plugins-featured-icon">${pluginIconSvg(featured.icon, 58)}</div>`;
     pluginsFeatured.innerHTML = `
         <div class="plugins-featured-copy" style="--plugin-accent:${escapeHtml(featured.accent)}">
             <span class="plugins-featured-label">${escapeHtml(t('pluginsFeatured'))}</span>
@@ -15988,7 +16003,7 @@ function renderPluginsFeatured() {
             <p>${escapeHtml(pluginCatalogText(featured, 'long_description'))}</p>
             <div class="plugin-card-tags">${featured.compatibility.map(item => `<span class="plugin-card-tag">${escapeHtml(pluginCompatibilityText(item))}</span>`).join('')}</div>
         </div>
-        <div class="plugins-featured-visual"><div class="plugins-featured-icon">${pluginIconSvg(featured.icon, 58)}</div></div>`;
+        <div class="plugins-featured-visual">${visual}</div>`;
 }
 
 function renderPluginsFilters() {
@@ -16081,7 +16096,16 @@ pluginsCategoryFilters?.addEventListener('click', event => {
 pluginsSearchInput?.addEventListener('input', renderPluginsGallery);
 pluginsGrid?.addEventListener('click', event => {
     const button = event.target.closest('[data-plugin-action]');
-    if (button) changePluginInstallation(button.dataset.pluginId, button.dataset.pluginAction, button);
+    if (button) {
+        changePluginInstallation(button.dataset.pluginId, button.dataset.pluginAction, button);
+        return;
+    }
+    const card = event.target.closest('.plugin-card');
+    if (card && card.dataset.pluginId && card.dataset.pluginId !== pluginsFeaturedId) {
+        pluginsFeaturedId = card.dataset.pluginId;
+        renderPluginsFeatured();
+        pluginsFeatured?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 });
 
 // ── Editor G-Code local ──

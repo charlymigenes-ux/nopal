@@ -4900,6 +4900,16 @@ body.green .settings-card {
     background: radial-gradient(circle at 86% 20%, color-mix(in srgb, var(--purple) 20%, transparent), transparent 34%), color-mix(in srgb, var(--card-bg) 90%, transparent);
 }
 
+/* El plugin trae su propia imagen: va de fondo de toda la tarjeta, con un
+   degradado encima (mismo --card-bg de siempre) para que el texto de la
+   izquierda siga siendo legible sobre la foto. */
+.plugins-featured.has-banner-image {
+    background-image: linear-gradient(100deg, var(--card-bg) 0%, color-mix(in srgb, var(--card-bg) 88%, transparent) 32%, color-mix(in srgb, var(--card-bg) 35%, transparent) 60%, transparent 88%), var(--plugins-featured-image);
+    background-repeat: no-repeat;
+    background-position: center right;
+    background-size: cover;
+}
+
 .plugins-featured-copy { position: relative; z-index: 1; }
 .plugins-featured-label { display: inline-flex; margin-bottom: 12px; padding: 5px 9px; border-radius: 999px; background: color-mix(in srgb, var(--purple) 20%, transparent); color: var(--purple); font-size: 0.68rem; font-weight: 800; }
 .plugins-featured h2 { margin: 0 0 8px; color: var(--text); font-size: 1.45rem; }
@@ -4917,6 +4927,7 @@ body.green .settings-card {
     border-radius: 15px;
     background: color-mix(in srgb, var(--card-bg) 72%, transparent);
     transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    cursor: pointer;
 }
 .plugin-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--plugin-accent) 55%, transparent); background: color-mix(in srgb, var(--card-bg) 88%, transparent); }
 .plugin-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

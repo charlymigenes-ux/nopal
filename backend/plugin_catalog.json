@@ -2,7 +2,7 @@
   {
     "id": "matriz-led",
     "name": "Matriz LED",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "publisher": "NOPAL Labs",
     "category": "Accesorios",
     "description": "Panel principal + Editor de Anuncios para una pantalla LED matriz BLE (tipo iPixel Color): escenas rápidas, automatizaciones reales y alertas por máquina, además de dibujar patrones a color y guardarlos como anuncios reutilizables.",
@@ -15,7 +15,8 @@
     "featured": false,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "https://github.com/charlymigenes-ux/matriz-led"
+    "repo_url": "https://github.com/charlymigenes-ux/matriz-led",
+    "banner_image": "/static/img/banner_matriz_LED.png"
   },
   {
     "id": "shape-creator",
@@ -33,7 +34,8 @@
     "featured": true,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-shape-creator.git"
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-shape-creator.git",
+    "banner_image": "/static/img/banner_CreadorFormas.png"
   },
   {
     "id": "gcode-optimizer",
@@ -69,25 +71,27 @@
     "featured": false,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-svg-toolkit.git"
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-svg-toolkit.git",
+    "banner_image": "/static/img/banner_Herramienta_SVG.png"
   },
   {
     "id": "font-library",
-    "name": "Biblioteca de tipografías",
-    "version": "0.1.0",
+    "name": "Texto para fabricación",
+    "version": "0.4.2",
     "publisher": "NOPAL Labs",
     "category": "Diseño",
-    "description": "Explora, previsualiza y aplica tipografías preparadas para corte, grabado y CNC.",
-    "long_description": "Gestiona una colección de fuentes, comprueba su legibilidad y convierte texto a trayectos listos para producción.",
+    "description": "Crea texto con medidas físicas, valida su fabricación y agrégalo como trayectos editables a un proyecto NOPAL.",
+    "long_description": "Editor de texto con 20 tipografías incluidas (funciona sin conexión), medidas exactas en milímetros, contorno sólido o de línea, validación de fabricación (kerf, puentes mínimos, potencia/velocidad) y exportación como SVG editable directo al proyecto, a la Biblioteca o a la cola de producción.",
     "icon": "type",
     "accent": "#ec4899",
     "compatibility": ["Láser", "CNC"],
-    "permissions": ["Leer y guardar tipografías"],
+    "permissions": ["Leer tipografías locales", "Agregar elementos al proyecto actual", "Guardar SVG en la biblioteca", "Enviar diseños a la cola de producción"],
     "size": "Por definir",
     "featured": false,
-    "availability": "coming_soon",
+    "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": null
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-font-library.git",
+    "banner_image": "/static/img/banner_BibliotecaTipografias.png"
   },
   {
     "id": "material-library",
@@ -159,7 +163,8 @@
     "featured": true,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-spoolman.git"
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-spoolman.git",
+    "banner_image": "/static/img/banner_Spoolman.png"
   },
   {
     "id": "cotizador",
@@ -177,6 +182,7 @@
     "featured": false,
     "availability": "available",
     "pricing": { "type": "free" },
-    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-cotizador.git"
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-cotizador.git",
+    "banner_image": "/static/img/banner_Cotizador.png"
   }
 ]
