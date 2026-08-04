@@ -5,133 +5,259 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NOPAL — Node Operation, Printer And Laser</title>
 <meta name="description" content="Panel de control autoalojado que unifica impresoras 3D (Klipper, Marlin, Bambu Lab, Elegoo, FlashForge), láser/CNC GRBL, plugins y una app Android complementaria en un solo dashboard.">
+<meta name="theme-color" content="#0a0d09">
 <link rel="icon" href="assets/img/logo.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --green:#39D62E;
+    --green-bright:#6dff5f;
     --green-dark:#1f8a19;
-    --ink:#12140f;
-    --ink-soft:#1b1f17;
-    --surface:#181c15;
-    --surface-2:#20261c;
-    --border:#2b3225;
-    --text:#eef2ea;
-    --text-dim:#a9b3a1;
-    --radius:14px;
-    --maxw:1120px;
+    --green-soft:rgba(57,214,46,0.10);
+    --green-line:rgba(57,214,46,0.28);
+    --ink:#0a0c09;
+    --ink-soft:#0e120c;
+    --surface:#12160f;
+    --surface-2:#171d13;
+    --border:#242b1f;
+    --border-soft:#1b2117;
+    --text:#f1f4ec;
+    --text-dim:#aab5a2;
+    --text-faint:#71806e;
+    --radius:16px;
+    --radius-sm:10px;
+    --maxw:1180px;
+    --font-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-head:"Space Grotesk",var(--font-body);
+    --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,Menlo,monospace;
+    --ease:cubic-bezier(.22,.9,.35,1);
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
+  ::selection{background:var(--green);color:#06210a;}
   body{
     margin:0;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-family:var(--font-body);
     background:var(--ink);
     color:var(--text);
     line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    position:relative;
+  }
+  body::before{
+    content:"";
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:radial-gradient(rgba(57,214,46,0.14) 1px, transparent 1px);
+    background-size:26px 26px;
+    -webkit-mask-image:radial-gradient(ellipse 90% 60% at 50% 0%, #000 0%, transparent 72%);
+    mask-image:radial-gradient(ellipse 90% 60% at 50% 0%, #000 0%, transparent 72%);
+    opacity:.55;
   }
   a{color:var(--green);text-decoration:none;}
   a:hover{text-decoration:underline;}
   img{max-width:100%;display:block;}
-  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;}
-  section{padding:88px 0;}
-  h1,h2,h3{line-height:1.2;margin:0 0 12px;}
-  h2{font-size:32px;color:#fff;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;position:relative;z-index:1;}
+  section{padding:100px 0;position:relative;z-index:1;}
+  h1,h2,h3{font-family:var(--font-head);line-height:1.15;margin:0 0 12px;letter-spacing:-0.01em;}
+  h2{font-size:34px;color:#fff;}
   .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
     color:var(--green);
-    font-size:13px;
-    font-weight:700;
-    letter-spacing:.12em;
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    font-weight:600;
+    letter-spacing:.14em;
     text-transform:uppercase;
-    margin-bottom:10px;
+    margin-bottom:14px;
+  }
+  .eyebrow::before{
+    content:"";width:7px;height:7px;border-radius:2px;
+    background:var(--green);box-shadow:0 0 10px var(--green);
+    flex:none;
   }
   .lead{color:var(--text-dim);font-size:17px;max-width:640px;}
+  code{font-family:var(--font-mono);}
+
+  :focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px;}
+
+  .skip-link{
+    position:fixed;top:-60px;left:16px;z-index:200;
+    background:var(--green);color:#06210a;font-weight:700;
+    padding:10px 16px;border-radius:8px;transition:top .2s var(--ease);
+  }
+  .skip-link:focus{top:16px;text-decoration:none;}
 
   /* NAV */
   header{
     position:sticky;top:0;z-index:50;
-    background:rgba(18,20,15,0.9);
-    backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--border);
+    background:rgba(10,12,9,0.78);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border-soft);
   }
-  nav.wrap{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:#fff;}
-  .brand img{height:30px;width:auto;border-radius:6px;}
-  .navlinks{display:flex;gap:28px;align-items:center;}
-  .navlinks a{color:var(--text-dim);font-size:14px;font-weight:600;}
-  .navlinks a:hover{color:var(--text);text-decoration:none;}
+  nav.wrap{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;gap:16px;}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-head);font-weight:700;font-size:18px;color:#fff;}
+  .brand .mark{
+    height:34px;width:auto;border-radius:8px;overflow:hidden;flex:none;
+    background:#000;border:1px solid var(--border);display:flex;align-items:center;
+  }
+  .brand .mark img{height:34px;width:auto;max-width:none;display:block;}
+  .navlinks{display:flex;gap:6px;align-items:center;}
+  .navlinks a{
+    color:var(--text-dim);font-size:13.5px;font-weight:600;
+    font-family:var(--font-mono);letter-spacing:.02em;
+    padding:9px 12px;border-radius:8px;transition:color .15s var(--ease),background .15s var(--ease);
+  }
+  .navlinks a:hover{color:var(--text);text-decoration:none;background:var(--surface);}
+  .navlinks a.active{color:var(--green);}
   .navlinks a.cta{
-    color:var(--ink);background:var(--green);padding:9px 16px;border-radius:8px;
+    color:#06210a;background:var(--green);padding:9px 16px;border-radius:8px;
+    display:inline-flex;align-items:center;gap:7px;margin-left:8px;
   }
-  .navlinks a.cta:hover{background:#4ee641;text-decoration:none;}
-  #menu-toggle{display:none;}
-  .burger{display:none;background:none;border:1px solid var(--border);color:#fff;border-radius:8px;padding:8px 10px;font-size:18px;cursor:pointer;}
+  .navlinks a.cta:hover{background:var(--green-bright);text-decoration:none;color:#06210a;}
+  .navlinks a.cta svg{width:16px;height:16px;}
+  .burger{
+    display:none;background:var(--surface);border:1px solid var(--border);color:#fff;
+    border-radius:8px;width:40px;height:40px;align-items:center;justify-content:center;
+    cursor:pointer;flex:none;
+  }
+  .burger svg{width:20px;height:20px;}
+  .burger .icon-close{display:none;}
+  .burger[aria-expanded="true"] .icon-menu{display:none;}
+  .burger[aria-expanded="true"] .icon-close{display:block;}
 
   /* HERO */
   .hero{
-    padding:110px 0 90px;
+    padding:96px 0 92px;
     background:
-      radial-gradient(circle at 20% 15%, rgba(57,214,46,0.18), transparent 45%),
-      radial-gradient(circle at 85% 60%, rgba(57,214,46,0.10), transparent 50%),
+      radial-gradient(circle at 18% 10%, rgba(57,214,46,0.16), transparent 45%),
+      radial-gradient(circle at 88% 55%, rgba(57,214,46,0.09), transparent 50%),
       var(--ink);
     text-align:center;
-    border-bottom:1px solid var(--border);
+    border-bottom:1px solid var(--border-soft);
+    overflow:clip;
   }
-  .hero img.logo{height:96px;width:auto;margin:0 auto 28px;}
+  .status-pill{
+    display:inline-flex;align-items:center;gap:9px;
+    font-family:var(--font-mono);font-size:12.5px;color:var(--text-dim);
+    border:1px solid var(--border);background:var(--surface);
+    padding:7px 14px 7px 10px;border-radius:999px;margin-bottom:28px;
+  }
+  .status-pill .dot{
+    width:8px;height:8px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 0 rgba(57,214,46,0.55);
+    animation:pulse 2.2s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(57,214,46,0.55);}
+    70%{box-shadow:0 0 0 9px rgba(57,214,46,0);}
+    100%{box-shadow:0 0 0 0 rgba(57,214,46,0);}
+  }
+  .logo-orb{position:relative;width:104px;height:118px;margin:0 auto 22px;overflow:hidden;}
+  .logo-orb::before{
+    content:"";position:absolute;inset:-30px;border-radius:50%;
+    background:radial-gradient(circle, rgba(57,214,46,0.35), transparent 70%);
+    filter:blur(6px);z-index:0;
+  }
+  .hero img.logo{position:relative;z-index:1;height:148px;width:auto;display:block;margin:0 auto;}
   .hero h1{
-    font-size:52px;font-weight:800;color:#fff;
-    letter-spacing:-0.02em;
+    font-size:56px;font-weight:700;color:#fff;
+    letter-spacing:-0.03em;
   }
   .hero h1 span{color:var(--green);}
   .hero .tagline{
-    font-size:19px;color:var(--text-dim);max-width:620px;margin:14px auto 32px;
+    font-size:19px;color:var(--text-dim);max-width:640px;margin:16px auto 34px;
   }
-  .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:36px;}
+  .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:38px;}
   .badge{
-    font-size:12px;font-weight:700;color:var(--green);
-    border:1px solid var(--green-dark);background:rgba(57,214,46,0.08);
-    padding:5px 12px;border-radius:999px;
+    font-family:var(--font-mono);
+    font-size:12px;font-weight:600;color:var(--green);
+    border:1px solid var(--green-line);background:var(--green-soft);
+    padding:6px 13px;border-radius:999px;
   }
   .btnrow{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
   .btn{
-    display:inline-flex;align-items:center;gap:8px;
-    padding:13px 24px;border-radius:10px;font-weight:700;font-size:15px;
-    border:1px solid transparent;cursor:pointer;
+    display:inline-flex;align-items:center;gap:9px;
+    padding:13px 22px;border-radius:10px;font-weight:700;font-size:15px;
+    border:1px solid transparent;cursor:pointer;transition:transform .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease),box-shadow .15s var(--ease);
+    font-family:var(--font-body);
   }
-  .btn-primary{background:var(--green);color:var(--ink);}
-  .btn-primary:hover{background:#4ee641;text-decoration:none;}
-  .btn-outline{background:transparent;color:#fff;border-color:var(--border);}
-  .btn-outline:hover{border-color:var(--green);text-decoration:none;color:var(--green);}
+  .btn svg{width:17px;height:17px;flex:none;}
+  .btn:hover{transform:translateY(-2px);text-decoration:none;}
+  .btn-primary{background:var(--green);color:#06210a;box-shadow:0 0 0 rgba(57,214,46,0);}
+  .btn-primary:hover{background:var(--green-bright);color:#06210a;box-shadow:0 8px 26px -8px rgba(57,214,46,0.55);}
+  .btn-outline{background:var(--surface);color:#fff;border-color:var(--border);}
+  .btn-outline:hover{border-color:var(--green);color:var(--green);}
 
-  /* FEATURES */
+  .stat-strip{
+    display:flex;justify-content:center;gap:0;flex-wrap:wrap;margin-top:64px;
+    border-top:1px solid var(--border-soft);padding-top:36px;
+  }
+  .stat{padding:0 34px;text-align:left;border-left:1px solid var(--border-soft);}
+  .stat:first-child{border-left:none;}
+  .stat b{display:block;font-family:var(--font-head);font-size:26px;color:#fff;}
+  .stat span{font-family:var(--font-mono);font-size:12px;color:var(--text-faint);letter-spacing:.03em;}
+
+  /* REVEAL */
+  .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s var(--ease),transform .6s var(--ease);}
+  .reveal.in-view{opacity:1;transform:none;}
+  @media (prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none;transition:none;}
+    html{scroll-behavior:auto;}
+    .status-pill .dot{animation:none;}
+  }
+
+  /* ICONS */
+  .ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;}
+
+  /* FEATURES — BENTO */
   .features{background:var(--ink-soft);}
-  .grid-features{
-    display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:48px;
+  .bento{
+    display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(148px,auto);
+    gap:16px;margin-top:48px;
   }
   .fcard{
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-    padding:26px;
+    padding:24px;position:relative;overflow:hidden;
+    transition:border-color .2s var(--ease),transform .2s var(--ease);
   }
+  .fcard:hover{border-color:var(--green-line);transform:translateY(-3px);}
+  .fcard.big{grid-column:span 2;grid-row:span 2;padding:28px;display:flex;flex-direction:column;justify-content:flex-end;}
+  .fcard.big .shot{
+    position:absolute;inset:0;
+    background:linear-gradient(180deg, rgba(10,12,9,0.15) 0%, rgba(10,12,9,0.96) 78%), var(--shot) center/cover no-repeat;
+  }
+  .fcard.big .ficon,.fcard.big h3,.fcard.big p{position:relative;z-index:1;}
+  .fcard.big h3{font-size:21px;}
   .ficon{
-    width:42px;height:42px;border-radius:10px;
-    background:rgba(57,214,46,0.12);color:var(--green);
+    width:42px;height:42px;border-radius:11px;
+    background:var(--green-soft);color:var(--green);
     display:flex;align-items:center;justify-content:center;
-    font-size:20px;margin-bottom:16px;font-weight:800;
+    margin-bottom:16px;flex:none;border:1px solid var(--green-line);
   }
-  .fcard h3{font-size:17px;color:#fff;}
-  .fcard p{color:var(--text-dim);font-size:14.5px;margin:0;}
+  .fcard h3{font-family:var(--font-head);font-size:16.5px;color:#fff;margin:0 0 6px;}
+  .fcard p{color:var(--text-dim);font-size:14px;margin:0;}
+  @media (min-width:861px){
+    .fcard:nth-child(2),.fcard:nth-child(3){grid-row:span 1;}
+  }
 
   /* ARCHITECTURE */
   .arch{
-    display:grid;grid-template-columns:1.1fr 0.9fr;gap:44px;align-items:center;margin-top:40px;
+    display:grid;grid-template-columns:1.05fr 0.95fr;gap:48px;align-items:center;margin-top:44px;
   }
-  .arch img{border-radius:var(--radius);border:1px solid var(--border);}
-  table.ports{width:100%;border-collapse:collapse;font-size:14px;}
+  .arch .imgwrap{border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;background:var(--surface);}
+  .arch img{border-radius:0;}
+  table.ports{width:100%;border-collapse:collapse;font-size:13.5px;font-family:var(--font-mono);}
   table.ports th, table.ports td{
-    text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);
+    text-align:left;padding:12px 10px;border-bottom:1px solid var(--border);
   }
-  table.ports th{color:var(--green);font-size:12px;text-transform:uppercase;letter-spacing:.06em;}
+  table.ports th{color:var(--green);font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;}
   table.ports td{color:var(--text-dim);}
-  table.ports code{color:var(--text);background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:5px;}
+  table.ports tr:last-child td{border-bottom:none;}
+  table.ports .port-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:8px;box-shadow:0 0 6px var(--green);}
+  table.ports code{color:var(--text);background:rgba(255,255,255,0.06);padding:2px 7px;border-radius:5px;font-size:12.5px;}
 
   /* GALLERY */
   .gallery{background:var(--ink);}
@@ -140,110 +266,198 @@
   }
   .gitem{
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-    overflow:hidden;cursor:zoom-in;transition:transform .15s ease, border-color .15s ease;
+    overflow:hidden;cursor:zoom-in;transition:transform .2s var(--ease),border-color .2s var(--ease);
+    position:relative;
   }
-  .gitem:hover{transform:translateY(-3px);border-color:var(--green-dark);}
-  .gitem img{aspect-ratio:16/10;object-fit:cover;width:100%;}
-  .gitem .cap{padding:12px 14px;font-size:13.5px;color:var(--text-dim);}
-  .gitem .cap b{color:#fff;display:block;font-size:14.5px;margin-bottom:2px;}
+  .gitem:hover{transform:translateY(-4px);border-color:var(--green-line);}
+  .gitem .thumb{position:relative;aspect-ratio:16/10;overflow:hidden;}
+  .gitem img{width:100%;height:100%;object-fit:cover;transition:transform .35s var(--ease);}
+  .gitem:hover img{transform:scale(1.06);}
+  .gitem .zoom{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(10,12,9,0.35);opacity:0;transition:opacity .2s var(--ease);
+  }
+  .gitem:hover .zoom{opacity:1;}
+  .gitem .zoom svg{width:34px;height:34px;color:#fff;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));}
+  .gitem .cap{padding:14px 16px;font-size:13.5px;color:var(--text-dim);}
+  .gitem .cap b{color:#fff;display:block;font-size:14.5px;margin-bottom:3px;font-family:var(--font-head);font-weight:600;}
 
   /* LIGHTBOX */
   .lightbox{
-    display:none;position:fixed;inset:0;background:rgba(5,7,4,0.92);
+    display:none;position:fixed;inset:0;background:rgba(5,7,4,0.94);
     z-index:100;align-items:center;justify-content:center;padding:40px;
   }
   .lightbox.open{display:flex;}
   .lightbox img{max-width:min(1100px,92vw);max-height:86vh;border-radius:10px;border:1px solid var(--border);}
   .lightbox .close{
-    position:absolute;top:24px;right:32px;color:#fff;font-size:32px;cursor:pointer;
-    background:none;border:none;line-height:1;
+    position:absolute;top:24px;right:32px;color:#fff;
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;
   }
+  .lightbox .close svg{width:20px;height:20px;}
 
   /* INSTALL */
   .install{background:var(--ink-soft);}
-  .steps{margin-top:44px;display:grid;gap:16px;}
+  .steps{margin-top:44px;display:grid;gap:0;position:relative;}
   .step{
-    display:flex;gap:18px;background:var(--surface);border:1px solid var(--border);
-    border-radius:var(--radius);padding:20px 22px;align-items:flex-start;
+    display:flex;gap:20px;padding:22px 0;align-items:flex-start;position:relative;
+  }
+  .step:not(:last-child)::after{
+    content:"";position:absolute;left:15px;top:46px;bottom:-4px;width:1px;background:var(--border);
   }
   .stepnum{
-    flex:none;width:30px;height:30px;border-radius:50%;background:var(--green);color:var(--ink);
-    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;
+    flex:none;width:32px;height:32px;border-radius:50%;background:var(--green);color:#06210a;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;
+    font-family:var(--font-mono);position:relative;z-index:1;
   }
+  .step b{color:#fff;font-family:var(--font-head);font-size:16px;font-weight:600;}
   .step p{margin:4px 0 0;color:var(--text-dim);font-size:14.5px;}
   .codebox{
-    position:relative;background:#0c0e09;border:1px solid var(--border);border-radius:12px;
-    padding:20px 22px;margin-top:28px;font-family:"SFMono-Regular",Consolas,Menlo,monospace;
-    font-size:14px;color:#c9f7c4;overflow-x:auto;white-space:pre;line-height:1.8;
+    position:relative;background:#080a06;border:1px solid var(--border);border-radius:12px;
+    margin-top:28px;font-family:var(--font-mono);
+    font-size:13.5px;color:#c9f7c4;overflow-x:auto;line-height:1.9;
   }
+  .codebox .titlebar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:11px 16px;border-bottom:1px solid var(--border);
+  }
+  .codebox .dots{display:flex;gap:7px;}
+  .codebox .dots span{width:10px;height:10px;border-radius:50%;background:var(--border);}
+  .codebox .tabname{font-size:12px;color:var(--text-faint);}
+  .codebox pre{margin:0;padding:20px 22px;white-space:pre;overflow-x:auto;}
   .codebox .copy{
-    position:absolute;top:12px;right:12px;background:var(--surface-2);color:var(--text-dim);
-    border:1px solid var(--border);border-radius:7px;padding:6px 11px;font-size:12px;cursor:pointer;
+    background:var(--surface-2);color:var(--text-dim);
+    border:1px solid var(--border);border-radius:7px;padding:6px 12px;font-size:12px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);
   }
   .codebox .copy:hover{color:#fff;border-color:var(--green);}
-  .codebox .muted{color:#5f6d58;}
+  .codebox .copy svg{width:13px;height:13px;}
+  .codebox .muted{color:#4c5945;}
 
   /* DOCS */
-  .docs .grid-docs{
-    display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:44px;
+  .grid-docs{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:44px;
   }
   .dcard{
     background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
     padding:26px;display:flex;flex-direction:column;gap:12px;
+    transition:border-color .2s var(--ease),transform .2s var(--ease);
   }
-  .dcard h3{color:#fff;font-size:17px;margin:0;}
+  .dcard:hover{border-color:var(--green-line);transform:translateY(-3px);}
+  .dcard .ficon{margin-bottom:2px;}
+  .dcard h3{color:#fff;font-family:var(--font-head);font-size:17px;margin:0;font-weight:600;}
   .dcard p{color:var(--text-dim);font-size:14px;margin:0;flex:1;}
-  .dcard a.btn{align-self:flex-start;padding:9px 16px;font-size:14px;}
+  .dcard a.btn{align-self:flex-start;padding:9px 16px;font-size:13.5px;}
 
   footer{
-    border-top:1px solid var(--border);padding:40px 0;text-align:center;
-    color:var(--text-dim);font-size:13.5px;
+    border-top:1px solid var(--border-soft);padding:56px 0 28px;
+    color:var(--text-dim);font-size:13.5px;background:var(--ink-soft);
   }
-  footer .flinks{display:flex;gap:22px;justify-content:center;margin-bottom:14px;flex-wrap:wrap;}
-  footer .flinks a{color:var(--text-dim);}
-  footer .flinks a:hover{color:var(--green);}
+  .fgrid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:32px;padding-bottom:36px;}
+  .fgrid .fbrand{display:flex;align-items:center;gap:10px;font-family:var(--font-head);font-weight:700;color:#fff;font-size:17px;margin-bottom:10px;}
+  .fgrid .fbrand .mark{height:30px;width:auto;border-radius:7px;overflow:hidden;background:#000;border:1px solid var(--border);flex:none;display:flex;align-items:center;}
+  .fgrid .fbrand .mark img{height:30px;width:auto;max-width:none;display:block;}
+  .fgrid p{color:var(--text-faint);font-size:13.5px;max-width:280px;margin:0;}
+  .fcol h4{font-family:var(--font-mono);color:var(--text);font-size:12px;text-transform:uppercase;letter-spacing:.1em;margin:0 0 14px;font-weight:600;}
+  .fcol{display:flex;flex-direction:column;gap:10px;}
+  .fcol a{color:var(--text-dim);font-size:14px;}
+  .fcol a:hover{color:var(--green);text-decoration:none;}
+  .fbottom{
+    border-top:1px solid var(--border-soft);padding-top:22px;
+    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
+    font-family:var(--font-mono);font-size:12.5px;color:var(--text-faint);
+  }
 
+  @media (max-width:960px){
+    .fgrid{grid-template-columns:1fr 1fr;}
+    .grid-docs{grid-template-columns:1fr 1fr;}
+  }
   @media (max-width:860px){
     .navlinks{
-      position:fixed;top:62px;left:0;right:0;background:var(--ink-soft);
-      border-bottom:1px solid var(--border);flex-direction:column;align-items:flex-start;
-      padding:18px 24px;gap:16px;transform:translateY(-140%);transition:transform .2s ease;
+      position:fixed;top:61px;left:0;right:0;background:var(--ink-soft);
+      border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;
+      padding:14px;gap:4px;transform:translateY(-140%);transition:transform .25s var(--ease);
+      max-height:calc(100vh - 61px);overflow-y:auto;
     }
-    #menu-toggle:checked ~ .navlinks{transform:translateY(0);}
-    .burger{display:block;}
-    .hero h1{font-size:36px;}
-    .grid-features{grid-template-columns:1fr;}
+    .navlinks.open{transform:translateY(0);}
+    .navlinks a{padding:13px 14px;}
+    .navlinks a.cta{margin-left:0;justify-content:center;}
+    .burger{display:flex;}
+    .hero h1{font-size:38px;}
+    .hero{padding:64px 0 64px;}
+    .bento{grid-template-columns:1fr 1fr;}
+    .fcard.big{grid-column:span 2;grid-row:span 1;min-height:220px;}
     .arch{grid-template-columns:1fr;}
     .grid-gallery{grid-template-columns:1fr 1fr;}
     .grid-docs{grid-template-columns:1fr;}
+    .fgrid{grid-template-columns:1fr;gap:28px;}
+    .stat-strip{gap:18px 0;}
+    .stat{border-left:none;padding:0 18px;text-align:center;}
   }
   @media (max-width:560px){
+    .bento{grid-template-columns:1fr;}
+    .fcard.big{grid-column:span 1;}
     .grid-gallery{grid-template-columns:1fr;}
-    section{padding:60px 0;}
+    section{padding:64px 0;}
+    .hero h1{font-size:32px;}
+    h2{font-size:27px;}
   }
 </style>
 </head>
 <body>
 
+<a class="skip-link" href="#main">Saltar al contenido principal</a>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+  <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 9V4h12v5"/><rect x="4.5" y="9" width="15" height="7" rx="1.5"/><path d="M8 14h8v6H8z"/></symbol>
+  <symbol id="i-laser" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M9 12h11M4 18h13M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="7" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 3 3 7.5v9L12 21l9-4.5v-9L12 3Z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3 4.5v5h5"/><path d="M12 8v4.5l3 2"/></symbol>
+  <symbol id="i-gamepad" viewBox="0 0 24 24"><path d="M6.5 10h4M8.5 8v4"/><circle cx="16" cy="9" r="1"/><circle cx="18" cy="12" r="1"/><path d="M7 6h10a4 4 0 0 1 4 4l1 5a2.5 2.5 0 0 1-4.7 1.4L16 14H8l-1.3 2.4A2.5 2.5 0 0 1 2 15l1-5a4 4 0 0 1 4-4Z"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.5-1.9-.2-.6.2-1.1.8-1.1H16a4 4 0 0 0 4-4c0-6-3.6-11-8-11Z"/><circle cx="7.5" cy="10.5" r="1.1"/><circle cx="11" cy="7" r="1.1"/><circle cx="15.5" cy="8.5" r="1.1"/><circle cx="16.3" cy="13" r="1.1"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 6 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-6-3.8-9s1.3-6.3 3.8-9Z"/></symbol>
+  <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M9 4h3.5a1.5 1.5 0 0 1 1.5 1.5V6a2 2 0 1 0 0 4v.5A1.5 1.5 0 0 1 12.5 12H11a2 2 0 1 1 0 4h1.5a1.5 1.5 0 0 1 1.5 1.5V21H6.5A1.5 1.5 0 0 1 5 19.5V15a2 2 0 1 0 0-4V9.5A1.5 1.5 0 0 1 6.5 8H9a2 2 0 1 0 0-4Z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.2"/><path d="M10.5 18.5h3"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24" stroke="none" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.5 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.46-1.2-1.11-1.52-1.11-1.52-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.73 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.42.2 2.47.1 2.73.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.5A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-zoom" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+</svg>
+
 <header>
   <nav class="wrap">
-    <div class="brand"><img src="assets/img/logo.jpg" alt="NOPAL"> NOPAL</div>
-    <input type="checkbox" id="menu-toggle" style="display:none;">
-    <label class="burger" for="menu-toggle">☰</label>
-    <div class="navlinks">
+    <a class="brand" href="#main">
+      <span class="mark"><img src="assets/img/logo.jpg" alt="NOPAL"></span>
+      NOPAL
+    </a>
+    <button class="burger" id="menuToggle" aria-expanded="false" aria-controls="navlinks" aria-label="Abrir menú">
+      <svg class="ic icon-menu"><use href="#i-menu"/></svg>
+      <svg class="ic icon-close"><use href="#i-close"/></svg>
+    </button>
+    <div class="navlinks" id="navlinks">
       <a href="#caracteristicas">Características</a>
       <a href="#capturas">Capturas</a>
       <a href="#arquitectura">Arquitectura</a>
       <a href="#instalacion">Instalación</a>
       <a href="#documentacion">Documentación</a>
-      <a class="cta" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">GitHub</a>
+      <a class="cta" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">
+        <svg class="ic" style="width:16px;height:16px;"><use href="#i-github"/></svg>
+        GitHub
+      </a>
     </div>
   </nav>
 </header>
 
+<main id="main">
 <section class="hero">
   <div class="wrap">
-    <img class="logo" src="assets/img/logo.jpg" alt="NOPAL logo">
+    <div class="status-pill"><span class="dot"></span> Panel en vivo · impresoras, láser y CNC conectados por red</div>
+    <div class="logo-orb"><img class="logo" src="assets/img/logo-vertical.png" alt="NOPAL logo"></div>
     <h1>NOPAL<span>.</span></h1>
     <p class="tagline">Node Operation, Printer And Laser — un dashboard autoalojado que unifica el control de
       impresoras 3D de 5 marcas, cortadoras láser y ruteadoras CNC GRBL, una galería de plugins y
@@ -257,9 +471,16 @@
       <span class="badge">TUNA-Screen</span>
     </div>
     <div class="btnrow">
-      <a class="btn btn-primary" href="#instalacion">Instalación rápida</a>
-      <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">Ver en GitHub</a>
-      <a class="btn btn-outline" href="manual/NOPAL_Manual_Usuario.pdf" target="_blank">Descargar manual (PDF)</a>
+      <a class="btn btn-primary" href="#instalacion">Instalación rápida <svg class="ic"><use href="#i-arrow"/></svg></a>
+      <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener"><svg class="ic"><use href="#i-github"/></svg> Ver en GitHub</a>
+      <a class="btn btn-outline" href="manual/NOPAL_Manual_Usuario.pdf" target="_blank"><svg class="ic"><use href="#i-download"/></svg> Descargar manual (PDF)</a>
+    </div>
+
+    <div class="stat-strip">
+      <div class="stat"><b>5</b><span>MARCAS DE IMPRESORA 3D</span></div>
+      <div class="stat"><b>3</b><span>TIPOS DE MÁQUINA</span></div>
+      <div class="stat"><b>100%</b><span>SELF-HOSTED</span></div>
+      <div class="stat"><b>ES/EN</b><span>INTERFAZ BILINGÜE</span></div>
     </div>
   </div>
 </section>
@@ -270,51 +491,52 @@
     <h2>Todo tu taller, en un solo panel</h2>
     <p class="lead">Impresoras 3D de 5 marcas, láser/CNC GRBL, una galería de plugins y tu biblioteca de modelos,
       en una sola aplicación web servida desde un host en tu red local.</p>
-    <div class="grid-features">
-      <div class="fcard">
-        <div class="ficon">◆</div>
+    <div class="bento">
+      <div class="fcard big reveal" style="--shot:url(images/dashboard.png);">
+        <div class="shot"></div>
+        <div class="ficon"><svg class="ic"><use href="#i-grid"/></svg></div>
         <h3>Dashboard unificado</h3>
         <p>Todas las impresoras, láseres y CNC de la red en una vista, clasificados por color según tipo y estado, en tarjetas o lista compacta.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">3D</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-printer"/></svg></div>
         <h3>Impresoras 3D — 5 marcas, una interfaz</h3>
-        <p>Klipper/Moonraker, Marlin standalone, Bambu Lab, Elegoo y FlashForge: temperaturas en vivo, movimiento del cabezal, cola de impresión con progreso y ETA. Cada marca con su propio driver, fiel a cómo habla ese hardware.</p>
+        <p>Klipper/Moonraker, Marlin standalone, Bambu Lab, Elegoo y FlashForge: temperaturas en vivo, movimiento del cabezal y cola de impresión con ETA. Cada marca con su propio driver, fiel a cómo habla ese hardware.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">⌁</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-laser"/></svg></div>
         <h3>Láser y CNC (GRBL)</h3>
-        <p>Placas por red (ESP3D/FluidNC) o USB/serial, varias a la vez. El mismo hardware se registra como láser (potencia/aire asistido) o CNC (spindle/refrigerante) según el rol, con jog, home, editor <code>$$</code> y consola GRBL en vivo.</p>
+        <p>Placas por red (ESP3D/FluidNC) o USB/serial, varias a la vez. El mismo hardware se registra como láser (potencia/aire asistido) o CNC (spindle/refrigerante) según el rol, con jog, home y consola GRBL en vivo.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">▣</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-cube"/></svg></div>
         <h3>Biblioteca de modelos y G-code</h3>
         <p>Explora, busca y previsualiza en 3D archivos STL/3MF/STEP y G-code. Envíalos a la cola, a la tarjeta SD o directo a una máquina.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">▤</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-history"/></svg></div>
         <h3>Historial de trabajos</h3>
         <p>Registro buscable, por máquina, de cada impresión o corte completado, cancelado o con error.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">▧</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-puzzle"/></svg></div>
         <h3>Galería de plugins</h3>
-        <p>Suma Materiales (inventario real de filamento vía Spoolman), Cotizador (costo estimado de cada trabajo), Cámaras y Automatización de Taller (Arduino/ESP32) — sin modificar el núcleo de NOPAL.</p>
+        <p>Suma Materiales (inventario de filamento vía Spoolman), Cotizador, Cámaras y Automatización de Taller (Arduino/ESP32) — sin modificar el núcleo de NOPAL.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">📱</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-phone"/></svg></div>
         <h3>TUNA-Screen (app Android)</h3>
-        <p>Vincula un celular o tablet con un código de 6 dígitos y controla cualquier máquina — o montá una tablet directo en una impresora como pantalla de estado dedicada.</p>
+        <p>Vincula un celular o tablet con un código de 6 dígitos y controla cualquier máquina — o montá una tablet en la impresora como pantalla de estado dedicada.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">$</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-sliders"/></svg></div>
         <h3>Editor de parámetros GRBL</h3>
         <p>Lee y escribe cada parámetro <code>$$</code> de la controladora, con descripción en lenguaje claro.</p>
       </div>
-      <div class="fcard">
-        <div class="ficon">◐</div>
+      <div class="fcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-palette"/></svg></div>
         <h3>Temas personalizados</h3>
-        <p>Light, Dark, NOPAL Style y Desert, más un editor completo de colores e imagen de fondo del dashboard. Interfaz bilingüe (ES/EN).</p>
+        <p>Light, Dark, NOPAL Style y Desert, más un editor completo de colores e imagen de fondo. Interfaz bilingüe ES/EN.</p>
       </div>
     </div>
   </div>
@@ -326,40 +548,40 @@
     <h2>La interfaz en acción</h2>
     <p class="lead">Capturas reales de una instancia de NOPAL corriendo en red local. Haz clic en cualquiera para ampliarla.</p>
     <div class="grid-gallery">
-      <div class="gitem" data-full="images/dashboard.png">
-        <img src="images/dashboard.png" alt="Dashboard de NOPAL">
+      <div class="gitem reveal" data-full="images/dashboard.png" tabindex="0" role="button" aria-label="Ampliar captura: Dashboard">
+        <div class="thumb"><img src="images/dashboard.png" alt="Dashboard de NOPAL" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Dashboard</b>Estado de cada impresora, láser y CNC conectados, de un vistazo.</div>
       </div>
-      <div class="gitem" data-full="images/printers.png">
-        <img src="images/printers.png" alt="Panel de impresoras 3D">
+      <div class="gitem reveal" data-full="images/printers.png" tabindex="0" role="button" aria-label="Ampliar captura: Impresoras 3D">
+        <div class="thumb"><img src="images/printers.png" alt="Panel de impresoras 3D" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Impresoras 3D</b>Klipper, Marlin, Bambu Lab, Elegoo y FlashForge en un solo panel.</div>
       </div>
-      <div class="gitem" data-full="images/laser-cnc.png">
-        <img src="images/laser-cnc.png" alt="Panel de láser y CNC">
+      <div class="gitem reveal" data-full="images/laser-cnc.png" tabindex="0" role="button" aria-label="Ampliar captura: Láser y CNC">
+        <div class="thumb"><img src="images/laser-cnc.png" alt="Panel de láser y CNC" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Láser y CNC</b>Control GRBL por red o USB, con consola en vivo.</div>
       </div>
-      <div class="gitem" data-full="images/materials.png">
-        <img src="images/materials.png" alt="Plugin de materiales (Spoolman)">
+      <div class="gitem reveal" data-full="images/materials.png" tabindex="0" role="button" aria-label="Ampliar captura: Materiales">
+        <div class="thumb"><img src="images/materials.png" alt="Plugin de materiales (Spoolman)" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Materiales</b>Inventario real de filamento conectado al taller vía Spoolman.</div>
       </div>
-      <div class="gitem" data-full="images/cotizador.png">
-        <img src="images/cotizador.png" alt="Herramienta de cotización">
+      <div class="gitem reveal" data-full="images/cotizador.png" tabindex="0" role="button" aria-label="Ampliar captura: Cotizador">
+        <div class="thumb"><img src="images/cotizador.png" alt="Herramienta de cotización" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Cotizador</b>Costo estimado de cada trabajo de impresión, láser o CNC.</div>
       </div>
-      <div class="gitem" data-full="images/cameras.png">
-        <img src="images/cameras.png" alt="Visor de cámaras">
+      <div class="gitem reveal" data-full="images/cameras.png" tabindex="0" role="button" aria-label="Ampliar captura: Cámaras">
+        <div class="thumb"><img src="images/cameras.png" alt="Visor de cámaras" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Cámaras</b>Mira cada máquina en vivo desde el propio panel.</div>
       </div>
-      <div class="gitem" data-full="images/plugins.png">
-        <img src="images/plugins.png" alt="Galería de plugins">
+      <div class="gitem reveal" data-full="images/plugins.png" tabindex="0" role="button" aria-label="Ampliar captura: Galería de Plugins">
+        <div class="thumb"><img src="images/plugins.png" alt="Galería de plugins" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Galería de Plugins</b>Suma herramientas nuevas sin tocar el núcleo de NOPAL.</div>
       </div>
-      <div class="gitem" data-full="images/tunascreen.png">
-        <img src="images/tunascreen.png" alt="App Android TUNA-Screen">
+      <div class="gitem reveal" data-full="images/tunascreen.png" tabindex="0" role="button" aria-label="Ampliar captura: TUNA-Screen">
+        <div class="thumb"><img src="images/tunascreen.png" alt="App Android TUNA-Screen" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>TUNA-Screen</b>Controla el taller desde una tablet o el celular.</div>
       </div>
-      <div class="gitem" data-full="images/library.png">
-        <img src="images/library.png" alt="Biblioteca de modelos y G-code">
+      <div class="gitem reveal" data-full="images/library.png" tabindex="0" role="button" aria-label="Ampliar captura: Biblioteca">
+        <div class="thumb"><img src="images/library.png" alt="Biblioteca de modelos y G-code" loading="lazy"><div class="zoom"><svg class="ic"><use href="#i-zoom"/></svg></div></div>
         <div class="cap"><b>Biblioteca</b>Modelos y G-code, con vista previa 3D en el navegador.</div>
       </div>
     </div>
@@ -371,8 +593,8 @@
     <div class="eyebrow">Arquitectura</div>
     <h2>Un host, toda tu red de máquinas</h2>
     <div class="arch">
-      <img src="assets/img/network-diagram.jpg" alt="Diagrama de red de NOPAL">
-      <div>
+      <div class="imgwrap reveal"><img src="assets/img/network-diagram.jpg" alt="Diagrama de red de NOPAL" loading="lazy"></div>
+      <div class="reveal">
         <p class="lead" style="margin-bottom:20px;">El servidor de NOPAL (Python/FastAPI) corre en un host Debian/Raspberry Pi OS/Ubuntu,
           junto con una instancia de Moonraker por impresora Klipper. Las demás marcas hablan cada una su
           propio protocolo directo con el equipo (MQTT para Bambu Lab, WebSocket/SDCP para Elegoo, HTTP para
@@ -381,11 +603,11 @@
           su propia API REST + WebSocket, nunca directo con el hardware.</p>
         <table class="ports">
           <tr><th>Puerto</th><th>Servicio</th></tr>
-          <tr><td><code>8420</code></td><td>Interfaz web de NOPAL (configurable con <code>NOPAL_PORT</code>)</td></tr>
-          <tr><td><code>7125–7127…</code></td><td>Una instancia de Moonraker por impresora Klipper</td></tr>
-          <tr><td>MQTT / WebSocket / HTTP</td><td>Bambu Lab, Elegoo y FlashForge — directo al equipo, sin puerto adicional en el host</td></tr>
-          <tr><td><code>8080</code></td><td>Crowsnest (streaming de cámaras), si está habilitado</td></tr>
-          <tr><td>Serial</td><td>Placas láser/CNC GRBL por USB (<code>/dev/ttyUSB*</code>)</td></tr>
+          <tr><td><span class="port-dot"></span><code>8420</code></td><td>Interfaz web de NOPAL (configurable con <code>NOPAL_PORT</code>)</td></tr>
+          <tr><td><span class="port-dot"></span><code>7125–7127…</code></td><td>Una instancia de Moonraker por impresora Klipper</td></tr>
+          <tr><td><span class="port-dot"></span>MQTT / WS / HTTP</td><td>Bambu Lab, Elegoo y FlashForge — directo al equipo, sin puerto adicional en el host</td></tr>
+          <tr><td><span class="port-dot"></span><code>8080</code></td><td>Crowsnest (streaming de cámaras), si está habilitado</td></tr>
+          <tr><td><span class="port-dot"></span>Serial</td><td>Placas láser/CNC GRBL por USB (<code>/dev/ttyUSB*</code>)</td></tr>
         </table>
       </div>
     </div>
@@ -398,28 +620,33 @@
     <h2>Listo en un par de minutos</h2>
     <p class="lead">Requisitos: Python 3.9+, un usuario Linux no-root con acceso a <code>sudo</code>, y acceso de red a tus impresoras/láseres.</p>
     <div class="steps">
-      <div class="step">
+      <div class="step reveal">
         <div class="stepnum">1</div>
         <div><b>Clona el repositorio</b><p>Descarga el código en tu host Linux.</p></div>
       </div>
-      <div class="step">
+      <div class="step reveal">
         <div class="stepnum">2</div>
         <div><b>Ejecuta el instalador</b><p><code>install.sh</code> crea el entorno virtual, instala dependencias y genera el servicio systemd.</p></div>
       </div>
-      <div class="step">
+      <div class="step reveal">
         <div class="stepnum">3</div>
         <div><b>Abre NOPAL en tu navegador</b><p>El instalador imprime la URL local, por defecto en el puerto 8420.</p></div>
       </div>
     </div>
-    <div class="codebox">
-      <button class="copy" onclick="copyCode(this)">Copiar</button>
-<span class="muted"># clonar e instalar</span>
+    <div class="codebox reveal">
+      <div class="titlebar">
+        <div class="dots"><span></span><span></span><span></span></div>
+        <span class="tabname">bash — instalación</span>
+        <button class="copy" onclick="copyCode(this)"><svg class="ic" style="width:13px;height:13px;"><use href="#i-copy"/></svg>Copiar</button>
+      </div>
+      <pre><span class="muted"># clonar e instalar</span>
 git clone https://github.com/charlymigenes-ux/nopal.git ~/nopal
 cd ~/nopal
 ./install.sh
 
 <span class="muted"># opcional: usar otro puerto</span>
-NOPAL_PORT=9000 ./install.sh</div>
+NOPAL_PORT=9000 ./install.sh</pre>
+    </div>
   </div>
 </section>
 
@@ -429,22 +656,26 @@ NOPAL_PORT=9000 ./install.sh</div>
     <h2>Sigue aprendiendo NOPAL</h2>
     <p class="lead">Guías completas, en español, para sacarle provecho a cada sección del dashboard.</p>
     <div class="grid-docs">
-      <div class="dcard">
+      <div class="dcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-download"/></svg></div>
         <h3>Manual de Usuario</h3>
         <p>PDF completo con las 9 secciones del dashboard: Panel de Control, Modelos 3D, Láser, Impresora 3D, Consola, Historial y Configuración.</p>
         <a class="btn btn-primary" href="manual/NOPAL_Manual_Usuario.pdf" target="_blank">Descargar PDF</a>
       </div>
-      <div class="dcard">
+      <div class="dcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-globe"/></svg></div>
         <h3>README (Español)</h3>
         <p>Resumen técnico del proyecto, arquitectura, stack e instalación, directo en el repositorio.</p>
         <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/nopal/blob/main/README.es.md" target="_blank">Ver README.es.md</a>
       </div>
-      <div class="dcard">
+      <div class="dcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-github"/></svg></div>
         <h3>README (English)</h3>
         <p>Same project overview, architecture, stack and install steps, in English.</p>
         <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/nopal/blob/main/README.md" target="_blank">View README.md</a>
       </div>
-      <div class="dcard">
+      <div class="dcard reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-phone"/></svg></div>
         <h3>TUNA-Screen</h3>
         <p>App Android complementaria (Kotlin + Compose) para controlar NOPAL desde un celular o una tablet montada en una máquina.</p>
         <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/TUNA-Screen" target="_blank">Ver repositorio</a>
@@ -452,54 +683,128 @@ NOPAL_PORT=9000 ./install.sh</div>
     </div>
   </div>
 </section>
+</main>
 
 <footer>
   <div class="wrap">
-    <div class="flinks">
-      <a href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">GitHub</a>
-      <a href="manual/NOPAL_Manual_Usuario.pdf" target="_blank">Manual PDF</a>
-      <a href="https://github.com/charlymigenes-ux/nopal/blob/main/LICENSE" target="_blank" rel="noopener">Licencia GPLv3</a>
+    <div class="fgrid">
+      <div>
+        <div class="fbrand"><span class="mark"><img src="assets/img/logo.jpg" alt="NOPAL"></span>NOPAL</div>
+        <p>Node Operation, Printer And Laser. Dashboard autoalojado para talleres con impresoras 3D, láser/CNC, plugins y app Android en red local.</p>
+      </div>
+      <div class="fcol">
+        <h4>Producto</h4>
+        <a href="#caracteristicas">Características</a>
+        <a href="#capturas">Capturas</a>
+        <a href="#arquitectura">Arquitectura</a>
+      </div>
+      <div class="fcol">
+        <h4>Recursos</h4>
+        <a href="#instalacion">Instalación</a>
+        <a href="manual/NOPAL_Manual_Usuario.pdf" target="_blank">Manual PDF</a>
+        <a href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">Repositorio</a>
+        <a href="https://github.com/charlymigenes-ux/TUNA-Screen" target="_blank" rel="noopener">TUNA-Screen</a>
+      </div>
+      <div class="fcol">
+        <h4>Legal</h4>
+        <a href="https://github.com/charlymigenes-ux/nopal/blob/main/LICENSE" target="_blank" rel="noopener">Licencia GPLv3</a>
+      </div>
     </div>
-    NOPAL — Node Operation, Printer And Laser · Distribuido bajo GNU GPL v3.0
+    <div class="fbottom">
+      <span>NOPAL — Distribuido bajo GNU GPL v3.0</span>
+      <span>hecho para talleres self-hosted</span>
+    </div>
   </div>
 </footer>
 
-<div class="lightbox" id="lightbox">
-  <button class="close" onclick="closeLightbox()">&times;</button>
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Imagen ampliada">
+  <button class="close" onclick="closeLightbox()" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
   <img id="lightbox-img" src="" alt="">
 </div>
 
 <script>
-  document.querySelectorAll('.gitem').forEach(function(el){
-    el.addEventListener('click', function(){
-      var full = el.getAttribute('data-full');
-      document.getElementById('lightbox-img').src = full;
-      document.getElementById('lightbox').classList.add('open');
-    });
-  });
+  // lightbox
+  function openLightbox(full, alt){
+    var img = document.getElementById('lightbox-img');
+    img.src = full; img.alt = alt || '';
+    document.getElementById('lightbox').classList.add('open');
+  }
   function closeLightbox(){
     document.getElementById('lightbox').classList.remove('open');
   }
+  document.querySelectorAll('.gitem').forEach(function(el){
+    var full = el.getAttribute('data-full');
+    var alt = el.querySelector('img').alt;
+    el.addEventListener('click', function(){ openLightbox(full, alt); });
+    el.addEventListener('keydown', function(e){
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openLightbox(full, alt); }
+    });
+  });
   document.getElementById('lightbox').addEventListener('click', function(e){
     if(e.target === this) closeLightbox();
   });
   document.addEventListener('keydown', function(e){
     if(e.key === 'Escape') closeLightbox();
   });
-  // close mobile menu after clicking a link
+
+  // mobile menu
+  var burger = document.getElementById('menuToggle');
+  var navlinks = document.getElementById('navlinks');
+  burger.addEventListener('click', function(){
+    var open = navlinks.classList.toggle('open');
+    burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
   document.querySelectorAll('.navlinks a').forEach(function(a){
     a.addEventListener('click', function(){
-      document.getElementById('menu-toggle').checked = false;
+      navlinks.classList.remove('open');
+      burger.setAttribute('aria-expanded', 'false');
     });
   });
+
+  // copy install code
   function copyCode(btn){
-    var box = btn.parentElement;
-    var text = box.innerText.replace('Copiar','').trim();
+    var box = btn.closest('.codebox').querySelector('pre');
+    var text = box.innerText.trim();
     navigator.clipboard.writeText(text).then(function(){
-      var old = btn.innerText;
-      btn.innerText = '¡Copiado!';
-      setTimeout(function(){ btn.innerText = old; }, 1500);
+      var old = btn.innerHTML;
+      btn.innerHTML = '¡Copiado!';
+      setTimeout(function(){ btn.innerHTML = old; }, 1500);
     });
+  }
+
+  // scroll reveal
+  if('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting){
+          entry.target.classList.add('in-view');
+          io.unobserve(entry.target);
+        }
+      });
+    }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'});
+    document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in-view'); });
+  }
+
+  // scrollspy
+  var navA = document.querySelectorAll('.navlinks a[href^="#"]');
+  var sections = Array.prototype.slice.call(navA).map(function(a){
+    return document.querySelector(a.getAttribute('href'));
+  }).filter(Boolean);
+  if('IntersectionObserver' in window && sections.length){
+    var spy = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        var id = '#' + entry.target.id;
+        var link = document.querySelector('.navlinks a[href="'+id+'"]');
+        if(!link) return;
+        if(entry.isIntersecting){
+          navA.forEach(function(a){ a.classList.remove('active'); });
+          link.classList.add('active');
+        }
+      });
+    }, {rootMargin:'-45% 0px -50% 0px'});
+    sections.forEach(function(s){ spy.observe(s); });
   }
 </script>
 
