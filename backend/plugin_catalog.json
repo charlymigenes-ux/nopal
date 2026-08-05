@@ -77,11 +77,11 @@
   {
     "id": "font-library",
     "name": "Texto para fabricación",
-    "version": "0.4.2",
+    "version": "0.5.0",
     "publisher": "NOPAL Labs",
     "category": "Diseño",
     "description": "Crea texto con medidas físicas, valida su fabricación y agrégalo como trayectos editables a un proyecto NOPAL.",
-    "long_description": "Editor de texto con 20 tipografías incluidas (funciona sin conexión), medidas exactas en milímetros, contorno sólido o de línea, validación de fabricación (kerf, puentes mínimos, potencia/velocidad) y exportación como SVG editable directo al proyecto, a la Biblioteca o a la cola de producción.",
+    "long_description": "Editor de texto con 20 tipografías incluidas (funciona sin conexión), medidas exactas en milímetros, contorno sólido o de línea, validación de fabricación (kerf, puentes mínimos, potencia/velocidad) y exportación como SVG editable, guardado en la Biblioteca, o G-code real (contorno de las letras ya aplanado y listo para enviar) en Archivos.",
     "icon": "type",
     "accent": "#ec4899",
     "compatibility": ["Láser", "CNC"],
