@@ -43,8 +43,10 @@ router = APIRouter()
 async def marlin_printers_profiles_endpoint(user: dict = Depends(require_auth)):
     """Catálogo de perfiles de impresora conocidos (ver printer_profiles.py)
     -- para poblar el selector de modelo del alta. Vacío para una placa
-    Marlin genérica sin perfil, eso sigue siendo válido."""
-    return {"profiles": printer_profiles.list_profiles()}
+    Marlin genérica sin perfil, eso sigue siendo válido. Filtrado a "fdm"
+    -- el catálogo también tiene perfiles de láser/CNC (ver
+    /api/laser/profiles), que no pintan nada en el alta de una impresora."""
+    return {"profiles": printer_profiles.list_profiles(machine_type="fdm")}
 
 
 @router.get("/api/marlin-printers/discover")

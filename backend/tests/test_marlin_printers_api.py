@@ -27,6 +27,17 @@ class TestProfilesEndpoint:
         response = client.get("/api/marlin-printers/profiles")
         assert response.status_code == 401
 
+    def test_excludes_laser_and_cnc_profiles(self, client, as_admin):
+        """El catálogo de printer_profiles.py también tiene perfiles de
+        láser/CNC (ver /api/laser/profiles) -- no deben aparecer en el
+        selector de modelo del alta de una impresora Marlin."""
+        response = client.get("/api/marlin-printers/profiles")
+        profiles = response.json()["profiles"]
+        assert all(p["machine_type"] == "fdm" for p in profiles)
+        ids = [p["id"] for p in profiles]
+        assert "sculpfun_s30_pro" not in ids
+        assert "generic_cnc_3018" not in ids
+
 
 class TestUsbProbeIdentity:
     def test_returns_machine_type_for_automatic_name(self, client, as_admin, monkeypatch):

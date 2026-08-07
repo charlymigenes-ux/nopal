@@ -11,6 +11,26 @@ class TestListProfiles:
         for profile in printer_profiles.list_profiles():
             assert profile["id"] in printer_profiles.PRINTER_PROFILES
 
+    def test_filters_by_machine_type(self):
+        laser_profiles = printer_profiles.list_profiles(machine_type="laser")
+        assert laser_profiles
+        assert all(p["machine_type"] == "laser" for p in laser_profiles)
+        assert "sculpfun_s30_pro" in [p["id"] for p in laser_profiles]
+
+        cnc_profiles = printer_profiles.list_profiles(machine_type="cnc")
+        assert cnc_profiles
+        assert all(p["machine_type"] == "cnc" for p in cnc_profiles)
+        assert "generic_cnc_3018" in [p["id"] for p in cnc_profiles]
+
+        fdm_profiles = printer_profiles.list_profiles(machine_type="fdm")
+        assert "hellbot_magna2_300" in [p["id"] for p in fdm_profiles]
+        assert "bambulab_a1_mini" in [p["id"] for p in fdm_profiles]
+
+    def test_every_profile_declares_a_nopal_brand(self):
+        valid_brands = {"marlin", "klipper", "bambu", "flashforge", "laser"}
+        for profile in printer_profiles.list_profiles():
+            assert profile.get("nopal_brand") in valid_brands, profile["id"]
+
 
 class TestGetProfile:
     def test_known_profile(self):

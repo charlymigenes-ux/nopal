@@ -308,6 +308,8 @@ window.NopalTranslations["pt-BR"] = {
   "cncZeroZPlotter": "Caneta para baixo (Z=0)",
   "cncZeroZConfirm": "Confirme se a ferramenta está realmente tocando a peça de trabalho? Isto definirá Z=0 na posição atual.",
   "usbClassifyProfileLabel": "Tipo de máquina CNC",
+  "usbClassifyModelLabel": "Qual é o modelo? (opcional)",
+  "usbClassifyModelGeneric": "Genérico / não sei o modelo",
   "cncProfileRouter": "Roteador / Moinho",
   "cncProfilePlotter": "Plotter (caneta/marcador)",
   "cncWizardOpen": "Desenho guiado",
