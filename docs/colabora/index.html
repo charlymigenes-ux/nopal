@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colabora — NOPAL</title>
+<meta name="description" content="Registra tu impresora 3D, láser, CNC o placa electrónica para ayudar a probar y ampliar la compatibilidad de NOPAL.">
+<meta name="theme-color" content="#0a0d09">
+<link rel="icon" href="../assets/img/logo.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="colabora.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="../index.html"><span class="mark"><img src="../assets/img/logo.jpg" alt="NOPAL"></span> NOPAL</a>
+    <div class="topbar-links">
+      <a href="../index.html">&larr; Volver al sitio</a>
+      <a class="cta" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.5 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.46-1.2-1.11-1.52-1.11-1.52-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.73 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.42.2 2.47.1 2.73.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.5A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="mobile-progress">
+    <div class="mobile-progress-label">Paso <b id="mobile-step-current">1</b> de 5</div>
+    <div class="progress-track"><div class="progress-fill" id="mobile-progress-fill"></div></div>
+  </div>
+</div>
+
+<div class="page wrap">
+
+  <!-- IZQUIERDA: identidad + navegación de pasos -->
+  <aside class="side-left">
+    <div class="side-brand">
+      <img src="../assets/img/logo-vertical.png" alt="NOPAL">
+      <div class="side-brand-text">NOPAL</div>
+    </div>
+    <div>
+      <div class="eyebrow">Comunidad NOPAL</div>
+      <h1 class="side-title">Registro de<br>colaboración</h1>
+      <p class="side-lead">Tu ayuda nos permite hacer crecer NOPAL y darle compatibilidad real a más equipos del taller y la comunidad.</p>
+    </div>
+
+    <nav class="steps-nav" id="steps-nav">
+      <button type="button" class="step-item" data-step="1">
+        <span class="step-circle">01</span>
+        <span class="step-info"><b>Colaboración</b><small>¿Cómo quieres ayudar?</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="2">
+        <span class="step-circle">02</span>
+        <span class="step-info"><b>Equipo</b><small>¿Qué tienes?</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="3">
+        <span class="step-circle">03</span>
+        <span class="step-info"><b>Estado</b><small>Estado actual del equipo</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="4">
+        <span class="step-circle">04</span>
+        <span class="step-info"><b>Detalles</b><small>Información técnica</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="5">
+        <span class="step-circle">05</span>
+        <span class="step-info"><b>Contacto</b><small>Datos para contactarte</small></span>
+      </button>
+    </nav>
+
+    <div class="why-box">
+      <b>¿Por qué es importante?</b>
+      <p>Con tu información podemos probar, mejorar e integrar más equipos reales a NOPAL.</p>
+    </div>
+
+    <div class="side-footer-note">JUNTOS HACEMOS CRECER NOPAL 💚</div>
+  </aside>
+
+  <!-- CENTRO: formulario -->
+  <main class="center-panel">
+    <form id="collab-form" novalidate>
+
+      <div class="mobile-summary-toggle" id="mobile-summary-toggle">
+        <span>Ver resumen de tu colaboración</span>
+        <span id="mobile-summary-caret">&#9662;</span>
+      </div>
+
+      <div class="panel-card">
+
+        <!-- PASO 1 -->
+        <section class="step-panel" data-step="1">
+          <h2>¿Cómo quieres colaborar?</h2>
+          <p class="step-lead">Selecciona una o varias opciones que describan tu forma de ayudar.</p>
+
+          <div class="card-grid" data-group="collaborationTypes">
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="tester">
+              <span class="opt-check"></span>
+              <span class="opt-icon">🧪</span>
+              <b>Quiero ser tester</b>
+              <p>Probar hardware con NOPAL y reportar resultados.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="fallas">
+              <span class="opt-check"></span>
+              <span class="opt-icon">⚠️</span>
+              <b>Tengo un equipo con fallas</b>
+              <p>Tengo una máquina o placa con una falla parcial o total.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="donar">
+              <span class="opt-check"></span>
+              <span class="opt-icon">❤️</span>
+              <b>Quiero donar una placa/equipo</b>
+              <p>Puedo proporcionar hardware al proyecto para pruebas.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="prestar">
+              <span class="opt-check"></span>
+              <span class="opt-icon">🤝</span>
+              <b>Puedo prestar equipo para pruebas</b>
+              <p>Puedo prestar temporalmente una máquina o placa.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="vender">
+              <span class="opt-check"></span>
+              <span class="opt-icon">🏷️</span>
+              <b>Tengo hardware para vender</b>
+              <p>Tengo una máquina o placa que podría ser útil para el proyecto.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="remoto">
+              <span class="opt-check"></span>
+              <span class="opt-icon">💻</span>
+              <b>Puedo hacer pruebas remotamente</b>
+              <p>Puedo realizar pruebas directamente en mi propio taller.</p>
+            </label>
+            <label class="opt-card wide">
+              <input type="checkbox" name="collaborationTypes" value="tecnico">
+              <span class="opt-check"></span>
+              <span class="opt-icon">🛠️</span>
+              <span>
+                <b>Quiero colaborar técnicamente</b>
+                <p>Puedo ayudar con electrónica, programación, documentación, traducción, diagnóstico o pruebas.</p>
+              </span>
+            </label>
+            <label class="opt-card wide">
+              <input type="checkbox" name="collaborationTypes" value="info">
+              <span class="opt-check"></span>
+              <span class="opt-icon">ℹ️</span>
+              <span>
+                <b>Solo quiero compartir información</b>
+                <p>Quiero registrar información sobre mi máquina o placa sin otro compromiso.</p>
+              </span>
+            </label>
+          </div>
+          <p class="field-error" id="err-step1" hidden>Selecciona al menos una opción para continuar.</p>
+        </section>
+
+        <!-- PASO 2 -->
+        <section class="step-panel" data-step="2" hidden>
+          <h2>¿Qué tienes?</h2>
+          <p class="step-lead">Cuéntanos qué tipo de equipo o placa quieres registrar.</p>
+
+          <div class="card-grid cols-3" data-group="equipment.type" data-radio="true">
+            <label class="opt-card"><input type="radio" name="equipment.type" value="impresora3d"><span class="opt-check"></span><span class="opt-icon">🖨️</span><b>Impresora 3D</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="laser"><span class="opt-check"></span><span class="opt-icon">🔦</span><b>Láser</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="cnc"><span class="opt-check"></span><span class="opt-icon">⚙️</span><b>CNC / Router</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="placa"><span class="opt-check"></span><span class="opt-icon">🔌</span><b>Placa electrónica</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="esp-arduino"><span class="opt-check"></span><span class="opt-icon">📟</span><b>ESP32 / ESP8266 / Arduino</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="accesorio"><span class="opt-check"></span><span class="opt-icon">🧩</span><b>Accesorio</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="otro"><span class="opt-check"></span><span class="opt-icon">❔</span><b>Otro</b></label>
+          </div>
+          <p class="field-error" id="err-step2" hidden>Selecciona el tipo de equipo para continuar.</p>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="f-brand">Marca</label>
+              <input type="text" id="f-brand" name="equipment.brand" placeholder="Ej. Creality, xTool, genérica...">
+            </div>
+            <div class="field">
+              <label for="f-model">Modelo del equipo</label>
+              <input type="text" id="f-model" name="equipment.model" placeholder="Ej. Ender 3 V2">
+            </div>
+            <div class="field full">
+              <label for="f-customname">Nombre o descripción personalizada <span class="hint">opcional</span></label>
+              <input type="text" id="f-customname" name="equipment.customName" placeholder="CNC router 4x8 casera">
+              <p class="example">Ejemplo: "CNC router 4x8 casera"</p>
+            </div>
+            <div class="field">
+              <label for="f-boardmanufacturer">Fabricante de la placa</label>
+              <input type="text" id="f-boardmanufacturer" name="equipment.boardManufacturer" placeholder="Ej. MKS, BTT, Makerbase...">
+            </div>
+            <div class="field">
+              <label for="f-boardmodel">Modelo de placa</label>
+              <input type="text" id="f-boardmodel" name="equipment.boardModel" placeholder="Ej. MKS DLC32">
+            </div>
+            <div class="field">
+              <label for="f-quantity">Cantidad de equipos similares</label>
+              <input type="number" id="f-quantity" name="equipment.quantity" min="1" value="1">
+            </div>
+          </div>
+
+          <div class="id-note">
+            <span>🔍</span>
+            <div>
+              <b>¿No conoces el modelo de la placa?</b><br>
+              Sube fotografías claras y podremos intentar identificarla.
+            </div>
+          </div>
+
+          <div class="photo-grid">
+            <div>
+              <div class="dropzone" id="dz-equipment" tabindex="0">
+                <div class="dz-icon">📷</div>
+                <b>Foto del equipo</b>
+                <small>Arrastra una imagen o haz clic para elegir</small>
+                <input type="file" id="dz-equipment-input" accept="image/*">
+              </div>
+              <div class="preview-list" id="dz-equipment-preview"></div>
+            </div>
+            <div>
+              <div class="dropzone" id="dz-board" tabindex="0">
+                <div class="dz-icon">📷</div>
+                <b>Foto de la placa</b>
+                <small>Arrastra una imagen o haz clic para elegir</small>
+                <input type="file" id="dz-board-input" accept="image/*">
+              </div>
+              <div class="preview-list" id="dz-board-preview"></div>
+            </div>
+            <div class="field full" style="margin-top:0;">
+              <div class="dropzone" id="dz-additional" tabindex="0">
+                <div class="dz-icon">🖼️</div>
+                <b>Fotos adicionales</b>
+                <small>Puedes arrastrar varias imágenes a la vez</small>
+                <input type="file" id="dz-additional-input" accept="image/*" multiple>
+              </div>
+              <div class="preview-list" id="dz-additional-preview"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PASO 3 -->
+        <section class="step-panel" data-step="3" hidden>
+          <h2>¿Cuál es su estado actual?</h2>
+          <p class="step-lead">Selecciona la opción que mejor describa el estado del equipo o la placa.</p>
+
+          <div class="status-grid" data-group="condition.status" data-radio="true">
+            <label class="status-card"><input type="radio" name="condition.status" value="funciona"><span class="dot">🟢</span><b>Funciona correctamente</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="parcial"><span class="dot">🟡</span><b>Funciona parcialmente</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="falla"><span class="dot">🔴</span><b>Tiene una falla</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="no-enciende"><span class="dot">⚫</span><b>No enciende</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="reemplazada"><span class="dot">🔵</span><b>Fue reemplazada pero la conservo</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="no-seguro"><span class="dot">❓</span><b>No estoy seguro</b></label>
+          </div>
+          <p class="field-error" id="err-step3" hidden>Selecciona el estado del equipo para continuar.</p>
+
+          <div class="subblock" id="problems-block" hidden>
+            <label style="font-size:13px;font-weight:700;">¿Qué problema presenta?</label>
+            <div class="chip-group" data-group="condition.problems">
+              <label class="chip"><input type="checkbox" name="condition.problems" value="usb">USB</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="drivers">Drivers</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="motores">Motores</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="temperaturas">Temperaturas</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="calentadores">Calentadores</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="pantalla">Pantalla</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="wifi">Wi-Fi</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="ethernet">Ethernet</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="firmware">Firmware</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="arranque">Arranque</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="alimentacion">Alimentación</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="comunicacion">Comunicación</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="sensores">Sensores</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="conectores">Conectores</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="daño-fisico">Daño físico</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="otro">Otro</label>
+            </div>
+          </div>
+
+          <div class="field full">
+            <label for="f-condition-description">Describe brevemente la falla <span class="hint">opcional</span></label>
+            <textarea id="f-condition-description" name="condition.description" placeholder="La máquina funciona, pero el puerto USB dejó de ser detectado. Reemplacé la placa y todavía conservo la anterior."></textarea>
+          </div>
+        </section>
+
+        <!-- PASO 4 -->
+        <section class="step-panel" data-step="4" hidden>
+          <h2>¿Qué disponibilidad tienes?</h2>
+          <p class="step-lead">Puedes seleccionar varias opciones.</p>
+
+          <div class="chip-group" data-group="availability.options">
+            <label class="chip"><input type="checkbox" name="availability.options" value="personal">Puedo realizar pruebas personalmente</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="prestar-equipo">Puedo prestar el equipo</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="prestar-placa">Puedo prestar la placa</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="donar">Puedo donarlo</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="vender">Puedo venderlo</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="enviar">Puedo enviarlo para diagnóstico</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="remoto">Puedo ayudar remotamente</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="info">Solo quiero compartir información</label>
+          </div>
+          <p class="field-error" id="err-step4" hidden>Selecciona al menos una opción de disponibilidad.</p>
+
+          <div class="subblock" id="sell-block" hidden>
+            <div class="field-grid">
+              <div class="field">
+                <label for="f-price">Precio aproximado</label>
+                <input type="number" id="f-price" name="availability.askingPrice" min="0" placeholder="0">
+              </div>
+              <div class="field">
+                <label for="f-currency">Moneda</label>
+                <select id="f-currency" name="availability.currency">
+                  <option value="">Selecciona...</option>
+                  <option value="MXN">MXN</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="otra">Otra</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label>Precio negociable</label>
+                <div class="radio-row" data-group="availability.negotiable" data-radio="true">
+                  <label class="radio-pill"><input type="radio" name="availability.negotiable" value="si">Sí</label>
+                  <label class="radio-pill"><input type="radio" name="availability.negotiable" value="no">No</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="subblock" id="shipping-block" hidden>
+            <label style="font-size:13px;font-weight:700;">¿Podrías realizar un envío?</label>
+            <div class="radio-row" data-group="availability.shipping" data-radio="true">
+              <label class="radio-pill"><input type="radio" name="availability.shipping" value="si">Sí</label>
+              <label class="radio-pill"><input type="radio" name="availability.shipping" value="no">No</label>
+              <label class="radio-pill"><input type="radio" name="availability.shipping" value="depende">Depende de la ubicación</label>
+            </div>
+          </div>
+
+          <div class="subblock">
+            <span class="step-tag optional">Información técnica — opcional</span>
+            <div class="field-grid">
+              <div class="field">
+                <label for="f-firmware">Firmware</label>
+                <select id="f-firmware" name="technical.firmware">
+                  <option value="">Selecciona...</option>
+                  <option value="klipper">Klipper</option>
+                  <option value="marlin">Marlin</option>
+                  <option value="grbl">GRBL</option>
+                  <option value="fluidnc">FluidNC</option>
+                  <option value="reprapfirmware">RepRapFirmware</option>
+                  <option value="propietario">Firmware propietario</option>
+                  <option value="otro">Otro</option>
+                  <option value="no-se">No sé</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="f-os">Sistema utilizado</label>
+                <select id="f-os" name="technical.operatingSystem">
+                  <option value="">Selecciona...</option>
+                  <option value="linux">Linux</option>
+                  <option value="windows">Windows</option>
+                  <option value="macos">macOS</option>
+                  <option value="android">Android</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label>Conectividad</label>
+                <div class="chip-group" data-group="technical.connections">
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="usb">USB</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="serial-uart">Serial / UART</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="wifi">Wi-Fi</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="ethernet">Ethernet</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="bluetooth">Bluetooth</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="can">CAN</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="otra">Otra</label>
+                </div>
+              </div>
+              <div class="field full">
+                <label>Nivel</label>
+                <div class="radio-row" data-group="technical.experienceLevel" data-radio="true">
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="principiante">Principiante</label>
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="intermedio">Intermedio</label>
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="avanzado">Avanzado</label>
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="tecnico">Técnico / desarrollador</label>
+                </div>
+              </div>
+              <div class="field full">
+                <label for="f-tech-notes">Información técnica adicional</label>
+                <textarea id="f-tech-notes" name="technical.notes" placeholder="Detalles de configuración, versiones, modificaciones..."></textarea>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PASO 5 -->
+        <section class="step-panel" data-step="5" hidden>
+          <h2>Datos de contacto</h2>
+          <p class="step-lead">Solo lo necesario para poder escribirte. No pedimos tu domicilio completo.</p>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="f-name">Nombre o alias <span class="req">*</span></label>
+              <input type="text" id="f-name" name="contact.name" required>
+            </div>
+            <div class="field">
+              <label for="f-email">Correo electrónico <span class="req">*</span></label>
+              <input type="email" id="f-email" name="contact.email" required>
+            </div>
+            <div class="field">
+              <label for="f-country">País <span class="req">*</span></label>
+              <input type="text" id="f-country" name="location.country" required>
+            </div>
+            <div class="field">
+              <label for="f-state">Estado / provincia</label>
+              <input type="text" id="f-state" name="location.state">
+            </div>
+            <div class="field">
+              <label for="f-city">Ciudad</label>
+              <input type="text" id="f-city" name="location.city">
+            </div>
+          </div>
+          <p class="field-error" id="err-step5" hidden>Completa nombre, correo y país para continuar.</p>
+
+          <div class="subblock">
+            <span class="step-tag optional">Contacto opcional</span>
+            <div class="field-grid">
+              <div class="field"><label for="f-facebook">Facebook</label><input type="text" id="f-facebook" name="contact.facebook"></div>
+              <div class="field"><label for="f-discord">Discord</label><input type="text" id="f-discord" name="contact.discord"></div>
+              <div class="field"><label for="f-github">GitHub</label><input type="text" id="f-github" name="contact.github"></div>
+              <div class="field"><label for="f-telegram">Telegram</label><input type="text" id="f-telegram" name="contact.telegram"></div>
+              <div class="field"><label for="f-whatsapp">WhatsApp</label><input type="tel" id="f-whatsapp" name="contact.whatsapp"></div>
+              <div class="field"><label for="f-other-contact">Otro</label><input type="text" id="f-other-contact" name="contact.other"></div>
+            </div>
+          </div>
+
+          <label class="consent-row">
+            <input type="checkbox" id="f-consent" name="consent" required>
+            <span>Acepto que el equipo de NOPAL me contacte respecto a esta colaboración.</span>
+          </label>
+          <p class="field-error" id="err-consent" hidden>Debes aceptar para poder enviar el registro.</p>
+
+          <div id="demo-notice" class="warn-note" hidden></div>
+        </section>
+
+      </div>
+
+      <div class="form-actions">
+        <button type="button" id="btn-clear" class="btn-ghost">Borrar formulario</button>
+        <div class="nav-buttons">
+          <button type="button" id="btn-prev" class="btn-outline">&larr; Anterior</button>
+          <button type="button" id="btn-next" class="btn-primary">Siguiente &rarr;</button>
+          <button type="submit" id="btn-submit" class="btn-primary" hidden>Enviar registro</button>
+        </div>
+      </div>
+    </form>
+  </main>
+
+  <!-- DERECHA: resumen en vivo -->
+  <aside class="side-right" id="side-right">
+    <div class="summary-card">
+      <div class="eyebrow">Tu colaboración</div>
+      <div class="summary-empty" id="summary-empty">
+        <div class="summary-icon">🌵</div>
+        <p>Aún no has agregado información del equipo.</p>
+        <p class="muted" style="font-size:12px;">A medida que avances verás aquí un resumen de tu registro.</p>
+      </div>
+      <dl class="summary-list" id="summary-list" hidden>
+        <div class="summary-row"><dt>📦 Equipo</dt><dd id="sum-equipment">—</dd></div>
+        <div class="summary-row"><dt>🔧 Placa</dt><dd id="sum-board">—</dd></div>
+        <div class="summary-row"><dt>🟢 Estado</dt><dd id="sum-status">—</dd></div>
+        <div class="summary-row" id="sum-problems-row" hidden><dt>⚠️ Fallas</dt><dd id="sum-problems">—</dd></div>
+        <div class="summary-row"><dt>🧪 Participación</dt><dd id="sum-participation">—</dd></div>
+        <div class="summary-row"><dt>📍 Ubicación</dt><dd id="sum-location">—</dd></div>
+      </dl>
+    </div>
+  </aside>
+
+</div>
+
+<section class="why-section wrap">
+  <div class="eyebrow">¿Para qué usaremos tu información?</div>
+  <h2>Cada colaboración ayuda a que NOPAL sea compatible con más equipos</h2>
+  <div class="why-grid">
+    <div class="why-item">
+      <div class="wicon">📈</div>
+      <h3>Diagnóstico real</h3>
+      <p>Identificamos fallas reales en diferentes equipos.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon">🧩</div>
+      <h3>Compatibilidad</h3>
+      <p>Mejoramos compatibilidad con más placas y máquinas.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon">⚡</div>
+      <h3>Desarrollo y pruebas</h3>
+      <p>Probamos nuevas funciones en entornos reales.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon">📖</div>
+      <h3>Documentación</h3>
+      <p>Creamos guías y soluciones para la comunidad.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon">👥</div>
+      <h3>Comunidad fuerte</h3>
+      <p>Juntos hacemos crecer el ecosistema NOPAL.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="flinks">
+      <a href="../index.html">Inicio</a>
+      <a href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">GitHub</a>
+      <a href="../manual/NOPAL_Manual_Usuario.pdf" target="_blank">Manual PDF</a>
+    </div>
+    <div>¿Dudas? Escríbenos en cualquiera de nuestras redes o en la comunidad.</div>
+    <div class="privacy-note">🔒 Tu información está protegida y solo será usada para fines de colaboración con NOPAL.</div>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="colabora.js"></script>
+</body>
+</html>
