@@ -1531,36 +1531,126 @@ function deleteCustomTheme() {
     localStorage.removeItem(CUSTOM_THEME_STORAGE_KEY);
 }
 
-function getThemeColors(theme) {
-    if (theme === 'custom') {
-        const custom = getCustomTheme();
-        if (custom) {
-            return {
-                accent: custom.accent,
-                surface: custom.surface,
-                bg: custom.surface,
-                sidebar: custom.surface,
-                text: custom.text,
-                muted: custom.muted,
-            };
-        }
-    }
-    const defaults = THEME_PALETTES[theme] || THEME_PALETTES.light;
-    return {
-        accent: defaults.accent,
-        surface: defaults.surface,
-        bg: defaults.bg || defaults.surface,
-        sidebar: defaults.sidebar || defaults.surface,
-        text: defaults.text,
-        muted: defaults.muted,
-    };
-}
-
 function hexToRgbTriplet(hex) {
     const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
     if (!match) return '34, 197, 94';
     const [, r, g, b] = match;
     return `${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}`;
+}
+
+/* ---------------------------------------------------------------
+   Utilidades de color para el tema custom.
+
+   Los cuatro temas base (claro, dark, green, red) viven completos en la
+   capa de tokens de style.css y no necesitan nada de JS. El tema custom es
+   el único que se arma en runtime, porque el usuario solo elige cuatro
+   colores (accent, superficie, texto, texto tenue) y de ahí hay que derivar
+   el resto de los tokens semánticos: elevación, bordes y una versión del
+   accent que sea legible como texto sobre su propia superficie.
+   --------------------------------------------------------------- */
+
+function parseHex(hex) {
+    const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+    if (!match) return null;
+    return [1, 2, 3].map((i) => parseInt(match[i], 16));
+}
+
+function toHex(rgb) {
+    return '#' + rgb.map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0')).join('');
+}
+
+// Luminancia relativa segun WCAG 2.1.
+function relativeLuminance(hex) {
+    const rgb = parseHex(hex);
+    if (!rgb) return 0;
+    const [r, g, b] = rgb.map((c) => {
+        const v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(a, b) {
+    const la = relativeLuminance(a);
+    const lb = relativeLuminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+// Mezcla lineal entre dos colores. ratio 0 = a, 1 = b.
+function mixColors(a, b, ratio) {
+    const ca = parseHex(a);
+    const cb = parseHex(b);
+    if (!ca || !cb) return a;
+    return toHex(ca.map((v, i) => v + (cb[i] - v) * ratio));
+}
+
+// Acerca un color a blanco o negro hasta que alcance el contraste pedido
+// contra la superficie. Sirve para que el accent elegido por el usuario siga
+// siendo legible como texto aunque haya escogido, por ejemplo, un amarillo
+// claro sobre una superficie clara.
+function ensureContrast(color, against, target) {
+    const towards = relativeLuminance(against) > 0.5 ? '#000000' : '#ffffff';
+    let result = color;
+    for (let step = 0; step <= 20; step++) {
+        if (contrastRatio(result, against) >= target) return result;
+        result = mixColors(color, towards, step / 20);
+    }
+    return result;
+}
+
+// Traduce los cuatro colores del tema custom al juego completo de tokens
+// semanticos. Se escriben sobre <body> (no sobre <html>) porque la regla
+// body.custom de style.css tambien vive ahi: el estilo inline le gana a la
+// clase en el mismo elemento, que es justo lo que queremos.
+function applyCustomThemeTokens(custom) {
+    if (!custom) return;
+    const surface = custom.surface || CUSTOM_THEME_DEFAULTS.surface;
+    const text = custom.text || CUSTOM_THEME_DEFAULTS.text;
+    const muted = custom.muted || CUSTOM_THEME_DEFAULTS.muted;
+    const accent = custom.accent || CUSTOM_THEME_DEFAULTS.accent;
+    const isDark = relativeLuminance(surface) < 0.5;
+    // La superficie que eligio el usuario es la de las tarjetas; el lienzo de
+    // la pagina se separa de ella para que las tarjetas se lean como tarjetas.
+    const canvas = mixColors(surface, isDark ? '#000000' : '#0F172A', isDark ? 0.45 : 0.09);
+
+    const tokens = {
+        '--surface-raised': surface,
+        '--surface-base': canvas,
+        '--surface-sunken': mixColors(surface, canvas, 0.55),
+        '--surface-nav': mixColors(surface, canvas, 0.3),
+        '--text-strong': text,
+        '--text-soft': muted,
+        '--text-faint': muted,
+        '--border-subtle': mixColors(surface, text, 0.14),
+        '--border-control': ensureContrast(mixColors(surface, text, 0.4), surface, 3),
+        '--accent-fill': accent,
+        '--accent-fill-hover': mixColors(accent, isDark ? '#ffffff' : '#000000', 0.15),
+        '--accent-fill-active': mixColors(accent, '#000000', 0.18),
+        '--accent-ink': ensureContrast(accent, surface, 3),
+        '--accent-on': contrastRatio(accent, '#0B0B0C') >= contrastRatio(accent, '#FFFFFF') ? '#0B0B0C' : '#FFFFFF',
+        '--accent-fill-rgb': hexToRgbTriplet(accent),
+        // Los estados no son configurables: rojo sigue significando error sin
+        // importar que tema arme el usuario.
+        '--status-ok': isDark ? '#4ADE80' : '#15803D',
+        '--status-warn': isDark ? '#FBBF24' : '#B45309',
+        '--status-danger': isDark ? '#F87171' : '#DC2626',
+        '--status-info': isDark ? '#60A5FA' : '#1D4ED8',
+    };
+    Object.entries(tokens).forEach(([name, value]) => {
+        document.body.style.setProperty(name, value);
+    });
+}
+
+function clearCustomThemeTokens() {
+    const names = [
+        '--surface-raised', '--surface-base', '--surface-sunken', '--surface-nav',
+        '--text-strong', '--text-soft', '--text-faint',
+        '--border-subtle', '--border-control',
+        '--accent-fill', '--accent-fill-hover', '--accent-fill-active',
+        '--accent-ink', '--accent-on', '--accent-fill-rgb',
+        '--status-ok', '--status-warn', '--status-danger', '--status-info',
+    ];
+    names.forEach((name) => document.body.style.removeProperty(name));
 }
 
 function applyTheme(theme) {
@@ -1571,17 +1661,15 @@ function applyTheme(theme) {
     document.body.setAttribute('data-theme', resolvedTheme);
     applyCustomThemeBackground();
 
-    const colors = getThemeColors(resolvedTheme);
-    document.documentElement.style.setProperty('--accent', colors.accent);
-    document.documentElement.style.setProperty('--accent-rgb', hexToRgbTriplet(colors.accent));
-    document.documentElement.style.setProperty('--surface', colors.surface);
-    document.documentElement.style.setProperty('--text', colors.text);
-    document.documentElement.style.setProperty('--text-muted', colors.muted);
-    document.documentElement.style.setProperty('--text-secondary', colors.muted);
-    document.documentElement.style.setProperty('--black', colors.text);
-    document.documentElement.style.setProperty('--card-bg', colors.surface);
-    document.documentElement.style.setProperty('--bg', colors.bg);
-    document.documentElement.style.setProperty('--sidebar-bg', colors.sidebar);
+    // Los colores NO se escriben desde aqui. Los cuatro temas base viven
+    // completos en la capa de tokens de style.css y se resuelven solos con la
+    // clase que acabamos de poner en <body>. Antes esta funcion escribia
+    // --bg/--card-bg/--text/--accent... inline sobre <html>, duplicando los
+    // valores del CSS: en el tema claro el inline le ganaba a la regla :root,
+    // asi que el stylesheet quedaba muerto, y --text-secondary terminaba
+    // valiendo lo mismo que --text-muted en los cuatro temas.
+    clearCustomThemeTokens();
+    if (resolvedTheme === 'custom') applyCustomThemeTokens(getCustomTheme());
 
     if (themeToggle) {
         themeToggle.setAttribute('aria-pressed', String(resolvedTheme === 'dark'));
@@ -17088,40 +17176,6 @@ function applyCncMachineProfile(profile) {
 }
 const settingsStatus = document.getElementById('settings-status');
 
-const THEME_PALETTES = {
-    light: {
-        accent: '#22c55e',
-        surface: '#FFFFFF',
-        bg: '#F7F8FA',
-        sidebar: '#FFFFFF',
-        text: '#1E293B',
-        muted: '#64748B',
-    },
-    dark: {
-        accent: '#22c55e',
-        surface: '#181818',
-        bg: '#050505',
-        sidebar: '#0C0C0C',
-        text: '#FFFFFF',
-        muted: '#B8B8B8',
-    },
-    green: {
-        accent: '#22c55e',
-        surface: '#171D23',
-        bg: '#0f172a',
-        sidebar: '#0A0D10',
-        text: '#F5F7FA',
-        muted: '#B7C1CC',
-    },
-    red: {
-        accent: '#E5484D',
-        surface: '#2E171A',
-        bg: '#120809',
-        sidebar: '#1A0C0D',
-        text: '#FFFFFF',
-        muted: '#D2B8BA',
-    },
-};
 
 function loadSettingsPanel() {
     const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
