@@ -349,6 +349,27 @@
   .dcard p{color:var(--text-dim);font-size:14px;margin:0;flex:1;}
   .dcard a.btn{align-self:flex-start;padding:9px 16px;font-size:13.5px;}
 
+  /* COLABORA CTA */
+  .collab-cta{padding:0 0 96px;}
+  .collab-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;
+    background:var(--surface);border:1px solid var(--green-line);border-radius:var(--radius);
+    padding:28px 32px;position:relative;overflow:hidden;
+  }
+  .collab-banner::before{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(circle at 90% 10%, rgba(57,214,46,0.14), transparent 55%);
+    pointer-events:none;
+  }
+  .collab-banner .ct{position:relative;z-index:1;max-width:640px;}
+  .collab-banner .eyebrow{margin-bottom:8px;}
+  .collab-banner h3{font-family:var(--font-head);font-size:19px;color:#fff;margin:0 0 6px;}
+  .collab-banner p{color:var(--text-dim);font-size:14px;margin:0;}
+  .collab-banner .btn{position:relative;z-index:1;flex:none;}
+  @media (max-width:640px){
+    .collab-banner{padding:24px;}
+  }
+
   footer{
     border-top:1px solid var(--border-soft);padding:56px 0 28px;
     color:var(--text-dim);font-size:13.5px;background:var(--ink-soft);
@@ -445,6 +466,7 @@
       <a href="#arquitectura">Arquitectura</a>
       <a href="#instalacion">Instalación</a>
       <a href="#documentacion">Documentación</a>
+      <a href="./colabora/">Colabora</a>
       <a class="cta" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">
         <svg class="ic" style="width:16px;height:16px;"><use href="#i-github"/></svg>
         GitHub
@@ -680,6 +702,19 @@ NOPAL_PORT=9000 ./install.sh</pre>
         <p>App Android complementaria (Kotlin + Compose) para controlar NOPAL desde un celular o una tablet montada en una máquina.</p>
         <a class="btn btn-outline" href="https://github.com/charlymigenes-ux/TUNA-Screen" target="_blank">Ver repositorio</a>
       </div>
+    </div>
+  </div>
+</section>
+
+<section class="collab-cta">
+  <div class="wrap">
+    <div class="collab-banner reveal">
+      <div class="ct">
+        <div class="eyebrow">Ayuda a probar NOPAL</div>
+        <h3>¿Tienes una máquina, placa o equipo que todavía no hemos podido probar?</h3>
+        <p>Regístrala en el programa de colaboración: impresoras, láser/CNC, placas ESP32/Arduino, fallas conocidas o hardware que puedas prestar, donar o vender.</p>
+      </div>
+      <a class="btn btn-primary" href="./colabora/">Quiero colaborar <svg class="ic"><use href="#i-arrow"/></svg></a>
     </div>
   </div>
 </section>
