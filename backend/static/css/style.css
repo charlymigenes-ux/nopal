@@ -26,100 +26,228 @@ select option {
     color: var(--text);
 }
 
+/* =============================================================
+   CAPA DE TOKENS DE COLOR
+
+   Tres niveles, de abajo hacia arriba:
+
+     1. Primitivos  --nop-*      valores literales de marca. NO se usan
+                                 directo en componentes.
+     2. Semánticos  --surface-*, --text-*, --border-*, --accent-*,
+                    --status-*   lo que describe el ROL del color.
+                                 Es lo que se usa en UI nueva.
+     3. Alias       --bg, --card-bg, --text, --accent, ...
+                                 nombres históricos apuntando al nivel 2,
+                                 para que el CSS que ya existe siga
+                                 funcionando sin reescribirlo de golpe.
+
+   Reglas:
+   - En UI nueva se usan SOLO los semánticos. Los alias existen para que la
+     migración sea incremental, no para escribir código nuevo.
+   - --border-subtle es decorativo (separadores). Cualquier cosa que sea el
+     contorno de un control (input, botón fantasma, checkbox) usa
+     --border-control, que garantiza 3:1 contra la superficie.
+   - --accent-fill es RELLENO (fondo de botón, con --accent-on encima).
+     --accent-ink es TINTA (texto, ícono, borde). No son intercambiables:
+     en el tema claro el verde de marca solo da 2.28:1 contra blanco, así
+     que como texto se usa --accent-ink, que es más oscuro.
+   - El rojo está reservado para --status-danger en los cuatro temas. Ningún
+     accent es rojo, justamente para que "rojo = algo está mal" se sostenga.
+
+   Los valores están verificados contra WCAG 2.1: texto >= 4.5:1 contra su
+   superficie, bordes de control y colores de estado >= 3:1.
+   ============================================================= */
+
 :root {
-    --bg: #F7F8FA;
-    --sidebar-bg: #FFFFFF;
-    --card-bg: #FFFFFF;
-    --panel-bg: #F1F4F7;
-    --border: #D8DEE5;
-    --text: #1E293B;
-    --text-secondary: #64748B;
-    --text-muted: #64748B;
-    --green: #22c55e;
-    --green-rgb: 34, 197, 94;
-    --green-dark: #17B754;
-    --accent: #22c55e;
-    --accent-rgb: 34, 197, 94;
-    --accent-hover: #31E06F;
-    --accent-active: #17B754;
-    --orange: #f59e0b;
-    --orange-light: #fbbf24;
-    --purple: #8b5cf6;
-    --purple-rgb: 139, 92, 246;
-    --black: #1E293B;
+    /* --- nivel 1: primitivos de marca --- */
+    --nop-green-400: #4ADE80;
+    --nop-green-500: #22C55E;
+    --nop-green-600: #16A34A;
+    --nop-green-700: #15803D;
+    --nop-amber-400: #FB923C;
+    --nop-amber-500: #F97316;
+    --nop-amber-600: #EA580C;
+    --nop-violet-400: #A78BFA;
+    --nop-violet-500: #8B5CF6;
+    --nop-violet-600: #7C3AED;
+
+    /* --- medidas (no dependen del tema) --- */
     --radius-lg: 20px;
     --radius-md: 14px;
     --radius-sm: 5px;
     --topbar-height: 72px;
 }
 
+/* --- nivel 2: DESIERTO (tema claro) ---
+   Espeja los valores de body.light, que es donde vive de verdad el tema
+   claro (paleta "Desert", alineada con TUNA-Screen). Este bloque es el
+   fallback para el instante previo a que applyTheme() ponga la clase en
+   <body>: si acá hubiera otra paleta, la carga arrancaría con un destello
+   del color equivocado. Cualquier cambio al tema claro se hace en los dos
+   lados o en ninguno. */
+:root {
+    --surface-base: #E8D8B5;
+    --surface-raised: #F5EBD4;
+    --surface-sunken: #FDF8EC;
+    --surface-nav: #FDF8EC;
+
+    --text-strong: #30291F;
+    --text-soft: #6B5E49;
+    --text-faint: #6B5E49;
+
+    --border-subtle: #9A8258;
+    --border-control: #8B7550;
+
+    --accent-fill: #687A32;
+    --accent-fill-hover: #5C6C2C;
+    --accent-fill-active: #4E5C25;
+    --accent-ink: #4E5C25;
+    --accent-on: #FFFFFF;
+    --accent-fill-rgb: 104, 122, 50;
+
+    --status-ok: #4E5C25;
+    --status-warn: #B66A1F;
+    --status-danger: #A63D32;
+    --status-info: #3B82C4;
+
+    --green-emphasis: #4E5C25;
+    --violet: #8A63D2;
+}
+
+/* --- nivel 2: NOCHE (oscuro neutro) ---
+   Texto #F2F3F5 en vez de blanco puro: sobre un fondo casi negro el blanco
+   #FFFFFF da 20:1 y produce halation (el texto "sangra") en las sesiones
+   largas frente a una impresora. */
 body.dark {
-    --bg: #050505;
-    --sidebar-bg: #0C0C0C;
-    --card-bg: #181818;
-    --panel-bg: #101010;
-    --border: #2F2F2F;
-    --text: #FFFFFF;
-    --text-secondary: #B8B8B8;
-    --text-muted: #B8B8B8;
-    --green: #22c55e;
-    --green-rgb: 34, 197, 94;
-    --green-dark: #31E06F;
-    --accent: #22c55e;
-    --accent-rgb: 34, 197, 94;
-    --accent-hover: #31E06F;
-    --accent-active: #17B754;
-    --orange: #f59e0b;
-    --orange-light: #fbbf24;
-    --purple: #8b5cf6;
-    --purple-rgb: 139, 92, 246;
-    --black: #FFFFFF;
+    --surface-base: #0B0B0C;
+    --surface-raised: #1C1D21;
+    --surface-sunken: #151517;
+    --surface-nav: #0F0F11;
+
+    --text-strong: #F2F3F5;
+    --text-soft: #A9ADB4;
+    --text-faint: #8A8F97;
+
+    --border-subtle: #2E2F34;
+    --border-control: #6A6D73;
+
+    --accent-fill: var(--nop-green-500);
+    --accent-fill-hover: var(--nop-green-400);
+    --accent-fill-active: var(--nop-green-600);
+    --accent-ink: var(--nop-green-400);
+    --accent-on: #06280F;
+    --accent-fill-rgb: 34, 197, 94;
+
+    --status-ok: var(--nop-green-400);
+    --status-warn: #FBBF24;
+    --status-danger: #F87171;
+    --status-info: #60A5FA;
+
+    --green-emphasis: var(--nop-green-500);
+    --violet: var(--nop-violet-400);
 }
 
+/* --- nivel 2: NOPAL (verde/slate) --- */
 body.green {
-    --bg: #0f172a;
-    --sidebar-bg: #0A0D10;
-    --card-bg: #171D23;
-    --panel-bg: #11161B;
-    --border: #2B3542;
-    --text: #F5F7FA;
-    --text-secondary: #B7C1CC;
-    --text-muted: #7A8795;
-    --green: #22c55e;
-    --green-rgb: 34, 197, 94;
-    --green-dark: #17B754;
-    --accent: #22c55e;
-    --accent-rgb: 34, 197, 94;
-    --accent-hover: #31E06F;
-    --accent-active: #17B754;
-    --orange: #f59e0b;
-    --orange-light: #fbbf24;
-    --purple: #8b5cf6;
-    --purple-rgb: 139, 92, 246;
-    --black: #F5F7FA;
+    --surface-base: #0B1220;
+    --surface-raised: #182238;
+    --surface-sunken: #111A2B;
+    --surface-nav: #0D1526;
+
+    --text-strong: #F1F5F9;
+    --text-soft: #B4C0D0;
+    --text-faint: #94A3B8;
+
+    --border-subtle: #24314A;
+    --border-control: #59708F;
+
+    --accent-fill: var(--nop-green-500);
+    --accent-fill-hover: var(--nop-green-400);
+    --accent-fill-active: var(--nop-green-600);
+    --accent-ink: var(--nop-green-400);
+    --accent-on: #06280F;
+    --accent-fill-rgb: 34, 197, 94;
+
+    --status-ok: var(--nop-green-400);
+    --status-warn: #FBBF24;
+    --status-danger: #F87171;
+    --status-info: #60A5FA;
+
+    --green-emphasis: var(--nop-green-500);
+    --violet: var(--nop-violet-400);
 }
 
+/* --- nivel 2: FORJA (rojo) ---
+   El accent es ÁMBAR, no rojo. Antes el accent y el color de error eran el
+   mismo #E5484D, así que el botón de acción principal y la alerta de una
+   impresora fallando competían visualmente. Las superficies conservan el
+   tinte cálido para que el tema siga leyéndose como "el rojo". */
 body.red {
-    --bg: #120809;
-    --sidebar-bg: #1A0C0D;
-    --card-bg: #2E171A;
-    --panel-bg: #241214;
-    --border: #4A2326;
-    --text: #FFFFFF;
-    --text-secondary: #D2B8BA;
-    --text-muted: #D2B8BA;
-    --green: #22c55e;
+    --surface-base: #0F0A09;
+    --surface-raised: #261A18;
+    --surface-sunken: #1B1211;
+    --surface-nav: #171010;
+
+    --text-strong: #F7F0EE;
+    --text-soft: #CBB6B1;
+    --text-faint: #A99490;
+
+    --border-subtle: #3A2724;
+    --border-control: #85605A;
+
+    --accent-fill: var(--nop-amber-500);
+    --accent-fill-hover: var(--nop-amber-400);
+    --accent-fill-active: var(--nop-amber-600);
+    --accent-ink: var(--nop-amber-400);
+    --accent-on: #2A1103;
+    --accent-fill-rgb: 249, 115, 22;
+
+    --status-ok: var(--nop-green-400);
+    /* Empujado hacia rosa-rojo para que no se confunda con el ámbar del
+       accent a simple vista. */
+    --status-danger: #FF6B81;
+    --status-warn: #FBBF24;
+    --status-info: #7DB3F5;
+
+    --green-emphasis: var(--nop-green-500);
+    --violet: var(--nop-violet-400);
+}
+
+/* --- nivel 3: alias históricos ---
+   Se declaran para los cuatro temas a la vez: como apuntan a variables y no
+   a literales, cada tema resuelve los suyos por la cascada. body.custom
+   entra aquí también, y sobreescribe el nivel 2 desde JS (applyTheme). */
+:root,
+body.dark,
+body.green,
+body.red,
+body.custom {
+    --bg: var(--surface-base);
+    --card-bg: var(--surface-raised);
+    --surface: var(--surface-raised);
+    --panel-bg: var(--surface-sunken);
+    --sidebar-bg: var(--surface-nav);
+
+    --text: var(--text-strong);
+    --text-secondary: var(--text-soft);
+    --text-muted: var(--text-faint);
+    --black: var(--text-strong);
+
+    --border: var(--border-subtle);
+
+    --accent: var(--accent-fill);
+    --accent-hover: var(--accent-fill-hover);
+    --accent-active: var(--accent-fill-active);
+    --accent-rgb: var(--accent-fill-rgb);
+
+    --green: var(--status-ok);
+    --green-dark: var(--green-emphasis);
     --green-rgb: 34, 197, 94;
-    --green-dark: #17B754;
-    --accent: #E5484D;
-    --accent-rgb: 229, 72, 77;
-    --accent-hover: #F16368;
-    --accent-active: #C93338;
-    --orange: #f59e0b;
-    --orange-light: #fbbf24;
-    --purple: #7B61FF;
-    --purple-rgb: 123, 97, 255;
-    --black: #FFFFFF;
+
+    --orange: var(--status-warn);
+    --orange-light: var(--status-warn);
+    --purple: var(--violet);
+    --purple-rgb: 139, 92, 246;
 }
 
 body {
@@ -153,7 +281,11 @@ body.light {
     --text-primary: #30291F;
     --text-secondary: #6B5E49;
     --text-muted: #6B5E49;
-    --text-on-accent: #FDF8EC;
+    /* El crema #FDF8EC de la paleta daba 4.48:1 sobre el oliva --accent-green,
+       a un pelo de AA. Blanco puro sube a 4.75:1 y no desalinea nada de
+       TUNA-Screen: DesertColors no define un color "sobre acento", este valor
+       siempre fue una derivación del lado de NOPAL. */
+    --text-on-accent: #FFFFFF;
 
     --border-soft: #9A8258;
     --border-medium: #9A8258;
@@ -176,6 +308,39 @@ body.light {
     --state-purple-soft: #F1ECFB;
     --state-orange: #B66A1F;
     --state-orange-soft: #F3DFC4;
+
+    /* Nivel 2 de la capa de tokens: los mismos roles que usan los otros tres
+       temas, mapeados a la paleta Desert de arriba. Existe para que un
+       componente nuevo pueda escribir var(--surface-raised) y funcionar en
+       los cuatro temas sin conocer ni --bg-card ni --card-bg. */
+    --surface-base: var(--bg-app);
+    --surface-raised: var(--bg-card);
+    --surface-sunken: var(--bg-modal);
+    --surface-nav: var(--bg-surface);
+
+    --text-strong: var(--text-primary);
+    --text-soft: var(--text-secondary);
+    --text-faint: var(--text-muted);
+
+    --border-subtle: var(--border-soft);
+    /* --border-soft (#9A8258) da 3.1:1 contra --bg-card, justo en el límite y
+       solo por poco: para el contorno de un control se usa uno más marcado. */
+    --border-control: #8B7550;
+
+    --accent-fill: var(--accent-green);
+    --accent-fill-hover: var(--accent-green-hover);
+    --accent-fill-active: var(--accent-green-strong);
+    --accent-ink: var(--accent-green-strong);
+    --accent-on: var(--text-on-accent);
+    --accent-fill-rgb: 104, 122, 50;
+
+    --status-ok: var(--state-success);
+    --status-warn: var(--state-warning);
+    --status-danger: var(--state-danger);
+    --status-info: var(--state-info);
+
+    --green-emphasis: var(--accent-green-strong);
+    --violet: var(--state-purple);
 
     /* Compatibilidad con los componentes actuales. */
     --bg: var(--bg-app);
