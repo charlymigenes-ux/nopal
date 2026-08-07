@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from backend.auth_deps import require_auth, require_role
+from backend.services import printer_profiles
 from backend.services.laser_service import (
     get_status,
     get_parser_state,
@@ -97,6 +98,19 @@ async def laser_scan_ip_endpoint(ip: str, user: dict = Depends(require_auth)):
 async def laser_usb_ports_endpoint(user: dict = Depends(require_auth)):
     """Puertos serie USB conectados que coinciden con chips de controladoras láser."""
     return {"ports": list_usb_laser_ports()}
+
+
+@router.get("/api/laser/profiles")
+async def laser_profiles_endpoint(user: dict = Depends(require_auth)):
+    """Catálogo de perfiles de láser/CNC conocidos (ver printer_profiles.py)
+    -- para poblar el selector de modelo del alta, mismo criterio que
+    /api/marlin-printers/profiles. Se devuelven juntos láser+CNC porque el
+    wizard de clasificación (usb-classify) ya separa por "kind" del lado
+    del frontend."""
+    return {
+        "profiles": printer_profiles.list_profiles(machine_type="laser")
+        + printer_profiles.list_profiles(machine_type="cnc")
+    }
 
 
 @router.post("/api/laser/usb-ports/test")

@@ -351,6 +351,8 @@ window.NopalTranslations["de"] = {
   "cncZeroZPlotter": "Stift nach unten (Z=0)",
   "cncZeroZConfirm": "Bestätigen Sie, dass das Werkzeug tatsächlich das Werkstück berührt? Dadurch wird Z=0 an der aktuellen Position gesetzt.",
   "usbClassifyProfileLabel": "Maschinentyp CNC",
+  "usbClassifyModelLabel": "Um welches Modell handelt es sich? (optional)",
+  "usbClassifyModelGeneric": "Allgemein / Ich kenne das Modell nicht",
   "cncProfileRouter": "Oberfräse / Fräse",
   "cncProfilePlotter": "Plotter (Stift/Marker)",
   "cncWizardOpen": "Geführtes Zeichnen",

@@ -8876,53 +8876,43 @@ async function loadRegistryDevices() {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
     try {
-        const response = await fetch('/api/laser/registry/status');
+        const response = await fetch('/api/devices/registry');
         const data = await response.json();
-        renderRegistryDevices(data.lasers || []);
+        renderRegistryDevices(data.machines || []);
     } catch (error) {
         console.error(error);
     }
 }
 
-function renderRegistryDevices(devices) {
+// driver de tunascreen_service.list_machines() -> etiqueta legible. Nombres
+// de marca no se traducen (mismo criterio que PROTECTED_TERMS en
+// scripts/generate_i18n.py); "grbl" cubre tanto láser como CNC (ver
+// _laser_machine en tunascreen_service.py), esa etiqueta sí usa i18n.
+function deviceDriverBadgeLabel(driver) {
+    const brandLabels = {
+        marlin: 'Marlin', klipper: 'Klipper', bambu: 'Bambu Lab',
+        elegoo: 'Elegoo', flashforge: 'FlashForge',
+    };
+    if (driver === 'grbl') return `${t('usbKindLaser')} / ${t('usbKindCnc')}`;
+    return brandLabels[driver] || driver;
+}
+
+function renderRegistryDevices(machines) {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
-    if (!devices.length) {
+    if (!machines.length) {
         container.innerHTML = `<div class="empty-state-small">${t('registryDevicesEmpty')}</div>`;
         return;
     }
-    container.innerHTML = devices.map(device => `
+    container.innerHTML = machines.map(machine => `
         <div class="usb-port-item">
             <div class="usb-port-item-info">
-                <strong>${escapeHtml(device.name || device.host)}</strong>
-                <span>${escapeHtml(device.host)}</span>
+                <strong>${escapeHtml(machine.name || machine.id)}</strong>
+                <span>${escapeHtml(deviceDriverBadgeLabel(machine.driver))}</span>
             </div>
-            <span class="usb-port-firmware-badge">${escapeHtml(deviceFirmwareBadgeLabel(device.firmware))}</span>
-            ${device.conflict
-                ? `<span class="device-status-pill conflict" title="${escapeHtml(device.conflict)}">${escapeHtml(t('deviceConflict'))}</span>`
-                : `<span class="device-status-pill ${device.online ? 'online' : 'offline'}">${device.online ? t('online') : t('offline')}</span>`
-            }
-            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger registry-device-remove-btn" data-host="${escapeHtml(device.host)}" title="${escapeHtml(t('usbPortUnlink'))}">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+            <span class="device-status-pill ${machine.online ? 'online' : 'offline'}">${machine.online ? t('online') : t('offline')}</span>
         </div>
     `).join('');
-
-    container.querySelectorAll('.registry-device-remove-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const host = btn.dataset.host;
-            if (!(await appConfirm(t('usbUnlinkConfirm'), t('usbPortUnlink')))) return;
-            try {
-                const body = new URLSearchParams();
-                body.set('host', host);
-                await fetch('/api/laser/registry/remove', { method: 'POST', body });
-                loadRegistryDevices();
-                refreshUsbPorts();
-            } catch (error) {
-                console.error(error);
-            }
-        });
-    });
 }
 
 document.getElementById('registry-devices-refresh-btn')?.addEventListener('click', loadRegistryDevices);
@@ -9252,6 +9242,55 @@ function grblHomeCornerLabel(mask) {
     return `${yLabel} ${xLabel}`;
 }
 
+// Perfiles de láser/CNC conocidos (ver printer_profiles.py del backend) --
+// mismo criterio de caché que marlinPrinterProfilesCache. { [profileId]: perfil }
+let laserDeviceProfilesCache = null;
+
+async function ensureLaserDeviceProfiles() {
+    if (laserDeviceProfilesCache) return laserDeviceProfilesCache;
+    try {
+        const response = await fetch('/api/laser/profiles');
+        const data = await response.json();
+        laserDeviceProfilesCache = {};
+        (data.profiles || []).forEach(profile => { laserDeviceProfilesCache[profile.id] = profile; });
+    } catch (error) {
+        console.error(error);
+        laserDeviceProfilesCache = {};
+    }
+    return laserDeviceProfilesCache;
+}
+
+async function populateUsbClassifyModelSelect(kind) {
+    const select = document.getElementById('usb-classify-model-select');
+    if (!select) return;
+    const profiles = await ensureLaserDeviceProfiles();
+    const matching = Object.values(profiles).filter(profile => profile.machine_type === kind);
+    select.innerHTML = `<option value="">${escapeHtml(t('usbClassifyModelGeneric'))}</option>` +
+        matching.map(profile =>
+            `<option value="${escapeHtml(profile.id)}">${escapeHtml(`${profile.manufacturer} ${profile.model}`)}</option>`
+        ).join('');
+    select.value = '';
+}
+
+// Elegir un modelo conocido rellena ancho/alto de una vez -- no reemplaza
+// el escaneo real de $130/$131 (ver runUsbClassifyScan), lo complementa
+// para cuando la placa no trae esos valores configurados o el usuario
+// prefiere no medir a mano.
+function applyUsbClassifyModelProfile(profileId) {
+    const profile = laserDeviceProfilesCache?.[profileId];
+    if (!profile || !profile.work_area) return;
+    const widthInput = document.getElementById('usb-classify-scan-width');
+    const heightInput = document.getElementById('usb-classify-scan-height');
+    const scanGrid = document.getElementById('usb-classify-scan-grid');
+    if (widthInput) widthInput.value = profile.work_area.x;
+    if (heightInput) heightInput.value = profile.work_area.y;
+    if (scanGrid) scanGrid.hidden = false;
+}
+
+document.getElementById('usb-classify-model-select')?.addEventListener('change', event => {
+    applyUsbClassifyModelProfile(event.target.value);
+});
+
 async function runUsbClassifyScan() {
     const target = usbClassifyTarget;
     if (!target) return;
@@ -9280,6 +9319,7 @@ async function runUsbClassifyScan() {
     if (homeValue) homeValue.textContent = '—';
     if (scanGrid) scanGrid.hidden = true;
     if (profileRow) profileRow.hidden = target.kind !== 'cnc';
+    populateUsbClassifyModelSelect(target.kind);
     if (usbClassifyProfileSwitch) usbClassifyProfileSwitch.setValue('router');
     if (usbClassifyFirmwareSwitch) usbClassifyFirmwareSwitch.setValue('fluidnc');
     if (scanStatus) scanStatus.hidden = false;
@@ -13296,20 +13336,16 @@ function marlinBoardVariantLabel(profileId, boardVariant) {
 }
 
 async function loadMarlinPrintersSettingsCard() {
-    const discoverContainer = document.getElementById('marlin-discover-list');
     const registryContainer = document.getElementById('marlin-printers-registry-list');
-    if (!discoverContainer && !registryContainer) return;
+    if (!registryContainer) return;
     try {
-        const [portsResponse, mksResponse, registryResponse] = await Promise.all([
-            fetch('/api/marlin-printers/discover'),
+        const [mksResponse, registryResponse] = await Promise.all([
             fetch('/api/marlin-printers/mks-wifi/discover'),
             fetch('/api/marlin-printers/registry/status'),
         ]);
-        const portsData = await portsResponse.json();
         const mksData = await mksResponse.json();
         const registryData = await registryResponse.json();
         marlinPrintersRegistryCache = registryData.printers || [];
-        renderMarlinDiscoverList(portsData.ports || []);
         renderMarlinMksWifiDiscoverList(mksData.modules || []);
         renderMarlinRegistryList(marlinPrintersRegistryCache);
     } catch (error) {
@@ -13340,29 +13376,6 @@ function renderMarlinMksWifiDiscoverList(modules) {
         btn.addEventListener('click', () => openMarlinRegisterModal(
             btn.dataset.device, btn.dataset.moduleId, 'mks_wifi', { host: btn.dataset.host }
         ));
-    });
-}
-
-function renderMarlinDiscoverList(ports) {
-    const container = document.getElementById('marlin-discover-list');
-    if (!container) return;
-    if (!ports.length) {
-        container.innerHTML = `<div class="empty-state-small">${t('marlinPrinterNoPorts')}</div>`;
-        return;
-    }
-    container.innerHTML = ports.map(port => `
-        <div class="usb-port-item">
-            <div class="usb-port-item-info">
-                <strong>${escapeHtml(port.device)}</strong>
-                <span>${escapeHtml(port.chip || '')}${port.description ? ' · ' + escapeHtml(port.description) : ''}</span>
-            </div>
-            <span class="usb-port-vidpid">${escapeHtml(port.vid_pid || '')}</span>
-            <button type="button" class="btn-file-action marlin-printer-discover-add-btn" data-device="${escapeHtml(port.device)}" data-chip="${escapeHtml(port.chip || '')}">${escapeHtml(t('usbPortAdd'))}</button>
-        </div>
-    `).join('');
-
-    container.querySelectorAll('.marlin-printer-discover-add-btn').forEach(btn => {
-        btn.addEventListener('click', () => openMarlinRegisterModal(btn.dataset.device, btn.dataset.chip));
     });
 }
 
@@ -13749,7 +13762,7 @@ document.getElementById('marlin-printers-add-btn')?.addEventListener('click', ()
     switchSection('settings');
     showToast(t('marlinPrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('marlin-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        document.getElementById('usb-ports-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 200);
 });
 

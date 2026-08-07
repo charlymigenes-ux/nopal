@@ -308,6 +308,8 @@ window.NopalTranslations["fr"] = {
   "cncZeroZPlotter": "Stylo baissé (Z=0)",
   "cncZeroZConfirm": "Confirmer que l'outil touche réellement la pièce ? Cela définira Z=0 à la position actuelle.",
   "usbClassifyProfileLabel": "Type de machine CNC",
+  "usbClassifyModelLabel": "De quel modèle s'agit-il ? (facultatif)",
+  "usbClassifyModelGeneric": "Générique / Je ne connais pas le modèle",
   "cncProfileRouter": "Routeur/Broyeur",
   "cncProfilePlotter": "Traceur (stylo/marqueur)",
   "cncWizardOpen": "Dessin guidé",

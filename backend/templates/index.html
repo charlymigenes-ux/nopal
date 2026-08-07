@@ -2154,8 +2154,6 @@
                                     </button>
                                 </div>
                                 <p data-i18n="marlinPrintersDescription">Impresoras 3D con firmware Marlin puro conectadas por USB o MKS WiFi, sin Klipper/Moonraker.</p>
-                                <p class="devices-subcard-sublabel" data-i18n="marlinTransportUsb">USB directo</p>
-                                <div class="usb-ports-list" id="marlin-discover-list"></div>
                                 <div class="devices-subcard-title-row">
                                     <p class="devices-subcard-sublabel" data-i18n="marlinMksWifiHeader">MKS WiFi en la red</p>
                                     <button type="button" class="btn-file-action" id="marlin-mks-wifi-manual-btn" data-i18n="marlinMksWifiManualAdd">Agregar por IP</button>
@@ -3423,6 +3421,12 @@
                         <input type="text" id="usb-classify-name-input" autocomplete="off">
                     </div>
                 </div>
+                <div class="usb-classify-name-field" id="usb-classify-model-row">
+                    <label for="usb-classify-model-select" data-i18n="usbClassifyModelLabel">¿Qué modelo es? (opcional)</label>
+                    <select id="usb-classify-model-select">
+                        <option value="" data-i18n="usbClassifyModelGeneric">Genérico / no sé el modelo</option>
+                    </select>
+                </div>
                 <div class="usb-classify-scan-grid" id="usb-classify-scan-grid" hidden>
                     <div class="usb-classify-name-field">
                         <label for="usb-classify-scan-width" data-i18n="usbScanWidthLabel">Ancho (mm)</label>
@@ -4140,7 +4144,7 @@
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=220"></script>
+    <script src="/static/js/app.js?v=221"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
