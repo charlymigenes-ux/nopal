@@ -58,7 +58,7 @@
   {
     "id": "svg-toolkit",
     "name": "Herramientas SVG",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "publisher": "NOPAL Labs",
     "category": "Diseño",
     "description": "Limpia, une y simplifica trazos SVG antes de enviarlos a producción.",
@@ -150,7 +150,7 @@
   {
     "id": "spoolman",
     "name": "Materiales",
-    "version": "0.1.5",
+    "version": "0.2.0",
     "publisher": "NOPAL Labs",
     "category": "Producción",
     "description": "Conecta NOPAL con un servidor Spoolman para ver tu inventario real de spools de filamento, asignarlos a tus impresoras Klipper y usar sus costos reales en el Cotizador.",
