@@ -2,7 +2,7 @@
   {
     "id": "matriz-led",
     "name": "Matriz LED",
-    "version": "0.6.0",
+    "version": "0.8.0",
     "publisher": "NOPAL Labs",
     "category": "Accesorios",
     "description": "Panel principal + Editor de Anuncios para una pantalla LED matriz BLE (tipo iPixel Color): escenas rápidas, automatizaciones reales y alertas por máquina, además de dibujar patrones a color y guardarlos como anuncios reutilizables.",
@@ -132,7 +132,7 @@
   {
     "id": "camera-viewer",
     "name": "Cámaras",
-    "version": "1.0.0",
+    "version": "1.3.1",
     "publisher": "NOPAL Labs",
     "category": "Producción",
     "description": "Agrega cámaras por URL de stream MJPEG, ONVIF o webcam USB, y míralas en vivo desde el panel.",

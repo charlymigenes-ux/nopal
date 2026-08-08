@@ -1688,6 +1688,10 @@ function applyTheme(theme) {
             themeIcon.textContent = icons[resolvedTheme] || '☀️';
         }
     }
+    // Hoisted -- definida más abajo junto al resto de la lógica de fondos
+    // por tema, pero un cambio de tema (dropdown, ciclo, tarjeta) siempre
+    // debe refrescar qué miniatura de fondo se ve "activa".
+    if (typeof refreshWallpaperThumbActiveStates === 'function') refreshWallpaperThumbActiveStates();
 }
 
 function initializeTheme() {
@@ -6557,6 +6561,37 @@ async function ensureMachineLedPluginStatus() {
     return machineLedPlugin;
 }
 
+const matrizLedPlugin = { checked: false, installed: false };
+
+async function ensureMatrizLedPluginStatus() {
+    if (matrizLedPlugin.checked) return matrizLedPlugin;
+    matrizLedPlugin.checked = true;
+    try {
+        const response = await fetch('/api/plugins');
+        const plugins = response.ok ? ((await response.json()).plugins || []) : [];
+        const plugin = plugins.find(item => item.id === 'matriz-led');
+        matrizLedPlugin.installed = Boolean(plugin?.installed && plugin?.enabled);
+    } catch (error) {
+        matrizLedPlugin.installed = false;
+    }
+    return matrizLedPlugin;
+}
+
+// Mismo vocabulario de estados que MACHINE_STATES/MACHINE_STATE_LABELS en
+// el propio matriz-led.js (plugins/matriz-led/frontend/matriz-led.js) --
+// duplicado a propósito: este archivo es el core de NOPAL y no debe
+// importar código de un plugin, que puede no estar instalado.
+const MACHINE_LED_MATRIX_STATES = ['idle', 'heating', 'cooling', 'printing', 'paused', 'complete', 'error', 'offline'];
+const MACHINE_LED_MATRIX_STATE_LABELS = {
+    idle: 'En espera', heating: 'Calentando', cooling: 'Enfriando', printing: 'Trabajando',
+    paused: 'Pausada', complete: 'Finalizada', error: 'Error', offline: 'Desconectada',
+};
+
+const machineLedTabsSwitch = createOptionSwitch('machine-led-tabs', tab => {
+    document.getElementById('machine-led-content').hidden = tab !== 'strip';
+    document.getElementById('machine-led-matrix-content').hidden = tab !== 'matrix';
+});
+
 async function publishMachineLedState(machine, state, progress) {
     const key = `${machine.type}:${machine.id}`;
     // Con heating/cooling el estado no cambia mientras sube o baja la
@@ -6780,7 +6815,13 @@ async function openMachineLedModal(machine) {
     document.getElementById('machine-led-machine-name').textContent = `${machine.name} · escena independiente`;
     const content = document.getElementById('machine-led-content');
     content.innerHTML = '<div class="machine-led-loading">Leyendo configuración…</div>';
+    const tabs = document.getElementById('machine-led-tabs');
+    tabs.hidden = true;
+    if (machineLedTabsSwitch) machineLedTabsSwitch.setValue('strip');
+    content.hidden = false;
+    document.getElementById('machine-led-matrix-content').hidden = true;
     modal.hidden = false;
+    setupMachineLedMatrixTab(machine);
     const plugin = await ensureMachineLedPluginStatus();
     if (!plugin.installed) {
         content.innerHTML = machineLedUnavailableMarkup(false);
@@ -6798,6 +6839,98 @@ async function openMachineLedModal(machine) {
         renderMachineLedEditor(await response.json());
     } catch (error) {
         content.innerHTML = machineLedUnavailableMarkup(true);
+    }
+}
+
+// La pestaña "Matriz LED" del modal de Automatización de Taller replica el
+// modal "Alertas por máquina" que ya existe dentro del propio plugin
+// matriz-led (misma API /api/plugins/matriz-led/machine-alerts) -- así se
+// configuran las dos automatizaciones (tira LED y Matriz LED) para la
+// misma máquina sin salir de este modal. Solo aparece si el plugin
+// matriz-led está instalado y habilitado.
+// El plugin matriz-led identifica cada máquina con el id "con prefijo de
+// marca" que arma tunascreen_service.list_machines() -- "marlin:/dev/…",
+// "klipper:<port>", "bambu:<id>", etc. (ver _marlin_machine/_klipper_machine/
+// _bambu_like_machine en tunascreen_service.py) -- porque screen_service.
+// list_machines() de este plugin reusa exactamente esa misma función. El
+// core, en cambio, arma `machine.id` a partir del dataset de la tarjeta
+// (machineLedCardIdentity), sin ese prefijo. Sin este mapeo, esta pestaña
+// leía y guardaba bajo una clave distinta a la que realmente consulta la
+// automatización del plugin -- se veía como que "guardaba" pero nunca
+// activaba nada de verdad. CNC es la única marca cuyo `machine.type` no
+// coincide con el prefijo real: tunascreen arma el id de CNC igual que el
+// de láser ("laser:<host>", ver _laser_machine), un mismo host GRBL sirve
+// a los dos "kind".
+function matrizLedMachineKey(machine) {
+    const brand = machine.type === 'cnc' ? 'laser' : machine.type;
+    return `${brand}:${machine.id}`;
+}
+
+async function setupMachineLedMatrixTab(machine) {
+    const plugin = await ensureMatrizLedPluginStatus();
+    if (!plugin.installed || machineLedCurrentMachine !== machine) return;
+    document.getElementById('machine-led-tabs').hidden = false;
+    renderMatrizLedMachineAlertsEditor(machine);
+}
+
+async function renderMatrizLedMachineAlertsEditor(machine) {
+    const content = document.getElementById('machine-led-matrix-content');
+    content.innerHTML = '<div class="machine-led-loading">Leyendo configuración…</div>';
+    try {
+        const [announcementsRes, configRes] = await Promise.all([
+            fetch('/api/plugins/matriz-led/announcements'),
+            fetch(`/api/plugins/matriz-led/machine-alerts/${encodeURIComponent(matrizLedMachineKey(machine))}`),
+        ]);
+        if (machineLedCurrentMachine !== machine) return;
+        const announcements = announcementsRes.ok ? ((await announcementsRes.json()).announcements || []) : [];
+        const config = configRes.ok ? await configRes.json() : { enabled: false, state_announcements: {} };
+        const stateAnnouncements = config.state_announcements || {};
+        content.innerHTML = `<form id="machine-led-matrix-form">
+            <label class="machine-led-enable"><span><strong>Usar alertas visuales</strong><small>Esta máquina mandará sus cambios de estado a la Matriz LED.</small></span>
+                <input type="checkbox" id="machine-led-matrix-enabled" ${config.enabled ? 'checked' : ''}></label>
+            <div class="machine-led-colors">${MACHINE_LED_MATRIX_STATES.map(state => `
+                <label class="machine-led-field"><span>${MACHINE_LED_MATRIX_STATE_LABELS[state]}</span>
+                    <select data-machine-led-matrix-state="${state}">
+                        <option value="">Sin asignar</option>
+                        ${announcements.map(item => `<option value="${escapeHtml(item.id)}" ${stateAnnouncements[state] === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}
+                    </select>
+                </label>`).join('')}
+            </div>
+            <div class="machine-led-actions"><button type="button" class="machine-led-secondary" data-machine-led-cancel>Cancelar</button><button type="submit" class="machine-led-primary">Guardar escena</button></div>
+        </form>`;
+        document.getElementById('machine-led-matrix-form').addEventListener('submit', event => saveMatrizLedMachineAlerts(event, machine));
+    } catch (error) {
+        console.error(error);
+        content.innerHTML = machineLedUnavailableMarkup(true);
+    }
+}
+
+async function saveMatrizLedMachineAlerts(event, machine) {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('[type="submit"]');
+    button.disabled = true;
+    const stateAnnouncements = {};
+    document.querySelectorAll('[data-machine-led-matrix-state]').forEach(select => {
+        stateAnnouncements[select.dataset.machineLedMatrixState] = select.value || null;
+    });
+    try {
+        const response = await fetch(`/api/plugins/matriz-led/machine-alerts/${encodeURIComponent(matrizLedMachineKey(machine))}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                enabled: document.getElementById('machine-led-matrix-enabled').checked,
+                state_announcements: stateAnnouncements,
+            }),
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'No se pudo guardar.');
+        }
+        document.getElementById('machine-led-modal').hidden = true;
+    } catch (error) {
+        console.error(error);
+        button.disabled = false;
+        appAlert(error.message || 'No se pudo guardar.', '', 'danger');
     }
 }
 
@@ -8955,15 +9088,29 @@ async function loadAccessories() {
     }
 }
 
+const ACCESSORY_ADD_TILE_HTML = `
+    <button type="button" class="accessory-add-tile" title="Agregar accesorio">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>`;
+
+const ACCESSORY_GRID_COLUMNS = 3;
+const ACCESSORY_GRID_DEFAULT_ROWS = 2;
+
 function renderAccessories(accessories) {
     const container = document.getElementById('accessories-list');
     if (!container) return;
-    const section = document.querySelector('.accessories-section');
-    if (section) section.hidden = !accessories.length;
-    if (!accessories.length) {
-        container.innerHTML = `<div class="empty-state-small">${t('accessoriesEmpty')}</div>`;
-        return;
-    }
+    // Grilla fija de 3x2 (6 fichas) -- si sobran espacios se rellenan con
+    // fichas de "agregar" (todas hacen lo mismo, cualquiera abre el alta);
+    // si hay más de 6 accesorios no se recorta ni se hace scroll, se
+    // agregan filas y el contenedor se achica (.accessories-list-dense)
+    // para que el alto total del dock no cambie.
+    const defaultSlots = ACCESSORY_GRID_COLUMNS * ACCESSORY_GRID_DEFAULT_ROWS;
+    const dense = accessories.length > defaultSlots;
+    const rows = dense ? Math.ceil(accessories.length / ACCESSORY_GRID_COLUMNS) : ACCESSORY_GRID_DEFAULT_ROWS;
+    container.classList.toggle('accessories-list-dense', dense);
+    container.style.setProperty('--accessory-rows', rows);
+    const emptySlots = dense ? 0 : defaultSlots - accessories.length;
+
     container.innerHTML = accessories.map(acc => {
         const statusClass = acc.on === true ? 'on' : acc.on === false ? 'off' : 'unknown';
         const statusLabel = acc.on === true ? t('accessoryOn') : acc.on === false ? t('accessoryOff') : t('accessoryUnknown');
@@ -8987,7 +9134,11 @@ function renderAccessories(accessories) {
             </div>
         </div>
         `;
-    }).join('');
+    }).join('') + ACCESSORY_ADD_TILE_HTML.repeat(emptySlots);
+
+    container.querySelectorAll('.accessory-add-tile').forEach(btn => {
+        btn.addEventListener('click', () => openAccessoryModal());
+    });
 
     container.querySelectorAll('.accessory-power-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -9029,6 +9180,72 @@ function renderAccessories(accessories) {
         });
     });
 }
+
+// Copia en vivo (solo lectura) de la Matriz LED en el dock fijo del Panel
+// de Control -- mismo dato que #mled-live-grid dentro del propio plugin
+// (ver renderLiveView() en matriz-led.js), leído directo de
+// /api/plugins/matriz-led/last-sent en vez de duplicar el estado del
+// plugin en el core. Solo se muestra si el plugin está instalado.
+// Clave del último historial ya pintado -- evita re-renderizar (y por lo
+// tanto re-disparar la animación de entrada de los pills) en cada poll de
+// 10s cuando nada cambió desde la última vez.
+let dashboardMatrixTickerLastKey = null;
+
+function renderDashboardMatrixTicker(ticker, history) {
+    const key = history.map(entry => `${entry.source}:${entry.sent_at}`).join('|');
+    if (key === dashboardMatrixTickerLastKey) return;
+    dashboardMatrixTickerLastKey = key;
+    // Más reciente 100% opaco, y -25% por cada uno más viejo (75/50/25%) --
+    // no se pintan más de 4, ese último ya queda casi invisible.
+    ticker.innerHTML = history.slice(0, 4)
+        .map((entry, index) => `<span class="dashboard-dock-matrix-pill" style="opacity:${1 - index * 0.25}">${escapeHtml(entry.source || 'Manual')}</span>`)
+        .join('');
+}
+
+async function loadDashboardMatrixPreview() {
+    const wrap = document.getElementById('dashboard-dock-matrix');
+    const grid = document.getElementById('dashboard-dock-matrix-grid');
+    const ticker = document.getElementById('dashboard-dock-matrix-ticker');
+    if (!wrap || !grid) return;
+    const plugin = await ensureMatrizLedPluginStatus();
+    if (!plugin.installed) {
+        wrap.hidden = true;
+        return;
+    }
+    try {
+        const [lastSentRes, historyRes] = await Promise.all([
+            fetch('/api/plugins/matriz-led/last-sent'),
+            fetch('/api/plugins/matriz-led/last-sent-history'),
+        ]);
+        if (!lastSentRes.ok) {
+            wrap.hidden = true;
+            return;
+        }
+        const data = await lastSentRes.json();
+        const matrix = data.last_sent?.matrix;
+        wrap.hidden = false;
+        grid.innerHTML = matrix
+            ? matrix.flat().map(color => `<span style="${color ? `background:#${color}` : ''}"></span>`).join('')
+            : '';
+        if (ticker && historyRes.ok) {
+            renderDashboardMatrixTicker(ticker, (await historyRes.json()).history || []);
+        }
+    } catch (error) {
+        console.error(error);
+        wrap.hidden = true;
+    }
+}
+
+const DASHBOARD_DOCK_COLLAPSED_KEY = 'dashboardDockCollapsed';
+const dashboardDock = document.getElementById('dashboard-dock');
+if (dashboardDock && localStorage.getItem(DASHBOARD_DOCK_COLLAPSED_KEY) === 'true') {
+    dashboardDock.classList.add('collapsed');
+}
+document.getElementById('dashboard-dock-toggle')?.addEventListener('click', () => {
+    if (!dashboardDock) return;
+    const collapsed = dashboardDock.classList.toggle('collapsed');
+    localStorage.setItem(DASHBOARD_DOCK_COLLAPSED_KEY, collapsed ? 'true' : 'false');
+});
 
 async function loadAccessoryArduinoDiscoverList() {
     const container = document.getElementById('accessory-arduino-discover-list');
@@ -9138,7 +9355,6 @@ function closeAccessoryModal() {
     document.getElementById('accessory-modal')?.classList.remove('active');
 }
 
-document.getElementById('accessory-add-btn')?.addEventListener('click', openAccessoryModal);
 document.getElementById('accessory-add-btn-settings')?.addEventListener('click', openAccessoryModal);
 document.getElementById('accessory-modal-close')?.addEventListener('click', closeAccessoryModal);
 document.getElementById('accessory-modal-backdrop')?.addEventListener('click', closeAccessoryModal);
@@ -11398,7 +11614,7 @@ async function loadSdFolder(path) {
     sdCurrentPath = path;
     renderSdBreadcrumb(path);
     const listEl = document.getElementById('laser-sd-list');
-    if (listEl) listEl.innerHTML = `<div class="empty-state-small">${t('laserSdLoading')}</div>`;
+    if (listEl) listEl.innerHTML = `<div class="empty-state-small empty-state-small-loading"><span class="mini-spinner"></span>${t('laserSdLoading')}</div>`;
     try {
         const response = await fetch(`/api/laser/sd/files?path=${encodeURIComponent(path)}`);
         const data = await response.json();
@@ -11434,64 +11650,41 @@ async function loadSdLibraryOptions() {
     }
 }
 
-// Antes esto era automático y mutuamente excluyente (si la placa tenía SD,
-// la Cola se ocultaba del todo, sin poder volver a verla). Ahora que
-// /api/laser/sd/run sí puede correr un archivo real de la SD, tiene sentido
-// dejar elegir -- el selector solo aparece cuando la placa REALMENTE tiene
-// SD (si no, no hay nada que elegir y se muestra la Cola de siempre).
-const LASER_SOURCE_MODE_KEY = 'laserSourceMode';
-
-function getLaserSourceMode() {
-    const stored = localStorage.getItem(LASER_SOURCE_MODE_KEY);
-    return stored === 'sd' || stored === 'queue' ? stored : 'sd';
-}
-
-function applyLaserSourceMode(mode) {
-    const queueCard = document.getElementById('laser-queue-card');
-    const sdCard = document.getElementById('laser-sd-card');
-    if (!queueCard || !sdCard) return;
-    const showSd = mode === 'sd';
-    sdCard.hidden = !showSd;
-    queueCard.hidden = showSd;
-    document.querySelectorAll('#laser-source-switch .option-switch-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.value === mode);
+const laserHubTabs = createOptionSwitch('laser-hub-tabs', tab => {
+    document.querySelectorAll('.laser-hub-panel').forEach(panel => {
+        panel.hidden = panel.dataset.hubPanel !== tab;
     });
-    if (showSd) {
-        loadSdLibraryOptions();
-        loadSdFolder('/');
+});
+if (laserHubTabs) laserHubTabs.setValue('connection');
+
+// La pestaña "Memoria (SD)" del hub solo tiene sentido si la placa
+// conectada realmente reporta tener una tarjeta SD -- si no, se oculta el
+// botón de la pestaña (si estaba activa, se vuelve a "Conexión").
+function setLaserMemoryTabAvailable(available) {
+    const memoryTab = document.querySelector('#laser-hub-tabs [data-value="memory"]');
+    if (memoryTab) memoryTab.hidden = !available;
+    if (!available && laserHubTabs && laserHubTabs.getValue() === 'memory') {
+        laserHubTabs.setValue('connection');
+        document.querySelectorAll('.laser-hub-panel').forEach(panel => {
+            panel.hidden = panel.dataset.hubPanel !== 'connection';
+        });
     }
 }
 
-function setLaserSourceMode(mode) {
-    localStorage.setItem(LASER_SOURCE_MODE_KEY, mode);
-    applyLaserSourceMode(mode);
-}
-
-document.querySelectorAll('#laser-source-switch .option-switch-btn').forEach(btn => {
-    btn.addEventListener('click', () => setLaserSourceMode(btn.dataset.value));
-});
-
 async function checkSdAvailability() {
-    const sourceSwitch = document.getElementById('laser-source-switch');
-    const queueCard = document.getElementById('laser-queue-card');
     const sdCard = document.getElementById('laser-sd-card');
-    if (!queueCard || !sdCard) return;
+    if (!sdCard) return;
     try {
         const response = await fetch('/api/laser/sd/available');
         const data = await response.json();
+        setLaserMemoryTabAvailable(!!data.available);
         if (data.available) {
-            if (sourceSwitch) sourceSwitch.hidden = false;
-            applyLaserSourceMode(getLaserSourceMode());
-        } else {
-            if (sourceSwitch) sourceSwitch.hidden = true;
-            queueCard.hidden = false;
-            sdCard.hidden = true;
+            loadSdLibraryOptions();
+            loadSdFolder('/');
         }
     } catch (error) {
         console.error(error);
-        if (sourceSwitch) sourceSwitch.hidden = true;
-        queueCard.hidden = false;
-        sdCard.hidden = true;
+        setLaserMemoryTabAvailable(false);
     }
 }
 
@@ -17514,7 +17707,7 @@ function setActiveThemeCard(theme) {
 }
 if (themeOptionCards.length) {
     themeOptionCards.forEach(card => {
-        if (card.id === 'custom-theme-card' || card.id === 'nopal-theme-card' || card.id === 'light-theme-card') return;
+        if (card.id === 'custom-theme-card' || card.id === 'nopal-theme-card' || card.id === 'light-theme-card' || card.id === 'red-theme-card') return;
         card.addEventListener('click', () => {
             const selectedTheme = card.dataset.theme;
             if (settingsTheme) settingsTheme.value = selectedTheme;
@@ -17524,27 +17717,76 @@ if (themeOptionCards.length) {
     });
 }
 
-// ── Fondo de NOPAL Style: 3 opciones fijas (no un upload libre como el tema
-// personalizado) -- el actual (fondo_NOPAL_RED.png, el de siempre) más 2
-// que se agregan como archivo en /static/img con esos nombres exactos. ──
+// ── Fondos de NOPAL Style / Desert / Red: cada tarjeta de tema muestra
+// sus propias 3 miniaturas fijas (no upload libre como el tema
+// personalizado), pero cualquier miniatura -- sea de la fila del tema que
+// sea -- se puede aplicar a CUALQUIER tema: el clic siempre actúa sobre el
+// tema actualmente seleccionado (settingsTheme.value), no sobre el dueño
+// de la fila. Por eso el localStorage guarda la URL completa elegida (no
+// un índice 0/1/2 dentro de las opciones fijas de ESE tema) -- necesario
+// para poder guardar, por ejemplo, un fondo de Desert como fondo de Red.
 const NOPAL_WALLPAPER_KEY = 'nopalThemeWallpaper';
 const NOPAL_WALLPAPER_OPTIONS = [
     '/static/img/fondo_NOPAL_RED.png',
     '/static/img/fondo_NOPAL_GREEN_2.png',
     '/static/img/fondo_NOPAL_GREEN_3.png',
 ];
+const LIGHT_WALLPAPER_KEY = 'lightThemeWallpaper';
+const LIGHT_WALLPAPER_OPTIONS = [
+    '/static/img/fondo_NOPAL_DESERT_1.png',
+    '/static/img/fondo_NOPAL_DESERT_2.png',
+    '/static/img/fondoClaro3.png',
+];
+const RED_WALLPAPER_KEY = 'redThemeWallpaper';
+const RED_WALLPAPER_OPTIONS = [
+    '/static/img/fondo_NOPAL_GRAY.png',
+    '/static/img/fondo_NOPAL_ROJO_2.png',
+    '/static/img/fondo_NOPAL_ROJO_3.png',
+];
 
-function getNopalWallpaperIndex() {
-    const stored = Number(localStorage.getItem(NOPAL_WALLPAPER_KEY));
-    return NOPAL_WALLPAPER_OPTIONS[stored] ? stored : 0;
+const THEME_WALLPAPER_CONFIG = {
+    green: { storageKey: NOPAL_WALLPAPER_KEY, cssVar: '--nopal-wallpaper', options: NOPAL_WALLPAPER_OPTIONS },
+    light: { storageKey: LIGHT_WALLPAPER_KEY, cssVar: '--light-wallpaper', options: LIGHT_WALLPAPER_OPTIONS },
+    red: { storageKey: RED_WALLPAPER_KEY, cssVar: '--red-wallpaper', options: RED_WALLPAPER_OPTIONS },
+};
+
+function getThemeWallpaperUrl(theme) {
+    const config = THEME_WALLPAPER_CONFIG[theme];
+    if (!config) return null;
+    return localStorage.getItem(config.storageKey) || config.options[0];
 }
 
-function applyNopalWallpaper() {
-    const index = getNopalWallpaperIndex();
-    document.documentElement.style.setProperty('--nopal-wallpaper', `url('${NOPAL_WALLPAPER_OPTIONS[index]}')`);
-    document.querySelectorAll('#nopal-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
-        btn.classList.toggle('active', Number(btn.dataset.wallpaperIndex) === index);
+function applyThemeWallpaper(theme) {
+    const config = THEME_WALLPAPER_CONFIG[theme];
+    if (!config) return;
+    document.documentElement.style.setProperty(config.cssVar, `url('${getThemeWallpaperUrl(theme)}')`);
+}
+
+// El anillo "activo" de cada miniatura refleja el fondo REAL del tema
+// actualmente seleccionado -- por eso puede prenderse en la fila de un
+// tema distinto al que tiene esa miniatura (ej. Red usando un fondo de
+// Desert prende el anillo en la fila de Desert, no en la de Red).
+function refreshWallpaperThumbActiveStates() {
+    const activeTheme = settingsTheme?.value || localStorage.getItem('theme') || 'dark';
+    const activeUrl = getThemeWallpaperUrl(activeTheme);
+    document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
+        const src = btn.querySelector('img')?.getAttribute('src');
+        btn.classList.toggle('active', Boolean(activeUrl) && src === activeUrl);
     });
+}
+
+function setActiveThemeWallpaper(imageUrl) {
+    const activeTheme = settingsTheme?.value || localStorage.getItem('theme') || 'dark';
+    const config = THEME_WALLPAPER_CONFIG[activeTheme];
+    if (!config) return; // Dark/Custom no tienen fondo de imagen seleccionable acá.
+    localStorage.setItem(config.storageKey, imageUrl);
+    applyThemeWallpaper(activeTheme);
+    refreshWallpaperThumbActiveStates();
+}
+
+function applyAllThemeWallpapers() {
+    Object.keys(THEME_WALLPAPER_CONFIG).forEach(applyThemeWallpaper);
+    refreshWallpaperThumbActiveStates();
 }
 
 const nopalThemeSelectBtn = document.getElementById('nopal-theme-select-btn');
@@ -17553,42 +17795,7 @@ if (nopalThemeSelectBtn) {
         if (settingsTheme) settingsTheme.value = 'green';
         setActiveThemeCard('green');
         saveSettings();
-    });
-}
-document.querySelectorAll('#nopal-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
-    btn.addEventListener('click', event => {
-        event.stopPropagation();
-        localStorage.setItem(NOPAL_WALLPAPER_KEY, btn.dataset.wallpaperIndex);
-        applyNopalWallpaper();
-    });
-    // Mientras el usuario no suba fondo_NOPAL_GREEN_2/3.png todavía no existen
-    // -- la miniatura rota se reemplaza por un placeholder en vez de dejar el
-    // ícono de imagen no encontrada del navegador.
-    btn.querySelector('img')?.addEventListener('error', () => btn.classList.add('is-missing'), { once: true });
-});
-applyNopalWallpaper();
-
-// ── Fondo del tema Light (Desert): mismo patrón que el de NOPAL Style
-// arriba, pero con su propia clave de localStorage y su propia variable
-// CSS (--light-wallpaper, usada solo en body.light) para que elegir un
-// fondo acá no pise la selección de NOPAL Style ni viceversa. ──
-const LIGHT_WALLPAPER_KEY = 'lightThemeWallpaper';
-const LIGHT_WALLPAPER_OPTIONS = [
-    '/static/img/fondoClaro1.png',
-    '/static/img/fondoClaro2.png',
-    '/static/img/fondoClaro3.png',
-];
-
-function getLightWallpaperIndex() {
-    const stored = Number(localStorage.getItem(LIGHT_WALLPAPER_KEY));
-    return LIGHT_WALLPAPER_OPTIONS[stored] ? stored : 0;
-}
-
-function applyLightWallpaper() {
-    const index = getLightWallpaperIndex();
-    document.documentElement.style.setProperty('--light-wallpaper', `url('${LIGHT_WALLPAPER_OPTIONS[index]}')`);
-    document.querySelectorAll('#light-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
-        btn.classList.toggle('active', Number(btn.dataset.wallpaperIndex) === index);
+        refreshWallpaperThumbActiveStates();
     });
 }
 
@@ -17598,16 +17805,31 @@ if (lightThemeSelectBtn) {
         if (settingsTheme) settingsTheme.value = 'light';
         setActiveThemeCard('light');
         saveSettings();
+        refreshWallpaperThumbActiveStates();
     });
 }
-document.querySelectorAll('#light-theme-wallpapers .theme-option-wallpaper-thumb').forEach(btn => {
+
+const redThemeSelectBtn = document.getElementById('red-theme-select-btn');
+if (redThemeSelectBtn) {
+    redThemeSelectBtn.addEventListener('click', () => {
+        if (settingsTheme) settingsTheme.value = 'red';
+        setActiveThemeCard('red');
+        saveSettings();
+        refreshWallpaperThumbActiveStates();
+    });
+}
+
+document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
     btn.addEventListener('click', event => {
         event.stopPropagation();
-        localStorage.setItem(LIGHT_WALLPAPER_KEY, btn.dataset.wallpaperIndex);
-        applyLightWallpaper();
+        const url = btn.querySelector('img')?.getAttribute('src');
+        if (url) setActiveThemeWallpaper(url);
     });
+    // Miniatura sin archivo subido todavía -- se reemplaza por un
+    // placeholder en vez de dejar el ícono de imagen rota del navegador.
+    btn.querySelector('img')?.addEventListener('error', () => btn.classList.add('is-missing'), { once: true });
 });
-applyLightWallpaper();
+applyAllThemeWallpapers();
 
 function getThemeCycleOrder() {
     const order = ['light', 'dark', 'green', 'red'];
@@ -17991,6 +18213,7 @@ refreshDashboardLaserCard();
 refreshUsbPorts();
 loadAccessories();
 loadAccessoryArduinoDiscoverList();
+loadDashboardMatrixPreview();
 refreshDeviceNavVisibility();
 refreshFlashforgeNavVisibility();
 maybeStartTour('dashboard');
@@ -18001,6 +18224,7 @@ setInterval(loadDashboardStandalonePrinters, 10000);
 setInterval(loadDashboardPanel, 10000);
 setInterval(updatePanelClock, 1000);
 setInterval(loadAccessories, 10000);
+setInterval(loadDashboardMatrixPreview, 10000);
 // Antes cada 4s — con 6 dispositivos registrados en paralelo, cada uno
 // pudiendo tardar hasta ~8s en darse por vencido si está apagado/desconectado
 // (5s de ensure_listener_ready + 3s de espera de respuesta en get_status),
