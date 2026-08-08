@@ -246,6 +246,9 @@ body.custom {
 
     --orange: var(--status-warn);
     --orange-light: var(--status-warn);
+    /* #FBBF24 -- mismo ámbar que --status-warn en dark/green/red, en rgb
+       para poder usarlo con rgba() (ver el recuadro de CNC del sidebar). */
+    --orange-rgb: 251, 191, 36;
     --purple: var(--violet);
     --purple-rgb: 139, 92, 246;
 }
@@ -358,13 +361,20 @@ body.light {
     --accent-active: var(--accent-green-strong);
     --orange: var(--state-warning);
     --orange-light: var(--state-orange);
+    /* #B66A1F -- para que el recuadro de CNC del sidebar (rgba(var(--orange-rgb),…))
+       use el ámbar apagado de Desert en vez del ámbar saturado fijo de los
+       otros temas. */
+    --orange-rgb: 182, 106, 31;
     --purple: var(--state-purple);
     --purple-rgb: 138, 99, 210;
     /* --black se usa como texto/fondo de alto contraste (nav lateral,
        botones íconos, .button) -- el valor literal "black" de la paleta
        Kotlin (crema #FDF8EC) quedaba casi blanco sobre el sidebar claro,
-       invisible. Acá va un ladrillo/terracota cálido, no el crema. */
-    --black: #8B4226;
+       invisible. Antes se resolvía con un ladrillo/terracota fijo,
+       aparte de la paleta; ahora toma el mismo color de texto que ya usa
+       Desert para todo lo demás (mismo criterio que --black en los otros
+       cuatro temas, que también apunta a su --text-strong). */
+    --black: var(--text-strong);
 
     /* --light-wallpaper la fija applyLightWallpaper() según lo elegido en
        Configuración > Apariencia -- el url() de acá es solo el fallback
@@ -396,7 +406,10 @@ body.green {
 }
 
 body.red {
-    background-image: url('/static/img/fondo_NOPAL_GRAY.png');
+    /* --red-wallpaper la fija applyRedWallpaper() según lo elegido en
+       Configuración > Apariencia -- el url() de acá es solo el fallback
+       (el fondo de siempre) para cuando no hay nada guardado todavía. */
+    background-image: var(--red-wallpaper, url('/static/img/fondo_NOPAL_GRAY.png'));
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -503,7 +516,7 @@ body.custom::before {
     flex-direction: column;
     gap: 32px;
     height: 100%;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 /* En el tema Desert el sidebar quedaba un bloque sólido opaco encima del
@@ -536,8 +549,9 @@ body.light .sidebar {
     display: flex;
     flex: 1;
     min-height: 0;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    padding-top: 12px;
     overflow: hidden;
 }
 
@@ -707,13 +721,76 @@ body.green .global-topbar {
     transform: rotate(180deg);
 }
 
+/* Contraído: puro ícono, sin la caja redondeada de fondo/borde que sí
+   lleva expandido -- se quita background/border/sombra acá para no tener
+   que tocar la regla base de .nav-item (que las 3 secciones con color fijo
+   de abajo y el estado hover/active en expandido siguen usando). */
 .app-shell.sidebar-collapsed .nav-item {
     justify-content: center;
     padding: 12px 8px;
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.app-shell.sidebar-collapsed .nav-item:not(.active):hover,
+.app-shell.sidebar-collapsed .nav-item:not(.active):focus-visible {
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* El activo (genérico, CNC y Láser) trae su propio box-shadow con más
+   especificidad que la regla base de arriba en esos dos últimos casos
+   ([data-section=...].active empata en especificidad y gana por venir
+   después en el archivo) -- se repite acá, explícito, para que no
+   sobreviva ningún resplandor contraído. El color del ícono (ver
+   .active svg más abajo) ya basta para marcar cuál está activo. */
+.app-shell.sidebar-collapsed .nav-item.active,
+.app-shell.sidebar-collapsed .nav-item[data-section="cnc"].active,
+.app-shell.sidebar-collapsed .nav-item[data-section="laser"].active {
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
 }
 
 .app-shell.sidebar-collapsed .nav-item span {
     display: none;
+}
+
+/* Contraído, la lista de íconos no necesita el flex:1/scroll interno que
+   sí hace falta expandido (ver .nav-list base) -- se ajusta a su propio
+   contenido y el logo (.sidebar-logo-gap, también flex:1) se lleva el
+   resto del espacio, apareciendo justo debajo de los íconos. */
+.app-shell.sidebar-collapsed .nav-list {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+/* Ícono liso (ni fondo ni color propio) salvo Impresión 3D/Láser/CNC/
+   plugins (su propio color fijo, ver más abajo) y el activo (--accent). */
+.app-shell.sidebar-collapsed .nav-item svg {
+    color: var(--text-muted);
+}
+
+.app-shell.sidebar-collapsed .nav-item.active svg {
+    color: var(--accent);
+}
+
+.app-shell.sidebar-collapsed .nav-item[data-section="models"] svg {
+    color: var(--accent);
+}
+
+.app-shell.sidebar-collapsed .nav-item[data-section="cnc"] svg {
+    color: var(--orange);
+}
+
+.app-shell.sidebar-collapsed .nav-item[data-section="laser"] svg {
+    color: var(--purple);
+}
+
+.app-shell.sidebar-collapsed .nav-item[data-plugin-nav] svg {
+    color: rgb(var(--plugin-nav-rgb));
 }
 
 .app-shell.sidebar-collapsed .sidebar-actions-card {
@@ -724,6 +801,21 @@ body.green .global-topbar {
        cómodos, y subimos el zoom ~10% (0.7 -> 0.77) para que no se vean
        tan chicos sin volver a desbordar el ancho colapsado. */
     zoom: 0.77;
+    /* Sin contorno/tarjeta contraído -- puro ícono, mismo criterio que los
+       .nav-item de arriba en este mismo estado. */
+    background: none;
+    border: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar .sidebar-actions-card .btn-icon-light {
+    background: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar .sidebar-actions-card .btn-icon-light:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .app-shell.sidebar-collapsed .lang-switch {
@@ -734,6 +826,10 @@ body.green .global-topbar {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .nav-category {
@@ -859,13 +955,6 @@ body.green .global-topbar {
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Sombra suave (con blur, no un offset duro) para separar el texto del nav
-   de la textura del wallpaper que ahora se ve a través del sidebar
-   translúcido en Desert. Un offset duro sin blur se ve como texto
-   duplicado -- por eso NO se usa ese patrón acá. */
-body.light .nav-item {
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
 
 .nav-item svg {
     flex-shrink: 0;
@@ -907,46 +996,51 @@ body.light .nav-item {
     box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.35);
 }
 
-/* ── CNC y Láser tienen su propio color fijo en el sidebar, no el de acento ── */
+/* ── CNC y Láser tienen su propio color en el sidebar, no el de acento --
+   pero SÍ el de su tema: usan --orange-rgb/--purple-rgb (definidas por
+   tema, ver body.light etc. más arriba) en vez de un rgb() fijo. Antes
+   estaban fijos al ámbar/violeta del tema oscuro incluso en Desert, que
+   define un ámbar mucho más apagado (--orange: #B66A1F) -- se veía
+   desentonado contra el resto del sidebar en ese tema. ── */
 
 .nav-item[data-section="cnc"] {
-    background: rgba(245, 158, 11, 0.08);
-    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(var(--orange-rgb), 0.08);
+    border-color: rgba(var(--orange-rgb), 0.35);
 }
 
 .nav-item[data-section="cnc"]:not(.active):hover,
 .nav-item[data-section="cnc"]:not(.active):focus-visible {
-    background: rgba(245, 158, 11, 0.14);
-    border-color: rgba(245, 158, 11, 0.6);
+    background: rgba(var(--orange-rgb), 0.14);
+    border-color: rgba(var(--orange-rgb), 0.6);
     color: var(--orange);
-    box-shadow: 0 0 10px rgba(245, 158, 11, 0.22);
+    box-shadow: 0 0 10px rgba(var(--orange-rgb), 0.22);
 }
 
 .nav-item[data-section="cnc"].active {
-    background: rgba(245, 158, 11, 0.22);
+    background: rgba(var(--orange-rgb), 0.22);
     border-color: var(--orange);
     color: var(--orange);
-    box-shadow: 0 0 14px rgba(245, 158, 11, 0.4);
+    box-shadow: 0 0 14px rgba(var(--orange-rgb), 0.4);
 }
 
 .nav-item[data-section="laser"] {
-    background: rgba(139, 92, 246, 0.08);
-    border-color: rgba(139, 92, 246, 0.35);
+    background: rgba(var(--purple-rgb), 0.08);
+    border-color: rgba(var(--purple-rgb), 0.35);
 }
 
 .nav-item[data-section="laser"]:not(.active):hover,
 .nav-item[data-section="laser"]:not(.active):focus-visible {
-    background: rgba(139, 92, 246, 0.14);
-    border-color: rgba(139, 92, 246, 0.6);
+    background: rgba(var(--purple-rgb), 0.14);
+    border-color: rgba(var(--purple-rgb), 0.6);
     color: var(--purple);
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.22);
+    box-shadow: 0 0 10px rgba(var(--purple-rgb), 0.22);
 }
 
 .nav-item[data-section="laser"].active {
-    background: rgba(139, 92, 246, 0.22);
+    background: rgba(var(--purple-rgb), 0.22);
     border-color: var(--purple);
     color: var(--purple);
-    box-shadow: 0 0 14px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 14px rgba(var(--purple-rgb), 0.4);
 }
 
 /* ── Indicador de plugin en el sidebar ──
@@ -956,30 +1050,17 @@ body.light .nav-item {
    "Trabajos", no en "Plugins"). Selecciona por ese atributo -- no por
    data-section, que es la ruta interna de cada plugin (ej. cotizador usa
    "pricing") y no sirve como identificador estable.
-   El pin (ícono de pieza de rompecabezas, mismo trazo que "Galería de
-   plugins") se pinta con --plugin-nav-rgb; el fallback es el acento del
-   tema para plugins nuevos que no tengan un color específico asignado
-   todavía acá abajo. */
+   Antes llevaba un puntito de pieza de rompecabezas superpuesto (::after)
+   -- a pedido se quitó y en su lugar el ícono del botón se tiñe directo
+   con --plugin-nav-rgb (mismo criterio que ya usan Impresión 3D/Láser/CNC
+   con --accent/--purple/--orange), tanto expandido como contraído. El
+   fallback es el acento del tema para plugins nuevos que no tengan un
+   color específico asignado todavía acá abajo. */
 .nav-item[data-plugin-nav] {
     --plugin-nav-rgb: var(--accent-rgb);
 }
-.nav-item[data-plugin-nav]::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    right: 7px;
-    transform: translateY(-50%);
-    width: 12.65px;
-    height: 12.65px;
-    background-color: rgb(var(--plugin-nav-rgb));
-    -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M8.5%203H5a2%202%200%200%200-2%202v3.5a2.5%202.5%200%200%201%200%205V19a2%202%200%200%200%202%202h5.5a2.5%202.5%200%200%201%205%200H19a2%202%200%200%200%202-2v-3.5a2.5%202.5%200%200%201%200-5V5a2%202%200%200%200-2-2h-5.5a2.5%202.5%200%200%201-5%200Z'/%3E%3C/svg%3E");
-    mask-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M8.5%203H5a2%202%200%200%200-2%202v3.5a2.5%202.5%200%200%201%200%205V19a2%202%200%200%200%202%202h5.5a2.5%202.5%200%200%201%205%200H19a2%202%200%200%200%202-2v-3.5a2.5%202.5%200%200%201%200-5V5a2%202%200%200%200-2-2h-5.5a2.5%202.5%200%200%201-5%200Z'/%3E%3C/svg%3E");
-    -webkit-mask-size: contain;
-    mask-size: contain;
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
-    filter: drop-shadow(0 0 4px rgb(var(--plugin-nav-rgb)));
-    pointer-events: none;
+.nav-item[data-plugin-nav] svg {
+    color: rgb(var(--plugin-nav-rgb));
 }
 
 .nav-item[data-plugin-nav="cotizador"] { --plugin-nav-rgb: 234, 179, 8; }
@@ -5482,6 +5563,24 @@ body.green .settings-card {
     filter: grayscale(0.9);
 }
 
+.laser-hub-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.laser-hub-tabs {
+    flex: 1;
+    min-width: 0;
+}
+
+.laser-hub-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
 .laser-host-row {
     display: flex;
     align-items: center;
@@ -5701,22 +5800,16 @@ body.green .settings-card {
 #laser-console-card {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
 }
 
 .laser-console-dock {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
     gap: 8px;
 }
 
 #laser-console-card .laser-console-dock .console-log {
-    flex: 1;
-    min-height: 0;
-    height: auto;
+    height: 220px;
 }
 
 .laser-console-dock-header {
@@ -6590,8 +6683,10 @@ body.green .settings-card {
     display: none;
 }
 
-/* La ficha de Conexión, al contraerse, conserva la imagen/estado y solo oculta el detalle en 2 columnas */
-#laser-connection-card.collapsed > .laser-connection-header {
+/* La ficha de Conexión ahora es un hub con pestañas (Conexión/Cámara/
+   Consola/Cola) -- al contraerse solo se ven la barra de pestañas y el
+   botón de expandir, el contenido de la pestaña activa se oculta. */
+#laser-connection-card.collapsed > .laser-hub-header {
     display: flex;
 }
 
@@ -11735,17 +11830,65 @@ body.light .sidebar-order-select {
 
 /* ── Accesorios IoT (dashboard) ── */
 
+/* Grilla fija de 3 columnas x 2 filas (6 fichas visibles) -- si hay menos
+   de 6 accesorios, los espacios que faltan se rellenan con fichas vacías
+   (ver renderAccessories/ACCESSORY_EMPTY_TILE_HTML); si hay más de 6, la
+   grilla agrega filas pero el contenedor mantiene su alto fijo (ver
+   --accessory-rows / .accessories-list-dense en renderAccessories), así
+   que las fichas se achican para seguir entrando todas sin scroll. */
 .accessories-list {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(var(--accessory-rows, 2), 1fr);
+    height: 106px;
+    gap: 8px;
+}
+
+.accessories-list-dense .accessory-item,
+.accessories-list-dense .accessory-add-tile,
+.accessories-list-dense .accessory-empty-tile {
+    padding: 5px 8px;
+    gap: 6px;
+}
+
+.accessories-list-dense .accessory-item-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.accessories-list-dense .accessory-item-name {
+    font-size: 0.68rem;
+}
+
+.accessories-list-dense .accessory-item-meta {
+    font-size: 0.58rem;
+}
+
+.accessories-list-dense .accessory-power-btn {
+    width: 18px;
+    height: 18px;
+}
+
+.accessories-list-dense .accessory-power-btn svg {
+    width: 11px;
+    height: 11px;
+}
+
+.accessories-list-dense .accessory-item-actions .theme-option-icon-btn {
+    width: 18px;
+    height: 18px;
+}
+
+.accessory-empty-tile {
+    border: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
+    border-radius: var(--radius-lg);
 }
 
 .accessory-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: 8px;
+    padding: 10px 11px;
     background: var(--panel-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -11755,8 +11898,8 @@ body.light .sidebar-order-select {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 38px;
-    height: 38px;
+    width: 27px;
+    height: 27px;
     border-radius: var(--radius-md);
     background: rgba(var(--accent-rgb), 0.14);
     color: var(--accent);
@@ -11774,19 +11917,38 @@ body.light .sidebar-order-select {
 .accessory-item-name {
     font-weight: 600;
     color: var(--text);
-    font-size: 0.92rem;
+    font-size: 0.8rem;
 }
 
 .accessory-item-meta {
-    font-size: 0.74rem;
+    font-size: 0.65rem;
     color: var(--text-muted);
 }
 
 .accessory-item-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
+}
+
+.accessory-add-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 49px;
+    padding: 10px 11px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.accessory-add-tile:hover {
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .device-status-pill.on {
@@ -11808,8 +11970,8 @@ body.light .sidebar-order-select {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     border: 1px solid rgba(34, 197, 94, 0.35);
     background: rgba(34, 197, 94, 0.1);
@@ -12871,14 +13033,8 @@ main {
 }
 
 /* ── Bottom layout ── */
-
-.dashboard-bottom {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 20px;
-    align-items: start;
-    min-height: 190px;
-}
+/* .dashboard-bottom: ver el dock fijo definido más abajo, junto a
+   .dashboard-dock-*. */
 
 .recent-section {
     background: var(--card-bg);
@@ -13145,9 +13301,35 @@ main {
     font-size: 0.82rem;
 }
 
+.empty-state-small-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.mini-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(34, 197, 94, 0.25);
+    border-top-color: #22c55e;
+    animation: miniSpinnerSpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes miniSpinnerSpin {
+    to { transform: rotate(360deg); }
+}
+
 /* ── Active print queue ── */
 
-.active-print-queue {
+/* ── Pila fija del Panel de Control: la cola de impresión activa (toast
+   flotante) queda arriba, el dock de Accesorios/Matriz LED abajo del
+   todo -- ambos crecen hacia arriba desde el borde inferior sin que haga
+   falta calcular la altura del dock a mano. ── */
+.dashboard-fixed-stack {
     position: fixed;
     left: 240px;
     right: 0;
@@ -13155,17 +13337,178 @@ main {
     z-index: 40;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 12px 24px;
+    align-items: center;
+}
+
+.app-shell.sidebar-collapsed .dashboard-fixed-stack {
+    left: 76px;
+}
+
+/* ── Dock fijo: Accesorios + copia en vivo de la Matriz LED (si el plugin
+   está instalado). Sin esquinas redondeadas (estilo "bottom sheet"); se
+   puede contraer con la pestaña de arriba. ── */
+.dashboard-bottom {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.dashboard-dock-handle {
+    width: 77px;
+    height: 22px;
+    flex-shrink: 0;
+    margin-bottom: -1px;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    background: var(--card-bg);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    animation: dashboardDockHandlePulse 2.2s ease-in-out infinite;
+}
+
+.dashboard-dock-handle svg {
+    transition: transform 0.2s ease;
+}
+
+.dashboard-bottom.collapsed .dashboard-dock-handle svg {
+    transform: rotate(180deg);
+}
+
+@keyframes dashboardDockHandlePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55); }
+    50% { box-shadow: 0 0 16px 5px rgba(var(--accent-rgb), 0.55); }
+}
+
+.dashboard-dock-body {
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    gap: 17px;
+    background: var(--card-bg);
+    border-top: 1px solid var(--border);
+    padding: 13px 17px;
+    max-height: 196px;
+    overflow-y: auto;
+    transition: max-height 0.2s ease, padding-top 0.2s ease, padding-bottom 0.2s ease, opacity 0.15s ease;
+}
+
+.dashboard-bottom.collapsed .dashboard-dock-body {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    overflow: hidden;
+    border-top-color: transparent;
+}
+
+.dashboard-dock-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+}
+
+.dashboard-dock-section .section-title {
+    margin-bottom: 7px;
+}
+
+.dashboard-fixed-stack {
     pointer-events: none;
 }
 
-.active-print-queue .active-print-card {
+.dashboard-bottom,
+.active-print-queue-list .active-print-card {
     pointer-events: auto;
 }
 
-.app-shell.sidebar-collapsed .active-print-queue {
-    left: 76px;
+.active-print-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 24px 0;
+}
+
+.dashboard-dock-matrix {
+    flex: 0 0 auto;
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    border-left: 1px solid var(--border);
+    padding-left: 17px;
+}
+
+.dashboard-dock-matrix-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    align-self: flex-start;
+}
+
+/* "Ticker" de quién mandó los últimos envíos a la Matriz LED (nombre de
+   máquina, o el nombre del anuncio si el envío fue manual) -- ver
+   loadDashboardMatrixPreview()/get_last_sent_history() en
+   screen_service.py. Más reciente a la izquierda; los pills viejos se
+   empujan hacia la derecha y se recortan (overflow:hidden) en vez de
+   hacer scroll, como un feed de chat en vivo. */
+.dashboard-dock-matrix-ticker {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* Solo el más reciente (primero) va en verde -- el resto gris, todos con
+   la opacidad decreciente que le pone renderDashboardMatrixTicker por
+   índice (100/75/50/25%). */
+.dashboard-dock-matrix-pill {
+    flex-shrink: 0;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    animation: dashboardDockMatrixPillIn 0.25s ease;
+}
+
+.dashboard-dock-matrix-pill:first-child {
+    background: rgba(34, 197, 94, 0.18);
+    color: #4ade80;
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+@keyframes dashboardDockMatrixPillIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.dashboard-dock-matrix-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(32, minmax(0, 1fr));
+    gap: 1px;
+    background: #05070c;
+    border: 1px solid var(--border);
+    padding: 4px;
+}
+
+.dashboard-dock-matrix-grid span {
+    aspect-ratio: 1 / 1;
+    background: #12161f;
+    border-radius: 1px;
 }
 
 .active-print-card {
@@ -13910,6 +14253,12 @@ body.green .option-switch {
     font-weight: 600;
     margin-bottom: 20px;
     color: var(--text);
+    /* Este título vive directo sobre el fondo del Panel (sin tarjeta
+       detrás) -- con los temas de fondo personalizable (Desert/NOPAL
+       Style/Red/Custom) el fondo puede tener zonas claras donde el texto
+       blanco se pierde. La sombra da contraste sin importar qué tan clara
+       sea la imagen debajo. */
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 0, 0, 0.4);
 }
 
 .printers-section .section-title h2 {
@@ -13948,6 +14297,9 @@ body.green .option-switch {
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    /* Mismo motivo que .printers-section h2: estas etiquetas de grupo
+       viven directo sobre el fondo del Panel, sin tarjeta detrás. */
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 0, 0, 0.4);
 }
 
 .machines-column-title-printer {
@@ -14436,6 +14788,13 @@ body.green .option-switch {
 .laser-card-camera:has(#laser-modal-camera:empty),
 .cnc-card-camera:has(#cnc-modal-camera:empty) { display: none; }
 
+/* La pestaña "Cámara" del hub de Conexión del láser (#laser-connection-card)
+   se oculta igual que antes se ocultaba toda la tarjeta -- sin cámara
+   vinculada al dispositivo activo, no tiene sentido ofrecer esa pestaña. */
+#laser-connection-card:has(#laser-modal-camera:empty) .laser-hub-tabs [data-value="camera"] {
+    display: none;
+}
+
 /* Ondas térmicas: una única capa SVG decorativa por impresora, alimentada
    por las temperaturas reales. Todas las transformaciones corren en CSS y
    no crean ciclos JavaScript adicionales durante el sondeo del dashboard. */
@@ -14914,10 +15273,6 @@ body.green .option-switch {
 /* ── Responsive ── */
 
 @media (max-width: 1100px) {
-    .dashboard-bottom {
-        grid-template-columns: 1fr;
-    }
-
     .panel-hero-grid {
         grid-template-columns: 1fr 1fr;
         grid-template-rows: auto auto auto;
@@ -15006,10 +15361,22 @@ body.green .option-switch {
     .app-shell.sidebar-collapsed .nav-item {
         justify-content: flex-start;
         padding: 11px 15px;
+        /* En mobile el cajón siempre se ve "expandido" con texto (ver
+           .nav-item span más abajo) aunque localStorage diga "solo
+           íconos" -- por eso acá se deshace el ícono liso/monocromo del
+           modo contraído de escritorio y vuelven las cajas con color de
+           .nav-item / cnc / laser / activo de siempre. */
+        background: unset;
+        border-color: unset;
+        box-shadow: unset;
     }
 
     .app-shell.sidebar-collapsed .nav-item span {
         display: inline;
+    }
+
+    .app-shell.sidebar-collapsed .nav-item svg {
+        color: unset;
     }
 
     .app-shell.sidebar-collapsed .nav-category-header {
@@ -15029,17 +15396,30 @@ body.green .option-switch {
         display: none;
     }
 
-    /* ── Toast de impresión activa: asumía 240px (o 76px contraído) de
-       sidebar fijo a la izquierda; con el sidebar convertido en cajón
-       oculto, ese hueco quedaba vacío y el toast se veía cortado/corrido
-       fuera de pantalla. ── */
-    .active-print-queue {
+    /* ── Pila fija del Panel: asumía 240px (o 76px contraído) de sidebar
+       fijo a la izquierda; con el sidebar convertido en cajón oculto, ese
+       hueco quedaba vacío y el dock se veía cortado/corrido fuera de
+       pantalla. ── */
+    .dashboard-fixed-stack {
         left: 0;
-        padding: 12px 16px;
     }
 
-    .app-shell.sidebar-collapsed .active-print-queue {
+    .app-shell.sidebar-collapsed .dashboard-fixed-stack {
         left: 0;
+    }
+
+    .dashboard-dock-body {
+        flex-direction: column;
+        padding: 14px 16px;
+        max-height: 45vh;
+    }
+
+    .dashboard-dock-matrix {
+        width: auto;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        padding-left: 0;
+        padding-top: 14px;
     }
 
     /* ── Topbar global: compacta lo que no entra en una fila de ~375-420px ── */
@@ -15624,6 +16004,7 @@ body.light .laser-fire-btn-wide {
 .machine-led-dialog { position: relative; width: min(680px, 96vw); max-height: min(850px, 92vh); overflow: auto; padding: 26px; border: 1px solid rgba(34,197,94,.48); border-radius: 24px; background: linear-gradient(145deg, rgba(14,27,31,.98), rgba(8,16,24,.99)); box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 40px rgba(34,197,94,.08); color: var(--text); }
 .machine-led-close { position: absolute; right: 18px; top: 16px; width: 36px; height: 36px; border: 1px solid rgba(239,68,68,.45); border-radius: 50%; background: rgba(239,68,68,.08); color: #ff6b6b; font-size: 24px; cursor: pointer; }
 .machine-led-heading { display: flex; gap: 14px; align-items: center; padding-right: 42px; margin-bottom: 22px; }
+.machine-led-tabs { margin-bottom: 18px; }
 .machine-led-heading-icon { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 48px; border: 1px solid #22c55e; border-radius: 15px; color: #59f17d; background: rgba(34,197,94,.12); font-size: 24px; }
 .machine-led-eyebrow { color: #22c55e; font-size: .67rem; letter-spacing: .16em; font-weight: 800; }
 .machine-led-heading h2 { margin: 3px 0; font-size: 1.35rem; }
