@@ -21,7 +21,7 @@
   {
     "id": "shape-creator",
     "name": "Creador de formas",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "publisher": "NOPAL Labs",
     "category": "Diseño",
     "description": "Crea rectángulos, círculos, polígonos y formas paramétricas listas para láser o CNC.",
@@ -132,7 +132,7 @@
   {
     "id": "camera-viewer",
     "name": "Cámaras",
-    "version": "1.3.1",
+    "version": "1.4.0",
     "publisher": "NOPAL Labs",
     "category": "Producción",
     "description": "Agrega cámaras por URL de stream MJPEG, ONVIF o webcam USB, y míralas en vivo desde el panel.",
