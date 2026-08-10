@@ -13127,6 +13127,152 @@ document.getElementById('cnc-wizard-run-btn')?.addEventListener('click', async (
     closeCncWizardModal();
 });
 
+// ── Asistente de configuración del CNC ("Asistente de configuración") —
+// mismo mecanismo de pasos-dentro-de-un-modal que "Guía para dibujar" de
+// arriba, pero para configuración de la máquina (punto cero por eje, altura
+// máxima de Z, tipo de trabajo con preguntas según el tipo elegido) en vez
+// de un trabajo puntual. Por ahora solo arma el layout visual de los pasos
+// -- finishCncSetupWizard() todavía no manda nada a un endpoint real ni a
+// la máquina, ver el comentario del modal en index.html.
+
+const CNC_SETUP_WORK_TYPES = ['carving', 'engraving', 'cutting', 'painting', 'drawing'];
+
+let cncSetupWizardStep = 1;
+let cncSetupWizardState = { zeroXY: 'front-left', zeroZ: 'material-surface', maxZ: '', workType: null };
+
+function showCncSetupWizardStep(step) {
+    cncSetupWizardStep = step;
+    [1, 2, 3, 4].forEach(n => {
+        const el = document.getElementById(`cnc-setup-step-${n}`);
+        if (el) el.hidden = n !== step;
+        const dot = document.querySelector(`.cnc-wizard-step-dot[data-setup-step-dot="${n}"]`);
+        if (dot) {
+            dot.classList.toggle('active', n === step);
+            dot.classList.toggle('done', n < step);
+        }
+    });
+    const backBtn = document.getElementById('cnc-setup-wizard-back-btn');
+    const nextBtn = document.getElementById('cnc-setup-wizard-next-btn');
+    const finishBtn = document.getElementById('cnc-setup-wizard-finish-btn');
+    if (backBtn) backBtn.hidden = step === 1;
+    if (nextBtn) nextBtn.hidden = step === 4;
+    if (finishBtn) finishBtn.hidden = step !== 4;
+    if (step === 4) renderCncSetupWizardSummary();
+}
+
+function selectCncSetupZeroXY(value) {
+    cncSetupWizardState.zeroXY = value;
+    document.querySelectorAll('#cnc-setup-zero-xy-grid .cnc-setup-zero-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.zeroXy === value);
+    });
+}
+
+function selectCncSetupZeroZ(value) {
+    cncSetupWizardState.zeroZ = value;
+    document.querySelectorAll('#cnc-setup-zero-z-switch .option-switch-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.zeroZ === value);
+    });
+}
+
+function selectCncSetupWorkType(value) {
+    cncSetupWizardState.workType = value;
+    document.querySelectorAll('#cnc-setup-type-grid .cnc-setup-type-card').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.workType === value);
+    });
+    CNC_SETUP_WORK_TYPES.forEach(type => {
+        const el = document.getElementById(`cnc-setup-followup-${type}`);
+        if (el) el.hidden = type !== value;
+    });
+}
+
+function cncSetupWorkTypeLabel(type) {
+    const key = {
+        carving: 'cncSetupTypeCarving', engraving: 'cncSetupTypeEngraving', cutting: 'cncSetupTypeCutting',
+        painting: 'cncSetupTypePainting', drawing: 'cncSetupTypeDrawing',
+    }[type];
+    return key ? t(key) : t('cncSetupNoneSelected');
+}
+
+function cncSetupZeroXYLabel(value) {
+    const key = {
+        'front-left': 'cncSetupZeroFrontLeft', 'front-right': 'cncSetupZeroFrontRight', center: 'cncSetupZeroCenter',
+        'back-left': 'cncSetupZeroBackLeft', 'back-right': 'cncSetupZeroBackRight',
+    }[value];
+    return key ? t(key) : t('cncSetupNoneSelected');
+}
+
+function cncSetupZeroZLabel(value) {
+    const key = {
+        'material-surface': 'cncSetupZeroMaterialSurface', 'stock-top': 'cncSetupZeroStockTop', 'machine-bed': 'cncSetupZeroMachineBed',
+    }[value];
+    return key ? t(key) : t('cncSetupNoneSelected');
+}
+
+function renderCncSetupWizardSummary() {
+    const el = document.getElementById('cnc-setup-summary-list');
+    if (!el) return;
+    const maxZInput = document.getElementById('cnc-setup-max-z-input');
+    cncSetupWizardState.maxZ = maxZInput ? maxZInput.value : '';
+    const rows = [
+        [t('cncSetupSummaryZeroXY'), cncSetupZeroXYLabel(cncSetupWizardState.zeroXY)],
+        [t('cncSetupSummaryZeroZ'), cncSetupZeroZLabel(cncSetupWizardState.zeroZ)],
+        [t('cncSetupSummaryMaxZ'), cncSetupWizardState.maxZ ? `${cncSetupWizardState.maxZ} mm` : t('cncSetupNoneSelected')],
+        [t('cncSetupSummaryWorkType'), cncSetupWorkTypeLabel(cncSetupWizardState.workType)],
+    ];
+    el.innerHTML = rows.map(([label, value]) => `
+        <div class="cnc-setup-summary-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+    `).join('');
+}
+
+function openCncSetupWizardModal() {
+    cncSetupWizardState = { zeroXY: 'front-left', zeroZ: 'material-surface', maxZ: '', workType: null };
+    selectCncSetupZeroXY('front-left');
+    selectCncSetupZeroZ('material-surface');
+    selectCncSetupWorkType(null);
+    const maxZInput = document.getElementById('cnc-setup-max-z-input');
+    if (maxZInput) maxZInput.value = '';
+    showCncSetupWizardStep(1);
+    document.getElementById('cnc-setup-wizard-modal')?.classList.add('active');
+}
+
+function closeCncSetupWizardModal() {
+    document.getElementById('cnc-setup-wizard-modal')?.classList.remove('active');
+}
+
+function finishCncSetupWizard() {
+    // Vista previa por ahora -- todavía no hay endpoint que persista esta
+    // configuración ni la mande a la máquina real.
+    closeCncSetupWizardModal();
+    showToast(t('cncSetupPreviewHint'));
+}
+
+document.getElementById('cnc-setup-wizard-open-btn')?.addEventListener('click', openCncSetupWizardModal);
+document.getElementById('cnc-setup-wizard-cancel-btn')?.addEventListener('click', closeCncSetupWizardModal);
+document.getElementById('cnc-setup-wizard-backdrop')?.addEventListener('click', closeCncSetupWizardModal);
+document.getElementById('cnc-setup-wizard-modal-close')?.addEventListener('click', closeCncSetupWizardModal);
+
+document.getElementById('cnc-setup-wizard-back-btn')?.addEventListener('click', () => {
+    if (cncSetupWizardStep > 1) showCncSetupWizardStep(cncSetupWizardStep - 1);
+});
+
+document.getElementById('cnc-setup-wizard-next-btn')?.addEventListener('click', () => {
+    if (cncSetupWizardStep < 4) showCncSetupWizardStep(cncSetupWizardStep + 1);
+});
+
+document.getElementById('cnc-setup-wizard-finish-btn')?.addEventListener('click', finishCncSetupWizard);
+
+document.querySelectorAll('#cnc-setup-zero-xy-grid .cnc-setup-zero-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectCncSetupZeroXY(btn.dataset.zeroXy));
+});
+
+document.querySelectorAll('#cnc-setup-zero-z-switch .option-switch-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectCncSetupZeroZ(btn.dataset.zeroZ));
+});
+
+document.querySelectorAll('#cnc-setup-type-grid .cnc-setup-type-card').forEach(btn => {
+    btn.addEventListener('click', () => selectCncSetupWorkType(btn.dataset.workType));
+});
+
 // ── Overrides de feed/husillo: bytes de tiempo real de GRBL (0x90-0x9E).
 // El campo "Ov:" del status solo aparece en algunos reportes (no todos), por
 // eso el valor mostrado se actualiza en cuanto refreshCncStatus lo capture,

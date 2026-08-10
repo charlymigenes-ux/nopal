@@ -1243,6 +1243,10 @@
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4V2m0 4l1.5-1.5M15 4l-1.5-1.5M4 15H2m4 0l-1.5 1.5M6 15l-1.5-1.5"/><path d="m19 5-14 14"/></svg>
                                         <span data-i18n="cncWizardOpen">Guía para dibujar</span>
                                     </button>
+                                    <button type="button" class="btn-file-action" id="cnc-setup-wizard-open-btn" data-i18n-title="cncSetupWizardOpenTitle" title="Asistente de configuración">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                        <span data-i18n="cncSetupWizardOpen">Asistente de configuración</span>
+                                    </button>
                                 </div>
                             </div>
                             <div class="cnc-job-file-row">
@@ -3903,6 +3907,205 @@
                 <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-wizard-next-btn" data-i18n="cncWizardNext" disabled>Siguiente</button>
                 <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-wizard-run-btn" data-i18n="cncWizardStart" hidden>Empezar</button>
                 <button type="button" class="btn-file-action usb-classify-cancel-btn" id="cnc-wizard-cancel-btn" data-i18n="cancelAction">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Asistente de configuración del CNC (punto cero por eje, altura
+         máxima de Z, tipo de trabajo con preguntas de seguimiento según el
+         tipo elegido) -- separado del wizard "Guía para dibujar" de arriba,
+         que es por-trabajo (elegir archivo/origen/ejecutar un G-code ya
+         existente); este es configuración de la máquina en sí. Por ahora
+         solo arma el layout visual de los pasos -- todavía no persiste nada
+         real, ver renderCncSetupWizardSummary()/finishCncSetupWizard() en
+         app.js. -->
+    <div id="cnc-setup-wizard-modal" class="modal">
+        <div class="modal-backdrop" id="cnc-setup-wizard-backdrop"></div>
+        <div class="modal-content cnc-wizard-modal-content cnc-setup-wizard-modal-content">
+            <button class="modal-close" id="cnc-setup-wizard-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <h2 data-i18n="cncSetupWizardTitle">Asistente de configuración</h2>
+            <div class="cnc-wizard-steps-indicator">
+                <span class="cnc-wizard-step-dot active" data-setup-step-dot="1"></span>
+                <span class="cnc-wizard-step-dot" data-setup-step-dot="2"></span>
+                <span class="cnc-wizard-step-dot" data-setup-step-dot="3"></span>
+                <span class="cnc-wizard-step-dot" data-setup-step-dot="4"></span>
+            </div>
+
+            <div id="cnc-setup-step-1" class="cnc-wizard-step">
+                <p class="cnc-wizard-step-title"><span data-i18n="cncSetupStep1Title">1. ¿Dónde va el punto cero?</span></p>
+                <p class="cnc-wizard-step-hint" data-i18n="cncSetupStep1Hint">Elige la esquina de referencia para X/Y, y desde dónde se mide Z.</p>
+
+                <div class="cnc-setup-subsection">
+                    <span class="cnc-setup-subsection-label" data-i18n="cncSetupZeroXYLabel">ORIGEN X/Y</span>
+                    <div class="cnc-setup-zero-grid" id="cnc-setup-zero-xy-grid">
+                        <button type="button" class="cnc-setup-zero-btn" data-zero-xy="back-left">
+                            <span class="cnc-setup-zero-dot" style="--dot-x:6px;--dot-y:6px"></span>
+                            <span data-i18n="cncSetupZeroBackLeft">Superior izq.</span>
+                        </button>
+                        <button type="button" class="cnc-setup-zero-btn" data-zero-xy="center">
+                            <span class="cnc-setup-zero-dot" style="--dot-x:50%;--dot-y:50%"></span>
+                            <span data-i18n="cncSetupZeroCenter">Centro</span>
+                        </button>
+                        <button type="button" class="cnc-setup-zero-btn" data-zero-xy="back-right">
+                            <span class="cnc-setup-zero-dot" style="--dot-x:calc(100% - 6px);--dot-y:6px"></span>
+                            <span data-i18n="cncSetupZeroBackRight">Superior der.</span>
+                        </button>
+                        <button type="button" class="cnc-setup-zero-btn active" data-zero-xy="front-left">
+                            <span class="cnc-setup-zero-dot" style="--dot-x:6px;--dot-y:calc(100% - 6px)"></span>
+                            <span data-i18n="cncSetupZeroFrontLeft">Inferior izq.</span>
+                        </button>
+                        <button type="button" class="cnc-setup-zero-btn" data-zero-xy="front-right">
+                            <span class="cnc-setup-zero-dot" style="--dot-x:calc(100% - 6px);--dot-y:calc(100% - 6px)"></span>
+                            <span data-i18n="cncSetupZeroFrontRight">Inferior der.</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="cnc-setup-subsection">
+                    <span class="cnc-setup-subsection-label" data-i18n="cncSetupZeroZLabel">ORIGEN Z</span>
+                    <div class="option-switch cnc-setup-zero-z-switch" id="cnc-setup-zero-z-switch">
+                        <button type="button" class="option-switch-btn active" data-zero-z="material-surface" data-i18n="cncSetupZeroMaterialSurface">Superficie del material</button>
+                        <button type="button" class="option-switch-btn" data-zero-z="stock-top" data-i18n="cncSetupZeroStockTop">Parte superior de la pieza</button>
+                        <button type="button" class="option-switch-btn" data-zero-z="machine-bed" data-i18n="cncSetupZeroMachineBed">Cama de la máquina</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="cnc-setup-step-2" class="cnc-wizard-step" hidden>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncSetupStep2Title">2. Altura máxima de Z</span></p>
+                <p class="cnc-wizard-step-hint" data-i18n="cncSetupStep2Hint">Cuánto puede subir el husillo antes de chocar con la estructura, desde el origen que elegiste.</p>
+                <div class="usb-classify-name-field cnc-setup-maxz-field">
+                    <label data-i18n="cncSetupMaxZLabel">Altura máxima (mm)</label>
+                    <input type="number" id="cnc-setup-max-z-input" min="0" step="0.1" placeholder="50">
+                </div>
+            </div>
+
+            <div id="cnc-setup-step-3" class="cnc-wizard-step" hidden>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncSetupStep3Title">3. ¿Qué tipo de trabajo vas a hacer?</span></p>
+                <div class="cnc-setup-type-grid" id="cnc-setup-type-grid">
+                    <button type="button" class="cnc-setup-type-card" data-work-type="carving">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                        <span data-i18n="cncSetupTypeCarving">Tallado</span>
+                    </button>
+                    <button type="button" class="cnc-setup-type-card" data-work-type="engraving">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>
+                        <span data-i18n="cncSetupTypeEngraving">Grabado</span>
+                    </button>
+                    <button type="button" class="cnc-setup-type-card" data-work-type="cutting">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+                        <span data-i18n="cncSetupTypeCutting">Corte</span>
+                    </button>
+                    <button type="button" class="cnc-setup-type-card" data-work-type="painting">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.06 11.9 17.13 3.83a2.85 2.85 0 1 1 4.03 4.04l-8.08 8.06"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>
+                        <span data-i18n="cncSetupTypePainting">Pintura</span>
+                    </button>
+                    <button type="button" class="cnc-setup-type-card" data-work-type="drawing">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                        <span data-i18n="cncSetupTypeDrawing">Dibujo</span>
+                    </button>
+                </div>
+
+                <div class="cnc-setup-followup" id="cnc-setup-followup-carving" hidden>
+                    <div class="usb-classify-scan-grid">
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupCarveDepthLabel">Profundidad de talla (mm)</label>
+                            <input type="number" step="0.1" min="0">
+                        </div>
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupCarvePassesLabel">Número de pasadas</label>
+                            <input type="number" step="1" min="1">
+                        </div>
+                    </div>
+                </div>
+                <div class="cnc-setup-followup" id="cnc-setup-followup-engraving" hidden>
+                    <div class="usb-classify-scan-grid">
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupEngravePowerLabel">Potencia de grabado</label>
+                            <select>
+                                <option data-i18n="cncSetupPowerLow">Baja</option>
+                                <option selected data-i18n="cncSetupPowerMedium">Media</option>
+                                <option data-i18n="cncSetupPowerHigh">Alta</option>
+                            </select>
+                        </div>
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupAreaLabel">Área (ancho × alto mm)</label>
+                            <div class="cnc-setup-dim-row">
+                                <input type="number" step="1" min="0" data-i18n-placeholder="cncSetupWidthPlaceholder" placeholder="Ancho">
+                                <span>×</span>
+                                <input type="number" step="1" min="0" data-i18n-placeholder="cncSetupHeightPlaceholder" placeholder="Alto">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="cnc-setup-followup" id="cnc-setup-followup-cutting" hidden>
+                    <div class="usb-classify-scan-grid">
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupMaterialThicknessLabel">Grosor del material (mm)</label>
+                            <input type="number" step="0.1" min="0">
+                        </div>
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupCutSpeedLabel">Velocidad de corte (mm/min)</label>
+                            <input type="number" step="1" min="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="cnc-setup-followup" id="cnc-setup-followup-painting" hidden>
+                    <div class="usb-classify-scan-grid">
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupPaintTypeLabel">Tipo de pintura</label>
+                            <select>
+                                <option data-i18n="cncSetupPaintAcrylic">Acrílica</option>
+                                <option data-i18n="cncSetupPaintSpray">Aerosol</option>
+                                <option data-i18n="cncSetupPaintInk">Tinta</option>
+                            </select>
+                        </div>
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupAreaLabel">Área (ancho × alto mm)</label>
+                            <div class="cnc-setup-dim-row">
+                                <input type="number" step="1" min="0" data-i18n-placeholder="cncSetupWidthPlaceholder" placeholder="Ancho">
+                                <span>×</span>
+                                <input type="number" step="1" min="0" data-i18n-placeholder="cncSetupHeightPlaceholder" placeholder="Alto">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="cnc-setup-followup" id="cnc-setup-followup-drawing" hidden>
+                    <div class="usb-classify-scan-grid">
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupStrokeTypeLabel">Tipo de trazo</label>
+                            <select>
+                                <option data-i18n="cncSetupStrokeSolid">Línea continua</option>
+                                <option data-i18n="cncSetupStrokeDotted">Punteado</option>
+                            </select>
+                        </div>
+                        <div class="usb-classify-name-field">
+                            <label data-i18n="cncSetupAreaLabel">Área (ancho × alto mm)</label>
+                            <div class="cnc-setup-dim-row">
+                                <input type="number" step="1" min="0" data-i18n-placeholder="cncSetupWidthPlaceholder" placeholder="Ancho">
+                                <span>×</span>
+                                <input type="number" step="1" min="0" data-i18n-placeholder="cncSetupHeightPlaceholder" placeholder="Alto">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="cnc-setup-step-4" class="cnc-wizard-step" hidden>
+                <p class="cnc-wizard-step-title"><span data-i18n="cncSetupStep4Title">4. Todo listo</span></p>
+                <div class="cnc-setup-summary-list" id="cnc-setup-summary-list"></div>
+                <p class="cnc-wizard-step-hint" data-i18n="cncSetupPreviewHint">Vista previa del asistente -- la configuración todavía no se guarda en la máquina.</p>
+            </div>
+
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action" id="cnc-setup-wizard-back-btn" data-i18n="cncWizardBack" hidden>Atrás</button>
+                <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-setup-wizard-next-btn" data-i18n="cncWizardNext">Siguiente</button>
+                <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-setup-wizard-finish-btn" data-i18n="cncSetupWizardFinish" hidden>Finalizar</button>
+                <button type="button" class="btn-file-action usb-classify-cancel-btn" id="cnc-setup-wizard-cancel-btn" data-i18n="cancelAction">Cancelar</button>
             </div>
         </div>
     </div>

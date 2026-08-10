@@ -8074,6 +8074,166 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     text-align: left;
 }
 
+/* ── Asistente de configuración del CNC ── */
+
+.cnc-setup-wizard-modal-content {
+    max-width: 520px;
+}
+
+.cnc-setup-subsection {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.cnc-setup-subsection-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    text-align: left;
+}
+
+.cnc-setup-zero-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.cnc-setup-zero-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 6px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.cnc-setup-zero-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.cnc-setup-zero-btn.active {
+    border-color: var(--green-dark);
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--text);
+}
+
+.cnc-setup-zero-dot {
+    position: relative;
+    width: 34px;
+    height: 24px;
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    border-radius: 3px;
+}
+
+.cnc-setup-zero-btn.active .cnc-setup-zero-dot {
+    border-color: rgba(34, 197, 94, 0.5);
+}
+
+.cnc-setup-zero-dot::after {
+    content: '';
+    position: absolute;
+    left: var(--dot-x);
+    top: var(--dot-y);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green-dark);
+    transform: translate(-50%, -50%);
+}
+
+.cnc-setup-zero-z-switch {
+    width: 100%;
+}
+
+.cnc-setup-maxz-field {
+    width: 100%;
+    max-width: 220px;
+}
+
+.cnc-setup-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+
+.cnc-setup-type-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.cnc-setup-type-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.cnc-setup-type-card.active {
+    border-color: var(--green-dark);
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--text);
+}
+
+.cnc-setup-followup {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.cnc-setup-dim-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cnc-setup-dim-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.cnc-setup-summary-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: left;
+}
+
+.cnc-setup-summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.85rem;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cnc-setup-summary-row span:first-child {
+    color: var(--text-muted);
+}
+
+.cnc-setup-summary-row strong {
+    color: var(--text);
+    text-align: right;
+}
+
 .cnc-viewer-soon strong {
     color: var(--text);
     font-size: 0.95rem;
