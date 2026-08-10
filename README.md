@@ -1,5 +1,10 @@
 # NOPAL
 
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-39D62E)](./LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/charlymigenes-ux/nopal?color=39D62E)](https://github.com/charlymigenes-ux/nopal/commits/main)
+[![Status](https://img.shields.io/badge/status-active%20development-e6b422)](./CHANGELOG.md)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-39D62E)](requirements.txt)
+
 <table>
   <tr>
     <td><img width="630" alt="NOPAL dashboard" src="docs/images/dashboard.png" /></td>
