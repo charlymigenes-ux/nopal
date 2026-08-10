@@ -178,17 +178,17 @@
 
           <div class="field-grid">
             <div class="field">
-              <label for="f-brand">Marca</label>
+              <label for="f-brand">Marca <span class="req">*</span></label>
               <input type="text" id="f-brand" name="equipment.brand" placeholder="Ej. Creality, xTool, genérica...">
             </div>
             <div class="field">
-              <label for="f-model">Modelo del equipo</label>
+              <label for="f-model">Modelo del equipo <span class="req">*</span></label>
               <input type="text" id="f-model" name="equipment.model" placeholder="Ej. Ender 3 V2">
             </div>
             <div class="field full">
-              <label for="f-customname">Nombre o descripción personalizada <span class="hint">opcional</span></label>
+              <label for="f-customname">Nombre o descripción personalizada <span class="req">*</span></label>
               <input type="text" id="f-customname" name="equipment.customName" placeholder="CNC router 4x8 casera">
-              <p class="example">Ejemplo: "CNC router 4x8 casera"</p>
+              <p class="example">Completa Modelo o Nombre/descripción (al menos uno de los dos). Ejemplo de nombre personalizado: "CNC router 4x8 casera" — úsalo si tu equipo no tiene un modelo comercial.</p>
             </div>
             <div class="field">
               <label for="f-boardmanufacturer">Fabricante de la placa</label>
@@ -230,15 +230,6 @@
                 <input type="file" id="dz-board-input" accept="image/*">
               </div>
               <div class="preview-list" id="dz-board-preview"></div>
-            </div>
-            <div class="field full" style="margin-top:0;">
-              <div class="dropzone" id="dz-additional" tabindex="0">
-                <div class="dz-icon">🖼️</div>
-                <b>Fotos adicionales</b>
-                <small>Puedes arrastrar varias imágenes a la vez</small>
-                <input type="file" id="dz-additional-input" accept="image/*" multiple>
-              </div>
-              <div class="preview-list" id="dz-additional-preview"></div>
             </div>
           </div>
         </section>

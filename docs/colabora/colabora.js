@@ -15,6 +15,54 @@
     method: "POST",
     apiKey: "sb_publishable_kDfqzwYTK5dCf5wmVI5oOw_2g6Ip5X2"
   };
+  const STORAGE_ENDPOINT = "https://vphmstxbejjcnwltrffa.supabase.co/storage/v1/object";
+  const STORAGE_BUCKET = "collaboration-photos";
+
+  /* Redimensiona a un máximo de 1600px de lado y comprime a JPEG ~80% —
+     una foto de celular de varios MB queda en unos cientos de KB. */
+  function compressImage(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(url);
+          if (blob) resolve(blob); else reject(new Error("No se pudo comprimir la imagen."));
+        }, "image/jpeg", quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("No se pudo leer la imagen.")); };
+      img.src = url;
+    });
+  }
+
+  async function uploadPhoto(file, path) {
+    const blob = await compressImage(file, 1600, 0.8);
+    const res = await fetch(STORAGE_ENDPOINT + "/" + STORAGE_BUCKET + "/" + path, {
+      method: "POST",
+      headers: {
+        "apikey": FORM_CONFIG.apiKey,
+        "Authorization": "Bearer " + FORM_CONFIG.apiKey,
+        "Content-Type": "image/jpeg"
+      },
+      body: blob
+    });
+    if (!res.ok) throw new Error("No se pudo subir la foto (" + res.status + ").");
+    return path;
+  }
+
+  function newId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return Date.now().toString(16) + Math.random().toString(16).slice(2);
+  }
 
   /* Traduce el estado anidado del wizard a las columnas planas de
      public.collaborations (ver migración create_collaborations). */
@@ -56,13 +104,31 @@
     };
   }
 
-  async function submitCollaboration(data) {
+  async function submitCollaboration(data, photoFiles) {
     const row = toSupabaseRow(data);
 
     if (!FORM_CONFIG.endpoint) {
-      console.log("[NOPAL Colabora] MODO DEMO — no hay backend configurado. Payload que se enviaría:");
+      console.log("[NOPAL Colabora] MODO DEMO — no hay backend configurado. Payload que se enviaría (las fotos no se suben en modo demo):");
       console.log(row);
       return { demo: true };
+    }
+
+    const id = newId();
+    row.id = id;
+
+    if (photoFiles && photoFiles.equipment) {
+      try {
+        row.photo_equipment_path = await uploadPhoto(photoFiles.equipment, id + "/equipment.jpg");
+      } catch (e) {
+        console.warn("[NOPAL Colabora] No se pudo subir la foto del equipo:", e.message);
+      }
+    }
+    if (photoFiles && photoFiles.board) {
+      try {
+        row.photo_board_path = await uploadPhoto(photoFiles.board, id + "/board.jpg");
+      } catch (e) {
+        console.warn("[NOPAL Colabora] No se pudo subir la foto de la placa:", e.message);
+      }
     }
 
     const res = await fetch(FORM_CONFIG.endpoint, {
@@ -115,8 +181,8 @@
   let currentStep = 1;
   const TOTAL_STEPS = 5;
 
-  // Fotos en memoria — NUNCA en localStorage, NUNCA en el objeto enviado (sin backend real).
-  const photos = { equipment: null, board: null, additional: [] };
+  // Fotos en memoria — NUNCA en localStorage. Se comprimen y suben a Supabase Storage recién al enviar.
+  const photos = { equipment: null, board: null };
 
   /* ==================================================
      PERSISTENCIA LOCAL (sin fotos, sin credenciales)
@@ -145,8 +211,7 @@
     currentStep = 1;
     photos.equipment = null;
     photos.board = null;
-    photos.additional = [];
-    ["dz-equipment-preview", "dz-board-preview", "dz-additional-preview"].forEach(id => {
+    ["dz-equipment-preview", "dz-board-preview"].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = "";
     });
@@ -258,7 +323,16 @@
       return ok;
     }
     if (step === 2) {
-      const ok = !!state.equipment.type;
+      const hasType = !!state.equipment.type;
+      const hasBrand = state.equipment.brand.trim().length > 0;
+      const hasModelOrName = state.equipment.model.trim().length > 0 || state.equipment.customName.trim().length > 0;
+      const ok = hasType && hasBrand && hasModelOrName;
+      let msg = "";
+      if (!hasType) msg = "Selecciona el tipo de equipo para continuar.";
+      else if (!hasBrand) msg = "Indica la marca del equipo para continuar.";
+      else if (!hasModelOrName) msg = "Indica el modelo o un nombre/descripción del equipo para continuar.";
+      const errEl = document.getElementById("err-step2");
+      if (errEl) errEl.textContent = msg;
       toggleError("err-step2", !ok);
       return ok;
     }
@@ -419,7 +493,7 @@
   /* ==================================================
      DROPZONES DE FOTOGRAFÍAS (solo en memoria, sin localStorage)
      ================================================== */
-  function setupDropzone(zoneId, inputId, previewId, multiple, store) {
+  function setupDropzone(zoneId, inputId, previewId, slot) {
     const zone = document.getElementById(zoneId);
     const input = document.getElementById(inputId);
     const preview = document.getElementById(previewId);
@@ -442,19 +516,10 @@
     function handleFiles(fileList) {
       const files = Array.from(fileList).filter(f => f.type.startsWith("image/"));
       if (!files.length) return;
-      if (multiple) {
-        files.forEach(f => { store.additional.push(f); renderThumb(f, () => {
-          const idx = store.additional.indexOf(f);
-          if (idx !== -1) store.additional.splice(idx, 1);
-        }); });
-      } else {
-        preview.innerHTML = "";
-        const f = files[0];
-        if (zoneId === "dz-equipment") store.equipment = f; else store.board = f;
-        renderThumb(f, () => {
-          if (zoneId === "dz-equipment") store.equipment = null; else store.board = null;
-        });
-      }
+      preview.innerHTML = "";
+      const f = files[0];
+      photos[slot] = f;
+      renderThumb(f, () => { photos[slot] = null; });
       input.value = "";
     }
 
@@ -481,9 +546,8 @@
     }
   }
 
-  setupDropzone("dz-equipment", "dz-equipment-input", "dz-equipment-preview", false, photos);
-  setupDropzone("dz-board", "dz-board-input", "dz-board-preview", false, photos);
-  setupDropzone("dz-additional", "dz-additional-input", "dz-additional-preview", true, photos);
+  setupDropzone("dz-equipment", "dz-equipment-input", "dz-equipment-preview", "equipment");
+  setupDropzone("dz-board", "dz-board-input", "dz-board-preview", "board");
 
   /* ==================================================
      ENVÍO
@@ -497,7 +561,7 @@
     notice.hidden = true;
 
     try {
-      const result = await submitCollaboration(JSON.parse(JSON.stringify(state)));
+      const result = await submitCollaboration(JSON.parse(JSON.stringify(state)), photos);
       if (result && result.demo) {
         notice.hidden = false;
         notice.innerHTML = "<b>MODO DEMO:</b> este formulario todavía no está conectado a ningún servidor. " +
