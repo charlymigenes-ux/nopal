@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/charlymigenes-ux/nopal/security/advisories/new
+    about: Please report security issues privately here, not as a public issue.
+  - name: Register hardware to test
+    url: https://charlymigenes-ux.github.io/nopal/colabora/
+    about: Have a machine/board NOPAL doesn't support yet? Register it here instead of opening an issue.
