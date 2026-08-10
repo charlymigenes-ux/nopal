@@ -1,8 +1,8 @@
 # NOPAL
 
 [![Licencia: GPL v3](https://img.shields.io/badge/licencia-GPLv3-39D62E)](./LICENSE)
-[![Última versión](https://img.shields.io/github/v/release/charlymigenes-ux/nopal?include_prereleases&label=versión&color=39D62E)](https://github.com/charlymigenes-ux/nopal/releases)
 [![Último commit](https://img.shields.io/github/last-commit/charlymigenes-ux/nopal?color=39D62E)](https://github.com/charlymigenes-ux/nopal/commits/main)
+[![Estado](https://img.shields.io/badge/estado-en%20desarrollo%20activo-e6b422)](./CHANGELOG.md)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-39D62E)](requirements.txt)
 
 <table>
