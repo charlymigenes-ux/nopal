@@ -42,6 +42,7 @@
 * [Actualizar](#actualizar)
 * [Desinstalar](#desinstalar)
 * [Roadmap](#roadmap)
+* [Apoya a NOPAL](#apoya-a-nopal)
 * [Licencia](#licencia)
 
 ---
@@ -306,6 +307,17 @@ Posibles áreas futuras para NOPAL:
 * difusión por mDNS para que TUNA-Screen pueda descubrir un servidor NOPAL solo, sin tener que tipear una IP
 * el modo de Máquina Avanzada de TUNA-Screen (gráficas de temperatura, jog fino, consola, macros) y un modo kiosco/pantalla dedicada real
 * identificar el comando correcto de ejecución desde SD para más variantes de firmware GRBL/estilo DLC32 (correr directo desde la SD, en vez de streaming)
+
+---
+
+## Apoya a NOPAL
+
+NOPAL es libre y de código abierto, y así se queda. Si te ahorra tiempo en tu taller, puedes apoyar su desarrollo:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/nopal)
+[![Donar con PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=fff)](https://www.paypal.com/donate/?hosted_button_id=WFK56JHFAR8TL)
+
+Lo que se recaude va a hardware para pruebas de compatibilidad — las placas y máquinas que NOPAL todavía no puede soportar porque nadie tiene una para probar. También puedes ayudar sin gastar nada [registrando el equipo que ya tienes](https://charlymigenes-ux.github.io/nopal/colabora/).
 
 ---
 
