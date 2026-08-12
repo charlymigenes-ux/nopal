@@ -179,6 +179,24 @@ async def set_ai_enabled_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/suggestions")
+async def get_ai_suggestions_endpoint(user: dict = Depends(require_auth)):
+    """Preguntas rápidas del asistente. Lista vacía = usar las de fábrica,
+    que el frontend traduce; las guardadas van tal cual."""
+    return {"suggestions": ai_config_service.get_suggestions()}
+
+
+@router.put("/suggestions")
+async def save_ai_suggestions_endpoint(
+    payload: dict = Body(...),
+    user: dict = Depends(require_role("admin")),
+):
+    try:
+        return {"suggestions": ai_config_service.save_suggestions(payload.get("suggestions"))}
+    except AIConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/tools")
 async def list_ai_tools_endpoint(user: dict = Depends(require_auth)):
     """Catálogo de herramientas de solo lectura que se le ofrecen al modelo.

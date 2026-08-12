@@ -374,3 +374,49 @@ def test_tope_de_ias_guardadas():
         ai_config_service.create_provider({**LAN, "name": f"IA {i}"})
     with pytest.raises(AIConfigError, match="más de"):
         ai_config_service.create_provider(LAN)
+
+
+# --------------------------------------------------------------------------
+# Preguntas rápidas
+# --------------------------------------------------------------------------
+
+def test_sin_guardar_nada_la_lista_va_vacia():
+    """Vacío significa 'usa las de fábrica': el frontend las traduce, así que
+    siguen cambiando de idioma. Guardar strings fijos las congelaría."""
+    assert ai_config_service.get_suggestions() == []
+
+
+def test_guardar_y_releer_preguntas():
+    guardadas = ai_config_service.save_suggestions(["¿Cómo está el taller?", "¿Qué relés hay encendidos?"])
+    assert guardadas == ["¿Cómo está el taller?", "¿Qué relés hay encendidos?"]
+    assert ai_config_service.get_suggestions() == guardadas
+
+
+def test_se_limpian_vacias_y_duplicadas():
+    guardadas = ai_config_service.save_suggestions(["  Una  ", "", "   ", "Una", "Otra"])
+    assert guardadas == ["Una", "Otra"]
+
+
+def test_tope_y_longitud():
+    with pytest.raises(AIConfigError, match="más de"):
+        ai_config_service.save_suggestions([f"Pregunta {i}" for i in range(ai_config_service.MAX_SUGGESTIONS + 1)])
+    with pytest.raises(AIConfigError, match="caracteres"):
+        ai_config_service.save_suggestions(["x" * (ai_config_service.MAX_SUGGESTION_LENGTH + 1)])
+    with pytest.raises(AIConfigError, match="lista"):
+        ai_config_service.save_suggestions("no soy una lista")
+
+
+def test_guardar_una_ia_no_borra_las_preguntas():
+    """El registro y las preguntas viven en el mismo archivo; escribir uno no
+    puede pisar al otro."""
+    ai_config_service.save_suggestions(["Mi pregunta"])
+    ai_config_service.create_provider({"name": "X", "base_url": "http://127.0.0.1:8081/v1", "model": "m"})
+    assert ai_config_service.get_suggestions() == ["Mi pregunta"]
+
+
+def test_guardar_preguntas_no_borra_las_ias():
+    creada = ai_config_service.create_provider({"name": "X", "base_url": "http://127.0.0.1:8081/v1", "model": "m"})
+    ai_config_service.save_suggestions(["Mi pregunta"])
+    listado = ai_config_service.list_providers()
+    assert len(listado["providers"]) == 1
+    assert listado["active_id"] == creada["id"]

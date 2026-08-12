@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=299">
+    <link rel="stylesheet" href="/static/css/style.css?v=300">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -2167,6 +2167,18 @@
                                         <input type="checkbox" id="ai-allow-public">
                                         <span data-i18n="aiAllowPublic">Entiendo y autorizo usar un servidor externo</span>
                                     </label>
+                                </div>
+
+                                <div class="ai-suggestions-editor">
+                                    <div class="ai-providers-head">
+                                        <span class="ai-providers-title" data-i18n="aiQuickQuestions">Preguntas rápidas</span>
+                                        <button type="button" class="btn-file-action" id="ai-suggestion-add-btn">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                            <span data-i18n="aiAddQuestion">Agregar</span>
+                                        </button>
+                                    </div>
+                                    <small class="ai-field-hint" data-i18n="aiQuickQuestionsHint">Los botones que aparecen bajo la conversación. Si las dejas vacías se usan las de fábrica.</small>
+                                    <div class="ai-suggestions-rows" id="ai-suggestions-rows"></div>
                                 </div>
 
                                 <details class="ai-advanced">
@@ -4399,11 +4411,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=29"></script>
+    <script src="/static/js/translations.js?v=30"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=237"></script>
+    <script src="/static/js/app.js?v=238"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

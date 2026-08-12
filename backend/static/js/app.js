@@ -18558,12 +18558,71 @@ let aiDataSent = [];
 let aiConfigCache = null;
 let aiBusy = false;
 
+// Guardadas por el usuario. Vacío = usar las de fábrica, que sí se traducen.
+let aiStoredSuggestions = [];
+
 function aiSuggestedQuestions() {
+    if (aiStoredSuggestions.length) return aiStoredSuggestions;
     return [
         t('aiSuggestWorkshop'),
         t('aiSuggestAvailable'),
         t('aiSuggestErrors'),
     ];
+}
+
+async function aiLoadSuggestions() {
+    try {
+        const data = await aiFetchJson('/api/ai/suggestions');
+        aiStoredSuggestions = data.suggestions || [];
+    } catch (_) {
+        aiStoredSuggestions = [];
+    }
+}
+
+function aiRenderSuggestionEditor() {
+    const rows = document.getElementById('ai-suggestions-rows');
+    if (!rows) return;
+    // Al editar se parte de lo que se ve hoy, sean guardadas o de fábrica:
+    // así el usuario ajusta las de fábrica en vez de empezar de cero.
+    const base = aiStoredSuggestions.length ? aiStoredSuggestions : aiSuggestedQuestions();
+    rows.innerHTML = base.map((texto, i) => `
+        <div class="ai-suggestion-row">
+            <input type="text" class="ai-text-input" data-suggestion-index="${i}" value="${escapeHtml(texto)}" maxlength="120">
+            <button type="button" class="btn-file-action" data-suggestion-remove="${i}" title="${escapeHtml(t('aiDelete'))}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`).join('');
+
+    rows.querySelectorAll('[data-suggestion-remove]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const i = Number(btn.dataset.suggestionRemove);
+            const actuales = aiReadSuggestionEditor();
+            actuales.splice(i, 1);
+            aiStoredSuggestions = actuales;
+            aiRenderSuggestionEditor();
+        });
+    });
+}
+
+function aiReadSuggestionEditor() {
+    return Array.from(document.querySelectorAll('[data-suggestion-index]'))
+        .map(input => input.value.trim())
+        .filter(Boolean);
+}
+
+async function aiSaveSuggestions() {
+    try {
+        const data = await aiFetchJson('/api/ai/suggestions', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ suggestions: aiReadSuggestionEditor() }),
+        });
+        aiStoredSuggestions = data.suggestions || [];
+        aiRenderSuggestionEditor();
+        aiRenderSuggestions();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function aiFetchJson(url, options = {}) {
@@ -18778,6 +18837,8 @@ async function loadAiSettings() {
             aiDataSent = data.data_sent || [];
             aiRenderPresets();
         }
+        await aiLoadSuggestions();
+        aiRenderSuggestionEditor();
         aiProvidersCache = await aiFetchJson('/api/ai/providers');
         aiRenderProviders(aiProvidersCache);
         const activa = (aiProvidersCache.providers || []).find(p => p.active);
@@ -18809,6 +18870,7 @@ async function saveAiSettings() {
             },
         );
         aiEditingId = guardada.id;
+        await aiSaveSuggestions();
         showToast(t('aiSaved'), 'success');
         aiShowTestResult('', '');
         await loadAiSettings();
@@ -19076,8 +19138,10 @@ async function loadAiSection() {
         pill.dataset.tone = 'ok';
     }
 
+    await aiLoadSuggestions();
     const thread = document.getElementById('ai-thread');
     if (thread && !thread.children.length) aiResetThread();
+    else aiRenderSuggestions();
 
     aiLoadMachines();
     aiLoadEvents();
@@ -19094,6 +19158,11 @@ document.getElementById('ai-refresh-btn')?.addEventListener('click', loadAiSecti
 document.getElementById('ai-goto-settings-btn')?.addEventListener('click', () => switchSection('settings'));
 document.getElementById('ai-save-btn')?.addEventListener('click', saveAiSettings);
 document.getElementById('ai-provider-add-btn')?.addEventListener('click', aiResetProviderForm);
+document.getElementById('ai-suggestion-add-btn')?.addEventListener('click', () => {
+    aiStoredSuggestions = [...aiReadSuggestionEditor(), ''];
+    aiRenderSuggestionEditor();
+    document.querySelector('[data-suggestion-index]:last-of-type')?.focus();
+});
 document.getElementById('ai-cancel-btn')?.addEventListener('click', aiResetProviderForm);
 document.getElementById('ai-enabled')?.addEventListener('change', event => setAiEnabled(event.target.checked));
 document.getElementById('ai-test-btn')?.addEventListener('click', testAiConnection);

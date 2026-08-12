@@ -1,5 +1,8 @@
 const translations = window.NopalTranslations = window.NopalTranslations || {
   es: {
+    aiQuickQuestions: 'Preguntas rápidas',
+    aiAddQuestion: 'Agregar',
+    aiQuickQuestionsHint: 'Los botones que aparecen bajo la conversación. Si las dejas vacías se usan las de fábrica.',
     aiEdit: 'Editar',
     aiDelete: 'Eliminar',
     aiSavedTitle: 'IAs guardadas',
@@ -1363,6 +1366,9 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     printerDiagNo: 'No',
   },
   en: {
+    aiQuickQuestions: 'Quick questions',
+    aiAddQuestion: 'Add',
+    aiQuickQuestionsHint: 'The buttons shown under the conversation. Leave empty to use the built-in ones.',
     aiEdit: 'Edit',
     aiDelete: 'Delete',
     aiSavedTitle: 'Saved AIs',
