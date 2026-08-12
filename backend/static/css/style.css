@@ -16769,3 +16769,41 @@ body.ai .panel-card {
     box-shadow: 0 1px 2px rgba(14, 28, 40, 0.04);
 }
 body.ai .panel-card-mini { align-items: center; }
+
+/* La sección de IA seguía la convención de las demás en el marcado pero no en
+   el espaciado: .view-section y .content no traen padding (cada sección paga
+   el suyo, ver .page-header), así que el contenido se pegaba a los bordes y
+   el título quedaba cortado contra la barra lateral. */
+#ai-section > .section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 32px 32px 16px;
+    flex-shrink: 0;
+}
+#ai-section > .section-header h1 {
+    font-size: 1.6rem;
+    margin: 0 0 4px;
+    color: var(--text-strong);
+}
+#ai-section > .section-header .section-subtitle {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: .9rem;
+}
+#ai-section > .ai-layout,
+#ai-section > .ai-disabled-notice {
+    padding: 0 32px 32px;
+}
+/* El padding del aviso va por dentro para no perder su fondo y borde. */
+#ai-section > .ai-disabled-notice {
+    margin: 0 32px 32px;
+    padding: 24px;
+}
+@media (max-width: 767px) {
+    #ai-section > .section-header { padding: 20px 16px 12px; }
+    #ai-section > .ai-layout { padding: 0 16px 24px; }
+    #ai-section > .ai-disabled-notice { margin: 0 16px 24px; }
+}
