@@ -16588,3 +16588,162 @@ body.light .laser-fire-btn-wide {
 .ai-test-result[data-tone="warn"] { color: var(--status-warn); }
 .ai-test-result[data-tone="error"] { color: var(--status-danger); }
 .ai-test-result[data-tone="pending"] { color: var(--text-faint); }
+
+/* ===========================================================================
+   MODO IA
+   ---------------------------------------------------------------------------
+   Dos interruptores independientes (ver docs/MODO_IA_PLAN.md):
+
+     body.ai              -> la PALETA del modo IA (un tema más, como dark/green/red)
+     body[data-ai-active] -> los ELEMENTOS exclusivos del modo IA
+
+   Son ortogonales a propósito. Con la IA encendida y el tema oscuro, la
+   píldora y el resto de los elementos siguen ahí, pintados en oscuro. Al
+   apagar la IA desaparecen, sin importar el tema. Por eso los elementos NO
+   se cuelgan de la clase del tema.
+   =========================================================================== */
+
+/* Degradado de marca verde -> cian del logotipo NOPAL Intelligence. Se define
+   en :root para que los elementos de IA se vean bien en CUALQUIER tema, y cada
+   tema puede ajustarlo si lo necesita. Es color de marca, nunca de estado: una
+   máquina con problema se pinta con --status-danger, jamás con esto. */
+:root {
+    --ai-grad-from: #22C55E;
+    --ai-grad-to: #06B6D4;
+    --ai-glow: rgba(34, 197, 94, 0.18);
+}
+body.dark, body.red {
+    --ai-grad-from: #4ADE80;
+    --ai-grad-to: #22D3EE;
+    --ai-glow: rgba(74, 222, 128, 0.14);
+}
+
+/* --- La paleta del modo IA ------------------------------------------------
+   Claro y frío, tarjetas blancas, acento verde nopal. Mismas variables que
+   redefinen dark/green/red/custom: ninguna tarjeta hardcodea un color. */
+body.ai {
+    --surface-base: #EDF3F5;
+    --surface-raised: #FFFFFF;
+    --surface-sunken: #F6FAFB;
+    --surface-nav: #FFFFFF;
+
+    --text-strong: #0E1C28;
+    --text-soft: #52646F;
+    --text-faint: #7C8D97;
+
+    --border-subtle: #DFE8EC;
+    --border-control: #C3D2D9;
+
+    --accent-fill: #16A34A;
+    --accent-fill-hover: #15803D;
+    --accent-fill-active: #166534;
+    --accent-ink: #0F7A38;
+    --accent-on: #FFFFFF;
+    --accent-fill-rgb: 22, 163, 74;
+
+    --status-ok: #16A34A;
+    --status-warn: #F59E0B;
+    --status-danger: #EF4444;
+    --status-info: #3B82F6;
+
+    --green-emphasis: #16A34A;
+    --violet: #8B5CF6;
+}
+
+/* --- Elementos exclusivos: ocultos salvo con la IA encendida -------------- */
+[data-ai-only] { display: none; }
+body[data-ai-active="true"] [data-ai-only] { display: revert; }
+body[data-ai-active="true"] [data-ai-only].ai-only-flex { display: flex; }
+
+/* Píldora "MODO IA ACTIVADO" de la barra superior */
+.ai-mode-pill {
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--ai-grad-to);
+    background: linear-gradient(90deg, var(--ai-glow), transparent 60%), var(--surface-raised);
+    border: 1px solid var(--ai-grad-from);
+}
+.ai-mode-pill svg { color: var(--ai-grad-from); flex-shrink: 0; }
+
+/* Ítem "IA activada" del menú lateral: con la IA encendida se vuelve el único
+   elemento del nav con relleno de marca — es el indicador de estado, no un
+   destino más. */
+body[data-ai-active="true"] .nav-item[data-section="ai"] {
+    background: linear-gradient(100deg, var(--ai-grad-from), var(--ai-grad-to));
+    color: #FFFFFF;
+    border-radius: var(--radius-md);
+}
+body[data-ai-active="true"] .nav-item[data-section="ai"] svg { color: #FFFFFF; }
+body[data-ai-active="true"] .nav-item[data-section="ai"]:hover { filter: brightness(1.06); }
+
+/* Franja de capacidades bajo los dispositivos */
+.ai-capability-strip {
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    padding: 14px 20px;
+    margin-top: 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+.ai-capability {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .82rem;
+    color: var(--text-soft);
+    white-space: nowrap;
+}
+.ai-capability svg { color: var(--ai-grad-from); flex-shrink: 0; }
+.ai-capability + .ai-capability { border-left: 1px solid var(--border-subtle); padding-left: 28px; }
+@media (max-width: 767px) {
+    .ai-capability + .ai-capability { border-left: none; padding-left: 0; }
+}
+
+/* Marca de la barra lateral: con la IA encendida el logotipo pasa a
+   NOPAL Intelligence. Si el archivo del logotipo aún no está en
+   /static/img/, el degradado del texto mantiene la identidad y nada se rompe. */
+body[data-ai-active="true"] .sidebar-ai-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 2px 10px;
+}
+.sidebar-ai-brand-text {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, var(--ai-grad-from), var(--ai-grad-to));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Marca de la barra lateral en modo IA: el logotipo completo cuando hay
+   ancho, el isotipo solo cuando la barra está colapsada o en móvil. */
+.sidebar-ai-brand-logo { max-width: 100%; height: auto; display: block; }
+.sidebar-ai-brand-mark { width: 34px; height: auto; display: none; }
+.sidebar.collapsed .sidebar-ai-brand-logo,
+.sidebar-collapsed .sidebar-ai-brand-logo { display: none; }
+.sidebar.collapsed .sidebar-ai-brand-mark,
+.sidebar-collapsed .sidebar-ai-brand-mark { display: block; margin: 0 auto; }
+
+/* Las tarjetas del panel ya heredan la paleta del modo IA por las variables,
+   así que aquí solo van los ajustes que el modelo de muestra pide y que las
+   variables no cubren: superficie blanca sobre fondo frío y borde más suave. */
+body.ai .panel-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 1px 2px rgba(14, 28, 40, 0.04);
+}
+body.ai .panel-card-mini { align-items: center; }
