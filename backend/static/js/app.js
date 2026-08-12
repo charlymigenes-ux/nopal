@@ -19009,6 +19009,7 @@ async function loadAiSettings() {
         // entrada; el resto del formulario muestra la IA que se está editando.
         const check = document.getElementById('ai-enabled');
         if (check) check.checked = !!aiProvidersCache.enabled;
+        aiUpdateSettingsDimming(!!aiProvidersCache.enabled);
         if (aiEditingId === null && activa) aiEditProvider(activa);
         else if (!activa) aiResetProviderForm();
     } catch (error) {
@@ -19114,7 +19115,14 @@ async function testAiConnection() {
 // oscuro y seguir viendo la píldora, la marca y la franja de capacidades.
 const AI_THEME_BEFORE_KEY = 'themeBeforeAi';
 
+function aiUpdateSettingsDimming(enabled) {
+    // El gris es solo señal visual: los campos siguen siendo usables porque
+    // configurar la IA es paso previo a poder encenderla.
+    document.getElementById('ai-settings-body')?.classList.toggle('is-off', !enabled);
+}
+
 function aiApplyModeChrome(enabled) {
+    aiUpdateSettingsDimming(enabled);
     const wasActive = document.body.getAttribute('data-ai-active') === 'true';
     // La pestaña de IA desaparece al apagar la capa; si era la visible hay
     // que devolver el panel a Trabajos o quedaría en blanco.
@@ -19529,7 +19537,10 @@ document.getElementById('ai-suggestion-add-btn')?.addEventListener('click', () =
     document.querySelector('[data-suggestion-index]:last-of-type')?.focus();
 });
 document.getElementById('ai-cancel-btn')?.addEventListener('click', aiResetProviderForm);
-document.getElementById('ai-enabled')?.addEventListener('change', event => setAiEnabled(event.target.checked));
+document.getElementById('ai-enabled')?.addEventListener('change', event => {
+    aiUpdateSettingsDimming(event.target.checked);   // respuesta inmediata al clic
+    setAiEnabled(event.target.checked);
+});
 document.getElementById('ai-test-btn')?.addEventListener('click', testAiConnection);
 document.querySelectorAll('input[name="ai-model-mode"]').forEach(radio =>
     radio.addEventListener('change', aiUpdateModelModeUi));

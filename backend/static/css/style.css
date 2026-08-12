@@ -16861,3 +16861,21 @@ body.ai .dashboard-dock-section .section-title h2 {
 .ai-radio input { accent-color: var(--accent-fill); cursor: pointer; }
 #ai-tier-models[hidden] { display: none; }
 #ai-tier-models .ai-field { margin-top: 10px; }
+
+/* Configuración de IA con la capa apagada: todo lo que cuelga del
+   interruptor se ve en gris, para que se lea de un vistazo que no está en
+   uso. NO se deshabilita: en una instalación nueva hay que poder llenar
+   dirección, modelo y clave ANTES de poder encender la capa. */
+.ai-settings-body {
+    transition: filter .2s ease, opacity .2s ease;
+}
+.ai-settings-body.is-off {
+    filter: grayscale(1);
+    opacity: .55;
+}
+.ai-settings-body.is-off:focus-within {
+    /* Al ponerse a configurar vuelve el color: si no, se estaría llenando
+       un formulario a ciegas en escala de grises. */
+    filter: none;
+    opacity: 1;
+}
