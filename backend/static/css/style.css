@@ -16568,3 +16568,22 @@ body[data-ai-active="true"] .sidebar-ai-brand {
     background-clip: text;
     color: transparent;
 }
+
+/* Marca de la barra lateral en modo IA: el logotipo completo cuando hay
+   ancho, el isotipo solo cuando la barra está colapsada o en móvil. */
+.sidebar-ai-brand-logo { max-width: 100%; height: auto; display: block; }
+.sidebar-ai-brand-mark { width: 34px; height: auto; display: none; }
+.sidebar.collapsed .sidebar-ai-brand-logo,
+.sidebar-collapsed .sidebar-ai-brand-logo { display: none; }
+.sidebar.collapsed .sidebar-ai-brand-mark,
+.sidebar-collapsed .sidebar-ai-brand-mark { display: block; margin: 0 auto; }
+
+/* Las tarjetas del panel ya heredan la paleta del modo IA por las variables,
+   así que aquí solo van los ajustes que el modelo de muestra pide y que las
+   variables no cubren: superficie blanca sobre fondo frío y borde más suave. */
+body.ai .panel-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 1px 2px rgba(14, 28, 40, 0.04);
+}
+body.ai .panel-card-mini { align-items: center; }

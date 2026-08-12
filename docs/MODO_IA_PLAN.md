@@ -176,18 +176,30 @@ dólares sobre una arquitectura que ya existe; la segunda es desarrollo.
 ACTIVADO" en la barra superior y en el menú. Sin tarjetas nuevas. Es el cambio
 visible más grande y no depende de ningún dato nuevo.
 
-**Fase 2 — las tarjetas reales.** Las ocho de la primera tabla, con los renders
-por tipo de máquina. Aquí el panel ya se parece al mockup.
+**Fase 2 — las tarjetas. HECHA, y era mucho más chica de lo planeado.**
 
-**Fase 3 — etiquetar lo estimado.** Consumo actual con su marca de estimación
-visible. Retirar "Eficiencia" o sustituirla por algo medible.
+Al ir a construirlas resultó que **las siete ya existían** en el panel:
+`panel-card-pos-estado`, `-host`, `-red`, `panel-card-alerts` y las tres
+mini-tarjetas (`panel-ambient-value`, `panel-power-value`,
+`panel-maintenance-value`). Y `renderPanelMiniCards()` ya resolvía bien la
+falta de datos: muestra `panelNoSensor`, `panelEstimated` y `panelNoData` en
+vez de inventar números.
 
-**Fase 4 — cerrar los huecos.** Sensor ambiental y/o tracking de
-mantenimiento, según se decida. Cada uno convierte una tarjeta pendiente en una
-tarjeta real.
+Como todas se pintan con las variables del tema, **adoptan la paleta del modo
+IA solas**. Lo único que hubo que agregar fue el logotipo y un par de ajustes
+de superficie.
 
-Las fases 1 y 2 dejan el panel prácticamente idéntico al mockup. Las 3 y 4 son
-las que lo vuelven honesto.
+Esto también resuelve lo que el plan llamaba fase 3: el consumo ya se
+etiqueta como estimado.
+
+**Fase 3 — rediseño de las fichas de dispositivo.** Vista oficial de NOPAL:
+render por tipo de máquina (`3D_IA.png`, `CNC_IA.png`, `LASER_IA.png`), anillo
+de progreso y fila de métricas al pie. Igual en cualquier tema y con IA o sin
+ella. **Pendiente.**
+
+**Fase 4 — cerrar los huecos de datos.** Sensor ambiental y/o tracking de
+mantenimiento, según se decida. Cada uno convierte una tarjeta que hoy dice
+"sin datos" en una tarjeta con medición real.
 
 ---
 
