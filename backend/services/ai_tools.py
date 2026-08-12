@@ -557,26 +557,67 @@ async def get_scenes() -> Dict[str, Any]:
 
 
 async def get_led_matrix() -> Dict[str, Any]:
-    """Estado de la Matriz LED y sus anuncios guardados.
+    """Todo lo que la Matriz LED tiene guardado: anuncios, reglas y alertas
+    por máquina.
 
     La Matriz LED es un plugin DISTINTO al de accesorios: sus anuncios no son
     las escenas de tiras LED y relés. Confundirlos hacía que un pedido sobre
     la matriz terminara prendiendo tiras.
+
+    Devuelve los tres conceptos porque son tres cosas distintas y el usuario
+    pregunta por las tres:
+
+    - `announcements`: los dibujos/textos guardados. Se muestran ahora mismo.
+    - `rules`: automatizaciones (inactividad, material bajo). Disparan un
+      anuncio cuando se cumple su condición.
+    - `machine_alerts`: por máquina, qué anuncio se muestra en cada estado.
+      NO se "activan" como una escena: se prenden o apagan, y solo hacen algo
+      cuando la máquina cambia de estado.
+
+    Faltaban las dos últimas y el modelo se las inventaba, ids incluidos.
     """
     module = get_loaded_plugin_module("matriz-led", "services.screen_service")
     if module is None:
         return _unavailable("El plugin de Matriz LED no está instalado o no está cargado")
 
+    maquinas = await _collect_machines()
+    nombres = {m["id"]: m.get("name") for m in maquinas}
     loop = asyncio.get_event_loop()
 
     def _leer() -> Dict[str, Any]:
         estado = module.get_status() or {}
         anuncios = module.list_announcements() or []
+        # getattr: una instalación con el plugin viejo no tiene reglas ni
+        # alertas, y eso no debe romper la consulta del resto.
+        reglas = (getattr(module, "list_rules", None) or (lambda: []))() or []
+        alertas = (getattr(module, "list_machine_alerts", None) or (lambda: {}))() or {}
+
+        titulos = {a.get("id"): (a.get("name") or a.get("title")) for a in anuncios}
         return {
             "online": bool(estado.get("online", estado.get("connected"))),
             "status": estado,
-            "announcements": [{"id": a.get("id"), "name": a.get("name") or a.get("title")}
+            "announcements": [{"id": a.get("id"), "name": titulos.get(a.get("id"))}
                               for a in anuncios],
+            "rules": [{
+                "id": r.get("id"),
+                "name": r.get("name"),
+                "trigger": r.get("trigger"),
+                "enabled": bool(r.get("enabled", True)),
+                "announcement": titulos.get(r.get("announcement_id")),
+            } for r in reglas],
+            "machine_alerts": [{
+                "machine_id": machine_id,
+                # El nombre visible: el usuario dice "la CNC 3018", no
+                # "laser:192.168.0.61". None = quedó configurada para una
+                # máquina que ya no existe en NOPAL.
+                "machine": nombres.get(machine_id),
+                "enabled": bool((cfg or {}).get("enabled")),
+                "announcements_by_state": {
+                    estado_maquina: titulos.get(anuncio_id)
+                    for estado_maquina, anuncio_id in ((cfg or {}).get("state_announcements") or {}).items()
+                    if anuncio_id
+                },
+            } for machine_id, cfg in (alertas.items() if isinstance(alertas, dict) else [])],
         }
 
     try:
@@ -887,8 +928,11 @@ TOOLS: Dict[str, Tool] = {
         ),
         Tool(
             "get_led_matrix",
-            "Estado de la Matriz LED y sus anuncios guardados. La Matriz LED es un plugin distinto "
-            "al de accesorios: si te preguntan por la matriz o su pantalla, usa esta, no get_scenes.",
+            "Matriz LED: su estado, sus ANUNCIOS guardados, sus REGLAS de automatización y sus "
+            "ALERTAS POR MÁQUINA (qué anuncio se muestra en cada estado de cada máquina). Es un "
+            "plugin distinto al de accesorios: si te preguntan por la matriz, su pantalla, sus "
+            "anuncios, sus reglas o sus alertas por máquina, usa esta y NO get_scenes. Nunca "
+            "supongas ids de la matriz: solo existen los que devuelve esta herramienta.",
             get_led_matrix,
         ),
         Tool(
