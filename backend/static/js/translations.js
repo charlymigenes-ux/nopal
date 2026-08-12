@@ -1,5 +1,12 @@
 const translations = window.NopalTranslations = window.NopalTranslations || {
   es: {
+    aiModeActive: 'Modo IA activado',
+    aiBrand: 'NOPAL Intelligence',
+    aiCapAutomation: 'Automatización activa',
+    aiCapPredictive: 'Asistencia predictiva',
+    aiCapRealtime: 'Optimización en tiempo real',
+    aiCapDiagnostic: 'Diagnóstico inteligente',
+    aiThemeName: 'Modo IA',
     aiTitle: 'NOPAL Intelligence',
     aiSubtitle: 'Asistente inteligente del taller',
     navAi: 'NOPAL Intelligence',
@@ -1339,6 +1346,13 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     printerDiagNo: 'No',
   },
   en: {
+    aiModeActive: 'AI mode on',
+    aiBrand: 'NOPAL Intelligence',
+    aiCapAutomation: 'Automation active',
+    aiCapPredictive: 'Predictive assistance',
+    aiCapRealtime: 'Real-time optimization',
+    aiCapDiagnostic: 'Smart diagnostics',
+    aiThemeName: 'AI mode',
     aiTitle: 'NOPAL Intelligence',
     aiSubtitle: 'Smart workshop assistant',
     navAi: 'NOPAL Intelligence',

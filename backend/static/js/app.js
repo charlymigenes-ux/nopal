@@ -1663,8 +1663,8 @@ function clearCustomThemeTokens() {
 
 function applyTheme(theme) {
     let resolvedTheme = theme === 'custom' && getCustomTheme() ? 'custom' : theme;
-    if (!['dark', 'green', 'red', 'custom'].includes(resolvedTheme)) resolvedTheme = 'light';
-    document.body.classList.remove('dark', 'green', 'red', 'custom', 'light');
+    if (!['dark', 'green', 'red', 'custom', 'ai'].includes(resolvedTheme)) resolvedTheme = 'light';
+    document.body.classList.remove('dark', 'green', 'red', 'custom', 'light', 'ai');
     document.body.classList.add(resolvedTheme);
     document.body.setAttribute('data-theme', resolvedTheme);
     applyCustomThemeBackground();
@@ -18734,9 +18734,51 @@ async function testAiConnection() {
 
 // --- Sección del asistente -------------------------------------------------
 
+// El modo IA tiene DOS interruptores independientes (ver docs/MODO_IA_PLAN.md):
+// la clase de tema decide los COLORES, y este atributo decide qué elementos
+// EXISTEN. Separarlos es lo que permite tener la IA encendida con el tema
+// oscuro y seguir viendo la píldora, la marca y la franja de capacidades.
+const AI_THEME_BEFORE_KEY = 'themeBeforeAi';
+
+function aiApplyModeChrome(enabled) {
+    const wasActive = document.body.getAttribute('data-ai-active') === 'true';
+    document.body.setAttribute('data-ai-active', enabled ? 'true' : 'false');
+    if (enabled === wasActive) return;  // sin transición, no se toca el tema
+
+    // Al encender la IA el ambiente completo cambia al tema 'ai', pero se
+    // recuerda el anterior para devolverlo al apagar. Si mientras tanto el
+    // usuario elige otro tema a mano, se respeta: al apagar solo se restaura
+    // cuando el tema vigente sigue siendo 'ai'.
+    const actual = document.body.getAttribute('data-theme');
+    if (enabled) {
+        if (actual !== 'ai') {
+            try { localStorage.setItem(AI_THEME_BEFORE_KEY, actual || 'light'); } catch (_) {}
+            applyTheme('ai');
+        }
+    } else if (actual === 'ai') {
+        let previo = 'light';
+        try { previo = localStorage.getItem(AI_THEME_BEFORE_KEY) || 'light'; } catch (_) {}
+        applyTheme(previo);
+    }
+}
+
+// El chrome del modo IA no puede esperar a que alguien entre a la sección de
+// IA: si la capa está encendida, la píldora y la marca tienen que estar desde
+// que carga la página.
+async function aiInitModeChrome() {
+    try {
+        const status = await aiFetchJson('/api/ai/status');
+        aiApplyModeChrome(!!status.enabled);
+        aiUpdateNavVisibility(!!status.enabled);
+    } catch (_) {
+        aiApplyModeChrome(false);
+    }
+}
+
 function aiUpdateNavVisibility(enabled) {
     const button = document.getElementById('nav-ai-btn');
     if (button) button.hidden = !enabled;
+    aiApplyModeChrome(enabled);
 }
 
 function aiMachineCard(machine) {
@@ -18905,6 +18947,8 @@ async function loadAiSection() {
     aiLoadMachines();
     aiLoadEvents();
 }
+
+aiInitModeChrome();
 
 document.getElementById('ai-composer')?.addEventListener('submit', event => {
     event.preventDefault();

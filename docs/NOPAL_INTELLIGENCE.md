@@ -2,6 +2,11 @@
 
 Capa de IA **opcional y desacoplada** del core de NOPAL.
 
+> La identidad visual del "MODO IA ACTIVADO" — paleta, fondo, logotipo y el
+> bloque de tarjetas de resumen — se planea aparte en
+> [MODO_IA_PLAN.md](MODO_IA_PLAN.md). Este documento cubre la capa que ya
+> existe y funciona.
+
 NOPAL no depende de ningún modelo ni proveedor. Habla contra cualquier servidor que
 exponga la API estilo OpenAI (`/v1/chat/completions`): llama.cpp, vLLM, LM Studio,
 Ollama (por su capa `/v1`) o, si el usuario lo habilita explícitamente, un proveedor
