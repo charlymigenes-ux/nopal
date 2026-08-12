@@ -27,6 +27,7 @@ Hay un test que recorre el registro y falla si alguien agrega algo que
 encienda láser o CNC.
 """
 
+import inspect
 import logging
 import time
 import uuid
@@ -122,13 +123,21 @@ async def activate_scene(scene_id: str) -> Dict[str, Any]:
     if module is None:
         raise ActionError("El plugin de Automatización de Taller no está instalado")
 
-    aplicar = getattr(module, "apply_scene", None) or getattr(module, "activate_scene", None)
-    if aplicar is None:
+    # El plugin la llama run_scene (async). Se aceptan los otros nombres por
+    # si una versión distinta del plugin los usa, pero run_scene es el real.
+    ejecutar = (getattr(module, "run_scene", None)
+                or getattr(module, "apply_scene", None)
+                or getattr(module, "activate_scene", None))
+    if ejecutar is None:
         raise ActionError("Esta versión del plugin no permite activar escenas desde la IA")
 
-    resultado = aplicar(scene_id)
-    if resultado is None or resultado is False:
-        raise ActionError(f"No existe la escena '{scene_id}' o no se pudo activar")
+    resultado = ejecutar(scene_id)
+    if inspect.isawaitable(resultado):
+        resultado = await resultado
+    if resultado is None:
+        raise ActionError(f"No existe la escena '{scene_id}'")
+    if resultado is False:
+        raise ActionError(f"La escena '{scene_id}' no se pudo aplicar completa")
     return {"ok": True, "scene_id": scene_id}
 
 

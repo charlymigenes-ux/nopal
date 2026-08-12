@@ -534,6 +534,28 @@ async def get_accessories() -> Dict[str, Any]:
     }
 
 
+async def get_scenes() -> Dict[str, Any]:
+    """Escenas de accesorios guardadas.
+
+    Sin esto la IA no puede activar una escena: no conoce sus ids ni sus
+    nombres, así que no tiene cómo nombrarla.
+    """
+    module = get_loaded_plugin_module("arduino-accessories", "services.accessory_scenes")
+    if module is None:
+        return _unavailable("El plugin de Automatización de Taller no está instalado o no está cargado")
+    loop = asyncio.get_event_loop()
+    try:
+        escenas = await loop.run_in_executor(None, module.get_scenes)
+    except Exception as exc:
+        logger.warning(f"No se pudieron leer las escenas para la capa de IA: {exc}")
+        return _unavailable("No se pudieron leer las escenas")
+    return {
+        "count": len(escenas),
+        "scenes": [{"id": e.get("id"), "name": e.get("name"),
+                    "steps": len(e.get("actions") or [])} for e in escenas],
+    }
+
+
 async def get_cameras() -> Dict[str, Any]:
     """Cámaras registradas y a qué máquina está atada cada una.
 
@@ -825,6 +847,12 @@ TOOLS: Dict[str, Tool] = {
             "con su estado de encendido. Si 'responding' es false, el accesorio no contestó — no está "
             "apagado, está incomunicado.",
             get_accessories,
+        ),
+        Tool(
+            "get_scenes",
+            "Escenas de accesorios guardadas, con su id y nombre. Consúltala antes de activar "
+            "una escena: sin esto no conoces sus ids.",
+            get_scenes,
         ),
         Tool(
             "get_cameras",

@@ -1,5 +1,9 @@
 const translations = window.NopalTranslations = window.NopalTranslations || {
   es: {
+    aiSaveQuestions: 'Guardar preguntas',
+    aiQuestionsSaved: 'Preguntas guardadas.',
+    aiActionsEnable: 'Permitir que la IA actúe',
+    aiActionsHint: 'Prender relés y escenas, encolar archivos, precalentar y controlar impresiones. Lo de riesgo siempre te pide confirmación. Nunca puede arrancar el láser ni el CNC.',
     aiConfirmInSection: 'Esa acción necesita confirmación. Ábrela en NOPAL Intelligence para revisarla y confirmarla.',
     aiHistory: 'Conversaciones',
     aiNoHistory: 'Todavía no hay conversaciones.',
@@ -1426,6 +1430,10 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     printerDiagNo: 'No',
   },
   en: {
+    aiSaveQuestions: 'Save questions',
+    aiQuestionsSaved: 'Questions saved.',
+    aiActionsEnable: 'Let the AI take actions',
+    aiActionsHint: 'Switch relays and scenes, queue files, preheat and control prints. Risky ones always ask you first. It can never start the laser or the CNC.',
     aiConfirmInSection: 'That action needs confirmation. Open NOPAL Intelligence to review and confirm it.',
     aiHistory: 'Conversations',
     aiNoHistory: 'No conversations yet.',

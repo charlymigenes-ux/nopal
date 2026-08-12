@@ -188,3 +188,35 @@ def test_el_prompt_deja_de_decir_solo_lectura_con_acciones_activas():
     assert "pending_confirmation" in con_acciones
     # La regla de no inventar sobrevive en ambos casos
     assert "NUNCA inventes" in sin_acciones and "NUNCA inventes" in con_acciones
+
+
+# --------------------------------------------------------------------------
+# Contrato entre la configuración y el formulario
+# --------------------------------------------------------------------------
+
+def test_los_interruptores_de_seguridad_son_editables_en_la_interfaz():
+    """Un interruptor de seguridad que existe en la configuración pero no en
+    el formulario queda inalcanzable: fue exactamente lo que pasó con
+    actions_enabled -- se documentó cómo activarlo y el control no existía.
+
+    Solo se exigen los de seguridad. max_tokens, temperature y
+    max_tool_iterations son deliberadamente solo-entorno, y update_provider
+    preserva lo que el formulario no manda, así que no se pierden.
+    """
+    import pathlib
+
+    app_js = pathlib.Path(__file__).resolve().parents[1] / "static/js/app.js"
+    fuente = app_js.read_text(encoding="utf-8")
+    inicio = fuente.index("function aiReadConfigForm()")
+    cuerpo = fuente[inicio:fuente.index("}", fuente.index("return {", inicio))]
+
+    for campo in ("actions_enabled", "allow_public_endpoint"):
+        assert campo in cuerpo, f"el formulario no manda '{campo}', queda inalcanzable"
+
+
+def test_la_accion_de_escena_usa_el_nombre_real_del_plugin():
+    """El plugin la llama run_scene. Adivinar apply_scene hacía que activar
+    escenas fallara siempre con un mensaje engañoso sobre la versión."""
+    import inspect as _inspect
+    fuente = _inspect.getsource(ai_actions.activate_scene)
+    assert '"run_scene"' in fuente

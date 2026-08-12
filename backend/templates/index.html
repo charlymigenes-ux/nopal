@@ -2220,6 +2220,12 @@
                                     </div>
                                     <small class="ai-field-hint" data-i18n="aiQuickQuestionsHint">Los botones que aparecen bajo la conversación. Si las dejas vacías se usan las de fábrica.</small>
                                     <div class="ai-suggestions-rows" id="ai-suggestions-rows"></div>
+                                    <div class="ai-settings-actions">
+                                        <button type="button" class="btn-file-action" id="ai-suggestions-save-btn">
+                                            <span data-i18n="aiSaveQuestions">Guardar preguntas</span>
+                                        </button>
+                                        <span class="ai-test-result" id="ai-suggestions-result"></span>
+                                    </div>
                                 </div>
 
                                 <details class="ai-advanced">
@@ -2239,6 +2245,17 @@
                                             <option value="compact" data-i18n="aiToolProfileCompact">Compacto (5, para servidores lentos)</option>
                                         </select>
                                     </label>
+                                    <div class="settings-option-row">
+                                        <div class="settings-option-label">
+                                            <span data-i18n="aiActionsEnable">Permitir que la IA actúe</span>
+                                            <small data-i18n="aiActionsHint">Prender relés y escenas, encolar archivos, precalentar y controlar impresiones. Lo de riesgo siempre te pide confirmación. Nunca puede arrancar el láser ni el CNC.</small>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="ai-actions-enabled">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+
                                     <label class="ai-field">
                                         <span data-i18n="aiTimeout">Tiempo de espera (segundos)</span>
                                         <input type="number" id="ai-timeout" class="ai-text-input" min="1" max="3600">
@@ -4651,11 +4668,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=32"></script>
+    <script src="/static/js/translations.js?v=34"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=240"></script>
+    <script src="/static/js/app.js?v=242"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
