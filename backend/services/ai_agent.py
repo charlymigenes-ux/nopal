@@ -29,7 +29,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from backend.services import ai_config_service, ai_conversations_service, ai_tools
+from backend.services import ai_actions, ai_config_service, ai_conversations_service, ai_tools
 from backend.services.ai_provider import AIProvider, AIProviderError, ToolsUnsupportedError, get_provider
 
 logger = logging.getLogger(__name__)
@@ -78,8 +78,31 @@ nombres visibles de las máquinas.
 """
 
 
-def _system_prompt(profile: str) -> str:
-    return COMPACT_SYSTEM_PROMPT if profile == "compact" else SYSTEM_PROMPT
+ACTIONS_PROMPT = """
+Además de consultar, puedes ejecutar algunas acciones sobre el taller. Reglas:
+- Nunca puedes arrancar el láser ni el CNC. No existe esa herramienta y no debes ofrecerla.
+- Algunas acciones devuelven {"status": "pending_confirmation"}: eso significa que NO se
+  ejecutaron. Dilo con claridad y pide confirmación; nunca reportes como hecho algo que
+  quedó pendiente.
+- Si una acción devuelve un error de permiso, explica que esa operación la tiene que hacer
+  un administrador desde el panel.
+- No encadenes acciones que la persona no pidió.
+"""
+
+
+def _system_prompt(profile: str, actions_enabled: bool = False) -> str:
+    base = COMPACT_SYSTEM_PROMPT if profile == "compact" else SYSTEM_PROMPT
+    if not actions_enabled:
+        return base
+    # Con acciones activas, la frase "eres de solo lectura" es falsa y
+    # confundiría al modelo: se retira y se sustituye por las reglas nuevas.
+    sin_solo_lectura = "\n".join(
+        linea for linea in base.splitlines()
+        if "solo lectura" not in linea and "hacerlas la persona desde el panel" not in linea
+        and "eso se hace desde el panel" not in linea
+        and not linea.strip().startswith("home ni encender")
+    )
+    return sin_solo_lectura + ACTIONS_PROMPT
 
 
 # En modo "context" no hay ida y vuelta: se precarga lo que sirve para casi
@@ -104,21 +127,57 @@ def _tool_result_to_text(result: Any) -> str:
         return json.dumps({"error": "unserializable_result"}, ensure_ascii=False)
 
 
+async def _run_action(name, arguments, role, username, actions_enabled):
+    """Ejecuta o deja pendiente, según el nivel de riesgo.
+
+    Las de riesgo `confirm` NO se ejecutan acá: se devuelve al modelo un
+    resultado que dice explícitamente que quedó esperando confirmación, para
+    que redacte "¿confirmas?" en vez de dar por hecho que ya pasó.
+    """
+    # No ofrecer una acción en el catálogo NO es lo mismo que rechazarla: un
+    # modelo puede inventarse el nombre, o un prompt malicioso inducirlo. El
+    # interruptor se revalida acá, en el punto de ejecución.
+    if not actions_enabled:
+        return {"error": "actions_disabled",
+                "detail": "Las acciones están desactivadas en esta instalación de NOPAL."}, None
+
+    accion = ai_actions.ACTIONS[name]
+    try:
+        if accion.risk == "confirm":
+            pendiente = ai_actions.stage_action(name, arguments or {}, username)
+            return {
+                "status": "pending_confirmation",
+                "message": "La acción NO se ejecutó. Espera la confirmación de la persona.",
+                "action": name,
+            }, pendiente
+        return await ai_actions.execute(name, arguments or {}, role), None
+    except ai_actions.ActionError as exc:
+        return {"error": "action_failed", "detail": str(exc)}, None
+
+
 async def _run_native_loop(
     provider: AIProvider,
     question: str,
     config: Dict[str, Any],
     history: Optional[List[Dict[str, str]]] = None,
+    role: str = "operador",
+    username: str = "",
 ) -> Dict[str, Any]:
     """Ciclo con function calling: el modelo pide herramientas hasta que
     tiene con qué contestar (o hasta agotar `max_tool_iterations`)."""
     profile = config.get("tool_profile") or "full"
     messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": _system_prompt(profile)},
+        {"role": "system", "content": _system_prompt(profile, bool(config.get("actions_enabled")))},
         *(history or []),
         {"role": "user", "content": question},
     ]
     schema = ai_tools.get_tools_schema(profile)
+    # Las acciones solo entran al catálogo si están habilitadas Y el rol del
+    # usuario las permite: la IA nunca ofrece lo que la persona no podría
+    # hacer en el panel.
+    if config.get("actions_enabled"):
+        schema = schema + ai_actions.get_actions_schema(role)
+    pending_action = None
     trace: List[Dict[str, Any]] = []
     max_iterations = int(config.get("max_tool_iterations") or 4)
 
@@ -133,7 +192,8 @@ async def _run_native_loop(
                 # está cooperando con el protocolo. Mejor caer a modo contexto
                 # que devolverle al usuario una respuesta vacía.
                 raise ToolsUnsupportedError("El modelo no pidió herramientas ni devolvió texto")
-            return {"answer": content, "tool_calls": trace, "mode": "native"}
+            return {"answer": content, "tool_calls": trace, "mode": "native",
+                    "pending_action": pending_action}
 
         messages.append(message)
 
@@ -147,7 +207,13 @@ async def _run_native_loop(
                 arguments = {}
 
             started = time.monotonic()
-            result = await ai_tools.call_tool(name, arguments)
+            if name in ai_actions.ACTIONS:
+                result, pendiente = await _run_action(
+                    name, arguments, role, username, bool(config.get("actions_enabled")))
+                if pendiente is not None:
+                    pending_action = pendiente
+            else:
+                result = await ai_tools.call_tool(name, arguments)
             elapsed_ms = round((time.monotonic() - started) * 1000)
 
             trace.append({
@@ -173,6 +239,7 @@ async def _run_native_loop(
         "tool_calls": trace,
         "mode": "native",
         "truncated": True,
+        "pending_action": pending_action,
     }
 
 
@@ -215,7 +282,8 @@ async def _run_context_mode(
     return {"answer": (message.get("content") or "").strip(), "tool_calls": trace, "mode": "context"}
 
 
-async def ask(question: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
+async def ask(question: str, conversation_id: Optional[str] = None,
+              role: str = "operador", username: str = "") -> Dict[str, Any]:
     """Punto de entrada de NOPAL Intelligence.
 
     Levanta AIDisabledError si la capa está apagada y AIProviderError si el
@@ -242,10 +310,10 @@ async def ask(question: str, conversation_id: Optional[str] = None) -> Dict[str,
     if tool_mode == "context":
         result = await _run_context_mode(provider, question, profile, history)
     elif tool_mode == "native":
-        result = await _run_native_loop(provider, question, config, history)
+        result = await _run_native_loop(provider, question, config, history, role, username)
     else:
         try:
-            result = await _run_native_loop(provider, question, config, history)
+            result = await _run_native_loop(provider, question, config, history, role, username)
         except ToolsUnsupportedError as exc:
             logger.info(f"[IA] el modelo no soporta function calling ({exc}); se usa modo contexto")
             result = await _run_context_mode(provider, question, profile, history)

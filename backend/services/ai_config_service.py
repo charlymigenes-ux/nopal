@@ -75,6 +75,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     #              porque el modelo lo lee entero antes de empezar a
     #              razonar. Ver get_exposed_tools() en ai_tools.py.
     "tool_profile": "full",
+    # Acciones físicas: apagadas por omisión. Una instalación con la IA
+    # encendida sigue siendo de solo consulta hasta que alguien lo cambie a
+    # mano (ver ai_actions.py).
+    "actions_enabled": False,
     # Tope de vueltas del ciclo herramienta->modelo. En una i3 cada vuelta
     # cuesta segundos reales, así que se mantiene chico.
     "max_tool_iterations": 4,
@@ -193,6 +197,7 @@ ENV_OVERRIDES = {
     "NOPAL_AI_TEMPERATURE": ("temperature", float),
     "NOPAL_AI_TOOL_MODE": ("tool_mode", str),
     "NOPAL_AI_TOOL_PROFILE": ("tool_profile", str),
+    "NOPAL_AI_ACTIONS_ENABLED": ("actions_enabled", _as_bool),
     "NOPAL_AI_MAX_TOOL_ITERATIONS": ("max_tool_iterations", _as_int),
     "NOPAL_AI_ALLOW_PUBLIC_ENDPOINT": ("allow_public_endpoint", _as_bool),
 }
@@ -211,7 +216,7 @@ class AIConfigError(ValueError):
 PROVIDER_FIELDS = (
     "name", "provider", "base_url", "model", "api_key", "timeout_s",
     "max_tokens", "temperature", "tool_mode", "tool_profile",
-    "max_tool_iterations", "allow_public_endpoint",
+    "max_tool_iterations", "allow_public_endpoint", "actions_enabled",
 )
 
 
@@ -361,6 +366,7 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     validated["enabled"] = bool(validated["enabled"])
     validated["allow_public_endpoint"] = bool(validated["allow_public_endpoint"])
+    validated["actions_enabled"] = bool(validated["actions_enabled"])
     validated["base_url"] = str(validated["base_url"] or "").strip().rstrip("/")
     validated["model"] = str(validated["model"] or "").strip()
     validated["api_key"] = str(validated["api_key"] or "")
