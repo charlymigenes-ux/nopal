@@ -1,5 +1,6 @@
 const translations = window.NopalTranslations = window.NopalTranslations || {
   es: {
+    aiConfirmInSection: 'Esa acción necesita confirmación. Ábrela en NOPAL Intelligence para revisarla y confirmarla.',
     aiHistory: 'Conversaciones',
     aiNoHistory: 'Todavía no hay conversaciones.',
     aiClearHistory: 'Borrar todo el historial',
@@ -1425,6 +1426,7 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     printerDiagNo: 'No',
   },
   en: {
+    aiConfirmInSection: 'That action needs confirmation. Open NOPAL Intelligence to review and confirm it.',
     aiHistory: 'Conversations',
     aiNoHistory: 'No conversations yet.',
     aiClearHistory: 'Clear all history',
