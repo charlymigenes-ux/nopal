@@ -659,49 +659,78 @@ async def get_cameras() -> Dict[str, Any]:
 
 # Extensiones por tipo de trabajo. La biblioteca guarda todo mezclado en dos
 # carpetas (models/ y gcode/), así que el filtro por máquina se hace acá.
-LIBRARY_KINDS = {
-    "printer": {".gcode", ".gco", ".g", ".bgcode"},
-    "laser": {".gcode", ".gco", ".nc", ".svg", ".lbrn", ".lbrn2"},
-    "cnc": {".nc", ".gcode", ".gco", ".tap", ".ngc"},
-    "model": {".stl", ".3mf", ".obj", ".step", ".stp"},
-}
+# Las extensiones NO se declaran acá: son las de NOPAL, definidas en
+# backend/api/models.py, y duplicarlas ya salió caro. La lista propia que
+# había antes se había quedado sin ".gc", que es justo la extensión de 53 de
+# los 57 archivos de una instalación real -- la IA veía cuatro archivos y
+# juraba que eso era toda la biblioteca.
+from backend.api.models import GCODE_EXTENSIONS, MODEL_EXTENSIONS  # noqa: E402
+
+# Las dos secciones de la biblioteca, tal como las organiza NOPAL:
+#   model -> "Modelos 3D": STL/3MF sin laminar Y G-code de impresora listo.
+#   gcode -> "Archivos": G-code suelto (típicamente láser y CNC).
+# Se recorren SIEMPRE las dos. Antes solo se miraba una según el `kind`, y
+# los 48 archivos de impresora guardados en Modelos 3D eran invisibles.
 LIBRARY_ROOTS = {"model": "uploads/models", "gcode": "uploads/gcode"}
+LIBRARY_SECTION_NAMES = {"model": "Modelos 3D", "gcode": "Archivos"}
 MAX_LIBRARY_FILES = 100
 
 
-def _scan_library(section: str, kind: Optional[str], search: Optional[str]) -> Dict[str, Any]:
-    raiz = LIBRARY_ROOTS.get(section)
-    if raiz is None or not os.path.isdir(raiz):
-        return {"section": section, "count": 0, "files": []}
+def _extensions_for_kind(kind: Optional[str]) -> set:
+    """Qué extensiones cuentan para el tipo de máquina pedido.
 
-    extensiones = LIBRARY_KINDS.get(kind or "", set())
+    La extensión distingue mal entre láser, CNC e impresora: un .gcode vale
+    para las tres y en este taller conviven .gc de láser con .gcode de
+    impresora. Así que solo se separan las dos familias que sí son
+    distintas -- modelos sin laminar contra G-code -- y para elegir máquina
+    orienta mejor la carpeta, que va en cada resultado.
+    """
+    if kind == "model":
+        return set(MODEL_EXTENSIONS)
+    if kind in ("printer", "laser", "cnc"):
+        return set(GCODE_EXTENSIONS)
+    return set(MODEL_EXTENSIONS) | set(GCODE_EXTENSIONS)
+
+
+def _scan_library(kind: Optional[str], search: Optional[str]) -> Dict[str, Any]:
+    extensiones = _extensions_for_kind(kind)
     aguja = (search or "").strip().lower()
     encontrados = []
 
-    for base, _dirs, archivos in os.walk(raiz):
-        for nombre in archivos:
-            ext = os.path.splitext(nombre)[1].lower()
-            if extensiones and ext not in extensiones:
-                continue
-            if aguja and aguja not in nombre.lower():
-                continue
-            ruta = os.path.join(base, nombre)
-            try:
-                stat = os.stat(ruta)
-            except OSError:
-                continue
-            encontrados.append({
-                # Ruta relativa a la sección: es la que aceptan los endpoints
-                # de NOPAL, no la absoluta del disco.
-                "path": os.path.relpath(ruta, raiz),
-                "name": nombre,
-                "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                "modified_at": int(stat.st_mtime),
-            })
+    for seccion, raiz in LIBRARY_ROOTS.items():
+        if not os.path.isdir(raiz):
+            continue
+        for base, _dirs, archivos in os.walk(raiz):
+            for nombre in archivos:
+                if nombre.startswith("."):
+                    continue
+                if os.path.splitext(nombre)[1].lower() not in extensiones:
+                    continue
+                if aguja and aguja not in nombre.lower():
+                    continue
+                ruta = os.path.join(base, nombre)
+                try:
+                    stat = os.stat(ruta)
+                except OSError:
+                    continue
+                relativa = os.path.relpath(ruta, raiz)
+                carpeta = os.path.dirname(relativa)
+                encontrados.append({
+                    # Ruta relativa a la sección: es la que aceptan los
+                    # endpoints de NOPAL, no la absoluta del disco.
+                    "path": relativa,
+                    "name": nombre,
+                    "section": seccion,
+                    "section_name": LIBRARY_SECTION_NAMES.get(seccion, seccion),
+                    # La carpeta es lo que de verdad dice para qué máquina es
+                    # ("Creador de Formas", "PERROS CON GAFAS").
+                    "folder": carpeta or None,
+                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                    "modified_at": int(stat.st_mtime),
+                })
 
     encontrados.sort(key=lambda f: f["modified_at"], reverse=True)
     return {
-        "section": section,
         "count": len(encontrados),
         "truncated": len(encontrados) > MAX_LIBRARY_FILES,
         "files": encontrados[:MAX_LIBRARY_FILES],
@@ -711,12 +740,12 @@ def _scan_library(section: str, kind: Optional[str], search: Optional[str]) -> D
 async def get_library(kind: str = "", search: str = "") -> Dict[str, Any]:
     """Archivos de la biblioteca de NOPAL, filtrados por tipo de máquina.
 
-    `kind`: printer, laser, cnc o model. Sin `kind` devuelve los G-code sin
-    filtrar. Los más recientes primero.
+    Recorre las dos secciones de la biblioteca (Modelos 3D y Archivos) y
+    devuelve los más recientes primero. `kind`: model deja solo lo sin
+    laminar (STL/3MF); printer, laser o cnc dejan solo G-code.
     """
-    seccion = "model" if kind == "model" else "gcode"
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _scan_library, seccion, kind, search)
+    return await loop.run_in_executor(None, _scan_library, kind, search)
 
 
 async def get_print_queue() -> Dict[str, Any]:
@@ -885,9 +914,11 @@ TOOLS: Dict[str, Tool] = {
         ),
         Tool(
             "get_library",
-            "Archivos de la biblioteca de NOPAL: modelos y G-code, filtrados por tipo de máquina. "
-            "Usa kind='laser', 'cnc', 'printer' o 'model'. Úsala cuando pregunten qué archivos hay "
-            "disponibles para una máquina.",
+            "Archivos de la biblioteca de NOPAL (Modelos 3D y Archivos), los más recientes "
+            "primero. kind='model' deja solo lo sin laminar (STL/3MF); 'printer', 'laser' o "
+            "'cnc' dejan solo G-code. Ojo: la extensión NO distingue láser de impresora, un "
+            ".gcode sirve para ambas; para eso orienta el campo 'folder'. Usa 'search' para "
+            "buscar por nombre en vez de listar todo.",
             get_library,
             {
                 "type": "object",

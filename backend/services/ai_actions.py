@@ -29,6 +29,7 @@ encienda láser o CNC.
 
 import inspect
 import logging
+import os
 import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
@@ -233,12 +234,36 @@ async def run_matrix_rule(rule_id: str) -> Dict[str, Any]:
 
 
 async def queue_file(machine_id: str, path: str) -> Dict[str, Any]:
-    """Manda un archivo de la biblioteca a la cola de una impresora."""
+    """Manda un archivo de la biblioteca a la cola de una máquina.
+
+    Hay dos colas distintas y no se pueden unificar: la de Moonraker vive en
+    la impresora Klipper, y la de láser/CNC vive en NOPAL (laser_service).
+    Encolar NO arranca el trabajo en ninguna de las dos -- mandar a la cola y
+    ponerse a cortar son decisiones distintas, y en el láser esa distinción
+    es una regla del proyecto, no una preferencia.
+    """
     from backend.services.klipper_service import send_gcode_to_printer
 
     machine = await _resolve_machine(machine_id)
+
+    if machine["kind"] in ("laser", "cnc"):
+        from backend.services.laser_service import add_to_queue
+        from backend.utils import safe_section_path
+
+        # Se comprueba que el archivo exista antes de encolarlo: una cola con
+        # una ruta inventada falla recién al intentar cortar, que es el peor
+        # momento posible para enterarse.
+        if not os.path.isfile(safe_section_path("gcode", path)):
+            raise ActionError(
+                f"No existe '{path}' en la biblioteca. Usa get_library para ver las rutas reales.")
+        entrada = add_to_queue(path, os.path.basename(path), machine["kind"])
+        return {"ok": True, "machine": machine["name"], "path": path,
+                "queue": machine["kind"], "queued_id": entrada.get("id")}
+
     if machine["brand"] != "klipper":
-        raise ActionError(f"{machine['name']} no es una impresora Klipper; la cola es de Moonraker")
+        raise ActionError(
+            f"{machine['name']} no tiene cola en NOPAL. Solo las impresoras Klipper (por "
+            "Moonraker) y el láser/CNC tienen cola.")
 
     port = int(str(machine["id"]).split(":", 1)[1])
     # mode="queue" encola en vez de imprimir de inmediato: mandar a la cola y
@@ -246,7 +271,7 @@ async def queue_file(machine_id: str, path: str) -> Dict[str, Any]:
     resultado = send_gcode_to_printer(port, path, mode="queue", section="gcode")
     if not resultado or resultado.get("error"):
         raise ActionError(resultado.get("error") if resultado else "No se pudo encolar el archivo")
-    return {"ok": True, "machine": machine["name"], "path": path}
+    return {"ok": True, "machine": machine["name"], "path": path, "queue": "moonraker"}
 
 
 async def preheat_machine(machine_id: str, nozzle: Optional[float] = None,
@@ -381,8 +406,9 @@ ACTIONS: Dict[str, Action] = {
         ),
         Action(
             "queue_file",
-            "Manda un archivo de la biblioteca a la cola de una impresora. Encola, no arranca "
-            "la impresión. Usa get_library para obtener la ruta exacta.",
+            "Manda un archivo de la biblioteca a la cola de una máquina: impresoras Klipper "
+            "(cola de Moonraker) y láser/CNC (cola de NOPAL). ENCOLA, no arranca el trabajo. "
+            "Usa get_library para obtener la ruta exacta; nunca inventes rutas.",
             queue_file,
             {
                 "type": "object",

@@ -441,16 +441,41 @@ def _biblioteca(tmp_path, monkeypatch, archivos):
     return raiz
 
 
-async def test_la_biblioteca_filtra_por_tipo_de_maquina(tmp_path, monkeypatch):
-    """La biblioteca guarda todo mezclado en dos carpetas; el filtro por
-    máquina es lo que hace útil la respuesta."""
-    _biblioteca(tmp_path, monkeypatch, ["corte.lbrn", "pieza.gcode", "fresado.tap", "logo.svg"])
+async def test_la_biblioteca_separa_lo_enviable_de_lo_que_hay_que_procesar(tmp_path, monkeypatch):
+    """La división real no es por máquina, es por si el archivo se puede
+    mandar tal cual.
 
-    laser = await ai_tools.call_tool("get_library", {"kind": "laser"})
-    assert {f["name"] for f in laser["files"]} == {"corte.lbrn", "pieza.gcode", "logo.svg"}
+    Antes se fingía distinguir láser de CNC de impresora por la extensión, y
+    era mentira: un .gcode sirve para las tres. Peor, aquella lista propia se
+    había quedado sin ".gc", la extensión de 53 de los 57 archivos de una
+    instalación real -- la IA veía cuatro y juraba que eso era todo.
 
-    cnc = await ai_tools.call_tool("get_library", {"kind": "cnc"})
-    assert {f["name"] for f in cnc["files"]} == {"pieza.gcode", "fresado.tap"}
+    Ahora se usan las extensiones que define NOPAL y la línea es honesta:
+    G-code es lo que se puede encolar; un SVG hay que pasarlo antes por el
+    Creador de Formas, así que aparece como modelo, no como trabajo de láser.
+    Para elegir máquina orienta la carpeta, que va en cada resultado.
+    """
+    _biblioteca(tmp_path, monkeypatch, ["pieza.gcode", "corte.gc", "fresado.tap", "logo.svg"])
+
+    for kind in ("laser", "cnc", "printer"):
+        r = await ai_tools.call_tool("get_library", {"kind": kind})
+        assert {f["name"] for f in r["files"]} == {"pieza.gcode", "corte.gc", "fresado.tap"}, kind
+
+    modelos = await ai_tools.call_tool("get_library", {"kind": "model"})
+    assert {f["name"] for f in modelos["files"]} == {"logo.svg"}
+
+
+async def test_la_biblioteca_recorre_las_dos_secciones(tmp_path, monkeypatch):
+    """Los G-code de impresora suelen estar guardados en Modelos 3D, no en
+    Archivos. Mirar una sola sección los dejaba invisibles: 48 archivos de
+    una instalación real que la IA no veía."""
+    modelos = tmp_path / "models"; modelos.mkdir()
+    (modelos / "buho.gcode").write_text("G0", encoding="utf-8")
+    _biblioteca(tmp_path, monkeypatch, ["corte.gc"])
+
+    r = await ai_tools.call_tool("get_library", {"kind": "printer"})
+    assert {f["name"] for f in r["files"]} == {"buho.gcode", "corte.gc"}
+    assert {f["section"] for f in r["files"]} == {"model", "gcode"}
 
 
 async def test_la_biblioteca_busca_por_nombre(tmp_path, monkeypatch):

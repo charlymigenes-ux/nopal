@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=307">
+    <link rel="stylesheet" href="/static/css/style.css?v=308">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -2015,7 +2015,7 @@
                                      3 fondos), porque también tiene fondos elegibles. Los tonos de
                                      las muestras son los del logotipo: blanco, verde y azul, con
                                      la arena Desert reducida a un detalle. -->
-                                <div class="theme-option-card theme-option-card-nopal" id="ai-theme-card" data-theme="ai">
+                                <div class="theme-option-card theme-option-card-nopal ai-only-flex" id="ai-theme-card" data-theme="ai" data-ai-only>
                                     <button type="button" class="theme-option-select" id="ai-theme-select-btn">
                                         <div class="theme-option-title">
                                             <span data-i18n="aiThemeName">Modo IA</span>
@@ -2204,11 +2204,17 @@
                                     <span data-i18n="aiEnable">Activar NOPAL Intelligence</span>
                                     <small data-i18n="aiEnableHint">Con esto apagado, NOPAL funciona exactamente igual que sin la capa de IA.</small>
                                 </div>
-                                <label class="switch">
+                                <label class="settings-switch">
                                     <input type="checkbox" id="ai-enabled">
-                                    <span class="slider"></span>
+                                    <span class="switch-slider"></span>
                                 </label>
                             </div>
+
+                            <!-- Todo lo de abajo depende del interruptor de arriba. Se apaga
+                                 en gris cuando la capa está desactivada, pero SIGUE usable: en
+                                 una instalación nueva hay que poder configurar la IA antes de
+                                 poder encenderla. -->
+                            <div class="ai-settings-body" id="ai-settings-body">
 
                             <!-- Registro de IAs guardadas. Alternar entre un servidor local,
                                  uno de la LAN y un proveedor de nube sin volver a teclear
@@ -2353,9 +2359,9 @@
                                             <span data-i18n="aiActionsEnable">Permitir que la IA actúe</span>
                                             <small data-i18n="aiActionsHint">Prender relés y escenas, encolar archivos, precalentar y controlar impresiones. Lo de riesgo siempre te pide confirmación. Nunca puede arrancar el láser ni el CNC.</small>
                                         </div>
-                                        <label class="switch">
+                                        <label class="settings-switch">
                                             <input type="checkbox" id="ai-actions-enabled">
-                                            <span class="slider"></span>
+                                            <span class="switch-slider"></span>
                                         </label>
                                     </div>
 
@@ -2379,6 +2385,7 @@
                                     <span class="ai-test-result" id="ai-test-result"></span>
                                 </div>
                             </div>
+                            </div><!-- /ai-settings-body -->
                         </div>
                         <div class="settings-card card-collapsible" data-settings-module="updates">
                             <div class="card-header-std">
@@ -4775,7 +4782,7 @@
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=246"></script>
+    <script src="/static/js/app.js?v=247"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

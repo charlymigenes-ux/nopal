@@ -235,3 +235,50 @@ def test_la_matriz_led_y_los_accesorios_no_se_confunden():
     from backend.services import ai_tools
     lectura = ai_tools.TOOLS["get_scenes"].description
     assert "get_led_matrix" in lectura, "get_scenes debe redirigir a la herramienta de la matriz"
+
+
+# --------------------------------------------------------------------------
+# Cola: dos colas distintas, una por familia de máquina
+# --------------------------------------------------------------------------
+
+async def test_encolar_en_el_laser_usa_la_cola_del_laser(tmp_path, monkeypatch):
+    """El láser y el CNC no tienen cola de Moonraker: la suya vive en NOPAL.
+    Antes queue_file rechazaba todo lo que no fuera Klipper, así que pedirle
+    a la IA mandar un corte a la cola era imposible."""
+    from backend.services import laser_service
+
+    archivo = tmp_path / "corte.gc"
+    archivo.write_text("G0", encoding="utf-8")
+    monkeypatch.setattr("backend.utils.safe_section_path", lambda seccion, ruta: str(archivo))
+    monkeypatch.setattr(ai_actions, "_resolve_machine", _maquina_falsa(
+        {"id": "laser:192.168.0.61", "name": "TTS 55 PRO", "kind": "laser", "brand": "grbl"}))
+
+    encoladas = []
+    monkeypatch.setattr(laser_service, "add_to_queue",
+                        lambda path, filename, kind: encoladas.append((path, kind)) or {"id": 7})
+
+    resultado = await ai_actions.execute(
+        "queue_file", {"machine_id": "TTS 55 PRO", "path": "corte.gc"}, "admin")
+
+    assert resultado["ok"] is True
+    assert resultado["queue"] == "laser"
+    assert encoladas == [("corte.gc", "laser")]
+
+
+async def test_no_se_encola_un_archivo_que_no_existe(tmp_path, monkeypatch):
+    """Una cola con una ruta inventada falla recién al intentar cortar, que
+    es el peor momento posible para enterarse."""
+    monkeypatch.setattr("backend.utils.safe_section_path",
+                        lambda seccion, ruta: str(tmp_path / "no-existe.gc"))
+    monkeypatch.setattr(ai_actions, "_resolve_machine", _maquina_falsa(
+        {"id": "cnc:192.168.0.62", "name": "CNC 3018", "kind": "cnc", "brand": "grbl"}))
+
+    with pytest.raises(ai_actions.ActionError, match="No existe"):
+        await ai_actions.execute(
+            "queue_file", {"machine_id": "CNC 3018", "path": "inventado.gc"}, "admin")
+
+
+def _maquina_falsa(machine):
+    async def _resolver(machine_id):
+        return machine
+    return _resolver
