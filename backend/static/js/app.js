@@ -18557,6 +18557,50 @@ let aiPresets = [];
 let aiDataSent = [];
 let aiConfigCache = null;
 let aiBusy = false;
+let aiConversationId = null;
+
+// Una acción de riesgo NO se ejecutó: el backend la dejó esperando. Se pinta
+// con lo que va a pasar en texto claro, porque confirmar a ciegas un
+// "precalentar a 200" es justo lo que los niveles de riesgo evitan.
+function aiRenderPendingAction(pendiente) {
+    const thread = document.getElementById('ai-thread');
+    if (!thread) return;
+    const caja = document.createElement('div');
+    caja.className = 'ai-pending-action';
+    const args = Object.entries(pendiente.arguments || {})
+        .map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(String(v))}`).join(' · ');
+    caja.innerHTML = `
+        <div class="ai-pending-head">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>${escapeHtml(t('aiConfirmNeeded'))}</span>
+        </div>
+        <p class="ai-pending-what"><strong>${escapeHtml(pendiente.action)}</strong>${args ? ' — ' + args : ''}</p>
+        <div class="ai-pending-actions">
+            <button type="button" class="btn-file-action btn-file-action-accent" data-confirm>${escapeHtml(t('aiConfirmRun'))}</button>
+            <button type="button" class="btn-file-action" data-cancel>${escapeHtml(t('cancelAction'))}</button>
+        </div>`;
+    thread.appendChild(caja);
+    thread.scrollTop = thread.scrollHeight;
+
+    const cerrar = (texto, tono) => {
+        caja.innerHTML = `<div class="ai-pending-done" data-tone="${tono}">${escapeHtml(texto)}</div>`;
+    };
+
+    caja.querySelector('[data-confirm]').addEventListener('click', async () => {
+        caja.querySelectorAll('button').forEach(b => (b.disabled = true));
+        try {
+            await aiFetchJson(`/api/ai/actions/${pendiente.id}/confirm`, { method: 'POST' });
+            cerrar(t('aiActionDone'), 'ok');
+        } catch (error) {
+            cerrar(error.message, 'error');
+        }
+    });
+    caja.querySelector('[data-cancel]').addEventListener('click', async () => {
+        caja.querySelectorAll('button').forEach(b => (b.disabled = true));
+        try { await aiFetchJson(`/api/ai/actions/${pendiente.id}/cancel`, { method: 'POST' }); } catch (_) {}
+        cerrar(t('aiActionCancelled'), 'muted');
+    });
+}
 
 // Guardadas por el usuario. Vacío = usar las de fábrica, que sí se traducen.
 let aiStoredSuggestions = [];
@@ -19067,6 +19111,7 @@ function aiRenderSuggestions() {
 }
 
 function aiResetThread() {
+    aiConversationId = null;
     const thread = document.getElementById('ai-thread');
     if (thread) thread.innerHTML = '';
     aiAppendMessage('assistant', t('aiGreeting'));
@@ -19092,7 +19137,7 @@ async function askAi() {
         const result = await aiFetchJson('/api/ai/ask', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question }),
+            body: JSON.stringify({ question, conversation_id: aiConversationId }),
         });
         pending?.remove();
         // La traza de herramientas se muestra siempre: es lo que permite
@@ -19102,6 +19147,9 @@ async function askAi() {
         const meta = [tools && `${t('aiToolsUsed')}: ${tools}`, seconds ? `${seconds}s` : '']
             .filter(Boolean).join(' · ');
         aiAppendMessage('assistant', result.answer || '', meta);
+        aiConversationId = result.conversation_id || aiConversationId;
+        if (result.pending_action) aiRenderPendingAction(result.pending_action);
+        aiLoadHistory();
     } catch (error) {
         pending?.remove();
         aiAppendMessage('assistant', error.message, t('aiError'));
@@ -19109,6 +19157,70 @@ async function askAi() {
         aiBusy = false;
         if (sendBtn) sendBtn.disabled = false;
     }
+}
+
+async function aiLoadHistory() {
+    const list = document.getElementById('ai-history-list');
+    if (!list) return;
+    let data = { conversations: [] };
+    try {
+        data = await aiFetchJson('/api/ai/conversations');
+    } catch (_) { /* sin sesión: se deja vacío */ }
+
+    const limpiar = document.getElementById('ai-history-clear-btn');
+    if (limpiar) limpiar.hidden = currentAuthUser?.role !== 'admin' || !data.conversations.length;
+
+    if (!data.conversations.length) {
+        list.innerHTML = `<p class="ai-empty">${escapeHtml(t('aiNoHistory'))}</p>`;
+        return;
+    }
+    list.innerHTML = data.conversations.map(c => `
+        <div class="ai-history-row${c.id === aiConversationId ? ' is-active' : ''}" data-id="${escapeHtml(c.id)}">
+            <button type="button" class="ai-history-open" data-open>
+                <span class="ai-history-title">${escapeHtml(c.title)}</span>
+                <span class="ai-history-meta">${c.message_count} · ${escapeHtml(aiFormatDate(c.updated_at))}</span>
+            </button>
+            <button type="button" class="ai-history-del" data-del data-i18n-title="aiDelete" title="Eliminar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`).join('');
+
+    list.querySelectorAll('[data-open]').forEach(btn => btn.addEventListener('click', () =>
+        aiOpenConversation(btn.closest('.ai-history-row').dataset.id)));
+    list.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        const id = btn.closest('.ai-history-row').dataset.id;
+        if (!confirm(t('aiDeleteConversationConfirm'))) return;
+        try {
+            await aiFetchJson(`/api/ai/conversations/${id}`, { method: 'DELETE' });
+            if (aiConversationId === id) aiResetThread();
+            await aiLoadHistory();
+        } catch (error) { showToast(error.message, 'error'); }
+    }));
+}
+
+function aiFormatDate(seconds) {
+    if (!seconds) return '';
+    try {
+        return new Date(seconds * 1000).toLocaleString(undefined,
+            { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch (_) { return ''; }
+}
+
+async function aiOpenConversation(id) {
+    try {
+        const c = await aiFetchJson(`/api/ai/conversations/${id}`);
+        aiConversationId = c.id;
+        const thread = document.getElementById('ai-thread');
+        if (thread) thread.innerHTML = '';
+        (c.messages || []).forEach(m => {
+            const meta = m.role === 'assistant' && (m.tool_calls || []).length
+                ? `${t('aiToolsUsed')}: ${(m.tool_calls || []).filter(Boolean).join(', ')}`
+                : null;
+            aiAppendMessage(m.role === 'user' ? 'user' : 'assistant', m.content || '', meta);
+        });
+        aiRenderSuggestions();
+        await aiLoadHistory();
+    } catch (error) { showToast(error.message, 'error'); }
 }
 
 async function loadAiSection() {
@@ -19145,6 +19257,7 @@ async function loadAiSection() {
 
     aiLoadMachines();
     aiLoadEvents();
+    aiLoadHistory();
 }
 
 aiInitModeChrome();
@@ -19153,7 +19266,15 @@ document.getElementById('ai-composer')?.addEventListener('submit', event => {
     event.preventDefault();
     askAi();
 });
-document.getElementById('ai-clear-btn')?.addEventListener('click', aiResetThread);
+document.getElementById('ai-clear-btn')?.addEventListener('click', () => { aiResetThread(); aiLoadHistory(); });
+document.getElementById('ai-history-clear-btn')?.addEventListener('click', async () => {
+    if (!confirm(t('aiClearHistoryConfirm'))) return;
+    try {
+        await aiFetchJson('/api/ai/conversations', { method: 'DELETE' });
+        aiResetThread();
+        await aiLoadHistory();
+    } catch (error) { showToast(error.message, 'error'); }
+});
 document.getElementById('ai-refresh-btn')?.addEventListener('click', loadAiSection);
 document.getElementById('ai-goto-settings-btn')?.addEventListener('click', () => switchSection('settings'));
 document.getElementById('ai-save-btn')?.addEventListener('click', saveAiSettings);
