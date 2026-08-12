@@ -39,6 +39,7 @@ from backend.api.plugins import router as plugins_router
 from backend.api.dashboard import router as dashboard_router
 from backend.api.tunascreen import router as tunascreen_router
 from backend.api.devices import router as devices_router
+from backend.api.ai import router as ai_router
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
@@ -126,6 +127,11 @@ app.include_router(plugins_router)
 app.include_router(dashboard_router)
 app.include_router(tunascreen_router)
 app.include_router(devices_router)
+# NOPAL Intelligence -- capa de IA opcional. El router siempre se registra
+# (así /api/ai/status puede decir "apagado" en vez de dar 404), pero con la
+# IA desactivada -- el valor por omisión -- no contacta nada ni cambia el
+# comportamiento del resto de NOPAL. Ver backend/services/ai_config_service.py.
+app.include_router(ai_router)
 
 
 @app.on_event("startup")

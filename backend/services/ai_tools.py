@@ -1,0 +1,665 @@
+"""Herramientas de NOPAL expuestas a la capa de IA — SOLO LECTURA.
+
+El modelo nunca toca el sistema operativo ni los servicios directamente:
+solo puede llamar a las funciones registradas en `TOOLS`, y cada una es un
+envoltorio delgado sobre servicios que NOPAL ya tenía (dashboard_service,
+klipper_service, laser_service, notification_service, el log de la app y
+los plugins cargados). No hay ninguna herramienta que mueva ejes, caliente,
+inicie o cancele trabajos, haga home, resetee el MCU ni ejecute shell.
+
+Cuando existan acciones físicas irán en un registro aparte, con
+confirmación explícita del usuario. Láser y CNC no deben poder arrancarse
+por esta vía nunca.
+
+Identidad de máquina
+--------------------
+NOPAL no tiene un id único global de máquina: cada marca identifica lo suyo
+a su manera (Klipper por puerto de Moonraker, Marlin por dispositivo serie,
+Elegoo por mainboard_id, FlashForge por número de serie, Bambu por id,
+láser/CNC por host). Acá se construye un id compuesto y estable
+`<tipo>:<id-nativo>` — por ejemplo `klipper:7125` o `laser:192.168.0.61` —
+y además se acepta el nombre visible ("TTS 55 PRO") porque es lo que el
+usuario va a escribir en su pregunta.
+
+Todo lo que devuelven estas funciones es dato real medido por NOPAL o por
+sus integraciones. Cuando algo no se puede saber se devuelve
+`{"available": false, "reason": ...}` en vez de un valor inventado — la
+misma convención que ya usa el resto de NOPAL (ambient/maintenance en
+dashboard_service, "unknown" en los mapeos de estado de cada marca).
+"""
+
+import asyncio
+import logging
+import os
+import re
+from typing import Any, Callable, Dict, List, Optional
+
+from backend.config import LOG_FILE
+from backend.services.bambu_service import get_registered_printers_with_status as get_bambu_printers
+from backend.services.dashboard_service import get_dashboard_summary
+from backend.services.elegoo_service import get_registered_printers_with_status as get_elegoo_printers
+from backend.services.flashforge_service import get_registered_printers_with_status as get_flashforge_printers
+from backend.services.klipper_service import (
+    get_all_printers_status,
+    get_printer_status,
+    get_temperature_snapshot,
+)
+from backend.services.laser_service import get_registered_lasers_status, get_status as get_laser_status
+from backend.services.marlin_printer_service import get_registered_printers_with_status as get_marlin_printers
+from backend.services.notification_service import get_notifications
+from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+logger = logging.getLogger(__name__)
+
+# Formato de las líneas de logs/nopal.log (ver LOG_FORMAT en config.py):
+# "2026-08-11 11:03:22 WARNING  [backend.services.klipper_service] mensaje"
+_LOG_LINE = re.compile(
+    r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+"
+    r"(?P<level>[A-Z]+)\s+\[(?P<source>[^\]]+)\]\s+(?P<message>.*)$"
+)
+
+
+def _unavailable(reason: str) -> Dict[str, Any]:
+    return {"available": False, "reason": reason}
+
+
+# --------------------------------------------------------------------------
+# Inventario unificado de máquinas
+# --------------------------------------------------------------------------
+
+async def _collect_machines() -> List[Dict[str, Any]]:
+    """Normaliza las 5 familias de impresoras + láser/CNC a una forma común.
+
+    Cada marca conserva su payload crudo en `details` — el modelo casi nunca
+    lo necesita, pero las herramientas de diagnóstico sí.
+    """
+    loop = asyncio.get_event_loop()
+    klipper, marlin, flashforge, bambu, lasers = await asyncio.gather(
+        loop.run_in_executor(None, get_all_printers_status),
+        loop.run_in_executor(None, get_marlin_printers),
+        loop.run_in_executor(None, get_flashforge_printers),
+        loop.run_in_executor(None, get_bambu_printers),
+        get_registered_lasers_status(),
+    )
+    # Sin executor a propósito, igual que en dashboard_service: arranca las
+    # tareas asyncio de los listeners WS de Elegoo, que necesitan el event
+    # loop de este mismo hilo.
+    elegoo = get_elegoo_printers()
+
+    machines: List[Dict[str, Any]] = []
+
+    for printer in klipper:
+        machines.append({
+            "id": f"klipper:{printer.get('port')}",
+            "name": printer.get("name"),
+            "kind": "printer",
+            "brand": "klipper",
+            "online": printer.get("status") == "online",
+            "state": printer.get("state"),
+            "job": printer.get("job") or None,
+            "details": printer,
+        })
+
+    for printer in marlin:
+        machines.append({
+            "id": f"marlin:{printer.get('device')}",
+            "name": printer.get("name") or printer.get("device"),
+            "kind": "printer",
+            "brand": "marlin",
+            "online": bool(printer.get("online")),
+            "state": printer.get("state"),
+            "job": printer.get("job") or None,
+            "details": printer,
+        })
+
+    for printer in elegoo:
+        machines.append({
+            "id": f"elegoo:{printer.get('mainboard_id')}",
+            "name": printer.get("name"),
+            "kind": "printer",
+            "brand": "elegoo",
+            "online": bool(printer.get("online")),
+            "state": printer.get("state"),
+            "job": printer.get("job") or None,
+            "details": printer,
+        })
+
+    for printer in flashforge:
+        machines.append({
+            "id": f"flashforge:{printer.get('serial_number')}",
+            "name": printer.get("name"),
+            "kind": "printer",
+            "brand": "flashforge",
+            "online": bool(printer.get("online")),
+            "state": printer.get("state"),
+            "job": printer.get("job") or None,
+            "details": printer,
+        })
+
+    for printer in bambu:
+        machines.append({
+            "id": f"bambu:{printer.get('id')}",
+            "name": printer.get("name"),
+            "kind": "printer",
+            "brand": "bambu",
+            "online": bool(printer.get("online")),
+            "state": printer.get("state"),
+            "job": printer.get("job") or None,
+            "details": printer,
+        })
+
+    for device in lasers:
+        kind = "cnc" if device.get("kind") == "cnc" else "laser"
+        machines.append({
+            "id": f"{kind}:{device.get('host')}",
+            "name": device.get("name") or device.get("host"),
+            "kind": kind,
+            "brand": device.get("firmware") or "grbl",
+            "online": bool(device.get("online")),
+            "state": device.get("state"),
+            "job": None,
+            "details": device,
+        })
+
+    return machines
+
+
+def _resolve_machine(machines: List[Dict[str, Any]], machine_id: str) -> Optional[Dict[str, Any]]:
+    """Acepta el id compuesto (`klipper:7125`), el id nativo suelto
+    (`7125`, `192.168.0.61`) o el nombre visible — el usuario pregunta por
+    "ET4-WE", no por "elegoo:0a1b2c"."""
+    needle = (machine_id or "").strip().lower()
+    if not needle:
+        return None
+    for machine in machines:
+        if str(machine["id"]).lower() == needle:
+            return machine
+    for machine in machines:
+        if str(machine.get("name") or "").lower() == needle:
+            return machine
+    for machine in machines:
+        native = str(machine["id"]).split(":", 1)[-1].lower()
+        if native == needle:
+            return machine
+    return None
+
+
+async def _require_machine(machine_id: str) -> Dict[str, Any]:
+    machines = await _collect_machines()
+    machine = _resolve_machine(machines, machine_id)
+    if machine is None:
+        return {
+            "error": "machine_not_found",
+            "requested": machine_id,
+            # Devolver los ids válidos hace que el modelo se corrija solo en
+            # la siguiente vuelta en vez de inventar una máquina.
+            "known_machines": [{"id": m["id"], "name": m["name"]} for m in machines],
+        }
+    return machine
+
+
+# --------------------------------------------------------------------------
+# Herramientas
+# --------------------------------------------------------------------------
+
+async def get_workshop_status() -> Dict[str, Any]:
+    """Panorama general del taller. Reusa el mismo agregado que ya alimenta
+    al panel de control (/api/dashboard/summary) — no hay tracking nuevo."""
+    summary = await get_dashboard_summary()
+    host = dict(summary.get("host") or {})
+    # cpu_history son 60 muestras para un sparkline: puro ruido para el
+    # modelo y tokens desperdiciados en una i3.
+    host.pop("cpu_history", None)
+    return {
+        "system": summary.get("system"),
+        "host": host,
+        "devices": summary.get("devices"),
+        "jobs": summary.get("jobs"),
+        "alerts": summary.get("alerts"),
+        "power": summary.get("power"),
+        "ambient": summary.get("ambient"),
+        "maintenance": summary.get("maintenance"),
+    }
+
+
+async def get_machines() -> Dict[str, Any]:
+    """Inventario de máquinas registradas con su estado de conexión."""
+    machines = await _collect_machines()
+    return {
+        "count": len(machines),
+        "machines": [
+            {k: v for k, v in machine.items() if k != "details"}
+            for machine in machines
+        ],
+    }
+
+
+async def get_machine_status(machine_id: str) -> Dict[str, Any]:
+    """Estado detallado de una máquina puntual."""
+    machine = await _require_machine(machine_id)
+    return machine
+
+
+async def get_machine_temperatures(machine_id: str) -> Dict[str, Any]:
+    """Temperaturas actuales y objetivo de una máquina.
+
+    Klipper tiene una lectura dedicada (todos los objetos de temperatura
+    configurados); el resto de las marcas solo exponen lo que ya viene en su
+    payload de estado. Láser/CNC no reportan temperatura.
+    """
+    machine = await _require_machine(machine_id)
+    if machine.get("error"):
+        return machine
+
+    brand = machine["brand"]
+    details = machine.get("details") or {}
+
+    if brand == "klipper":
+        port = int(str(machine["id"]).split(":", 1)[1])
+        loop = asyncio.get_event_loop()
+        snapshot = await loop.run_in_executor(None, get_temperature_snapshot, port)
+        return {"machine_id": machine["id"], "name": machine["name"], "temperatures": snapshot}
+
+    if machine["kind"] in ("laser", "cnc"):
+        return {
+            "machine_id": machine["id"],
+            "name": machine["name"],
+            **_unavailable("Los controladores GRBL/FluidNC no reportan temperatura a NOPAL"),
+        }
+
+    for key in ("temperatures", "temps", "temperature"):
+        if isinstance(details.get(key), (dict, list)):
+            return {"machine_id": machine["id"], "name": machine["name"], "temperatures": details[key]}
+
+    partial = {k: details.get(k) for k in ("nozzle_temp", "nozzle_target", "bed_temp", "bed_target", "chamber_temp")
+               if details.get(k) is not None}
+    if partial:
+        return {"machine_id": machine["id"], "name": machine["name"], "temperatures": partial}
+
+    return {
+        "machine_id": machine["id"],
+        "name": machine["name"],
+        **_unavailable(f"NOPAL no está recibiendo temperaturas de esta máquina ({brand})"),
+    }
+
+
+async def get_active_jobs() -> Dict[str, Any]:
+    """Trabajos corriendo o en pausa ahora mismo, en todas las máquinas."""
+    summary = await get_dashboard_summary()
+    jobs = summary.get("jobs") or {}
+    return {"total_active": jobs.get("total_active", 0), "jobs": jobs.get("active", [])}
+
+
+async def get_job_progress(machine_id: str) -> Dict[str, Any]:
+    """Avance del trabajo de una máquina puntual."""
+    machine = await _require_machine(machine_id)
+    if machine.get("error"):
+        return machine
+    job = machine.get("job")
+    if not job or not job.get("state") or job.get("state") in ("standby", "idle", "complete", "cancelled"):
+        return {
+            "machine_id": machine["id"],
+            "name": machine["name"],
+            "active": False,
+            "state": (job or {}).get("state"),
+        }
+    return {"machine_id": machine["id"], "name": machine["name"], "active": True, "job": job}
+
+
+async def get_recent_errors() -> Dict[str, Any]:
+    """Problemas activos ahora mismo (máquinas desconectadas, trabajos en
+    error o pausados, accesorios que no responden).
+
+    Es el mismo agregado que alimenta la campana de notificaciones: un
+    recuento de "qué está mal en este momento", no un buzón histórico.
+    """
+    notifications = await get_notifications()
+    items = notifications.get("items", [])
+    return {
+        "count": len(items),
+        "errors": [i for i in items if i.get("severity") == "error"],
+        "warnings": [i for i in items if i.get("severity") == "warning"],
+    }
+
+
+def _read_recent_events(limit: int, level: Optional[str]) -> List[Dict[str, Any]]:
+    if not os.path.isfile(LOG_FILE):
+        return []
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return []
+
+    events: List[Dict[str, Any]] = []
+    wanted = level.upper() if level else None
+    # De atrás para adelante: interesan los últimos N eventos que coinciden,
+    # no los primeros del archivo.
+    for line in reversed(lines):
+        match = _LOG_LINE.match(line.strip())
+        if not match:
+            continue
+        event = match.groupdict()
+        if wanted and event["level"] != wanted:
+            continue
+        events.append(event)
+        if len(events) >= limit:
+            break
+    events.reverse()
+    return events
+
+
+async def get_recent_events(limit: int = 30, level: str = "") -> Dict[str, Any]:
+    """Últimos eventos del log de NOPAL (logs/nopal.log), del más viejo al
+    más nuevo. `level` filtra por INFO/WARNING/ERROR."""
+    limit = max(1, min(200, int(limit or 30)))
+    loop = asyncio.get_event_loop()
+    events = await loop.run_in_executor(None, _read_recent_events, limit, level or None)
+    return {"count": len(events), "level_filter": level or "all", "events": events}
+
+
+async def get_klipper_status(machine_id: str) -> Dict[str, Any]:
+    """Estado crudo de Klipper/Moonraker para una impresora Klipper.
+
+    Incluye `state_message`, que es donde Klipper explica por qué se
+    detuvo (error de MCU, shutdown, config inválida) — el dato clave para
+    diagnosticar una impresora parada.
+    """
+    machine = await _require_machine(machine_id)
+    if machine.get("error"):
+        return machine
+    if machine["brand"] != "klipper":
+        return _unavailable(f"{machine['name']} no es una impresora Klipper (es {machine['brand']})")
+
+    port = int(str(machine["id"]).split(":", 1)[1])
+    loop = asyncio.get_event_loop()
+    status = await loop.run_in_executor(None, get_printer_status, port)
+    printer_info = status.get("printer_info") or {}
+    return {
+        "machine_id": machine["id"],
+        "name": status.get("name"),
+        "moonraker_port": port,
+        "klippy_state": printer_info.get("state"),
+        "state_message": printer_info.get("state_message"),
+        "software_version": printer_info.get("software_version"),
+        "status": status.get("status"),
+    }
+
+
+async def get_grbl_status(machine_id: str) -> Dict[str, Any]:
+    """Estado crudo del controlador GRBL/FluidNC de un láser o CNC."""
+    machine = await _require_machine(machine_id)
+    if machine.get("error"):
+        return machine
+    if machine["kind"] not in ("laser", "cnc"):
+        return _unavailable(f"{machine['name']} no es un láser ni un CNC")
+    if not machine.get("online"):
+        return {
+            "machine_id": machine["id"],
+            "name": machine["name"],
+            "online": False,
+            **_unavailable("El dispositivo no responde, no se puede consultar su estado GRBL"),
+        }
+
+    host = str(machine["id"]).split(":", 1)[1]
+    status = await get_laser_status(host)
+    if status is None:
+        return {
+            "machine_id": machine["id"],
+            "name": machine["name"],
+            "online": True,
+            **_unavailable("El controlador no respondió al pedido de estado"),
+        }
+    return {"machine_id": machine["id"], "name": machine["name"], "online": True, "grbl": status}
+
+
+async def get_material_status() -> Dict[str, Any]:
+    """Inventario de filamento vía el plugin de Materiales (Spoolman).
+
+    Spoolman es un plugin, no parte del core: si no está instalado,
+    cargado o configurado, se reporta como no disponible en vez de romper.
+    """
+    config_module = get_loaded_plugin_module("spoolman", "services.config_service")
+    if config_module is None:
+        return _unavailable("El plugin de Materiales (Spoolman) no está instalado o no está cargado")
+
+    loop = asyncio.get_event_loop()
+
+    def _fetch() -> Dict[str, Any]:
+        client = config_module.get_client()
+        if client is None:
+            return _unavailable("El plugin de Materiales no tiene un servidor Spoolman configurado")
+        spools = client.list_spools() or []
+        threshold = config_module.get_low_stock_threshold_g()
+        summary = []
+        for spool in spools:
+            filament = spool.get("filament") or {}
+            remaining = spool.get("remaining_weight")
+            summary.append({
+                "id": spool.get("id"),
+                "material": filament.get("material"),
+                "color": filament.get("name"),
+                "vendor": (filament.get("vendor") or {}).get("name"),
+                "remaining_g": remaining,
+                "low_stock": remaining is not None and remaining < threshold,
+            })
+        return {
+            "count": len(summary),
+            "low_stock_threshold_g": threshold,
+            "spools": summary,
+        }
+
+    try:
+        return await loop.run_in_executor(None, _fetch)
+    except Exception as exc:
+        logger.warning(f"No se pudo consultar Spoolman para la capa de IA: {exc}")
+        return _unavailable("No se pudo contactar al servidor Spoolman")
+
+
+async def get_camera_snapshot(machine_id: str) -> Dict[str, Any]:
+    """Reservada para un modelo multimodal futuro. Todavía NO devuelve
+    imagen y no se le ofrece al modelo (`exposed=False` más abajo).
+
+    La arquitectura queda lista — el plugin camera-viewer ya asocia cada
+    cámara a un dispositivo (`bound_device`) — pero mandar imágenes exige
+    decidir formato, tamaño y costo de tokens contra un modelo multimodal
+    real, y ninguno corre hoy en esta instalación.
+
+    Aparte: una IA de visión nunca debe ser el único mecanismo de detección
+    de incendio, humo, choque, runaway térmico o presencia humana.
+    """
+    return _unavailable("La lectura de cámaras por IA todavía no está implementada")
+
+
+# --------------------------------------------------------------------------
+# Registro
+# --------------------------------------------------------------------------
+
+class Tool:
+    """Una herramienta de solo lectura ofrecida a la capa de IA.
+
+    `parameters` es un JSON Schema — el mismo formato que espera el campo
+    `tools` de la API estilo OpenAI, así que se manda tal cual.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        handler: Callable,
+        parameters: Optional[Dict[str, Any]] = None,
+        exposed: bool = True,
+        core: bool = False,
+    ):
+        self.name = name
+        self.description = description
+        self.handler = handler
+        self.parameters = parameters or {"type": "object", "properties": {}, "required": []}
+        self.exposed = exposed
+        # `core` marca las herramientas del perfil "compact": las mínimas
+        # para responder las preguntas frecuentes del taller. El catálogo
+        # completo son ~1260 tokens de esquema que el modelo tiene que leer
+        # ANTES de empezar a pensar, y en un servidor de IA modesto eso es
+        # el grueso del tiempo de respuesta. Ver `tool_profile` en
+        # ai_config_service.py.
+        self.core = core
+
+    def to_openai_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+
+_MACHINE_ID_PARAM = {
+    "type": "object",
+    "properties": {
+        "machine_id": {
+            "type": "string",
+            "description": "Id o nombre de la máquina, por ejemplo 'klipper:7125', "
+                           "'laser:192.168.0.61' o 'TTS 55 PRO'.",
+        }
+    },
+    "required": ["machine_id"],
+}
+
+
+TOOLS: Dict[str, Tool] = {
+    tool.name: tool
+    for tool in [
+        Tool(
+            "get_workshop_status",
+            "Panorama general del taller: salud del sistema, host, conteo de máquinas por tipo, "
+            "trabajos activos y alertas. Es la herramienta con la que conviene empezar casi siempre.",
+            get_workshop_status,
+            core=True,
+        ),
+        Tool(
+            "get_machines",
+            "Lista todas las máquinas registradas (impresoras 3D, láser, CNC) con su id, nombre y "
+            "si están en línea.",
+            get_machines,
+            core=True,
+        ),
+        Tool(
+            "get_machine_status",
+            "Estado detallado de una máquina puntual, incluido su trabajo actual si tiene uno.",
+            get_machine_status,
+            _MACHINE_ID_PARAM,
+            core=True,
+        ),
+        Tool(
+            "get_machine_temperatures",
+            "Temperaturas actuales y objetivo de una máquina. Láser y CNC no reportan temperatura.",
+            get_machine_temperatures,
+            _MACHINE_ID_PARAM,
+        ),
+        Tool(
+            "get_active_jobs",
+            "Trabajos que están imprimiendo, grabando o cortando ahora mismo, con su porcentaje de avance.",
+            get_active_jobs,
+        ),
+        Tool(
+            "get_job_progress",
+            "Avance del trabajo activo de una máquina puntual.",
+            get_job_progress,
+            _MACHINE_ID_PARAM,
+        ),
+        Tool(
+            "get_recent_errors",
+            "Problemas activos en este momento: máquinas desconectadas, trabajos en error o pausados, "
+            "accesorios que no responden.",
+            get_recent_errors,
+            core=True,
+        ),
+        Tool(
+            "get_recent_events",
+            "Últimos eventos del log de NOPAL. Útil para saber qué pasó antes de una falla.",
+            get_recent_events,
+            {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Cuántos eventos devolver (1-200, por omisión 30)."},
+                    "level": {"type": "string", "enum": ["INFO", "WARNING", "ERROR"],
+                              "description": "Filtrar por nivel. Omitir para todos."},
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            "get_klipper_status",
+            "Estado crudo de Klipper/Moonraker de una impresora Klipper, incluido el mensaje de error "
+            "de Klippy. Es la herramienta correcta para diagnosticar por qué una impresora Klipper "
+            "está detenida.",
+            get_klipper_status,
+            _MACHINE_ID_PARAM,
+            core=True,
+        ),
+        Tool(
+            "get_grbl_status",
+            "Estado crudo del controlador GRBL/FluidNC de un láser o CNC.",
+            get_grbl_status,
+            _MACHINE_ID_PARAM,
+        ),
+        Tool(
+            "get_material_status",
+            "Inventario de filamento del plugin de Materiales (Spoolman), con qué spools están por acabarse.",
+            get_material_status,
+        ),
+        Tool(
+            "get_camera_snapshot",
+            "Reservada para un modelo multimodal futuro; todavía no devuelve imagen.",
+            get_camera_snapshot,
+            _MACHINE_ID_PARAM,
+            exposed=False,
+        ),
+    ]
+}
+
+
+def get_exposed_tools(profile: str = "full") -> List[Tool]:
+    """Las herramientas que se le ofrecen al modelo (excluye las reservadas).
+
+    `profile="compact"` deja solo las marcadas como `core`. El catálogo
+    completo cuesta ~1260 tokens de esquema que el modelo debe leer antes
+    de razonar; en un servidor de IA modesto eso domina el tiempo de
+    respuesta. El perfil compacto lo baja a ~570 y sigue cubriendo las
+    preguntas frecuentes ("¿cómo está el taller?", "¿por qué está detenida
+    X?"). Lo que se pierde son las consultas finas: temperaturas, avance
+    por máquina, GRBL, materiales y eventos del log.
+    """
+    tools = [tool for tool in TOOLS.values() if tool.exposed]
+    if profile == "compact":
+        return [tool for tool in tools if tool.core]
+    return tools
+
+
+def get_tools_schema(profile: str = "full") -> List[Dict[str, Any]]:
+    return [tool.to_openai_schema() for tool in get_exposed_tools(profile)]
+
+
+async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Ejecuta una herramienta por nombre. Un nombre desconocido o un
+    argumento inválido devuelven un error estructurado en vez de levantar
+    excepción: el ciclo del agente se lo pasa al modelo para que se
+    corrija en la vuelta siguiente."""
+    tool = TOOLS.get(name)
+    if tool is None or not tool.exposed:
+        return {"error": "unknown_tool", "requested": name, "available": sorted(t.name for t in get_exposed_tools())}
+
+    arguments = arguments or {}
+    allowed = set((tool.parameters.get("properties") or {}).keys())
+    filtered = {k: v for k, v in arguments.items() if k in allowed}
+    missing = [k for k in tool.parameters.get("required", []) if k not in filtered]
+    if missing:
+        return {"error": "missing_arguments", "tool": name, "missing": missing}
+
+    try:
+        return await tool.handler(**filtered)
+    except Exception as exc:
+        logger.exception(f"Falló la herramienta de IA '{name}'")
+        return {"error": "tool_failed", "tool": name, "detail": str(exc)}

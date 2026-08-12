@@ -31,6 +31,9 @@ spoolman_printer_links.json
 spoolman_reservations.json
 spoolman_usage_log.json
 tunascreen_devices.json
+# Configuración de NOPAL Intelligence — incluye la API key del servidor de
+# IA cuando el usuario usa un proveedor que la pide. Nunca se versiona.
+ai_config.json
 *.corrupt-*.bak
 .session_secret
 
