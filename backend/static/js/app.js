@@ -8916,6 +8916,7 @@ async function handleDeviceUnlinkConfirm() {
         closeDeviceUnlinkModal();
         refreshUsbPorts();
         loadWifiDevices();
+        loadRegistryDevices();
         if (document.getElementById('laser-host-select')) loadLaserHostSelector();
     } catch (error) {
         console.error(error);
@@ -9021,9 +9022,21 @@ async function loadRegistryDevices() {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
     try {
-        const response = await fetch('/api/devices/registry');
+        // El registro de láser/CNC va en paralelo solo para conocer el chip
+        // de cada placa: es lo que muestra el popup de desvincular, y sin él
+        // saldría con un guion donde debería decir ESP32/CH340. Si falla, la
+        // lista se pinta igual.
+        const [response, laserResponse] = await Promise.all([
+            fetch('/api/devices/registry'),
+            fetch('/api/laser/registry').catch(() => null),
+        ]);
         const data = await response.json();
-        renderRegistryDevices(data.machines || []);
+        let chips = new Map();
+        try {
+            const laserData = laserResponse ? await laserResponse.json() : null;
+            chips = new Map((laserData?.lasers || []).map(l => [l.host, l.chip || '']));
+        } catch (_) { /* sin datos de chip: el popup mostrará un guion */ }
+        renderRegistryDevices(data.machines || [], chips);
     } catch (error) {
         console.error(error);
     }
@@ -9042,22 +9055,47 @@ function deviceDriverBadgeLabel(driver) {
     return brandLabels[driver] || driver;
 }
 
-function renderRegistryDevices(machines) {
+function renderRegistryDevices(machines, chips = new Map()) {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
     if (!machines.length) {
         container.innerHTML = `<div class="empty-state-small">${t('registryDevicesEmpty')}</div>`;
         return;
     }
-    container.innerHTML = machines.map(machine => `
+    container.innerHTML = machines.map(machine => {
+        // Editar y desvincular solo para láser/CNC: son los que el registro
+        // de NOPAL puede tocar (/api/laser/registry). Una impresora Klipper
+        // se administra desde su propia tarjeta, y poner acá un botón que
+        // pegara al endpoint equivocado sería peor que no tenerlo.
+        const esGrbl = machine.driver === 'grbl';
+        const host = String(machine.id || '').replace(/^laser:/, '');
+        const nombre = machine.name || machine.id;
+        // La píldora de estado va DENTRO del grupo de la derecha: el item es
+        // flex con space-between, y dejarla suelta la empujaría al centro.
+        const pildora = `<span class="device-status-pill ${machine.online ? 'online' : 'offline'}">${machine.online ? t('online') : t('offline')}</span>`;
+        const acciones = esGrbl ? `
+            <div class="usb-port-registered">
+                ${pildora}
+                <button type="button" class="theme-option-icon-btn usb-port-rename-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(nombre)}" title="${escapeHtml(t('usbPortRename'))}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger usb-port-unlink-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(nombre)}" data-chip="${escapeHtml(chips.get(host) || '')}" data-transport="${host.startsWith('usb:') ? 'usb' : 'wifi'}" title="${escapeHtml(t('usbPortUnlink'))}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>` : pildora;
+        return `
         <div class="usb-port-item">
             <div class="usb-port-item-info">
-                <strong>${escapeHtml(machine.name || machine.id)}</strong>
+                <strong>${escapeHtml(nombre)}</strong>
                 <span>${escapeHtml(deviceDriverBadgeLabel(machine.driver))}</span>
             </div>
-            <span class="device-status-pill ${machine.online ? 'online' : 'offline'}">${machine.online ? t('online') : t('offline')}</span>
-        </div>
-    `).join('');
+            ${acciones}
+        </div>`;
+    }).join('');
+
+    // Mismo cableado que la lista de puertos USB: el popup de editar y el de
+    // desvincular ya existían, esta lista simplemente nunca pintó los botones.
+    wireRegisteredDeviceActions(container);
 }
 
 document.getElementById('registry-devices-refresh-btn')?.addEventListener('click', loadRegistryDevices);
@@ -9636,6 +9674,7 @@ async function handleUsbClassifyNameConfirm() {
         showToast(`${name}: ${t('usbRegisterSuccess').replace('{kind}', kindLabel)}`);
         refreshUsbPorts();
         loadWifiDevices();
+        loadRegistryDevices();
         if (document.getElementById('laser-host-select')) loadLaserHostSelector();
     } catch (error) {
         console.error(error);
@@ -9832,6 +9871,7 @@ async function handleDeviceRenameConfirm() {
         await fetch('/api/laser/registry', { method: 'POST', body: formData });
         refreshUsbPorts();
         loadWifiDevices();
+        loadRegistryDevices();
         if (document.getElementById('laser-host-select')) loadLaserHostSelector();
 
         const changes = [];
