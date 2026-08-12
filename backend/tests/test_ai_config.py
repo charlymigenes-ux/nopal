@@ -420,3 +420,22 @@ def test_guardar_preguntas_no_borra_las_ias():
     listado = ai_config_service.list_providers()
     assert len(listado["providers"]) == 1
     assert listado["active_id"] == creada["id"]
+
+
+def test_un_campo_nulo_de_una_version_anterior_no_pisa_el_valor_por_omision():
+    """Una entrada escrita antes de que existiera un campo puede traerlo en
+    null. Un null pisando el default deja la configuración en un estado que
+    no es ni true ni false -- fue exactamente lo que pasó con
+    actions_enabled al agregarlo."""
+    import json
+    creada = ai_config_service.create_provider({
+        "name": "Vieja", "base_url": "http://127.0.0.1:8081/v1", "model": "m"})
+
+    # Se simula el archivo escrito por la versión anterior
+    with open(ai_config_service.CONFIG_PATH, encoding="utf-8") as f:
+        crudo = json.load(f)
+    crudo["providers"][0]["actions_enabled"] = None
+    with open(ai_config_service.CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(crudo, f)
+
+    assert ai_config_service.get_config()["actions_enabled"] is False
