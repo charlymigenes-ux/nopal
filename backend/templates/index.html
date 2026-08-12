@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=300">
+    <link rel="stylesheet" href="/static/css/style.css?v=301">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -1772,6 +1772,19 @@
                     </div>
 
                     <div class="ai-side">
+                        <div class="ai-card">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="aiHistory">Conversaciones</h2>
+                                <button type="button" class="btn-file-action" id="ai-history-clear-btn" data-i18n-title="aiClearHistory" title="Borrar todo el historial" hidden>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                                </button>
+                            </div>
+                            <div class="ai-history-list" id="ai-history-list"></div>
+                        </div>
+
                         <div class="ai-card">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
@@ -4614,11 +4627,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=30"></script>
+    <script src="/static/js/translations.js?v=31"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=238"></script>
+    <script src="/static/js/app.js?v=239"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

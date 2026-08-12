@@ -16841,3 +16841,41 @@ body.ai .panel-card-mini { align-items: center; }
 .ai-suggestions-rows { display: flex; flex-direction: column; gap: 6px; }
 .ai-suggestion-row { display: flex; gap: 6px; align-items: center; }
 .ai-suggestion-row .ai-text-input { flex: 1; min-width: 0; }
+
+/* Acción pendiente de confirmación en el chat. Se distingue del resto de la
+   conversación a propósito: no es un mensaje, es algo que espera decisión. */
+.ai-pending-action {
+    align-self: stretch;
+    border: 1px solid var(--status-warn);
+    border-left: 3px solid var(--status-warn);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    background: var(--surface-sunken);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.ai-pending-head { display: flex; align-items: center; gap: 8px; font-size: .82rem; font-weight: 600; color: var(--status-warn); }
+.ai-pending-what { margin: 0; font-size: .85rem; color: var(--text-strong); word-break: break-word; }
+.ai-pending-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ai-pending-done { font-size: .85rem; }
+.ai-pending-done[data-tone="ok"] { color: var(--status-ok); }
+.ai-pending-done[data-tone="error"] { color: var(--status-danger); }
+.ai-pending-done[data-tone="muted"] { color: var(--text-faint); }
+
+/* Historial de conversaciones */
+.ai-history-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.ai-history-row { display: flex; align-items: stretch; gap: 4px; border-radius: var(--radius-sm); }
+.ai-history-row.is-active { background: var(--surface-sunken); }
+.ai-history-open {
+    flex: 1; min-width: 0; text-align: left; background: none; border: none; cursor: pointer;
+    padding: 7px 8px; display: flex; flex-direction: column; gap: 1px; color: inherit;
+}
+.ai-history-open:hover { background: var(--surface-sunken); border-radius: var(--radius-sm); }
+.ai-history-title { font-size: .82rem; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-history-meta { font-size: .68rem; color: var(--text-faint); }
+.ai-history-del {
+    background: none; border: none; cursor: pointer; color: var(--text-faint);
+    padding: 0 6px; border-radius: var(--radius-sm); flex-shrink: 0;
+}
+.ai-history-del:hover { color: var(--status-danger); }
