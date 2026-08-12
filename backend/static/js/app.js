@@ -17900,6 +17900,12 @@ const LIGHT_WALLPAPER_OPTIONS = [
     '/static/img/fondo_NOPAL_DESERT_2.png',
     '/static/img/fondoClaro3.png',
 ];
+const AI_WALLPAPER_KEY = 'aiThemeWallpaper';
+const AI_WALLPAPER_OPTIONS = [
+    '/static/img/FONDO1_IA.png',
+    '/static/img/FONDO2_IA.png',
+    '/static/img/FONDO3_IA.png',
+];
 const RED_WALLPAPER_KEY = 'redThemeWallpaper';
 const RED_WALLPAPER_OPTIONS = [
     '/static/img/fondo_NOPAL_GRAY.png',
@@ -17911,6 +17917,7 @@ const THEME_WALLPAPER_CONFIG = {
     green: { storageKey: NOPAL_WALLPAPER_KEY, cssVar: '--nopal-wallpaper', options: NOPAL_WALLPAPER_OPTIONS },
     light: { storageKey: LIGHT_WALLPAPER_KEY, cssVar: '--light-wallpaper', options: LIGHT_WALLPAPER_OPTIONS },
     red: { storageKey: RED_WALLPAPER_KEY, cssVar: '--red-wallpaper', options: RED_WALLPAPER_OPTIONS },
+    ai: { storageKey: AI_WALLPAPER_KEY, cssVar: '--ai-wallpaper', options: AI_WALLPAPER_OPTIONS },
 };
 
 function getThemeWallpaperUrl(theme) {
@@ -17967,6 +17974,16 @@ if (lightThemeSelectBtn) {
     lightThemeSelectBtn.addEventListener('click', () => {
         if (settingsTheme) settingsTheme.value = 'light';
         setActiveThemeCard('light');
+        saveSettings();
+        refreshWallpaperThumbActiveStates();
+    });
+}
+
+const aiThemeSelectBtn = document.getElementById('ai-theme-select-btn');
+if (aiThemeSelectBtn) {
+    aiThemeSelectBtn.addEventListener('click', () => {
+        if (settingsTheme) settingsTheme.value = 'ai';
+        setActiveThemeCard('ai');
         saveSettings();
         refreshWallpaperThumbActiveStates();
     });
