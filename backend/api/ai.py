@@ -12,7 +12,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from backend.auth_deps import require_auth, require_role
-from backend.services import ai_agent, ai_config_service, ai_conversations_service, ai_tools
+from backend.services import ai_actions, ai_agent, ai_config_service, ai_conversations_service, ai_tools
 from backend.services.ai_config_service import AIConfigError
 from backend.services.ai_provider import AIProviderError, get_provider
 
@@ -271,6 +271,38 @@ async def clear_conversations_endpoint(user: dict = Depends(require_role("admin"
     return {"deleted": ai_conversations_service.clear_conversations()}
 
 
+@router.get("/actions")
+async def list_ai_actions_endpoint(user: dict = Depends(require_auth)):
+    """Acciones que ESTE usuario puede ejecutar por medio de la IA.
+
+    El listado depende del rol a propósito: un operador no debe ver en el
+    catálogo lo que no podría hacer en el panel.
+    """
+    return {
+        "enabled": bool(ai_config_service.get_config().get("actions_enabled")),
+        "actions": [
+            {"name": a.name, "description": a.description, "risk": a.risk, "role": a.role}
+            for a in ai_actions.get_actions(user["role"])
+        ],
+    }
+
+
+@router.post("/actions/{token}/confirm")
+async def confirm_ai_action_endpoint(token: str, user: dict = Depends(require_auth)):
+    """Ejecuta una acción de riesgo que quedó esperando confirmación."""
+    if not ai_config_service.get_config().get("actions_enabled"):
+        raise HTTPException(status_code=403, detail="Las acciones de la IA están desactivadas")
+    try:
+        return await ai_actions.confirm(token, user["role"], user["username"])
+    except ai_actions.ActionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/actions/{token}/cancel")
+async def cancel_ai_action_endpoint(token: str, user: dict = Depends(require_auth)):
+    return {"cancelled": ai_actions.cancel(token)}
+
+
 @router.post("/ask")
 async def ask_ai_endpoint(
     payload: dict = Body(...),
@@ -282,7 +314,12 @@ async def ask_ai_endpoint(
     para que el usuario pueda verificar de dónde salió cada dato.
     """
     try:
-        return await ai_agent.ask(payload.get("question", ""), payload.get("conversation_id"))
+        return await ai_agent.ask(
+            payload.get("question", ""),
+            payload.get("conversation_id"),
+            role=user["role"],
+            username=user["username"],
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except ai_agent.AIDisabledError as exc:
