@@ -19354,34 +19354,98 @@ function aiUpdateNavVisibility(enabled) {
     aiApplyModeChrome(enabled);
 }
 
+// Render por tipo de máquina. Son las mismas ilustraciones del modo IA que
+// ya usan las tarjetas del panel: una ficha con la foto de la máquina se
+// reconoce de un vistazo, un rectángulo con texto no.
+const AI_MACHINE_ART = {
+    printer: '/static/img/3D_IA.webp',
+    laser: '/static/img/LASER_IA.webp',
+    cnc: '/static/img/CNC_IA.webp',
+};
+
+const AI_METRIC_ICONS = {
+    temp: '<path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>',
+    bed: '<path d="M2 17h20"/><path d="M4 17V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8"/><path d="M6 17v2"/><path d="M18 17v2"/>',
+    power: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    speed: '<path d="M12 20a8 8 0 1 0-8-8"/><path d="M12 12l4-3"/>',
+    progress: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+};
+
+function aiMetric(icon, value) {
+    // Sin dato se muestra una raya, nunca un cero: un 0 °C leído como real
+    // es peor que admitir que no se sabe.
+    return `<span class="ai-machine-metric">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${AI_METRIC_ICONS[icon]}</svg>
+        <span>${escapeHtml(value === null || value === undefined || value === '' ? '—' : String(value))}</span>
+    </span>`;
+}
+
+function aiMachineTone(machine) {
+    const estado = String(machine.status?.state || '').toLowerCase();
+    if (!machine.online) return 'off';
+    if (['error', 'alarm', 'alarma'].includes(estado)) return 'error';
+    if (estado === 'paused') return 'warn';
+    if (['printing', 'running', 'busy'].includes(estado)) return 'busy';
+    return 'ok';
+}
+
+function aiMachineStateLabel(machine, tone) {
+    const etiquetas = { off: 'aiOffline', error: 'aiStateAlert', warn: 'aiStatePaused', busy: 'aiWorking', ok: 'aiReady' };
+    return t(etiquetas[tone] || 'aiReady');
+}
+
+function aiMachineMetrics(machine) {
+    const st = machine.status || {};
+    const grados = v => (Number.isFinite(v) ? `${Math.round(v)}°C` : null);
+    const avance = Number.isFinite(st.job?.progress) ? `${Math.round(st.job.progress)}%` : null;
+
+    if (machine.type === 'printer') {
+        return aiMetric('temp', grados(st.hotend?.current)) +
+               aiMetric('bed', grados(st.bed?.current)) +
+               aiMetric('progress', avance);
+    }
+    // Láser y CNC no tienen boquilla ni cama: lo que importa es cuánta
+    // potencia/giro se está entregando y a qué velocidad se mueve.
+    const potencia = machine.type === 'cnc'
+        ? (Number.isFinite(st.spindle_rpm) ? `${Math.round(st.spindle_rpm)} rpm` : null)
+        : (Number.isFinite(st.laser_power) ? `S${Math.round(st.laser_power)}` : null);
+    const velocidad = Number.isFinite(st.feed) ? `${Math.round(st.feed)} mm/m` : null;
+    return aiMetric('power', potencia) + aiMetric('speed', velocidad) + aiMetric('progress', avance);
+}
+
+function aiMachineDetail(machine, tone) {
+    const st = machine.status || {};
+    if (!machine.online) return t('aiNoConnection');
+    const job = st.job || {};
+    if (Number.isFinite(job.progress) && job.progress > 0) {
+        const archivo = job.filename ? ` · ${job.filename}` : '';
+        return `${Math.round(job.progress)}%${archivo}`;
+    }
+    return t(tone === 'error' ? 'aiNeedsAttention' : 'aiIdle');
+}
+
 function aiMachineCard(machine) {
-    const online = machine.online;
-    const job = machine.job || {};
-    const printing = ['printing', 'paused'].includes(job.state);
-    const tone = online ? (printing ? 'busy' : 'ok') : 'off';
-    const stateLabel = !online ? t('aiOffline') : (printing ? t('aiWorking') : t('aiReady'));
-
-    const progress = printing && Number.isFinite(job.progress)
-        ? `<div class="ai-machine-progress"><div class="ai-machine-progress-bar" style="width:${Math.max(0, Math.min(100, job.progress))}%"></div></div>
-           <span class="ai-machine-progress-text">${escapeHtml(String(job.progress))}%${job.filename ? ' · ' + escapeHtml(job.filename) : ''}</span>`
-        : '';
-
+    const tone = aiMachineTone(machine);
+    const art = AI_MACHINE_ART[machine.type] || AI_MACHINE_ART.printer;
     return `
-        <div class="ai-machine-card" data-tone="${tone}">
-            <div class="ai-machine-head">
-                <span class="ai-machine-name">${escapeHtml(machine.name || machine.id)}</span>
-                <span class="ai-machine-pill" data-tone="${tone}">${escapeHtml(stateLabel)}</span>
+        <article class="ai-machine-card" data-tone="${tone}">
+            <div class="ai-machine-top">
+                <span class="ai-machine-art"><img src="${art}" alt="" loading="lazy"></span>
+                <span class="ai-machine-id">
+                    <span class="ai-machine-name" title="${escapeHtml(machine.name || machine.id)}">${escapeHtml(machine.name || machine.id)}</span>
+                    <span class="ai-machine-pill">${escapeHtml(aiMachineStateLabel(machine, tone))}</span>
+                </span>
             </div>
-            <span class="ai-machine-kind">${escapeHtml(machine.brand || '')} · ${escapeHtml(machine.kind || '')}</span>
-            ${progress}
-        </div>`;
+            <p class="ai-machine-detail">${escapeHtml(aiMachineDetail(machine, tone))}</p>
+            <div class="ai-machine-metrics">${aiMachineMetrics(machine)}</div>
+        </article>`;
 }
 
 async function aiLoadMachines() {
     const container = document.getElementById('ai-machines');
     if (!container) return;
     try {
-        const data = await aiFetchJson('/api/ai/tools/get_machines', { method: 'POST' });
+        const data = await aiFetchJson('/api/devices/registry');
         const machines = data.machines || [];
         container.innerHTML = machines.length
             ? machines.map(aiMachineCard).join('')
