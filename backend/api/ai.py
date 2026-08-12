@@ -111,6 +111,74 @@ async def test_ai_connection_endpoint(
         return {"ok": False, "error": str(exc)}
 
 
+@router.get("/providers")
+async def list_ai_providers_endpoint(user: dict = Depends(require_role("admin"))):
+    """Las IAs guardadas, sin sus claves. Marca cuál está activa."""
+    return ai_config_service.list_providers()
+
+
+@router.post("/providers")
+async def create_ai_provider_endpoint(
+    provider: dict = Body(...),
+    user: dict = Depends(require_role("admin")),
+):
+    """Agrega una IA al registro. La primera que se agrega queda activa."""
+    try:
+        return ai_config_service.create_provider(provider)
+    except AIConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.put("/providers/{provider_id}")
+async def update_ai_provider_endpoint(
+    provider_id: str,
+    provider: dict = Body(...),
+    user: dict = Depends(require_role("admin")),
+):
+    try:
+        return ai_config_service.update_provider(provider_id, provider)
+    except AIConfigError as exc:
+        # "ya no existe" es un 404; el resto son datos inválidos.
+        status = 404 if "no existe" in str(exc) else 400
+        raise HTTPException(status_code=status, detail=str(exc))
+
+
+@router.delete("/providers/{provider_id}")
+async def delete_ai_provider_endpoint(
+    provider_id: str,
+    user: dict = Depends(require_role("admin")),
+):
+    """Borrar la IA activa pasa la activación a la primera que quede; si no
+    queda ninguna, la capa se apaga sola en vez de apuntar a la nada."""
+    try:
+        return ai_config_service.delete_provider(provider_id)
+    except AIConfigError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/providers/{provider_id}/activate")
+async def activate_ai_provider_endpoint(
+    provider_id: str,
+    user: dict = Depends(require_role("admin")),
+):
+    try:
+        return ai_config_service.set_active_provider(provider_id)
+    except AIConfigError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/enabled")
+async def set_ai_enabled_endpoint(
+    payload: dict = Body(...),
+    user: dict = Depends(require_role("admin")),
+):
+    """Enciende o apaga la capa sin tocar el registro de IAs guardadas."""
+    try:
+        return ai_config_service.set_enabled(bool(payload.get("enabled")))
+    except AIConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/tools")
 async def list_ai_tools_endpoint(user: dict = Depends(require_auth)):
     """Catálogo de herramientas de solo lectura que se le ofrecen al modelo.

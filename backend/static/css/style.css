@@ -16647,3 +16647,31 @@ body.ai .panel-card-mini { align-items: center; }
     #ai-section > .ai-layout { padding: 0 16px 24px; }
     #ai-section > .ai-disabled-notice { margin: 0 16px 24px; }
 }
+
+/* --- Registro de IAs guardadas ------------------------------------------- */
+.ai-providers { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
+.ai-providers-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-providers-title { font-size: .85rem; font-weight: 600; color: var(--text-strong); }
+.ai-providers-list { display: flex; flex-direction: column; gap: 8px; }
+
+.ai-provider-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--border-control);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 10px 12px;
+}
+/* La activa se distingue por el filo, no por el fondo: así la lista se lee
+   igual de bien en los cinco temas. */
+.ai-provider-row.is-active { border-left-color: var(--accent-fill); }
+.ai-provider-info { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.ai-provider-name { font-size: .88rem; font-weight: 600; color: var(--text-strong); display: flex; align-items: center; gap: 8px; }
+.ai-provider-meta { font-size: .74rem; color: var(--text-faint); word-break: break-all; }
+.ai-provider-badge {
+    font-size: .62rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--accent-ink); border: 1px solid var(--accent-fill);
+    border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
+.ai-provider-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.ai-form-title { font-size: .85rem; font-weight: 600; color: var(--text-soft); margin: 6px 0 0; }
