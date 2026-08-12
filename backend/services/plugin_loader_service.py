@@ -94,6 +94,35 @@ def _load_plugin_router(plugin_id: str, manifest: dict) -> Optional[Any]:
     return router
 
 
+def get_plugin_ai_tools() -> list:
+    """Herramientas de IA que los plugins cargados declaran por su cuenta.
+
+    Punto de extensión para que un plugin exponga sus datos a NOPAL
+    Intelligence sin que el core tenga que conocerlo. Mismo espíritu que
+    `router`: si el módulo de entrada del plugin define `AI_TOOLS`, se toma;
+    si no, no pasa nada.
+
+    Cada elemento debe ser un `backend.services.ai_tools.Tool`. Se importa
+    perezosamente para no crear una dependencia circular ni obligar a los
+    plugins a importar el core solo para declarar herramientas.
+
+    Un plugin que declare algo inválido se salta con una advertencia, igual
+    que un backend roto: nunca debe tumbar la capa de IA del resto.
+    """
+    tools = []
+    for module_name, module in list(sys.modules.items()):
+        if not module_name.startswith(f"{NAMESPACE_PACKAGE}."):
+            continue
+        declaradas = getattr(module, "AI_TOOLS", None)
+        if not declaradas:
+            continue
+        try:
+            tools.extend(list(declaradas))
+        except TypeError:
+            logger.warning(f"[{module_name}] AI_TOOLS no es iterable, se omite")
+    return tools
+
+
 def get_loaded_plugin_module(plugin_id: str, relative_module: str) -> Optional[Any]:
     """Acceso de lectura, best-effort, a un submódulo ya cargado de un
     plugin (ej. relative_module="services.accessory_service") -- para el
