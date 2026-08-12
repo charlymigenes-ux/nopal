@@ -16967,3 +16967,42 @@ body.ai .dashboard-dock-section .section-title h2 {
 .backup-group-label { font-size: .85rem; color: var(--text-strong); display: flex; align-items: center; gap: 8px; }
 .backup-group-text small { font-size: .72rem; color: var(--text-faint); }
 .backup-sensitive { font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--status-warn); border: 1px solid var(--status-warn); border-radius: 999px; padding: 1px 7px; }
+
+/* Cronómetro de espera tras un límite de cuota del proveedor de IA.
+   El aro tiene radio 15.9155 (circunferencia = 100) para que el
+   stroke-dashoffset que escribe app.js sea directamente un porcentaje. */
+.ai-cooldown {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--status-warn);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--status-warn) 8%, transparent);
+}
+/* Sin esto el `display: flex` de arriba le gana al [hidden] del navegador
+   (una clase tiene más especificidad) y el cronómetro se vería siempre. */
+.ai-cooldown[hidden] { display: none; }
+.ai-cooldown-dial { position: relative; width: 42px; height: 42px; flex-shrink: 0; }
+.ai-cooldown-dial svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ai-cooldown-dial circle { fill: none; stroke-width: 3; }
+.ai-cooldown-track { stroke: color-mix(in srgb, var(--status-warn) 25%, transparent); }
+.ai-cooldown-progress {
+    stroke: var(--status-warn);
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 0;
+}
+.ai-cooldown-time {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .68rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;  /* que no baile al cambiar de dígito */
+    color: var(--status-warn);
+}
+.ai-cooldown-label { font-size: .8rem; color: var(--text-muted); line-height: 1.35; }

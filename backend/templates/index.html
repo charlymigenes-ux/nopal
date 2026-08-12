@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=304">
+    <link rel="stylesheet" href="/static/css/style.css?v=305">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -295,6 +295,16 @@
                             <div class="panel-tab-pane" data-panel-pane="ai" hidden>
                                 <div class="panel-ai-thread" id="panel-ai-thread"></div>
                                 <div class="panel-ai-suggestions" id="panel-ai-suggestions"></div>
+                                <div class="ai-cooldown" id="panel-ai-cooldown" hidden>
+                                    <div class="ai-cooldown-dial">
+                                        <svg viewBox="0 0 36 36" aria-hidden="true">
+                                            <circle class="ai-cooldown-track" cx="18" cy="18" r="15.9155"></circle>
+                                            <circle class="ai-cooldown-progress" cx="18" cy="18" r="15.9155"></circle>
+                                        </svg>
+                                        <span class="ai-cooldown-time" data-cooldown-time>0s</span>
+                                    </div>
+                                    <span class="ai-cooldown-label" data-i18n="aiCooldownWait">Límite del proveedor alcanzado. Puedes volver a preguntar en:</span>
+                                </div>
                                 <form class="panel-ai-composer" id="panel-ai-composer">
                                     <input type="text" id="panel-ai-question" class="ai-question-input"
                                            data-i18n-placeholder="aiPlaceholder" placeholder="Escribe tu pregunta...">
@@ -1782,6 +1792,17 @@
                             <div class="ai-thread" id="ai-thread"></div>
 
                             <div class="ai-suggestions" id="ai-suggestions"></div>
+
+                            <div class="ai-cooldown" id="ai-cooldown" hidden>
+                                <div class="ai-cooldown-dial">
+                                    <svg viewBox="0 0 36 36" aria-hidden="true">
+                                        <circle class="ai-cooldown-track" cx="18" cy="18" r="15.9155"></circle>
+                                        <circle class="ai-cooldown-progress" cx="18" cy="18" r="15.9155"></circle>
+                                    </svg>
+                                    <span class="ai-cooldown-time" data-cooldown-time>0s</span>
+                                </div>
+                                <span class="ai-cooldown-label" data-i18n="aiCooldownWait">Límite del proveedor alcanzado. Puedes volver a preguntar en:</span>
+                            </div>
 
                             <form class="ai-composer" id="ai-composer">
                                 <input type="text" id="ai-question" class="ai-question-input"
@@ -4702,11 +4723,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=35"></script>
+    <script src="/static/js/translations.js?v=36"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=244"></script>
+    <script src="/static/js/app.js?v=245"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

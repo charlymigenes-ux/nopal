@@ -28,8 +28,11 @@ no usa. Si httpx no está disponible se devuelve un error claro en vez de
 romper el arranque de la app.
 """
 
+import email.utils
 import json
 import logging
+import re
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -37,10 +40,26 @@ from backend.services import ai_config_service
 
 logger = logging.getLogger(__name__)
 
+# Tope de la espera que se le reporta al usuario. Un proveedor puede decir
+# "vuelve en 24 h" (cuota diaria agotada); mostrar un cronómetro de 86400 s
+# no ayuda a nadie y solo bloquearía el botón de enviar para siempre.
+MAX_RETRY_AFTER_SECONDS = 3600
+
 
 class AIProviderError(RuntimeError):
     """Falla al hablar con el servidor de IA (red, timeout, respuesta
-    inválida). El router la traduce a un 502/503 con mensaje mostrable."""
+    inválida). El router la traduce a un 502/503 con mensaje mostrable.
+
+    `retry_after` son los segundos que el proveedor pide esperar antes de
+    volver a intentar (None si no lo dijo o no aplica). Es lo que alimenta
+    el cronómetro de la interfaz: un 429 de límite por minuto se resuelve
+    solo en segundos, y sin ese dato el usuario solo ve "error" y reintenta
+    a ciegas, gastando cuota justo cuando no la tiene.
+    """
+
+    def __init__(self, message: str, retry_after: Optional[float] = None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class AIProvider(ABC):
@@ -133,7 +152,11 @@ class OpenAICompatibleProvider(AIProvider):
             raise ToolsUnsupportedError(_error_detail(response))
 
         if response.status_code >= 400:
-            raise AIProviderError(f"El servidor de IA respondió {response.status_code}: {_error_detail(response)}")
+            detalle = _error_detail(response)
+            raise AIProviderError(
+                f"El servidor de IA respondió {response.status_code}: {detalle}",
+                retry_after=_retry_after_seconds(response, detalle),
+            )
 
         try:
             data = response.json()
@@ -236,6 +259,95 @@ def _error_detail(response: Any) -> str:
         return json.dumps(body)[:300]
     except Exception:
         return (response.text or "")[:300]
+
+
+# "4.5225s", "2m59.56s", "1m", "300ms", "5" (segundos pelados). Es el
+# formato que usan las cabeceras x-ratelimit-reset-* y también el texto del
+# mensaje de error ("Please try again in 4.5225s").
+_DURACION_RE = re.compile(
+    r"(?:(?P<h>\d+(?:\.\d+)?)h)?"
+    r"(?:(?P<m>\d+(?:\.\d+)?)m(?!s))?"
+    r"(?:(?P<s>\d+(?:\.\d+)?)s)?"
+    r"(?:(?P<ms>\d+(?:\.\d+)?)ms)?$"
+)
+
+
+def _parse_duration(texto: str) -> Optional[float]:
+    """Convierte a segundos una duración estilo `1m20.5s`, `4.52s`, `300ms`
+    o un número pelado. Devuelve None si no se entiende."""
+    texto = (texto or "").strip().lower()
+    if not texto:
+        return None
+    try:
+        return float(texto)  # segundos pelados: el formato de Retry-After
+    except ValueError:
+        pass
+    match = _DURACION_RE.fullmatch(texto)
+    if not match or not any(match.groupdict().values()):
+        return None
+    partes = {k: float(v) for k, v in match.groupdict().items() if v is not None}
+    return (
+        partes.get("h", 0) * 3600
+        + partes.get("m", 0) * 60
+        + partes.get("s", 0)
+        + partes.get("ms", 0) / 1000
+    )
+
+
+def _retry_after_seconds(response: Any, detail: str = "") -> Optional[float]:
+    """Cuántos segundos pide esperar el proveedor antes de reintentar.
+
+    Se busca en tres lugares, del más confiable al menos: la cabecera
+    estándar `Retry-After` (segundos o fecha HTTP), las cabeceras
+    `x-ratelimit-reset-*` que mandan Groq y OpenAI, y como último recurso el
+    propio texto del error ("Please try again in 4.5225s") — Groq manda ese
+    dato en el cuerpo aunque las cabeceras vengan con el reset de otra
+    cuota. Devuelve None si ninguno dice nada útil.
+    """
+    # httpx.Headers ya ignora mayúsculas, pero acá se normaliza igual para
+    # no depender de qué tipo concreto traiga la respuesta.
+    try:
+        headers = {str(k).lower(): v for k, v in (response.headers or {}).items()}
+    except Exception:
+        headers = {}
+
+    crudo = headers.get("retry-after")
+    if crudo:
+        segundos = _parse_duration(str(crudo))
+        if segundos is None:
+            # La otra forma válida de Retry-After: una fecha HTTP.
+            fecha = email.utils.parsedate_to_datetime(str(crudo))
+            if fecha is not None:
+                segundos = fecha.timestamp() - time.time()
+        if segundos is not None:
+            return _acotar(segundos)
+
+    # De las cuotas que reporte el proveedor interesa la que más tarda en
+    # reponerse: reintentar cuando se libera la de tokens pero no la de
+    # peticiones da otro 429 inmediato.
+    esperas = [
+        _parse_duration(str(valor))
+        for clave, valor in headers.items()
+        if clave.startswith("x-ratelimit-reset")
+    ]
+    esperas = [e for e in esperas if e is not None and e > 0]
+    if esperas:
+        return _acotar(max(esperas))
+
+    texto = re.search(r"again in ([\dhms.]+)", detail or "", re.IGNORECASE)
+    if texto:
+        # El punto final de la oración se cuela en la captura ("4.5225s.").
+        segundos = _parse_duration(texto.group(1).rstrip("."))
+        if segundos is not None:
+            return _acotar(segundos)
+    return None
+
+
+def _acotar(segundos: float) -> Optional[float]:
+    """Recorta la espera al rango que tiene sentido mostrar en pantalla."""
+    if segundos <= 0:
+        return None
+    return min(round(segundos, 2), float(MAX_RETRY_AFTER_SECONDS))
 
 
 PROVIDERS = {

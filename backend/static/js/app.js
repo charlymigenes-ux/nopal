@@ -18829,9 +18829,88 @@ async function aiFetchJson(url, options = {}) {
         payload = null;
     }
     if (!response.ok) {
-        throw new Error(payload?.detail || `HTTP ${response.status}`);
+        const error = new Error(payload?.detail || `HTTP ${response.status}`);
+        // Campo hermano de `detail` (ver backend/api/ai.py): segundos que el
+        // proveedor pidió esperar. Se propaga en el Error para que quien
+        // atrape sepa que esto no es una falla cualquiera, sino una espera.
+        error.retryAfter = payload?.retry_after ?? null;
+        throw error;
     }
     return payload;
+}
+
+// --- Enfriamiento tras un límite de cuota ----------------------------------
+// Cuando el proveedor responde "límite alcanzado, reintenta en 4.5s", ese
+// dato llega en retry_after y aquí se vuelve un cronómetro en cuenta
+// regresiva. Sin él el usuario solo ve un error rojo, vuelve a preguntar de
+// inmediato y gasta cuota justo cuando no la tiene, alargando la espera.
+// El estado es uno solo para toda la app: la sección de IA y el panel de
+// Inicio pegan al mismo proveedor, así que la espera de uno es la del otro.
+
+let aiCooldownUntil = 0;
+let aiCooldownTotal = 0;
+let aiCooldownTimer = null;
+
+function aiCooldownRemaining() {
+    return Math.max(0, (aiCooldownUntil - Date.now()) / 1000);
+}
+
+function aiStartCooldown(segundos) {
+    const espera = Number(segundos);
+    if (!Number.isFinite(espera) || espera <= 0) return;
+    const hasta = Date.now() + espera * 1000;
+    // Si ya corría una espera más larga, se respeta: acortarla solo
+    // provocaría otro rechazo del proveedor.
+    if (hasta <= aiCooldownUntil) return;
+    aiCooldownUntil = hasta;
+    aiCooldownTotal = espera;
+    if (aiCooldownTimer) clearInterval(aiCooldownTimer);
+    aiCooldownTimer = setInterval(aiCooldownTick, 100);
+    aiCooldownTick();
+}
+
+function aiCooldownTick() {
+    const restante = aiCooldownRemaining();
+    if (restante <= 0) aiEndCooldown();
+    else aiRenderCooldown(restante);
+}
+
+function aiEndCooldown() {
+    if (aiCooldownTimer) clearInterval(aiCooldownTimer);
+    aiCooldownTimer = null;
+    aiCooldownUntil = 0;
+    aiCooldownTotal = 0;
+    document.querySelectorAll('.ai-cooldown').forEach(nodo => { nodo.hidden = true; });
+    aiSetComposersDisabled(false);
+}
+
+function aiFormatCooldown(restante) {
+    // Bajo un minuto se muestran décimas: un contador de enteros en una
+    // espera de 4 s parece congelado.
+    if (restante < 60) return `${restante.toFixed(1)}s`;
+    return `${Math.floor(restante / 60)}:${String(Math.floor(restante % 60)).padStart(2, '0')}`;
+}
+
+function aiRenderCooldown(restante) {
+    // El aro tiene radio 15.9155 (circunferencia 100), así que el desfase
+    // del trazo es directamente el porcentaje ya transcurrido.
+    const proporcion = aiCooldownTotal > 0 ? Math.min(1, restante / aiCooldownTotal) : 0;
+    document.querySelectorAll('.ai-cooldown').forEach(nodo => {
+        nodo.hidden = false;
+        const tiempo = nodo.querySelector('[data-cooldown-time]');
+        if (tiempo) tiempo.textContent = aiFormatCooldown(restante);
+        const aro = nodo.querySelector('.ai-cooldown-progress');
+        if (aro) aro.style.strokeDashoffset = String(100 - proporcion * 100);
+    });
+    aiSetComposersDisabled(true);
+}
+
+function aiSetComposersDisabled(bloqueado) {
+    document.querySelectorAll('#ai-composer, #panel-ai-composer').forEach(form => {
+        form.querySelectorAll('input, button').forEach(el => { el.disabled = bloqueado; });
+    });
+    document.querySelectorAll('#ai-suggestions .ai-suggestion, #panel-ai-suggestions .ai-suggestion')
+        .forEach(btn => { btn.disabled = bloqueado; });
 }
 
 // --- Configuración (Ajustes → Inteligencia artificial) ---------------------
@@ -19272,6 +19351,9 @@ function aiRenderSuggestions() {
             askAi();
         });
     });
+    // Los botones se acaban de recrear: si hay una espera en curso, vuelven
+    // a bloquearse.
+    if (aiCooldownRemaining() > 0) aiSetComposersDisabled(true);
 }
 
 function aiResetThread() {
@@ -19283,7 +19365,9 @@ function aiResetThread() {
 }
 
 async function askAi() {
-    if (aiBusy) return;
+    // El bloqueo de verdad está aquí, no en los botones deshabilitados:
+    // Enter en el campo de texto también llega a este punto.
+    if (aiBusy || aiCooldownRemaining() > 0) return;
     const input = document.getElementById('ai-question');
     const question = (input?.value || '').trim();
     if (!question) return;
@@ -19317,9 +19401,10 @@ async function askAi() {
     } catch (error) {
         pending?.remove();
         aiAppendMessage('assistant', error.message, t('aiError'));
+        aiStartCooldown(error.retryAfter);
     } finally {
         aiBusy = false;
-        if (sendBtn) sendBtn.disabled = false;
+        if (sendBtn) sendBtn.disabled = aiCooldownRemaining() > 0;
     }
 }
 
@@ -19448,6 +19533,7 @@ function aiRenderPanelSuggestions() {
         if (input) input.value = btn.textContent;
         askAiFromPanel();
     }));
+    if (aiCooldownRemaining() > 0) aiSetComposersDisabled(true);
 }
 
 function aiAppendPanelMessage(role, text, meta) {
@@ -19465,7 +19551,7 @@ function aiAppendPanelMessage(role, text, meta) {
 let aiPanelBusy = false;
 
 async function askAiFromPanel() {
-    if (aiPanelBusy) return;
+    if (aiPanelBusy || aiCooldownRemaining() > 0) return;
     const input = document.getElementById('panel-ai-question');
     const question = (input?.value || '').trim();
     if (!question) return;
@@ -19495,6 +19581,7 @@ async function askAiFromPanel() {
     } catch (error) {
         pendiente?.remove();
         aiAppendPanelMessage('assistant', error.message, t('aiError'));
+        aiStartCooldown(error.retryAfter);
     } finally {
         aiPanelBusy = false;
     }

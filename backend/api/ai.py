@@ -10,6 +10,7 @@ mensaje claro, nunca un 500 ni un stack trace.
 import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from backend.auth_deps import require_auth, require_role
 from backend.services import ai_actions, ai_agent, ai_config_service, ai_conversations_service, ai_tools
@@ -325,4 +326,11 @@ async def ask_ai_endpoint(
     except ai_agent.AIDisabledError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except AIProviderError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        # `detail` sigue siendo el string de siempre; `retry_after` es un
+        # campo hermano (mismo patrón que `error_code` en
+        # PrinterRegistrationError) para que la UI pueda mostrar el
+        # cronómetro sin que nada de lo anterior cambie de forma.
+        return JSONResponse(
+            status_code=502,
+            content={"detail": str(exc), "retry_after": exc.retry_after},
+        )
