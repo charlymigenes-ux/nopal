@@ -210,6 +210,30 @@ MEDIUM_HINTS = (
     "ultimas horas", "ultima hora", "historial", "tendencia", "cuales",
 )
 
+# Lo que el catálogo compacto NO cubre. Ese catálogo son seis herramientas:
+# estado del taller, máquinas, estado de una máquina, errores, Klipper y
+# plugins. Todo lo demás -- escenas, anuncios de la matriz, accesorios,
+# cámaras, materiales, biblioteca, cola -- solo existe en el completo.
+#
+# Sin esta lista, "¿qué alertas por máquina hay?" se clasifica como consulta
+# simple, va al nivel rápido con el catálogo compacto, y el modelo se queda
+# sin ninguna herramienta que pueda contestarla: justo la situación en la que
+# un LLM rellena el hueco inventando. Pasó en el taller con la Matriz LED.
+#
+# El modelo chico igual sirve para esto: lo que hay que ampliar es lo que
+# puede consultar, no quién contesta.
+NON_CORE_HINTS = (
+    "escena", "escenas", "anuncio", "anuncios", "matriz", "pantalla",
+    "led", "leds", "tira", "tiras", "rele", "reles", "relevador",
+    "ventilador", "ventiladores", "accesorio", "accesorios",
+    "alerta", "alertas", "regla", "reglas", "automatizacion", "automatizaciones",
+    "camara", "camaras", "webcam", "filamento", "filamentos", "material",
+    "materiales", "spool", "spools", "spoolman", "inventario",
+    "biblioteca", "archivo", "archivos", "modelo 3d", "gcode", "g-code",
+    "cola", "encolar", "plugin", "plugins", "sensor", "sensores",
+    "temperatura", "temperaturas", "grbl", "laser", "cnc", "avance", "progreso",
+)
+
 # Señal de que la respuesta cruza varias máquinas aunque no lo pida
 # explícitamente ("las tres impresoras", "todas las maquinas").
 MULTI_MACHINE_HINTS = (
@@ -330,6 +354,12 @@ def route(question: str, config: Dict[str, Any], has_image: bool = False) -> Opt
     # razonamiento no se lo amplía por su cuenta.
     perfil_config = config.get("tool_profile") or "full"
     perfil = "compact" if perfil_config == "compact" else TIER_TOOL_PROFILE.get(tier, "full")
+    # ...salvo que la pregunta sea sobre algo que el catálogo compacto no
+    # incluye. Recortar herramientas ahorra tokens; recortar justo la que
+    # hacía falta produce una respuesta inventada, que cuesta mucho más.
+    if (perfil == "compact" and perfil_config != "compact"
+            and _contiene(_normalize(question), NON_CORE_HINTS)):
+        perfil = "full"
 
     vueltas = int(config.get("max_tool_iterations") or 4)
     if tier == "agent":
