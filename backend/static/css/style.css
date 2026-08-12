@@ -16719,3 +16719,74 @@ body.ai .panel-card-mini { align-items: center; }
     padding: 0 6px; border-radius: var(--radius-sm); flex-shrink: 0;
 }
 .ai-history-del:hover { color: var(--status-danger); }
+
+/* ===========================================================================
+   MODO IA — tratamiento de superficies flotantes
+   ---------------------------------------------------------------------------
+   Barra lateral en verde y barra de accesorios en el azul de la marca: fondo
+   blanco con poca transparencia y degradado, para que el fondo del taller se
+   siga viendo por detrás sin que el texto pierda legibilidad. El contorno y
+   las letras del título toman el color correspondiente, este último en un
+   tono más fuerte para que contraste sobre el blanco.
+
+   Scoped a body.ai: en los otros temas estas barras no cambian.
+   =========================================================================== */
+
+body.ai .sidebar {
+    background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.80));
+    border-right: 1px solid var(--ai-grad-from);
+    /* Resplandor: el halo conserva la sensación del tema sin tapar el fondo. */
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.10), 0 10px 34px rgba(13, 27, 38, 0.10);
+    backdrop-filter: blur(6px);
+}
+body.ai .sidebar .nav-category-header > span {
+    /* Tono más fuerte que el acento para que el rótulo se lea sobre blanco. */
+    color: #0F7A38;
+}
+
+body.ai .dashboard-dock-body,
+body.ai .dashboard-dock-section {
+    background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.80));
+    border: 1px solid var(--ai-grad-to);
+    border-radius: var(--radius-md);
+    box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.10), 0 10px 34px rgba(13, 27, 38, 0.10);
+    backdrop-filter: blur(6px);
+}
+body.ai .dashboard-dock-section .section-title h2 {
+    color: #0E7490;   /* cian más oscuro: legible sobre el blanco translúcido */
+}
+
+/* --- Pestañas del panel de trabajos ------------------------------------- */
+.panel-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 10px;
+}
+.panel-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-faint);
+    font-size: .82rem;
+    font-weight: 600;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.panel-tab:hover { color: var(--text-soft); }
+.panel-tab.active { color: var(--accent-ink); border-bottom-color: var(--accent-fill); }
+.panel-tab:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.panel-tab-pane[hidden] { display: none; }
+
+/* Asistente compacto dentro del panel */
+.panel-ai-thread { display: flex; flex-direction: column; gap: 8px; max-height: 190px; overflow-y: auto; padding-right: 2px; }
+.panel-ai-composer { display: flex; gap: 6px; margin-top: 8px; }
+.panel-ai-composer .ai-question-input { padding: 8px 11px; font-size: .84rem; }
+.panel-ai-composer .ai-send-btn { width: 36px; height: 36px; }
+.panel-ai-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.panel-ai-suggestions .ai-suggestion { font-size: .74rem; padding: 4px 10px; }

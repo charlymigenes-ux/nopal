@@ -18983,6 +18983,11 @@ const AI_THEME_BEFORE_KEY = 'themeBeforeAi';
 
 function aiApplyModeChrome(enabled) {
     const wasActive = document.body.getAttribute('data-ai-active') === 'true';
+    // La pestaña de IA desaparece al apagar la capa; si era la visible hay
+    // que devolver el panel a Trabajos o quedaría en blanco.
+    if (!enabled && document.querySelector('[data-panel-tab="ai"]')?.classList.contains('active')) {
+        aiSwitchPanelTab('jobs');
+    }
     document.body.setAttribute('data-ai-active', enabled ? 'true' : 'false');
     if (enabled === wasActive) return;  // sin transición, no se toca el tema
 
@@ -19259,6 +19264,89 @@ async function loadAiSection() {
     aiLoadEvents();
     aiLoadHistory();
 }
+
+// --- Asistente compacto del panel de control -----------------------------
+// Comparte la conversación con la sección completa (mismo aiConversationId),
+// así que empezar aquí y seguir allá es un solo hilo.
+function aiSwitchPanelTab(nombre) {
+    document.querySelectorAll('[data-panel-tab]').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.panelTab === nombre));
+    document.querySelectorAll('[data-panel-pane]').forEach(pane => {
+        pane.hidden = pane.dataset.panelPane !== nombre;
+    });
+    const verTodos = document.getElementById('panel-jobs-see-all');
+    if (verTodos) verTodos.hidden = nombre !== 'jobs';
+    if (nombre === 'ai') aiRenderPanelSuggestions();
+}
+
+function aiRenderPanelSuggestions() {
+    const cont = document.getElementById('panel-ai-suggestions');
+    if (!cont) return;
+    cont.innerHTML = aiSuggestedQuestions()
+        .map(q => `<button type="button" class="ai-suggestion">${escapeHtml(q)}</button>`).join('');
+    cont.querySelectorAll('.ai-suggestion').forEach(btn => btn.addEventListener('click', () => {
+        const input = document.getElementById('panel-ai-question');
+        if (input) input.value = btn.textContent;
+        askAiFromPanel();
+    }));
+}
+
+function aiAppendPanelMessage(role, text, meta) {
+    const thread = document.getElementById('panel-ai-thread');
+    if (!thread) return null;
+    const bubble = document.createElement('div');
+    bubble.className = `ai-msg ai-msg-${role}`;
+    bubble.innerHTML = `<div class="ai-msg-text">${escapeHtml(text)}</div>` +
+        (meta ? `<div class="ai-msg-meta">${escapeHtml(meta)}</div>` : '');
+    thread.appendChild(bubble);
+    thread.scrollTop = thread.scrollHeight;
+    return bubble;
+}
+
+let aiPanelBusy = false;
+
+async function askAiFromPanel() {
+    if (aiPanelBusy) return;
+    const input = document.getElementById('panel-ai-question');
+    const question = (input?.value || '').trim();
+    if (!question) return;
+
+    aiPanelBusy = true;
+    if (input) input.value = '';
+    aiAppendPanelMessage('user', question);
+    const pendiente = aiAppendPanelMessage('assistant', t('aiThinking'));
+    pendiente?.classList.add('ai-msg-pending');
+
+    try {
+        const result = await aiFetchJson('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, conversation_id: aiConversationId }),
+        });
+        pendiente?.remove();
+        aiConversationId = result.conversation_id || aiConversationId;
+        const tools = (result.tool_calls || []).map(c => c.tool).join(', ');
+        aiAppendPanelMessage('assistant', result.answer || '', tools ? `${t('aiToolsUsed')}: ${tools}` : null);
+        // Una acción de riesgo pedida desde aquí se confirma en la sección
+        // completa: el panel es demasiado angosto para mostrar bien qué se
+        // va a ejecutar, y confirmar a ciegas es justo lo que se evita.
+        if (result.pending_action) {
+            aiAppendPanelMessage('assistant', t('aiConfirmInSection'));
+        }
+    } catch (error) {
+        pendiente?.remove();
+        aiAppendPanelMessage('assistant', error.message, t('aiError'));
+    } finally {
+        aiPanelBusy = false;
+    }
+}
+
+document.querySelectorAll('[data-panel-tab]').forEach(btn =>
+    btn.addEventListener('click', () => aiSwitchPanelTab(btn.dataset.panelTab)));
+document.getElementById('panel-ai-composer')?.addEventListener('submit', event => {
+    event.preventDefault();
+    askAiFromPanel();
+});
 
 aiInitModeChrome();
 
