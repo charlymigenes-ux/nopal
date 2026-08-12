@@ -258,3 +258,119 @@ async def test_probar_conexion_falla_si_ambos_fallan(monkeypatch):
     resultado = await proveedor.test_connection()
     assert resultado["ok"] is False
     assert "clave inválida" in resultado["error"]
+
+
+# --------------------------------------------------------------------------
+# Registro de IAs guardadas (CRUD)
+# --------------------------------------------------------------------------
+
+LAN = {"name": "El i7 del taller", "base_url": "http://192.168.0.70:8081/v1", "model": "qwen"}
+OTRA = {"name": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "model": "llama3.1:8b"}
+
+
+def test_el_registro_empieza_vacio():
+    listado = ai_config_service.list_providers()
+    assert listado["providers"] == []
+    assert listado["active_id"] is None
+
+
+def test_la_primera_ia_agregada_queda_activa():
+    creada = ai_config_service.create_provider(LAN)
+    assert creada["active"] is True
+    assert ai_config_service.list_providers()["active_id"] == creada["id"]
+
+
+def test_la_segunda_no_desplaza_a_la_activa():
+    primera = ai_config_service.create_provider(LAN)
+    ai_config_service.create_provider(OTRA)
+    assert ai_config_service.list_providers()["active_id"] == primera["id"]
+
+
+def test_activar_cambia_la_config_efectiva():
+    """El punto del registro: get_config() debe seguir devolviendo la forma
+    plana de siempre, pero apuntando a la IA que el usuario eligió."""
+    ai_config_service.create_provider(LAN)
+    segunda = ai_config_service.create_provider(OTRA)
+    ai_config_service.set_active_provider(segunda["id"])
+    assert ai_config_service.get_config()["base_url"] == OTRA["base_url"]
+    assert ai_config_service.get_config()["model"] == "llama3.1:8b"
+
+
+def test_editar_una_ia_conserva_su_clave():
+    creada = ai_config_service.create_provider({**LAN, "api_key": "secreto"})
+    ai_config_service.update_provider(creada["id"], {"model": "otro-modelo"})
+    guardadas = ai_config_service._read_store()["providers"]
+    assert guardadas[0]["api_key"] == "secreto"
+    assert guardadas[0]["model"] == "otro-modelo"
+
+
+def test_la_clave_nunca_sale_en_el_listado():
+    ai_config_service.create_provider({**LAN, "api_key": "secreto"})
+    listado = ai_config_service.list_providers()
+    assert "api_key" not in listado["providers"][0]
+    assert listado["providers"][0]["api_key_set"] is True
+    assert "secreto" not in json.dumps(listado)
+
+
+def test_borrar_la_activa_pasa_la_activacion_a_la_siguiente():
+    primera = ai_config_service.create_provider(LAN)
+    segunda = ai_config_service.create_provider(OTRA)
+    ai_config_service.delete_provider(primera["id"])
+    assert ai_config_service.list_providers()["active_id"] == segunda["id"]
+
+
+def test_borrar_la_ultima_apaga_la_capa():
+    """Quedar encendido apuntando a la nada sería peor que apagarse."""
+    creada = ai_config_service.create_provider(LAN)
+    ai_config_service.set_enabled(True)
+    ai_config_service.delete_provider(creada["id"])
+    listado = ai_config_service.list_providers()
+    assert listado["providers"] == []
+    assert listado["enabled"] is False
+    assert ai_config_service.is_enabled() is False
+
+
+def test_no_se_puede_encender_sin_ninguna_ia():
+    with pytest.raises(AIConfigError, match="agrega una IA"):
+        ai_config_service.set_enabled(True)
+
+
+def test_operar_sobre_una_ia_inexistente():
+    for accion in (lambda: ai_config_service.update_provider("nope", {}),
+                   lambda: ai_config_service.delete_provider("nope"),
+                   lambda: ai_config_service.set_active_provider("nope")):
+        with pytest.raises(AIConfigError, match="no existe"):
+            accion()
+
+
+def test_se_le_pone_nombre_solo_si_no_lo_traes():
+    creada = ai_config_service.create_provider({"base_url": "https://api.anthropic.com/v1",
+                                                "model": "claude-haiku-4-5", "api_key": "k",
+                                                "allow_public_endpoint": True})
+    assert "Anthropic" in creada["name"], creada["name"]
+
+
+def test_migra_el_formato_plano_anterior(tmp_path, monkeypatch):
+    """Una instalación que ya tenía su única IA configurada no puede perderla
+    al actualizar."""
+    viejo = tmp_path / "ai_config.json"
+    viejo.write_text(json.dumps({
+        "enabled": True, "provider": "openai-compatible",
+        "base_url": "https://api.deepseek.com/v1", "model": "deepseek-v4-flash",
+        "api_key": "clave-vieja", "allow_public_endpoint": True,
+    }), encoding="utf-8")
+    monkeypatch.setattr(ai_config_service, "CONFIG_PATH", str(viejo))
+
+    listado = ai_config_service.list_providers()
+    assert len(listado["providers"]) == 1
+    assert listado["enabled"] is True
+    assert listado["providers"][0]["base_url"] == "https://api.deepseek.com/v1"
+    # Y la clave sobrevive la migración aunque no se muestre
+    assert ai_config_service.get_config()["api_key"] == "clave-vieja"
+
+
+def test_tope_de_ias_guardadas():
+    for i in range(ai_config_service.MAX_PROVIDERS):
+        ai_config_service.create_provider({**LAN, "name": f"IA {i}"})
+    with pytest.raises(AIConfigError, match="más de"):
+        ai_config_service.create_provider(LAN)

@@ -18769,6 +18769,7 @@ function aiFillConfigForm(config) {
     const check = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
 
     check('ai-enabled', config.enabled);
+    set('ai-name', config.name);
     set('ai-base-url', config.base_url);
     set('ai-model', config.model);
     set('ai-timeout', config.timeout_s);
@@ -18831,6 +18832,89 @@ function aiShowTestResult(message, tone) {
     el.dataset.tone = tone;
 }
 
+// null = el formulario está creando una IA nueva; un id = la está editando.
+let aiEditingId = null;
+
+function aiRenderProviders(data) {
+    const list = document.getElementById('ai-providers-list');
+    if (!list) return;
+    const providers = data.providers || [];
+    if (!providers.length) {
+        list.innerHTML = `<p class="ai-empty">${escapeHtml(t('aiNoProviders'))}</p>`;
+        return;
+    }
+    list.innerHTML = providers.map(p => `
+        <div class="ai-provider-row${p.active ? ' is-active' : ''}" data-id="${escapeHtml(p.id)}">
+            <div class="ai-provider-info">
+                <span class="ai-provider-name">${escapeHtml(p.name || p.base_url)}${p.active ? `<span class="ai-provider-badge">${escapeHtml(t('aiActive'))}</span>` : ''}</span>
+                <span class="ai-provider-meta">${escapeHtml(p.model || '—')} · ${escapeHtml(p.base_url)}</span>
+            </div>
+            <div class="ai-provider-actions">
+                ${p.active ? '' : `<button type="button" class="btn-file-action" data-ai-act="activate">${escapeHtml(t('aiUseThis'))}</button>`}
+                <button type="button" class="btn-file-action" data-ai-act="edit">${escapeHtml(t('aiEdit'))}</button>
+                <button type="button" class="btn-file-action" data-ai-act="delete">${escapeHtml(t('aiDelete'))}</button>
+            </div>
+        </div>`).join('');
+
+    list.querySelectorAll('[data-ai-act]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const row = btn.closest('.ai-provider-row');
+            const id = row?.dataset.id;
+            const accion = btn.dataset.aiAct;
+            if (!id) return;
+            try {
+                if (accion === 'activate') {
+                    await aiFetchJson(`/api/ai/providers/${id}/activate`, { method: 'POST' });
+                    showToast(t('aiActivated'), 'success');
+                } else if (accion === 'delete') {
+                    // Borrar una IA guardada tira su dirección y su clave: se
+                    // confirma, igual que cualquier borrado en NOPAL.
+                    const nombre = row.querySelector('.ai-provider-name')?.textContent || '';
+                    if (!confirm(`${t('aiDeleteConfirm')}\n\n${nombre}`)) return;
+                    await aiFetchJson(`/api/ai/providers/${id}`, { method: 'DELETE' });
+                    if (aiEditingId === id) aiResetProviderForm();
+                    showToast(t('aiDeleted'), 'success');
+                } else if (accion === 'edit') {
+                    const actual = (aiProvidersCache.providers || []).find(x => x.id === id);
+                    if (actual) aiEditProvider(actual);
+                    return;
+                }
+                await loadAiSettings();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+    });
+}
+
+let aiProvidersCache = { providers: [] };
+
+function aiEditProvider(provider) {
+    aiEditingId = provider.id;
+    aiFillConfigForm({ ...provider, enabled: aiProvidersCache.enabled });
+    const title = document.getElementById('ai-form-title');
+    if (title) title.textContent = `${t('aiEditing')}: ${provider.name || provider.base_url}`;
+    const cancel = document.getElementById('ai-cancel-btn');
+    if (cancel) cancel.hidden = false;
+    document.getElementById('ai-settings-fields')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function aiResetProviderForm() {
+    aiEditingId = null;
+    aiFillConfigForm({ ...DEFAULT_AI_FORM, enabled: aiProvidersCache.enabled });
+    const title = document.getElementById('ai-form-title');
+    if (title) title.textContent = t('aiNewProvider');
+    const cancel = document.getElementById('ai-cancel-btn');
+    if (cancel) cancel.hidden = true;
+    aiShowTestResult('', '');
+}
+
+const DEFAULT_AI_FORM = {
+    name: '', base_url: '', model: '', api_key_set: false, timeout_s: 60,
+    tool_mode: 'auto', tool_profile: 'full', allow_public_endpoint: false,
+    env_locked_fields: [],
+};
+
 async function loadAiSettings() {
     if (currentAuthUser?.role !== 'admin') return;
     try {
@@ -18840,7 +18924,15 @@ async function loadAiSettings() {
             aiDataSent = data.data_sent || [];
             aiRenderPresets();
         }
-        aiFillConfigForm(await aiFetchJson('/api/ai/config'));
+        aiProvidersCache = await aiFetchJson('/api/ai/providers');
+        aiRenderProviders(aiProvidersCache);
+        const activa = (aiProvidersCache.providers || []).find(p => p.active);
+        // El interruptor global refleja el estado de la capa, no el de una
+        // entrada; el resto del formulario muestra la IA que se está editando.
+        const check = document.getElementById('ai-enabled');
+        if (check) check.checked = !!aiProvidersCache.enabled;
+        if (aiEditingId === null && activa) aiEditProvider(activa);
+        else if (!activa) aiResetProviderForm();
     } catch (error) {
         aiShowTestResult(error.message, 'error');
     }
@@ -18850,19 +18942,45 @@ async function saveAiSettings() {
     const button = document.getElementById('ai-save-btn');
     if (button) button.disabled = true;
     try {
-        const saved = await aiFetchJson('/api/ai/config', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(aiReadConfigForm()),
-        });
-        aiFillConfigForm(saved);
+        const cuerpo = aiReadConfigForm();
+        cuerpo.name = document.getElementById('ai-name')?.value.trim() || '';
+        // Sin id se crea una IA nueva; con id se actualiza la que se edita.
+        const nueva = aiEditingId === null;
+        const guardada = await aiFetchJson(
+            nueva ? '/api/ai/providers' : `/api/ai/providers/${aiEditingId}`,
+            {
+                method: nueva ? 'POST' : 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo),
+            },
+        );
+        aiEditingId = guardada.id;
         showToast(t('aiSaved'), 'success');
         aiShowTestResult('', '');
+        await loadAiSettings();
     } catch (error) {
         showToast(error.message, 'error');
         aiShowTestResult(error.message, 'error');
     } finally {
         if (button) button.disabled = false;
+    }
+}
+
+// El interruptor global no pertenece a ninguna IA guardada: enciende o apaga
+// la capa entera, así que va por su propio endpoint.
+async function setAiEnabled(enabled) {
+    try {
+        aiProvidersCache = await aiFetchJson('/api/ai/enabled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        aiUpdateNavVisibility(!!aiProvidersCache.enabled);
+        showToast(enabled ? t('aiTurnedOn') : t('aiTurnedOff'), 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+        const check = document.getElementById('ai-enabled');
+        if (check) check.checked = !enabled;  // revertir el visual si el backend dijo que no
     }
 }
 
@@ -19121,6 +19239,9 @@ document.getElementById('ai-clear-btn')?.addEventListener('click', aiResetThread
 document.getElementById('ai-refresh-btn')?.addEventListener('click', loadAiSection);
 document.getElementById('ai-goto-settings-btn')?.addEventListener('click', () => switchSection('settings'));
 document.getElementById('ai-save-btn')?.addEventListener('click', saveAiSettings);
+document.getElementById('ai-provider-add-btn')?.addEventListener('click', aiResetProviderForm);
+document.getElementById('ai-cancel-btn')?.addEventListener('click', aiResetProviderForm);
+document.getElementById('ai-enabled')?.addEventListener('change', event => setAiEnabled(event.target.checked));
 document.getElementById('ai-test-btn')?.addEventListener('click', testAiConnection);
 document.getElementById('ai-preset')?.addEventListener('change', () => {
     const preset = aiCurrentPreset();
