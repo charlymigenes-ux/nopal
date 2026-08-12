@@ -292,7 +292,11 @@ def _read_file_config() -> Dict[str, Any]:
     activa = next((p for p in store["providers"] if p["id"] == store["active_id"]), None)
     plano: Dict[str, Any] = {"enabled": store["enabled"]}
     if activa:
-        plano.update({k: v for k, v in activa.items() if k in PROVIDER_FIELDS})
+        # Se descartan los None: una entrada escrita por una versión anterior
+        # puede traer campos nuevos en null, y un null pisaría el valor por
+        # omisión dejando la configuración en un estado que no es ni true ni
+        # false (fue el caso de actions_enabled al agregarlo).
+        plano.update({k: v for k, v in activa.items() if k in PROVIDER_FIELDS and v is not None})
     return plano
 
 

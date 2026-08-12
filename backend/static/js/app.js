@@ -18655,6 +18655,9 @@ function aiReadSuggestionEditor() {
 }
 
 async function aiSaveSuggestions() {
+    // Una lista vacía es válida (significa "usa las de fábrica"), pero solo
+    // si el usuario borró las filas a mano, no si el editor no se renderizó.
+    if (!document.getElementById('ai-suggestions-rows')) return;
     try {
         const data = await aiFetchJson('/api/ai/suggestions', {
             method: 'PUT',
@@ -18916,7 +18919,13 @@ async function saveAiSettings() {
             },
         );
         aiEditingId = guardada.id;
-        await aiSaveSuggestions();
+        // Las preguntas rápidas tienen su propio botón. Guardarlas aquí leía
+        // el DOM aunque el editor no estuviera renderizado -- y una lectura
+        // vacía BORRABA las guardadas. Solo se arrastran si el editor existe
+        // y tiene filas.
+        if (document.querySelectorAll('[data-suggestion-index]').length) {
+            await aiSaveSuggestions();
+        }
         showToast(t('aiSaved'), 'success');
         aiShowTestResult('', '');
         await loadAiSettings();
