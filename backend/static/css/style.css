@@ -8437,6 +8437,14 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     min-width: 0;
 }
 
+.laser-sd-actions-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .laser-sd-toolbar-actions {
     display: flex;
     gap: 8px;
@@ -8449,8 +8457,7 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .laser-sd-from-library {
     display: flex;
     gap: 10px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    width: 100%;
 }
 
 .laser-sd-from-library .settings-select {
