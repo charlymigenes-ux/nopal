@@ -29,7 +29,7 @@ import uuid
 import logging
 import os
 import socket
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -262,8 +262,12 @@ def _read_store() -> Dict[str, Any]:
 
 
 def _write_store(store: Dict[str, Any]) -> None:
+    # Se conserva lo que el archivo ya tenía y no pertenece al registro (hoy
+    # las preguntas rápidas), para que guardar una IA no las borre.
+    previo = _read_raw()
+    previo.update(store)
     with open(CONFIG_PATH, "w", encoding="utf-8") as handle:
-        json.dump(store, handle, indent=2, ensure_ascii=False)
+        json.dump(previo, handle, indent=2, ensure_ascii=False)
 
 
 def _suggest_name(entry: Dict[str, Any]) -> str:
@@ -528,6 +532,50 @@ def set_active_provider(provider_id: str) -> Dict[str, Any]:
     store["active_id"] = provider_id
     _write_store(store)
     return list_providers()
+
+
+# Tope de preguntas rápidas: caben en la fila de sugerencias sin volverse un
+# muro de botones, y evita que un cliente en bucle infle el archivo.
+MAX_SUGGESTIONS = 12
+MAX_SUGGESTION_LENGTH = 120
+
+
+def get_suggestions() -> List[str]:
+    """Preguntas rápidas del asistente.
+
+    Lista vacía significa "usa las de fábrica": el frontend las traduce con
+    t(), así que siguen cambiando de idioma. En cuanto el usuario guarda las
+    suyas, mandan las guardadas tal cual — son sus palabras, no se traducen.
+    """
+    guardadas = _read_raw().get("suggestions")
+    if not isinstance(guardadas, list):
+        return []
+    return [str(x).strip() for x in guardadas if str(x).strip()][:MAX_SUGGESTIONS]
+
+
+def save_suggestions(suggestions: Any) -> List[str]:
+    if not isinstance(suggestions, list):
+        raise AIConfigError("Las preguntas rápidas deben venir como una lista")
+
+    limpias = []
+    for cruda in suggestions:
+        texto = str(cruda or "").strip()
+        if not texto:
+            continue
+        if len(texto) > MAX_SUGGESTION_LENGTH:
+            raise AIConfigError(f"Una pregunta rápida no puede pasar de {MAX_SUGGESTION_LENGTH} caracteres")
+        if texto not in limpias:  # sin duplicados: dos botones idénticos no aportan
+            limpias.append(texto)
+
+    if len(limpias) > MAX_SUGGESTIONS:
+        raise AIConfigError(f"No se pueden guardar más de {MAX_SUGGESTIONS} preguntas rápidas")
+
+    store = _read_store()
+    raw = _read_raw()
+    raw.update({"enabled": store["enabled"], "active_id": store["active_id"],
+                "providers": store["providers"], "suggestions": limpias})
+    _write_store(raw)
+    return limpias
 
 
 def set_enabled(enabled: bool) -> Dict[str, Any]:

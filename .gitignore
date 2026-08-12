@@ -34,6 +34,9 @@ tunascreen_devices.json
 # Configuración de NOPAL Intelligence — incluye la API key del servidor de
 # IA cuando el usuario usa un proveedor que la pide. Nunca se versiona.
 ai_config.json
+# Historial de conversaciones con la IA — puede contener detalles del
+# taller y de sus fallas; es estado por instalación, nunca se versiona.
+ai_conversations.json
 *.corrupt-*.bak
 .session_secret
 

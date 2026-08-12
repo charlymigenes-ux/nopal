@@ -12,7 +12,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from backend.auth_deps import require_auth, require_role
-from backend.services import ai_agent, ai_config_service, ai_tools
+from backend.services import ai_agent, ai_config_service, ai_conversations_service, ai_tools
 from backend.services.ai_config_service import AIConfigError
 from backend.services.ai_provider import AIProviderError, get_provider
 
@@ -179,6 +179,24 @@ async def set_ai_enabled_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/suggestions")
+async def get_ai_suggestions_endpoint(user: dict = Depends(require_auth)):
+    """Preguntas rápidas del asistente. Lista vacía = usar las de fábrica,
+    que el frontend traduce; las guardadas van tal cual."""
+    return {"suggestions": ai_config_service.get_suggestions()}
+
+
+@router.put("/suggestions")
+async def save_ai_suggestions_endpoint(
+    payload: dict = Body(...),
+    user: dict = Depends(require_role("admin")),
+):
+    try:
+        return {"suggestions": ai_config_service.save_suggestions(payload.get("suggestions"))}
+    except AIConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/tools")
 async def list_ai_tools_endpoint(user: dict = Depends(require_auth)):
     """Catálogo de herramientas de solo lectura que se le ofrecen al modelo.
@@ -212,6 +230,47 @@ async def call_ai_tool_endpoint(
     return result
 
 
+@router.get("/conversations")
+async def list_conversations_endpoint(user: dict = Depends(require_auth)):
+    """Listado sin los mensajes: una conversación larga no tiene por qué
+    viajar entera solo para pintar la barra lateral."""
+    return ai_conversations_service.list_conversations()
+
+
+@router.get("/conversations/{conversation_id}")
+async def get_conversation_endpoint(conversation_id: str, user: dict = Depends(require_auth)):
+    conversacion = ai_conversations_service.get_conversation(conversation_id)
+    if conversacion is None:
+        raise HTTPException(status_code=404, detail="Esa conversación ya no existe")
+    return conversacion
+
+
+@router.put("/conversations/{conversation_id}")
+async def rename_conversation_endpoint(
+    conversation_id: str,
+    payload: dict = Body(...),
+    user: dict = Depends(require_auth),
+):
+    conversacion = ai_conversations_service.rename_conversation(conversation_id, payload.get("title", ""))
+    if conversacion is None:
+        raise HTTPException(status_code=404, detail="Esa conversación ya no existe")
+    return conversacion
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation_endpoint(conversation_id: str, user: dict = Depends(require_auth)):
+    if not ai_conversations_service.delete_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="Esa conversación ya no existe")
+    return ai_conversations_service.list_conversations()
+
+
+@router.delete("/conversations")
+async def clear_conversations_endpoint(user: dict = Depends(require_role("admin"))):
+    """Borrar el historial completo es admin-only: afecta lo que vieron
+    todos los usuarios, no solo a quien lo pide."""
+    return {"deleted": ai_conversations_service.clear_conversations()}
+
+
 @router.post("/ask")
 async def ask_ai_endpoint(
     payload: dict = Body(...),
@@ -223,7 +282,7 @@ async def ask_ai_endpoint(
     para que el usuario pueda verificar de dónde salió cada dato.
     """
     try:
-        return await ai_agent.ask(payload.get("question", ""))
+        return await ai_agent.ask(payload.get("question", ""), payload.get("conversation_id"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except ai_agent.AIDisabledError as exc:

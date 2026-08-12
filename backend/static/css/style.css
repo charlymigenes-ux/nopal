@@ -16835,3 +16835,9 @@ body.ai .panel-card-mini { align-items: center; }
 }
 .ai-provider-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .ai-form-title { font-size: .85rem; font-weight: 600; color: var(--text-soft); margin: 6px 0 0; }
+
+/* Editor de preguntas rápidas */
+.ai-suggestions-editor { display: flex; flex-direction: column; gap: 8px; }
+.ai-suggestions-rows { display: flex; flex-direction: column; gap: 6px; }
+.ai-suggestion-row { display: flex; gap: 6px; align-items: center; }
+.ai-suggestion-row .ai-text-input { flex: 1; min-width: 0; }
