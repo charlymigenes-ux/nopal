@@ -189,3 +189,72 @@ def test_el_catalogo_es_una_copia():
     """Quien lo consuma no debe poder mutar el catálogo del módulo."""
     ai_config_service.get_provider_presets()[0]["base_url"] = "http://pirata/v1"
     assert ai_config_service.get_provider_presets()[0]["base_url"] == ""
+
+
+# --------------------------------------------------------------------------
+# Probar conexión: respaldo cuando /v1/models no sirve
+# --------------------------------------------------------------------------
+
+async def test_probar_conexion_cae_a_chat_si_models_falla(monkeypatch):
+    """Anthropic atiende /v1/chat/completions por su capa de compatibilidad
+    pero enruta /v1/models por otra vía de autenticación. Sin respaldo,
+    'Probar conexión' diría que falla donde preguntar sí funciona."""
+    import backend.services.ai_provider as ai_provider
+
+    llamadas = []
+
+    class _Respuesta:
+        def __init__(self, status): self.status_code = status; self.text = "nope"
+        def json(self): return {"error": {"message": "Invalid bearer token"}}
+
+    class _RespuestaOk:
+        status_code = 200
+        text = ""
+        def json(self): return {"choices": [{"message": {"content": "ok"}}]}
+
+    class _Cliente:
+        def __init__(self, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, headers=None):
+            llamadas.append(("GET", url))
+            return _Respuesta(401)
+        async def post(self, url, headers=None, json=None):
+            llamadas.append(("POST", url))
+            return _RespuestaOk()
+
+    monkeypatch.setattr(ai_provider, "_load_httpx", lambda: type("m", (), {"AsyncClient": _Cliente}))
+
+    proveedor = ai_provider.OpenAICompatibleProvider({
+        "base_url": "https://api.anthropic.com/v1", "model": "claude-opus-5", "api_key": "k",
+    })
+    resultado = await proveedor.test_connection()
+
+    assert resultado["ok"] is True
+    assert [m for m, _ in llamadas] == ["GET", "POST"], "debe intentar /models y luego caer a chat"
+    assert llamadas[1][1].endswith("/chat/completions")
+
+
+async def test_probar_conexion_falla_si_ambos_fallan(monkeypatch):
+    import backend.services.ai_provider as ai_provider
+
+    class _Respuesta:
+        status_code = 401
+        text = "no"
+        def json(self): return {"error": {"message": "clave inválida"}}
+
+    class _Cliente:
+        def __init__(self, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, headers=None): return _Respuesta()
+        async def post(self, url, headers=None, json=None): return _Respuesta()
+
+    monkeypatch.setattr(ai_provider, "_load_httpx", lambda: type("m", (), {"AsyncClient": _Cliente}))
+
+    proveedor = ai_provider.OpenAICompatibleProvider({
+        "base_url": "https://api.anthropic.com/v1", "model": "m", "api_key": "mala",
+    })
+    resultado = await proveedor.test_connection()
+    assert resultado["ok"] is False
+    assert "clave inválida" in resultado["error"]

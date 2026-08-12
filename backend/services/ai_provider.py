@@ -144,10 +144,40 @@ class OpenAICompatibleProvider(AIProvider):
                 f"Revisa que la dirección termine en /v1 ({self.base_url})."
             ) from exc
 
+    async def _probe_chat(self, httpx_module) -> Optional[Dict[str, Any]]:
+        """Prueba de respaldo: una petición de chat mínima (1 token).
+
+        No todos los proveedores exponen `/v1/models` de forma utilizable —
+        Anthropic, por ejemplo, atiende `/v1/chat/completions` por su capa
+        de compatibilidad con OpenAI pero enruta `/v1/models` por otra vía
+        de autenticación. Sin este respaldo, "Probar conexión" diría que
+        falla en servidores donde preguntar sí funciona.
+        """
+        try:
+            async with httpx_module.AsyncClient(timeout=min(self.timeout_s, 30)) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self._headers(),
+                    json={
+                        "model": self.model,
+                        "messages": [{"role": "user", "content": "ok"}],
+                        "max_tokens": 1,
+                    },
+                )
+        except Exception as exc:
+            return {"ok": False, "error": f"No se pudo contactar a {self.base_url}: {exc}"}
+
+        if response.status_code >= 400:
+            return {"ok": False, "error": f"El servidor respondió {response.status_code}: {_error_detail(response)}"}
+        # Respondió una generación: la conexión y la clave sirven. No se
+        # puede listar modelos, así que se confía en el que puso el usuario.
+        return {"ok": True, "base_url": self.base_url, "models": [], "configured_model": self.model}
+
     async def test_connection(self) -> Dict[str, Any]:
-        """Pide `/v1/models`. Devuelve también qué modelos ofrece el
-        servidor, para que la UI pueda avisar si el modelo configurado no
-        está entre ellos (causa muy común de fallo silencioso)."""
+        """Pide `/v1/models` y, si eso no sirve, cae a una petición de chat
+        mínima. Devuelve qué modelos ofrece el servidor para que la UI pueda
+        avisar si el modelo configurado no está entre ellos (causa muy común
+        de fallo silencioso)."""
         try:
             httpx = _load_httpx()
         except AIProviderError as exc:
@@ -160,19 +190,16 @@ class OpenAICompatibleProvider(AIProvider):
         try:
             async with httpx.AsyncClient(timeout=min(self.timeout_s, 15)) as client:
                 response = await client.get(url, headers=self._headers())
-        except Exception as exc:
-            return {"ok": False, "error": f"No se pudo contactar a {self.base_url}: {exc}"}
+        except Exception:
+            return await self._probe_chat(httpx)
 
         if response.status_code >= 400:
-            return {"ok": False, "error": f"El servidor respondió {response.status_code}: {_error_detail(response)}"}
+            return await self._probe_chat(httpx)
 
         try:
             models = [entry.get("id") for entry in response.json().get("data", []) if entry.get("id")]
         except (json.JSONDecodeError, AttributeError, TypeError):
-            return {
-                "ok": False,
-                "error": f"{url} respondió algo que no es una lista de modelos. ¿La dirección termina en /v1?",
-            }
+            return await self._probe_chat(httpx)
 
         result: Dict[str, Any] = {
             "ok": True,
