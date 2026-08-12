@@ -564,6 +564,98 @@ async def get_cameras() -> Dict[str, Any]:
     }
 
 
+# Extensiones por tipo de trabajo. La biblioteca guarda todo mezclado en dos
+# carpetas (models/ y gcode/), así que el filtro por máquina se hace acá.
+LIBRARY_KINDS = {
+    "printer": {".gcode", ".gco", ".g", ".bgcode"},
+    "laser": {".gcode", ".gco", ".nc", ".svg", ".lbrn", ".lbrn2"},
+    "cnc": {".nc", ".gcode", ".gco", ".tap", ".ngc"},
+    "model": {".stl", ".3mf", ".obj", ".step", ".stp"},
+}
+LIBRARY_ROOTS = {"model": "uploads/models", "gcode": "uploads/gcode"}
+MAX_LIBRARY_FILES = 100
+
+
+def _scan_library(section: str, kind: Optional[str], search: Optional[str]) -> Dict[str, Any]:
+    raiz = LIBRARY_ROOTS.get(section)
+    if raiz is None or not os.path.isdir(raiz):
+        return {"section": section, "count": 0, "files": []}
+
+    extensiones = LIBRARY_KINDS.get(kind or "", set())
+    aguja = (search or "").strip().lower()
+    encontrados = []
+
+    for base, _dirs, archivos in os.walk(raiz):
+        for nombre in archivos:
+            ext = os.path.splitext(nombre)[1].lower()
+            if extensiones and ext not in extensiones:
+                continue
+            if aguja and aguja not in nombre.lower():
+                continue
+            ruta = os.path.join(base, nombre)
+            try:
+                stat = os.stat(ruta)
+            except OSError:
+                continue
+            encontrados.append({
+                # Ruta relativa a la sección: es la que aceptan los endpoints
+                # de NOPAL, no la absoluta del disco.
+                "path": os.path.relpath(ruta, raiz),
+                "name": nombre,
+                "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                "modified_at": int(stat.st_mtime),
+            })
+
+    encontrados.sort(key=lambda f: f["modified_at"], reverse=True)
+    return {
+        "section": section,
+        "count": len(encontrados),
+        "truncated": len(encontrados) > MAX_LIBRARY_FILES,
+        "files": encontrados[:MAX_LIBRARY_FILES],
+    }
+
+
+async def get_library(kind: str = "", search: str = "") -> Dict[str, Any]:
+    """Archivos de la biblioteca de NOPAL, filtrados por tipo de máquina.
+
+    `kind`: printer, laser, cnc o model. Sin `kind` devuelve los G-code sin
+    filtrar. Los más recientes primero.
+    """
+    seccion = "model" if kind == "model" else "gcode"
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _scan_library, seccion, kind, search)
+
+
+async def get_print_queue() -> Dict[str, Any]:
+    """Cola de trabajos de cada impresora Klipper.
+
+    Es la cola de Moonraker, no una lista propia de NOPAL: refleja lo que la
+    impresora realmente tiene encolado.
+    """
+    from backend.services.klipper_service import get_printer_job_queue
+
+    machines = [m for m in await _collect_machines() if m["brand"] == "klipper"]
+    loop = asyncio.get_event_loop()
+
+    colas = []
+    for machine in machines:
+        port = int(str(machine["id"]).split(":", 1)[1])
+        try:
+            cola = await loop.run_in_executor(None, get_printer_job_queue, port)
+        except Exception as exc:
+            logger.warning(f"No se pudo leer la cola de {machine['name']}: {exc}")
+            continue
+        trabajos = cola.get("queued_jobs") or cola.get("jobs") or []
+        colas.append({
+            "machine_id": machine["id"],
+            "name": machine["name"],
+            "queued": len(trabajos),
+            "jobs": [j.get("filename") or j.get("name") for j in trabajos][:20],
+        })
+
+    return {"count": len(colas), "queues": colas}
+
+
 # --------------------------------------------------------------------------
 # Registro
 # --------------------------------------------------------------------------
@@ -697,6 +789,27 @@ TOOLS: Dict[str, Tool] = {
             "Estado crudo del controlador GRBL/FluidNC de un láser o CNC.",
             get_grbl_status,
             _MACHINE_ID_PARAM,
+        ),
+        Tool(
+            "get_library",
+            "Archivos de la biblioteca de NOPAL: modelos y G-code, filtrados por tipo de máquina. "
+            "Usa kind='laser', 'cnc', 'printer' o 'model'. Úsala cuando pregunten qué archivos hay "
+            "disponibles para una máquina.",
+            get_library,
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["printer", "laser", "cnc", "model"],
+                             "description": "Tipo de máquina para el que sirve el archivo."},
+                    "search": {"type": "string", "description": "Filtra por parte del nombre."},
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            "get_print_queue",
+            "Cola de trabajos encolados en cada impresora Klipper.",
+            get_print_queue,
         ),
         Tool(
             "get_plugins",

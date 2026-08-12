@@ -426,3 +426,59 @@ def test_un_plugin_que_declara_basura_no_tumba_la_capa(monkeypatch):
     monkeypatch.setattr("backend.services.plugin_loader_service.get_plugin_ai_tools",
                         lambda: ["esto no es un Tool", None, 42])
     assert ai_tools.get_exposed_tools("full")  # sigue devolviendo las del core
+
+
+# --------------------------------------------------------------------------
+# Biblioteca y cola
+# --------------------------------------------------------------------------
+
+def _biblioteca(tmp_path, monkeypatch, archivos):
+    raiz = tmp_path / "gcode"
+    raiz.mkdir()
+    for nombre in archivos:
+        (raiz / nombre).write_text("G0", encoding="utf-8")
+    monkeypatch.setattr(ai_tools, "LIBRARY_ROOTS", {"model": str(tmp_path / "models"), "gcode": str(raiz)})
+    return raiz
+
+
+async def test_la_biblioteca_filtra_por_tipo_de_maquina(tmp_path, monkeypatch):
+    """La biblioteca guarda todo mezclado en dos carpetas; el filtro por
+    máquina es lo que hace útil la respuesta."""
+    _biblioteca(tmp_path, monkeypatch, ["corte.lbrn", "pieza.gcode", "fresado.tap", "logo.svg"])
+
+    laser = await ai_tools.call_tool("get_library", {"kind": "laser"})
+    assert {f["name"] for f in laser["files"]} == {"corte.lbrn", "pieza.gcode", "logo.svg"}
+
+    cnc = await ai_tools.call_tool("get_library", {"kind": "cnc"})
+    assert {f["name"] for f in cnc["files"]} == {"pieza.gcode", "fresado.tap"}
+
+
+async def test_la_biblioteca_busca_por_nombre(tmp_path, monkeypatch):
+    _biblioteca(tmp_path, monkeypatch, ["nopal-cut.gcode", "otra-cosa.gcode"])
+    r = await ai_tools.call_tool("get_library", {"kind": "laser", "search": "nopal"})
+    assert [f["name"] for f in r["files"]] == ["nopal-cut.gcode"]
+
+
+async def test_la_biblioteca_devuelve_rutas_relativas(tmp_path, monkeypatch):
+    """Deben ser las que aceptan los endpoints de NOPAL, no rutas absolutas
+    del disco del servidor."""
+    raiz = _biblioteca(tmp_path, monkeypatch, [])
+    sub = raiz / "trabajos"; sub.mkdir()
+    (sub / "corte.gcode").write_text("G0", encoding="utf-8")
+    r = await ai_tools.call_tool("get_library", {"kind": "laser"})
+    assert r["files"][0]["path"] == "trabajos/corte.gcode"
+    assert not r["files"][0]["path"].startswith("/")
+
+
+async def test_la_biblioteca_se_recorta_y_lo_avisa(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai_tools, "MAX_LIBRARY_FILES", 3)
+    _biblioteca(tmp_path, monkeypatch, [f"pieza{i}.gcode" for i in range(10)])
+    r = await ai_tools.call_tool("get_library", {"kind": "printer"})
+    assert r["count"] == 10 and len(r["files"]) == 3
+    assert r["truncated"] is True
+
+
+async def test_biblioteca_inexistente_no_rompe(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai_tools, "LIBRARY_ROOTS", {"model": str(tmp_path / "nada"), "gcode": str(tmp_path / "nada")})
+    r = await ai_tools.call_tool("get_library", {"kind": "laser"})
+    assert r["count"] == 0 and r["files"] == []
