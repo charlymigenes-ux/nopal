@@ -16501,7 +16501,7 @@ body.ai {
 
     /* --ai-wallpaper la fija applyThemeWallpaper() según lo elegido en
        Configuración > Apariencia -- el url() es solo el respaldo. */
-    background-image: var(--ai-wallpaper, url('/static/img/FONDO1_IA.png'));
+    background-image: var(--ai-wallpaper, url('/static/img/FONDO1_IA.jpg'));
     background-size: cover;
     background-position: center;
     background-attachment: fixed;

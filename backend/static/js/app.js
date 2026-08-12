@@ -17798,9 +17798,9 @@ const LIGHT_WALLPAPER_OPTIONS = [
 ];
 const AI_WALLPAPER_KEY = 'aiThemeWallpaper';
 const AI_WALLPAPER_OPTIONS = [
-    '/static/img/FONDO1_IA.png',
-    '/static/img/FONDO2_IA.png',
-    '/static/img/FONDO3_IA.png',
+    '/static/img/FONDO1_IA.jpg',
+    '/static/img/FONDO2_IA.jpg',
+    '/static/img/FONDO3_IA.jpg',
 ];
 const RED_WALLPAPER_KEY = 'redThemeWallpaper';
 const RED_WALLPAPER_OPTIONS = [
