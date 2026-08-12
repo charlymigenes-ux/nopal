@@ -107,6 +107,29 @@ def test_el_nivel_rapido_recorta_el_catalogo_de_herramientas():
     assert ai_router.route("¿Por qué falló ET4?", CONFIG_AUTO).tool_profile == "full"
 
 
+@pytest.mark.parametrize("pregunta", [
+    "¿Qué alertas por máquina hay?",
+    "¿Qué escenas hay?",
+    "¿Qué anuncios tiene la matriz?",
+    "¿Qué hay en la biblioteca?",
+    "¿Cuánto filamento queda?",
+    "¿Qué temperatura tiene ET4?",
+])
+def test_una_consulta_simple_sobre_plugins_conserva_el_catalogo_completo(pregunta):
+    """El catálogo compacto son seis herramientas y no incluye escenas,
+    anuncios, materiales ni biblioteca. Mandar ahí una pregunta sobre eso
+    deja al modelo sin ninguna herramienta que la conteste: exactamente la
+    situación en la que se inventa la respuesta. Pasó con la Matriz LED."""
+    ruta = ai_router.route(pregunta, CONFIG_AUTO)
+    assert ruta.tool_profile == "full", f"{pregunta!r} se quedaría sin herramienta"
+
+
+def test_el_nivel_rapido_sigue_siendo_el_modelo_chico_aunque_lleve_todo_el_catalogo():
+    """Ampliar lo que puede consultar no es lo mismo que escalar de modelo."""
+    ruta = ai_router.route("¿Qué escenas hay?", CONFIG_AUTO)
+    assert (ruta.tier, ruta.model) == ("fast", "llama-3.1-8b-instant")
+
+
 def test_el_nivel_no_amplia_el_catalogo_que_el_usuario_recorto():
     """Si el usuario eligió el catálogo compacto para todo, el router no se
     lo amplía por su cuenta."""
