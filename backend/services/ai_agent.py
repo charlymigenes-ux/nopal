@@ -29,7 +29,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from backend.services import ai_config_service, ai_tools
+from backend.services import ai_config_service, ai_conversations_service, ai_tools
 from backend.services.ai_provider import AIProvider, AIProviderError, ToolsUnsupportedError, get_provider
 
 logger = logging.getLogger(__name__)
@@ -108,12 +108,14 @@ async def _run_native_loop(
     provider: AIProvider,
     question: str,
     config: Dict[str, Any],
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     """Ciclo con function calling: el modelo pide herramientas hasta que
     tiene con qué contestar (o hasta agotar `max_tool_iterations`)."""
     profile = config.get("tool_profile") or "full"
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": _system_prompt(profile)},
+        *(history or []),
         {"role": "user", "content": question},
     ]
     schema = ai_tools.get_tools_schema(profile)
@@ -178,6 +180,7 @@ async def _run_context_mode(
     provider: AIProvider,
     question: str,
     profile: str = "full",
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     """Sin function calling: NOPAL decide qué datos hacen falta, los
     adjunta y el modelo solo redacta. Funciona con modelos chicos."""
@@ -198,6 +201,7 @@ async def _run_context_mode(
 
     messages = [
         {"role": "system", "content": _system_prompt(profile)},
+        *(history or []),
         {
             "role": "user",
             "content": (
@@ -211,7 +215,7 @@ async def _run_context_mode(
     return {"answer": (message.get("content") or "").strip(), "tool_calls": trace, "mode": "context"}
 
 
-async def ask(question: str) -> Dict[str, Any]:
+async def ask(question: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
     """Punto de entrada de NOPAL Intelligence.
 
     Levanta AIDisabledError si la capa está apagada y AIProviderError si el
@@ -230,18 +234,21 @@ async def ask(question: str) -> Dict[str, Any]:
     provider = get_provider(config)
     tool_mode = config.get("tool_mode") or "auto"
     profile = config.get("tool_profile") or "full"
+    # Turnos previos para que "¿y el otro láser?" tenga sentido. Van
+    # recortados: el prompt de herramientas ya es caro (ver HISTORY_TURNS).
+    history = ai_conversations_service.recent_turns(conversation_id)
     started = time.monotonic()
 
     if tool_mode == "context":
-        result = await _run_context_mode(provider, question, profile)
+        result = await _run_context_mode(provider, question, profile, history)
     elif tool_mode == "native":
-        result = await _run_native_loop(provider, question, config)
+        result = await _run_native_loop(provider, question, config, history)
     else:
         try:
-            result = await _run_native_loop(provider, question, config)
+            result = await _run_native_loop(provider, question, config, history)
         except ToolsUnsupportedError as exc:
             logger.info(f"[IA] el modelo no soporta function calling ({exc}); se usa modo contexto")
-            result = await _run_context_mode(provider, question, profile)
+            result = await _run_context_mode(provider, question, profile, history)
             result["fell_back"] = True
 
     result["question"] = question
@@ -253,4 +260,11 @@ async def ask(question: str) -> Dict[str, Any]:
         # válida vacía en la UI.
         raise AIProviderError("El modelo no devolvió ninguna respuesta.")
 
+    # Se persiste solo lo que salió bien: una conversación no debe quedar
+    # sembrada de errores de red del servidor de IA.
+    conversacion = ai_conversations_service.append_turn(
+        conversation_id, question, result["answer"], result.get("tool_calls"),
+    )
+    result["conversation_id"] = conversacion["id"]
+    result["conversation_title"] = conversacion["title"]
     return result
