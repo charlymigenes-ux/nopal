@@ -141,6 +141,26 @@ async def activate_scene(scene_id: str) -> Dict[str, Any]:
     return {"ok": True, "scene_id": scene_id}
 
 
+async def send_matrix_announcement(announcement_id: str) -> Dict[str, Any]:
+    """Muestra un anuncio guardado en la Matriz LED."""
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    module = get_loaded_plugin_module("matriz-led", "services.screen_service")
+    if module is None:
+        raise ActionError("El plugin de Matriz LED no está instalado")
+
+    enviar = getattr(module, "send_announcement", None)
+    if enviar is None:
+        raise ActionError("Esta versión del plugin no permite enviar anuncios desde la IA")
+
+    resultado = enviar(announcement_id, source="ai")
+    if inspect.isawaitable(resultado):
+        resultado = await resultado
+    if resultado is False or resultado is None:
+        raise ActionError(f"No existe el anuncio '{announcement_id}' o no se pudo enviar")
+    return {"ok": True, "announcement_id": announcement_id}
+
+
 async def queue_file(machine_id: str, path: str) -> Dict[str, Any]:
     """Manda un archivo de la biblioteca a la cola de una impresora."""
     from backend.services.klipper_service import send_gcode_to_printer
@@ -234,12 +254,26 @@ ACTIONS: Dict[str, Action] = {
         ),
         Action(
             "activate_scene",
-            "Activa una escena de accesorios ya guardada.",
+            "Activa una escena de ACCESORIOS (tiras LED, relés, ventiladores). NO tiene nada que ver "
+            "con la Matriz LED: para mostrar algo en la matriz usa send_matrix_announcement.",
             activate_scene,
             {
                 "type": "object",
                 "properties": {"scene_id": {"type": "string", "description": "Id de la escena."}},
                 "required": ["scene_id"],
+            },
+            risk="low",
+            role="any",
+        ),
+        Action(
+            "send_matrix_announcement",
+            "Muestra un anuncio guardado en la Matriz LED. Es un plugin distinto al de accesorios: "
+            "esto NO enciende tiras LED ni relés. Usa get_led_matrix para conocer los ids.",
+            send_matrix_announcement,
+            {
+                "type": "object",
+                "properties": {"announcement_id": {"type": "string", "description": "Id del anuncio."}},
+                "required": ["announcement_id"],
             },
             risk="low",
             role="any",

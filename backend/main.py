@@ -40,6 +40,7 @@ from backend.api.dashboard import router as dashboard_router
 from backend.api.tunascreen import router as tunascreen_router
 from backend.api.devices import router as devices_router
 from backend.api.ai import router as ai_router
+from backend.api.config_backup import router as config_backup_router
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
@@ -132,6 +133,7 @@ app.include_router(devices_router)
 # IA desactivada -- el valor por omisión -- no contacta nada ni cambia el
 # comportamiento del resto de NOPAL. Ver backend/services/ai_config_service.py.
 app.include_router(ai_router)
+app.include_router(config_backup_router)
 
 
 @app.on_event("startup")

@@ -220,3 +220,18 @@ def test_la_accion_de_escena_usa_el_nombre_real_del_plugin():
     import inspect as _inspect
     fuente = _inspect.getsource(ai_actions.activate_scene)
     assert '"run_scene"' in fuente
+
+
+def test_la_matriz_led_y_los_accesorios_no_se_confunden():
+    """Son dos plugins distintos. Sin descripciones que los separen, un
+    pedido sobre la matriz terminaba prendiendo tiras LED."""
+    escena = ai_actions.ACTIONS["activate_scene"]
+    matriz = ai_actions.ACTIONS["send_matrix_announcement"]
+
+    assert "Matriz LED" in escena.description, "la escena de accesorios debe descartar la matriz"
+    assert "accesorios" in matriz.description.lower(), "el anuncio de matriz debe descartar los accesorios"
+    assert escena.name != matriz.name
+
+    from backend.services import ai_tools
+    lectura = ai_tools.TOOLS["get_scenes"].description
+    assert "get_led_matrix" in lectura, "get_scenes debe redirigir a la herramienta de la matriz"

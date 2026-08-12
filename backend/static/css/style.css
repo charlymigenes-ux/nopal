@@ -16958,3 +16958,12 @@ body.ai .dashboard-dock-section .section-title h2 {
 .panel-tab-pane[hidden] { display: none; }
 .panel-ai-thread { flex: 1; max-height: none; min-height: 0; }
 .panel-jobs-list { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Respaldo de configuración */
+.backup-groups { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.backup-group { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer; }
+.backup-group.is-empty { opacity: .5; cursor: not-allowed; }
+.backup-group-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.backup-group-label { font-size: .85rem; color: var(--text-strong); display: flex; align-items: center; gap: 8px; }
+.backup-group-text small { font-size: .72rem; color: var(--text-faint); }
+.backup-sensitive { font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--status-warn); border: 1px solid var(--status-warn); border-radius: 999px; padding: 1px 7px; }

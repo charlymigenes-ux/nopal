@@ -16,3 +16,8 @@ paho-mqtt==2.1.0
 # loop. Se importa de forma perezosa: si falta, NOPAL arranca igual y solo
 # la capa de IA reporta el error.
 httpx==0.28.1
+# Cifrado de los respaldos de configuración (backend/services/
+# config_backup_service.py). Un respaldo puede incluir hashes de contraseña y
+# la API key del proveedor de IA: base64 no es protección, así que se cifra
+# con Fernet y una clave derivada de la frase del usuario.
+cryptography==49.0.0

@@ -556,6 +556,36 @@ async def get_scenes() -> Dict[str, Any]:
     }
 
 
+async def get_led_matrix() -> Dict[str, Any]:
+    """Estado de la Matriz LED y sus anuncios guardados.
+
+    La Matriz LED es un plugin DISTINTO al de accesorios: sus anuncios no son
+    las escenas de tiras LED y relés. Confundirlos hacía que un pedido sobre
+    la matriz terminara prendiendo tiras.
+    """
+    module = get_loaded_plugin_module("matriz-led", "services.screen_service")
+    if module is None:
+        return _unavailable("El plugin de Matriz LED no está instalado o no está cargado")
+
+    loop = asyncio.get_event_loop()
+
+    def _leer() -> Dict[str, Any]:
+        estado = module.get_status() or {}
+        anuncios = module.list_announcements() or []
+        return {
+            "online": bool(estado.get("online", estado.get("connected"))),
+            "status": estado,
+            "announcements": [{"id": a.get("id"), "name": a.get("name") or a.get("title")}
+                              for a in anuncios],
+        }
+
+    try:
+        return await loop.run_in_executor(None, _leer)
+    except Exception as exc:
+        logger.warning(f"No se pudo consultar la Matriz LED para la capa de IA: {exc}")
+        return _unavailable("No se pudo consultar la Matriz LED")
+
+
 async def get_cameras() -> Dict[str, Any]:
     """Cámaras registradas y a qué máquina está atada cada una.
 
@@ -850,9 +880,16 @@ TOOLS: Dict[str, Tool] = {
         ),
         Tool(
             "get_scenes",
-            "Escenas de accesorios guardadas, con su id y nombre. Consúltala antes de activar "
-            "una escena: sin esto no conoces sus ids.",
+            "Escenas de ACCESORIOS (tiras LED, relés, ventiladores) guardadas, con su id y nombre. "
+            "NO son los anuncios de la Matriz LED, que es otro plugin: para eso usa get_led_matrix. "
+            "Consúltala antes de activar una escena de accesorios.",
             get_scenes,
+        ),
+        Tool(
+            "get_led_matrix",
+            "Estado de la Matriz LED y sus anuncios guardados. La Matriz LED es un plugin distinto "
+            "al de accesorios: si te preguntan por la matriz o su pantalla, usa esta, no get_scenes.",
+            get_led_matrix,
         ),
         Tool(
             "get_cameras",
