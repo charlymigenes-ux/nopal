@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=306">
+    <link rel="stylesheet" href="/static/css/style.css?v=307">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -2249,6 +2249,54 @@
                                     <datalist id="ai-model-options"></datalist>
                                     <small class="ai-field-hint" data-i18n="aiModelHint">Al probar la conexión se llenan los modelos que ofrece el servidor.</small>
                                 </label>
+
+                                <!-- Modo automático: NOPAL elige el modelo según lo que se
+                                     pregunte (ver backend/services/ai_router.py). Fijo es el
+                                     valor por omisión y deja todo como funcionaba antes. -->
+                                <div class="ai-field">
+                                    <span data-i18n="aiModelMode">Modo de modelo</span>
+                                    <div class="ai-radio-row">
+                                        <label class="ai-radio">
+                                            <input type="radio" name="ai-model-mode" value="auto">
+                                            <span data-i18n="aiModelModeAuto">Automático</span>
+                                        </label>
+                                        <label class="ai-radio">
+                                            <input type="radio" name="ai-model-mode" value="fixed" checked>
+                                            <span data-i18n="aiModelModeFixed">Modelo fijo</span>
+                                        </label>
+                                    </div>
+                                    <small class="ai-field-hint" data-i18n="aiModelModeHint">Automático manda cada pregunta al modelo más chico que pueda resolverla y guarda el grande para los diagnósticos. Fijo usa siempre el de arriba.</small>
+                                </div>
+
+                                <details class="ai-advanced" id="ai-tier-models" hidden>
+                                    <summary data-i18n="aiTierModels">Modelos automáticos</summary>
+                                    <small class="ai-field-hint" data-i18n="aiTierModelsHint">Uno por nivel. Al probar la conexión se rellenan solos con los modelos que ofrece tu servidor. El nivel que dejes vacío usa el modelo de arriba.</small>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiTierFast">Rápido</span>
+                                        <input type="text" id="ai-tier-fast" class="ai-text-input" list="ai-model-options" autocomplete="off">
+                                        <small class="ai-field-hint" data-i18n="aiTierFastHint">Estado, temperaturas, avance. La mayoría de las preguntas.</small>
+                                    </label>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiTierMedium">Intermedio</span>
+                                        <input type="text" id="ai-tier-medium" class="ai-text-input" list="ai-model-options" autocomplete="off">
+                                        <small class="ai-field-hint" data-i18n="aiTierMediumHint">Comparar máquinas, resumir el turno, recomendar.</small>
+                                    </label>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiTierReasoning">Razonamiento</span>
+                                        <input type="text" id="ai-tier-reasoning" class="ai-text-input" list="ai-model-options" autocomplete="off">
+                                        <small class="ai-field-hint" data-i18n="aiTierReasoningHint">Diagnósticos: por qué falló, por qué se detuvo, errores de Klipper o GRBL.</small>
+                                    </label>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiTierVision">Visión</span>
+                                        <input type="text" id="ai-tier-vision" class="ai-text-input" list="ai-model-options" autocomplete="off">
+                                        <small class="ai-field-hint" data-i18n="aiTierVisionHint">Reservado. NOPAL todavía no manda imágenes al modelo: por ahora avisa que no puede ver las cámaras en vez de inventar.</small>
+                                    </label>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiTierAgent">Multietapa</span>
+                                        <input type="text" id="ai-tier-agent" class="ai-text-input" list="ai-model-options" autocomplete="off">
+                                        <small class="ai-field-hint" data-i18n="aiTierAgentHint">"Revisa todo, analiza los problemas y priorízalos": varias herramientas encadenadas.</small>
+                                    </label>
+                                </details>
 
                                 <label class="ai-field" id="ai-api-key-field">
                                     <span data-i18n="aiApiKey">Clave de API</span>
@@ -4723,11 +4771,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=36"></script>
+    <script src="/static/js/translations.js?v=37"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=245"></script>
+    <script src="/static/js/app.js?v=246"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

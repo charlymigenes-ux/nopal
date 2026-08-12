@@ -100,7 +100,7 @@ async def test_el_agente_recuerda_el_contexto(monkeypatch):
     vistos = {}
 
     class _Proveedor:
-        async def chat(self, messages, tools=None):
+        async def chat(self, messages, tools=None, model=None):
             vistos["messages"] = messages
             return {"role": "assistant", "content": "El otro láser está desconectado."}
         async def test_connection(self):
@@ -124,7 +124,7 @@ async def test_una_respuesta_fallida_no_ensucia_el_historial(monkeypatch):
     from backend.services.ai_provider import AIProviderError
 
     class _Roto:
-        async def chat(self, messages, tools=None):
+        async def chat(self, messages, tools=None, model=None):
             raise AIProviderError("se cayó la red")
         async def test_connection(self):
             return {"ok": False}
