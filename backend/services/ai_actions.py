@@ -135,7 +135,12 @@ async def activate_scene(scene_id: str) -> Dict[str, Any]:
     if inspect.isawaitable(resultado):
         resultado = await resultado
     if resultado is None:
-        raise ActionError(f"No existe la escena '{scene_id}'")
+        # Se nombra la otra fuente a propósito: el error típico es pedir
+        # una "escena" que en realidad es un anuncio o una alerta de la
+        # Matriz LED, que es otro plugin con otros ids.
+        raise ActionError(
+            f"No existe la escena de accesorios '{scene_id}'. Si te referías a la Matriz LED, "
+            "sus anuncios, reglas y alertas por máquina se consultan con get_led_matrix.")
     if resultado is False:
         raise ActionError(f"La escena '{scene_id}' no se pudo aplicar completa")
     return {"ok": True, "scene_id": scene_id}
@@ -159,6 +164,72 @@ async def send_matrix_announcement(announcement_id: str) -> Dict[str, Any]:
     if resultado is False or resultado is None:
         raise ActionError(f"No existe el anuncio '{announcement_id}' o no se pudo enviar")
     return {"ok": True, "announcement_id": announcement_id}
+
+
+async def set_machine_alerts(machine_id: str, enabled: bool) -> Dict[str, Any]:
+    """Prende o apaga las alertas de la Matriz LED para una máquina.
+
+    No "activa" nada visible al instante: deja armado que la pantalla muestre
+    el anuncio correspondiente cuando esa máquina cambie de estado. Si la
+    máquina no tiene ningún anuncio asignado a ningún estado, prenderlas no
+    hace nada -- y eso se dice, en vez de reportar un éxito que el usuario no
+    va a ver en la pantalla.
+    """
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    module = get_loaded_plugin_module("matriz-led", "services.screen_service")
+    if module is None:
+        raise ActionError("El plugin de Matriz LED no está instalado")
+
+    leer = getattr(module, "get_machine_alerts", None)
+    guardar = getattr(module, "save_machine_alerts", None)
+    if leer is None or guardar is None:
+        raise ActionError("Esta versión del plugin no permite cambiar las alertas por máquina")
+
+    machine = await _resolve_machine(machine_id)
+    actual = leer(machine["id"]) or {}
+    por_estado = {k: v for k, v in (actual.get("state_announcements") or {}).items() if v}
+
+    # save_machine_alerts reescribe la entrada completa: si no se le
+    # devuelven los anuncios ya configurados, prender las alertas los
+    # borraría todos.
+    guardar(machine["id"], {"enabled": bool(enabled), "state_announcements": por_estado})
+
+    resultado = {
+        "ok": True,
+        "machine": machine.get("name"),
+        "machine_id": machine["id"],
+        "enabled": bool(enabled),
+        "configured_states": sorted(por_estado),
+    }
+    if enabled and not por_estado:
+        resultado["warning"] = (
+            "Las alertas quedaron prendidas, pero esta máquina no tiene ningún anuncio asignado "
+            "a ningún estado, así que la matriz no va a mostrar nada. Eso se configura en el "
+            "panel del plugin Matriz LED."
+        )
+    return resultado
+
+
+async def run_matrix_rule(rule_id: str) -> Dict[str, Any]:
+    """Dispara ahora una regla de la Matriz LED (muestra su anuncio)."""
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    module = get_loaded_plugin_module("matriz-led", "services.screen_service")
+    if module is None:
+        raise ActionError("El plugin de Matriz LED no está instalado")
+
+    ejecutar = getattr(module, "run_rule", None)
+    if ejecutar is None:
+        raise ActionError("Esta versión del plugin no permite disparar reglas desde la IA")
+
+    try:
+        resultado = ejecutar(rule_id)
+    except ValueError as exc:
+        raise ActionError(f"No existe la regla '{rule_id}': {exc}")
+    if inspect.isawaitable(resultado):
+        resultado = await resultado
+    return {"ok": True, "rule_id": rule_id}
 
 
 async def queue_file(machine_id: str, path: str) -> Dict[str, Any]:
@@ -274,6 +345,36 @@ ACTIONS: Dict[str, Action] = {
                 "type": "object",
                 "properties": {"announcement_id": {"type": "string", "description": "Id del anuncio."}},
                 "required": ["announcement_id"],
+            },
+            risk="low",
+            role="any",
+        ),
+        Action(
+            "set_machine_alerts",
+            "Prende o apaga las ALERTAS POR MÁQUINA de la Matriz LED. No muestra nada al "
+            "instante: deja armado que la pantalla avise cuando esa máquina cambie de estado. "
+            "Usa get_led_matrix para ver cuáles hay y cómo están; nunca inventes ids.",
+            set_machine_alerts,
+            {
+                "type": "object",
+                "properties": {
+                    **_MACHINE_PARAM,
+                    "enabled": {"type": "boolean", "description": "true para prenderlas, false para apagarlas."},
+                },
+                "required": ["machine_id", "enabled"],
+            },
+            risk="low",
+            role="any",
+        ),
+        Action(
+            "run_matrix_rule",
+            "Dispara ahora una regla de la Matriz LED, mostrando su anuncio. Los ids salen de "
+            "get_led_matrix. No confundir con las escenas de accesorios (activate_scene).",
+            run_matrix_rule,
+            {
+                "type": "object",
+                "properties": {"rule_id": {"type": "string", "description": "Id de la regla."}},
+                "required": ["rule_id"],
             },
             risk="low",
             role="any",
