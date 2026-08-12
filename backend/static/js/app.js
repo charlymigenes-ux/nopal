@@ -5143,6 +5143,7 @@ const SETTINGS_MODULE_DEFS = [
     { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
     { key: 'tunascreen', labelKey: 'tunascreenTitle', iconSvg: SETTINGS_MODULE_ICON_TUNASCREEN },
     { key: 'ai', labelKey: 'aiSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_AI },
+    { key: 'backup', labelKey: 'backupTitle', iconSvg: SETTINGS_MODULE_ICON_UPDATES },
 ];
 // Centro de ayuda (layout fijo, sin personalización por arrastre -- ver
 // renderHelpCenter() más abajo en este archivo) reusa estos mismos íconos
@@ -16030,6 +16031,7 @@ function switchSection(sectionName) {
     }
     if (sectionName === 'settings') {
         loadAiSettings();
+        backupLoadGroups();
     }
     if (sectionName === 'laser') {
         stopCncPolling();
@@ -19403,4 +19405,119 @@ document.getElementById('ai-preset')?.addEventListener('change', () => {
 });
 document.getElementById('ai-api-key')?.addEventListener('input', event => {
     event.target.dataset.untouched = 'false';
+});
+
+
+// ===========================================================================
+// Respaldo de configuración
+// ---------------------------------------------------------------------------
+// Selección múltiple a propósito: respaldar todo cuando solo querías las
+// impresoras es tan molesto como no tener respaldo.
+// ===========================================================================
+
+function backupShow(mensaje, tono) {
+    const el = document.getElementById('backup-result');
+    if (!el) return;
+    el.textContent = mensaje;
+    el.dataset.tone = tono || '';
+}
+
+async function backupLoadGroups() {
+    const cont = document.getElementById('backup-groups');
+    if (!cont || currentAuthUser?.role !== 'admin') return;
+    let data = { groups: [] };
+    try {
+        data = await aiFetchJson('/api/config-backup/groups');
+    } catch (_) { return; }
+
+    cont.innerHTML = data.groups.map(g => `
+        <label class="backup-group${g.available ? '' : ' is-empty'}">
+            <input type="checkbox" value="${escapeHtml(g.id)}" ${g.available ? '' : 'disabled'}>
+            <span class="backup-group-text">
+                <span class="backup-group-label">${escapeHtml(g.label)}${g.sensitive ? `<span class="backup-sensitive">${escapeHtml(t('backupSensitive'))}</span>` : ''}</span>
+                ${g.warning ? `<small>${escapeHtml(g.warning)}</small>` : ''}
+                ${g.available ? '' : `<small>${escapeHtml(t('backupNoData'))}</small>`}
+            </span>
+        </label>`).join('');
+}
+
+function backupSelected() {
+    return Array.from(document.querySelectorAll('#backup-groups input:checked')).map(i => i.value);
+}
+
+document.getElementById('backup-export-btn')?.addEventListener('click', async () => {
+    const groups = backupSelected();
+    if (!groups.length) { backupShow(t('backupPickSomething'), 'error'); return; }
+    backupShow(t('backupWorking'), 'pending');
+    try {
+        const response = await fetch('/api/config-backup/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groups, passphrase: document.getElementById('backup-passphrase')?.value || '' }),
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+        // Descarga directa: el archivo nunca pasa por el portapapeles ni por
+        // otro servicio.
+        const blob = await response.blob();
+        const enlace = document.createElement('a');
+        enlace.href = URL.createObjectURL(blob);
+        enlace.download = (response.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1]
+            || 'nopal-config.nopal';
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        URL.revokeObjectURL(enlace.href);
+        backupShow(t('backupExported'), 'ok');
+    } catch (error) {
+        backupShow(error.message, 'error');
+    }
+});
+
+document.getElementById('backup-import-input')?.addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const passphrase = document.getElementById('backup-passphrase')?.value || '';
+    backupShow(t('backupWorking'), 'pending');
+
+    // Primero se inspecciona: la persona tiene derecho a ver qué va a
+    // sobrescribir antes de aceptarlo.
+    let info;
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('passphrase', passphrase);
+        const r = await fetch('/api/config-backup/inspect', { method: 'POST', body: fd });
+        info = await r.json();
+        if (!r.ok) throw new Error(info.detail || `HTTP ${r.status}`);
+    } catch (error) { backupShow(error.message, 'error'); return; }
+
+    if (info.needs_passphrase) {
+        backupShow(t('backupNeedsPassphrase'), 'error');
+        return;
+    }
+
+    const seleccionados = backupSelected();
+    const groups = seleccionados.length ? seleccionados : info.groups;
+    if (!confirm(`${t('backupImportConfirm')}\n\n${groups.join(', ')}\n\n${info.files.length} ${t('backupFiles')}`)) {
+        backupShow('', '');
+        return;
+    }
+
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('groups', groups.join(','));
+        fd.append('passphrase', passphrase);
+        const r = await fetch('/api/config-backup/import', { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+        backupShow(`${t('backupImported')} (${data.restored.length}) — ${t('backupRestartNeeded')}`, 'ok');
+    } catch (error) {
+        backupShow(error.message, 'error');
+    }
 });

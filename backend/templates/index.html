@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=303">
+    <link rel="stylesheet" href="/static/css/style.css?v=304">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -2124,6 +2124,40 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- Respaldo de configuración. Admin-only: puede llevar usuarios
+                             y claves de API, e importar sobrescribe la instalación. -->
+                        <div class="settings-card card-collapsible" data-settings-module="backup">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="backupTitle">Respaldo de configuración</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="backupDescription">Exporta lo que elijas para respaldarlo o llevarlo a una instalación nueva. Lo que incluye datos sensibles se cifra con una frase que tú pones.</p>
+
+                            <div class="backup-groups" id="backup-groups"></div>
+
+                            <label class="ai-field">
+                                <span data-i18n="backupPassphrase">Frase de cifrado</span>
+                                <input type="password" id="backup-passphrase" class="ai-text-input" autocomplete="new-password">
+                                <small class="ai-field-hint" data-i18n="backupPassphraseHint">Obligatoria si incluyes usuarios o la configuración de IA. Sin ella no se puede recuperar el archivo: guárdala.</small>
+                            </label>
+
+                            <div class="ai-settings-actions">
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="backup-export-btn">
+                                    <span data-i18n="backupExport">Exportar</span>
+                                </button>
+                                <label class="btn-file-action" for="backup-import-input" style="cursor:pointer">
+                                    <span data-i18n="backupImport">Importar</span>
+                                    <input type="file" id="backup-import-input" accept=".nopal,application/json" hidden>
+                                </label>
+                                <span class="ai-test-result" id="backup-result"></span>
+                            </div>
+                        </div>
+
                         <!-- NOPAL Intelligence. Admin-only: define a qué
                              servidor se le manda telemetría del taller. La
                              API key nunca baja al navegador (ver
@@ -4465,11 +4499,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=34"></script>
+    <script src="/static/js/translations.js?v=35"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=243"></script>
+    <script src="/static/js/app.js?v=244"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
