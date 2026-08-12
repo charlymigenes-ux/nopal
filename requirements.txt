@@ -11,3 +11,8 @@ itsdangerous==2.2.0
 xhtml2pdf==0.2.17
 esptool==4.9.0
 paho-mqtt==2.1.0
+# Cliente HTTP async, usado solo por NOPAL Intelligence (backend/services/
+# ai_provider.py) para hablar con el servidor de IA sin bloquear el event
+# loop. Se importa de forma perezosa: si falta, NOPAL arranca igual y solo
+# la capa de IA reporta el error.
+httpx==0.28.1

@@ -16214,3 +16214,217 @@ body.light .laser-fire-btn-wide {
     align-items: center;
     justify-content: center;
 }
+
+/* ===========================================================================
+   NOPAL Intelligence
+   Sin un solo color hardcodeado: todo sale de las variables del tema, para
+   que la sección se vea correcta en claro, oscuro, verde, rojo y
+   personalizado. El mockup de referencia era verde sobre negro, que es
+   simplemente cómo se ve esto con el tema verde oscuro activo.
+   =========================================================================== */
+
+.ai-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ai-conn-pill {
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-soft);
+    background: var(--surface-sunken);
+}
+.ai-conn-pill[data-tone="ok"] {
+    color: var(--status-ok);
+    border-color: var(--status-ok);
+    background: rgba(var(--accent-fill-rgb), 0.1);
+}
+
+.ai-disabled-notice {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    text-align: center;
+    color: var(--text-soft);
+}
+.ai-disabled-notice p { margin: 0 0 16px; }
+
+/* Rejilla: máquinas arriba a todo lo ancho, asistente y eventos abajo. */
+.ai-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-areas: "machines machines" "main side";
+    gap: 16px;
+}
+.ai-machines { grid-area: machines; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.ai-main { grid-area: main; min-width: 0; }
+.ai-side { grid-area: side; min-width: 0; }
+
+@media (max-width: 1023px) {
+    .ai-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "machines" "main" "side"; }
+}
+
+.ai-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+/* --- Tarjetas de máquina --- */
+.ai-machine-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--border-control);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.ai-machine-card[data-tone="ok"] { border-left-color: var(--status-ok); }
+.ai-machine-card[data-tone="busy"] { border-left-color: var(--status-info); }
+.ai-machine-card[data-tone="off"] { border-left-color: var(--status-danger); }
+
+.ai-machine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ai-machine-name { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-machine-kind { font-size: 0.75rem; color: var(--text-faint); text-transform: capitalize; }
+
+.ai-machine-pill {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+    color: var(--text-soft);
+}
+.ai-machine-pill[data-tone="ok"] { color: var(--status-ok); }
+.ai-machine-pill[data-tone="busy"] { color: var(--status-info); }
+.ai-machine-pill[data-tone="off"] { color: var(--status-danger); }
+
+.ai-machine-progress { height: 5px; border-radius: 999px; background: var(--surface-sunken); overflow: hidden; }
+.ai-machine-progress-bar { height: 100%; background: var(--accent-fill); }
+.ai-machine-progress-text { font-size: 0.72rem; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Conversación --- */
+.ai-chat-card { display: flex; flex-direction: column; min-height: 420px; }
+.ai-thread {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 4px;
+}
+
+.ai-msg { max-width: 85%; padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.9rem; line-height: 1.5; }
+.ai-msg-user { align-self: flex-end; background: var(--accent-fill); color: var(--accent-on); }
+.ai-msg-assistant { align-self: flex-start; background: var(--surface-sunken); color: var(--text-strong); border: 1px solid var(--border-subtle); }
+.ai-msg-pending { opacity: 0.65; font-style: italic; }
+.ai-msg-text { white-space: pre-wrap; word-break: break-word; }
+/* La traza de herramientas consultadas: es lo que hace verificable la
+   respuesta, así que se muestra siempre, discreta pero presente. */
+.ai-msg-meta { margin-top: 6px; font-size: 0.7rem; color: var(--text-faint); border-top: 1px solid var(--border-subtle); padding-top: 5px; }
+
+.ai-suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.ai-suggestion {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-soft);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.ai-suggestion:hover { border-color: var(--accent-fill); color: var(--accent-ink); }
+
+.ai-composer { display: flex; gap: 8px; align-items: center; }
+.ai-question-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-md);
+    color: var(--text-strong);
+    padding: 11px 14px;
+    font-size: 0.9rem;
+}
+.ai-question-input:focus { outline: none; border-color: var(--accent-fill); }
+
+.ai-send-btn {
+    background: var(--accent-fill);
+    color: var(--accent-on);
+    border: none;
+    border-radius: var(--radius-md);
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.ai-send-btn:hover:not(:disabled) { background: var(--accent-fill-hover); }
+.ai-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ai-disclaimer { margin: 8px 0 0; font-size: 0.72rem; color: var(--text-faint); text-align: center; }
+.ai-empty { color: var(--text-faint); font-size: 0.85rem; text-align: center; padding: 16px 0; margin: 0; }
+
+/* --- Eventos --- */
+.ai-events { display: flex; flex-direction: column; gap: 10px; max-height: 460px; overflow-y: auto; }
+.ai-event { display: flex; gap: 10px; align-items: flex-start; }
+.ai-event-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--status-ok); }
+.ai-event[data-level="warning"] .ai-event-dot { background: var(--status-warn); }
+.ai-event[data-level="error"] .ai-event-dot { background: var(--status-danger); }
+.ai-event-body { display: flex; flex-direction: column; min-width: 0; }
+.ai-event-message { font-size: 0.82rem; color: var(--text-strong); word-break: break-word; }
+.ai-event-meta { font-size: 0.7rem; color: var(--text-faint); }
+
+/* --- Tarjeta de ajustes --- */
+.ai-settings-fields { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.ai-field { display: flex; flex-direction: column; gap: 5px; }
+.ai-field > span { font-size: 0.85rem; font-weight: 600; color: var(--text-strong); }
+.ai-field-hint { font-size: 0.72rem; color: var(--text-faint); }
+
+.ai-text-input {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-sm);
+    color: var(--text-strong);
+    padding: 9px 12px;
+    font-size: 0.88rem;
+    width: 100%;
+}
+.ai-text-input:focus { outline: none; border-color: var(--accent-fill); }
+.ai-text-input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* El aviso de qué datos salen de la red: tiene que verse antes de aceptar,
+   no como letra chica después. */
+.ai-public-warning {
+    background: var(--surface-sunken);
+    border: 1px solid var(--status-warn);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+}
+.ai-public-warning p { margin: 0 0 8px; font-size: 0.82rem; color: var(--text-strong); }
+.ai-public-warning ul { margin: 0 0 10px; padding-left: 20px; font-size: 0.78rem; color: var(--text-soft); }
+.ai-public-warning li { margin-bottom: 3px; }
+.ai-consent { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-strong); cursor: pointer; }
+
+.ai-advanced summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-soft); padding: 6px 0; }
+.ai-advanced[open] summary { margin-bottom: 10px; }
+.ai-advanced .ai-field { margin-bottom: 10px; }
+
+.ai-settings-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-test-result { font-size: 0.8rem; }
+.ai-test-result[data-tone="ok"] { color: var(--status-ok); }
+.ai-test-result[data-tone="warn"] { color: var(--status-warn); }
+.ai-test-result[data-tone="error"] { color: var(--status-danger); }
+.ai-test-result[data-tone="pending"] { color: var(--text-faint); }

@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import backend.services.ai_config_service as ai_config_service
 import backend.services.bambu_service as bambu_service
 import backend.services.elegoo_service as elegoo_service
 import backend.services.flashforge_service as flashforge_service
@@ -59,4 +60,13 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin_installer_service, "PLUGINS_DIR", tmp_path / "plugins")
     monkeypatch.setattr(plugin_installer_service, "PLUGIN_DATA_DIR", tmp_path / "data" / "plugins")
     monkeypatch.setattr(plugin_installer_service, "INSTALLED_FILE", tmp_path / "data" / "plugins" / "installed.json")
+    # NOPAL Intelligence: mismo riesgo que los registros de impresoras --
+    # un test que guarde configuración de IA escribiría el ai_config.json
+    # real del repo (que puede tener la API key del usuario).
+    monkeypatch.setattr(ai_config_service, "CONFIG_PATH", str(tmp_path / "ai_config.json"))
+    # Las variables NOPAL_AI_* pisan al archivo (ver ai_config_service):
+    # sin limpiarlas, el entorno de quien corre la suite decidiría el
+    # resultado de los tests de configuración.
+    for env_name in ai_config_service.ENV_OVERRIDES:
+        monkeypatch.delenv(env_name, raising=False)
     yield tmp_path

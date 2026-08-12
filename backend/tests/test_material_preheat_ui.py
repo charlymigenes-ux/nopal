@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -16,6 +17,8 @@ def test_material_preheat_is_available_for_klipper_and_marlin_cards():
 
 
 def test_material_preheat_assets_use_new_cache_versions():
+    """Ver la nota en test_marlin_ui.py: se comprueba que haya cachebuster,
+    no un número concreto que envejece con cada cambio de UI."""
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
-    assert '/static/css/style.css?v=272' in html
-    assert '/static/js/app.js?v=217' in html
+    assert re.search(r"/static/css/style\.css\?v=\d+", html)
+    assert re.search(r"/static/js/app\.js\?v=\d+", html)

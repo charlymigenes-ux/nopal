@@ -74,6 +74,14 @@ function updateTopbarUser(user) {
     // el rol por las dudas si igual se llegara a invocar).
     const guidedSetupBtn = document.getElementById('guided-printer-setup-open-btn');
     if (guidedSetupBtn) guidedSetupBtn.hidden = user.role !== 'admin';
+
+    // La configuración de IA decide a qué servidor externo se le manda
+    // telemetría del taller: mismo criterio que la galería de plugins, es
+    // admin-only en el backend (require_role("admin") en backend/api/ai.py)
+    // y un operador no debe ni verla. Preguntarle a la IA sí es para
+    // cualquiera, así que la sección del asistente no se toca acá.
+    const aiCard = document.querySelector('[data-settings-module="ai"]');
+    if (aiCard) aiCard.hidden = user.role !== 'admin';
 }
 
 function showFullscreenRecommendation() {
@@ -5122,7 +5130,9 @@ const SETTINGS_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 
 const SETTINGS_MODULE_ICON_MACROS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
 const SETTINGS_MODULE_ICON_SETTINGS_HELP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
-// Las 8 tarjetas reales de #settings-modules-pool.
+const SETTINGS_MODULE_ICON_AI = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>';
+
+// Las tarjetas reales de #settings-modules-pool.
 const SETTINGS_MODULE_DEFS = [
     { key: 'general', labelKey: 'generalSettings', iconSvg: SETTINGS_MODULE_ICON_GENERAL },
     { key: 'appearance', labelKey: 'appearanceSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_APPEARANCE },
@@ -5132,6 +5142,7 @@ const SETTINGS_MODULE_DEFS = [
     { key: 'devices', labelKey: 'devicesTitle', iconSvg: SETTINGS_MODULE_ICON_DEVICES },
     { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
     { key: 'tunascreen', labelKey: 'tunascreenTitle', iconSvg: SETTINGS_MODULE_ICON_TUNASCREEN },
+    { key: 'ai', labelKey: 'aiSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_AI },
 ];
 // Centro de ayuda (layout fijo, sin personalización por arrastre -- ver
 // renderHelpCenter() más abajo en este archivo) reusa estos mismos íconos
@@ -16014,6 +16025,12 @@ function switchSection(sectionName) {
     } else {
         stopConsolePolling();
     }
+    if (sectionName === 'ai') {
+        loadAiSection();
+    }
+    if (sectionName === 'settings') {
+        loadAiSettings();
+    }
     if (sectionName === 'laser') {
         stopCncPolling();
         window.NopalCameraCard?.unmount(document.getElementById('cnc-modal-camera'));
@@ -18500,4 +18517,410 @@ document.querySelectorAll('#user-add-role-switch .option-switch-btn').forEach(bt
     btn.addEventListener('click', () => {
         document.querySelectorAll('#user-add-role-switch .option-switch-btn').forEach(b => b.classList.toggle('active', b === btn));
     });
+});
+
+
+// ===========================================================================
+// NOPAL Intelligence
+// ---------------------------------------------------------------------------
+// La vista del asistente se alimenta de /api/ai/tools/* -- exactamente las
+// mismas funciones de solo lectura que consulta el modelo. Así la pantalla y
+// la IA nunca pueden discrepar sobre el estado del taller: si una tarjeta dice
+// que el láser está desconectado, es porque la herramienta lo reportó así, no
+// porque el frontend lo calcule por su cuenta.
+//
+// Todo el color sale de las variables CSS del tema (ver style.css), nunca
+// hardcodeado -- esta sección tiene que verse bien en claro, oscuro, verde,
+// rojo y personalizado igual que el resto de NOPAL.
+// ===========================================================================
+
+const AI_API_KEY_UNCHANGED = '__unchanged__';
+
+let aiPresets = [];
+let aiDataSent = [];
+let aiConfigCache = null;
+let aiBusy = false;
+
+function aiSuggestedQuestions() {
+    return [
+        t('aiSuggestWorkshop'),
+        t('aiSuggestAvailable'),
+        t('aiSuggestErrors'),
+    ];
+}
+
+async function aiFetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    let payload = null;
+    try {
+        payload = await response.json();
+    } catch (_) {
+        payload = null;
+    }
+    if (!response.ok) {
+        throw new Error(payload?.detail || `HTTP ${response.status}`);
+    }
+    return payload;
+}
+
+// --- Configuración (Ajustes → Inteligencia artificial) ---------------------
+
+function aiCurrentPreset() {
+    return aiPresets.find(p => p.id === document.getElementById('ai-preset')?.value) || null;
+}
+
+function aiUpdatePresetUi() {
+    const preset = aiCurrentPreset();
+    const note = document.getElementById('ai-preset-note');
+    const warning = document.getElementById('ai-public-warning');
+    const keyField = document.getElementById('ai-api-key-field');
+    if (note) note.textContent = preset?.note || '';
+    // El aviso de datos aparece por lo que el usuario ESTÁ eligiendo, no por
+    // lo que ya guardó: tiene que verlo antes de aceptar, no después.
+    if (warning) warning.hidden = !preset?.cloud;
+    if (keyField) keyField.hidden = false;
+}
+
+function aiRenderPresets() {
+    const select = document.getElementById('ai-preset');
+    if (!select) return;
+    select.innerHTML = aiPresets
+        .map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
+        .join('');
+
+    const list = document.getElementById('ai-data-sent');
+    if (list) {
+        list.innerHTML = aiDataSent.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    }
+}
+
+function aiPresetIdForUrl(baseUrl) {
+    if (!baseUrl) return 'local';
+    const match = aiPresets.find(p => p.base_url && p.base_url === baseUrl);
+    return match ? match.id : 'custom';
+}
+
+function aiFillConfigForm(config) {
+    aiConfigCache = config;
+    const set = (id, value) => { const el = document.getElementById(id); if (el) el.value = value ?? ''; };
+    const check = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
+
+    check('ai-enabled', config.enabled);
+    set('ai-base-url', config.base_url);
+    set('ai-model', config.model);
+    set('ai-timeout', config.timeout_s);
+    set('ai-tool-mode', config.tool_mode);
+    set('ai-tool-profile', config.tool_profile);
+    check('ai-allow-public', config.allow_public_endpoint);
+
+    const select = document.getElementById('ai-preset');
+    if (select) select.value = aiPresetIdForUrl(config.base_url);
+
+    // La clave nunca baja al navegador. Si el servidor dice que hay una
+    // guardada se muestra un relleno visual, y al guardar se manda el
+    // centinela para conservarla (ver API_KEY_UNCHANGED en el backend).
+    const keyInput = document.getElementById('ai-api-key');
+    if (keyInput) {
+        keyInput.value = config.api_key_set ? AI_API_KEY_UNCHANGED : '';
+        keyInput.dataset.untouched = config.api_key_set ? 'true' : 'false';
+    }
+
+    // Campos forzados por variables de entorno: se bloquean en vez de dejar
+    // que el usuario "guarde" un cambio que el entorno va a pisar igual.
+    const locked = new Set(config.env_locked_fields || []);
+    const lockMap = {
+        enabled: 'ai-enabled', base_url: 'ai-base-url', model: 'ai-model',
+        timeout_s: 'ai-timeout', tool_mode: 'ai-tool-mode',
+        tool_profile: 'ai-tool-profile', allow_public_endpoint: 'ai-allow-public',
+    };
+    Object.entries(lockMap).forEach(([key, id]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = locked.has(key);
+        if (locked.has(key)) el.title = t('aiEnvLocked');
+    });
+
+    aiUpdatePresetUi();
+    aiUpdateNavVisibility(config.enabled);
+}
+
+function aiReadConfigForm() {
+    const val = id => document.getElementById(id)?.value ?? '';
+    const checked = id => !!document.getElementById(id)?.checked;
+    const keyInput = document.getElementById('ai-api-key');
+    return {
+        enabled: checked('ai-enabled'),
+        provider: 'openai-compatible',
+        base_url: val('ai-base-url').trim(),
+        model: val('ai-model').trim(),
+        api_key: keyInput?.dataset.untouched === 'true' ? AI_API_KEY_UNCHANGED : (keyInput?.value ?? ''),
+        timeout_s: Number(val('ai-timeout')) || 60,
+        tool_mode: val('ai-tool-mode') || 'auto',
+        tool_profile: val('ai-tool-profile') || 'full',
+        allow_public_endpoint: checked('ai-allow-public'),
+    };
+}
+
+function aiShowTestResult(message, tone) {
+    const el = document.getElementById('ai-test-result');
+    if (!el) return;
+    el.textContent = message;
+    el.dataset.tone = tone;
+}
+
+async function loadAiSettings() {
+    if (currentAuthUser?.role !== 'admin') return;
+    try {
+        if (!aiPresets.length) {
+            const data = await aiFetchJson('/api/ai/presets');
+            aiPresets = data.presets || [];
+            aiDataSent = data.data_sent || [];
+            aiRenderPresets();
+        }
+        aiFillConfigForm(await aiFetchJson('/api/ai/config'));
+    } catch (error) {
+        aiShowTestResult(error.message, 'error');
+    }
+}
+
+async function saveAiSettings() {
+    const button = document.getElementById('ai-save-btn');
+    if (button) button.disabled = true;
+    try {
+        const saved = await aiFetchJson('/api/ai/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(aiReadConfigForm()),
+        });
+        aiFillConfigForm(saved);
+        showToast(t('aiSaved'), 'success');
+        aiShowTestResult('', '');
+    } catch (error) {
+        showToast(error.message, 'error');
+        aiShowTestResult(error.message, 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function testAiConnection() {
+    const button = document.getElementById('ai-test-btn');
+    if (button) button.disabled = true;
+    aiShowTestResult(t('aiTesting'), 'pending');
+    try {
+        // Se manda el formulario tal como está para poder probar ANTES de
+        // guardar, que es lo que uno quiere al configurar por primera vez.
+        const result = await aiFetchJson('/api/ai/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(aiReadConfigForm()),
+        });
+        if (!result.ok) {
+            aiShowTestResult(result.error || t('aiTestFailed'), 'error');
+            return;
+        }
+        const datalist = document.getElementById('ai-model-options');
+        if (datalist) {
+            datalist.innerHTML = (result.models || [])
+                .map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+        }
+        aiShowTestResult(result.warning || t('aiTestOk'), result.warning ? 'warn' : 'ok');
+    } catch (error) {
+        aiShowTestResult(error.message, 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+// --- Sección del asistente -------------------------------------------------
+
+function aiUpdateNavVisibility(enabled) {
+    const button = document.getElementById('nav-ai-btn');
+    if (button) button.hidden = !enabled;
+}
+
+function aiMachineCard(machine) {
+    const online = machine.online;
+    const job = machine.job || {};
+    const printing = ['printing', 'paused'].includes(job.state);
+    const tone = online ? (printing ? 'busy' : 'ok') : 'off';
+    const stateLabel = !online ? t('aiOffline') : (printing ? t('aiWorking') : t('aiReady'));
+
+    const progress = printing && Number.isFinite(job.progress)
+        ? `<div class="ai-machine-progress"><div class="ai-machine-progress-bar" style="width:${Math.max(0, Math.min(100, job.progress))}%"></div></div>
+           <span class="ai-machine-progress-text">${escapeHtml(String(job.progress))}%${job.filename ? ' · ' + escapeHtml(job.filename) : ''}</span>`
+        : '';
+
+    return `
+        <div class="ai-machine-card" data-tone="${tone}">
+            <div class="ai-machine-head">
+                <span class="ai-machine-name">${escapeHtml(machine.name || machine.id)}</span>
+                <span class="ai-machine-pill" data-tone="${tone}">${escapeHtml(stateLabel)}</span>
+            </div>
+            <span class="ai-machine-kind">${escapeHtml(machine.brand || '')} · ${escapeHtml(machine.kind || '')}</span>
+            ${progress}
+        </div>`;
+}
+
+async function aiLoadMachines() {
+    const container = document.getElementById('ai-machines');
+    if (!container) return;
+    try {
+        const data = await aiFetchJson('/api/ai/tools/get_machines', { method: 'POST' });
+        const machines = data.machines || [];
+        container.innerHTML = machines.length
+            ? machines.map(aiMachineCard).join('')
+            : `<p class="ai-empty">${escapeHtml(t('aiNoMachines'))}</p>`;
+    } catch (error) {
+        container.innerHTML = `<p class="ai-empty">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+async function aiLoadEvents() {
+    const container = document.getElementById('ai-events');
+    if (!container) return;
+    try {
+        const data = await aiFetchJson('/api/ai/tools/get_recent_events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 12 }),
+        });
+        const events = (data.events || []).slice().reverse();
+        container.innerHTML = events.length
+            ? events.map(event => `
+                <div class="ai-event" data-level="${escapeHtml((event.level || '').toLowerCase())}">
+                    <span class="ai-event-dot"></span>
+                    <div class="ai-event-body">
+                        <span class="ai-event-message">${escapeHtml(event.message || '')}</span>
+                        <span class="ai-event-meta">${escapeHtml(event.timestamp || '')} · ${escapeHtml(event.source || '')}</span>
+                    </div>
+                </div>`).join('')
+            : `<p class="ai-empty">${escapeHtml(t('aiNoEvents'))}</p>`;
+    } catch (error) {
+        container.innerHTML = `<p class="ai-empty">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+function aiAppendMessage(role, text, meta = null) {
+    const thread = document.getElementById('ai-thread');
+    if (!thread) return null;
+    const bubble = document.createElement('div');
+    bubble.className = `ai-msg ai-msg-${role}`;
+    bubble.innerHTML = `<div class="ai-msg-text">${escapeHtml(text)}</div>` +
+        (meta ? `<div class="ai-msg-meta">${escapeHtml(meta)}</div>` : '');
+    thread.appendChild(bubble);
+    thread.scrollTop = thread.scrollHeight;
+    return bubble;
+}
+
+function aiRenderSuggestions() {
+    const container = document.getElementById('ai-suggestions');
+    if (!container) return;
+    container.innerHTML = aiSuggestedQuestions()
+        .map(q => `<button type="button" class="ai-suggestion">${escapeHtml(q)}</button>`).join('');
+    container.querySelectorAll('.ai-suggestion').forEach(button => {
+        button.addEventListener('click', () => {
+            const input = document.getElementById('ai-question');
+            if (input) input.value = button.textContent;
+            askAi();
+        });
+    });
+}
+
+function aiResetThread() {
+    const thread = document.getElementById('ai-thread');
+    if (thread) thread.innerHTML = '';
+    aiAppendMessage('assistant', t('aiGreeting'));
+    aiRenderSuggestions();
+}
+
+async function askAi() {
+    if (aiBusy) return;
+    const input = document.getElementById('ai-question');
+    const question = (input?.value || '').trim();
+    if (!question) return;
+
+    aiBusy = true;
+    if (input) input.value = '';
+    const sendBtn = document.getElementById('ai-send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    aiAppendMessage('user', question);
+    const pending = aiAppendMessage('assistant', t('aiThinking'));
+    pending?.classList.add('ai-msg-pending');
+
+    try {
+        const result = await aiFetchJson('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question }),
+        });
+        pending?.remove();
+        // La traza de herramientas se muestra siempre: es lo que permite
+        // verificar de dónde salió cada dato en vez de confiar a ciegas.
+        const tools = (result.tool_calls || []).map(c => c.tool).join(', ');
+        const seconds = Math.round((result.elapsed_ms || 0) / 1000);
+        const meta = [tools && `${t('aiToolsUsed')}: ${tools}`, seconds ? `${seconds}s` : '']
+            .filter(Boolean).join(' · ');
+        aiAppendMessage('assistant', result.answer || '', meta);
+    } catch (error) {
+        pending?.remove();
+        aiAppendMessage('assistant', error.message, t('aiError'));
+    } finally {
+        aiBusy = false;
+        if (sendBtn) sendBtn.disabled = false;
+    }
+}
+
+async function loadAiSection() {
+    const notice = document.getElementById('ai-disabled-notice');
+    const layout = document.getElementById('ai-layout');
+    const pill = document.getElementById('ai-conn-pill');
+
+    let status = { enabled: false };
+    try {
+        status = await aiFetchJson('/api/ai/status');
+    } catch (_) { /* sin sesión o backend viejo: se trata como apagado */ }
+
+    aiUpdateNavVisibility(status.enabled);
+
+    if (!status.enabled) {
+        if (notice) notice.hidden = false;
+        if (layout) layout.hidden = true;
+        if (pill) pill.hidden = true;
+        return;
+    }
+
+    if (notice) notice.hidden = true;
+    if (layout) layout.hidden = false;
+    if (pill) {
+        pill.hidden = false;
+        pill.textContent = status.model || t('aiConnected');
+        pill.dataset.tone = 'ok';
+    }
+
+    const thread = document.getElementById('ai-thread');
+    if (thread && !thread.children.length) aiResetThread();
+
+    aiLoadMachines();
+    aiLoadEvents();
+}
+
+document.getElementById('ai-composer')?.addEventListener('submit', event => {
+    event.preventDefault();
+    askAi();
+});
+document.getElementById('ai-clear-btn')?.addEventListener('click', aiResetThread);
+document.getElementById('ai-refresh-btn')?.addEventListener('click', loadAiSection);
+document.getElementById('ai-goto-settings-btn')?.addEventListener('click', () => switchSection('settings'));
+document.getElementById('ai-save-btn')?.addEventListener('click', saveAiSettings);
+document.getElementById('ai-test-btn')?.addEventListener('click', testAiConnection);
+document.getElementById('ai-preset')?.addEventListener('change', () => {
+    const preset = aiCurrentPreset();
+    const urlInput = document.getElementById('ai-base-url');
+    if (preset?.base_url && urlInput) urlInput.value = preset.base_url;
+    aiUpdatePresetUi();
+});
+document.getElementById('ai-api-key')?.addEventListener('input', event => {
+    event.target.dataset.untouched = 'false';
 });

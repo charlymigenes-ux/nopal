@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=293">
+    <link rel="stylesheet" href="/static/css/style.css?v=294">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -182,6 +182,10 @@
                         <button class="nav-item" data-section="console" data-i18n-title="navSystemConsole" title="Consola del sistema">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                             <span data-i18n="navSystemConsole">Consola del sistema</span>
+                        </button>
+                        <button class="nav-item" data-section="ai" id="nav-ai-btn" data-i18n-title="navAi" title="NOPAL Intelligence" hidden>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>
+                            <span data-i18n="navAi">NOPAL Intelligence</span>
                         </button>
                     </div>
                 </div>
@@ -1671,6 +1675,76 @@
                 </main>
             </section>
 
+            <!-- NOPAL Intelligence. Todo lo que se pinta acá sale de
+                 /api/ai/tools/* (las mismas funciones de solo lectura que
+                 consulta el modelo), así que la vista y la IA nunca pueden
+                 discrepar sobre el estado del taller. -->
+            <section id="ai-section" class="view-section" style="display: none;">
+                <div class="section-header">
+                    <div>
+                        <h1 data-i18n="aiTitle">NOPAL Intelligence</h1>
+                        <p class="section-subtitle" data-i18n="aiSubtitle">Asistente inteligente del taller</p>
+                    </div>
+                    <div class="ai-header-actions">
+                        <span class="ai-conn-pill" id="ai-conn-pill" hidden></span>
+                        <button type="button" class="btn-file-action" id="ai-refresh-btn" data-i18n-title="refresh" title="Actualizar">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="ai-disabled-notice" id="ai-disabled-notice" hidden>
+                    <p data-i18n="aiDisabledNotice">NOPAL Intelligence está desactivado. Actívalo en Configuración → Inteligencia artificial.</p>
+                    <button type="button" class="btn-file-action btn-file-action-accent" id="ai-goto-settings-btn">
+                        <span data-i18n="aiGoToSettings">Ir a la configuración</span>
+                    </button>
+                </div>
+
+                <div class="ai-layout" id="ai-layout" hidden>
+                    <div class="ai-machines" id="ai-machines"></div>
+
+                    <div class="ai-main">
+                        <div class="ai-card ai-chat-card">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="aiAssistant">Asistente</h2>
+                                <button type="button" class="btn-file-action" id="ai-clear-btn">
+                                    <span data-i18n="aiNewConversation">Nueva conversación</span>
+                                </button>
+                            </div>
+
+                            <div class="ai-thread" id="ai-thread"></div>
+
+                            <div class="ai-suggestions" id="ai-suggestions"></div>
+
+                            <form class="ai-composer" id="ai-composer">
+                                <input type="text" id="ai-question" class="ai-question-input"
+                                       data-i18n-placeholder="aiPlaceholder"
+                                       placeholder="Escribe tu pregunta en lenguaje natural..." autocomplete="off">
+                                <button type="submit" class="ai-send-btn" id="ai-send-btn" data-i18n-title="aiSend" title="Preguntar">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                </button>
+                            </form>
+                            <p class="ai-disclaimer" data-i18n="aiDisclaimer">Las respuestas pueden contener imprecisiones. Verifica la información crítica.</p>
+                        </div>
+                    </div>
+
+                    <div class="ai-side">
+                        <div class="ai-card">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="aiRecentEvents">Eventos recientes</h2>
+                            </div>
+                            <div class="ai-events" id="ai-events"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section id="settings-section" class="view-section" style="display: none;">
                 <header class="topbar settings-topbar">
                     <div class="settings-topbar-title">
@@ -1950,6 +2024,103 @@
                                         <option value="always" data-i18n="panelAutoHideAlways">Siempre visible</option>
                                         <option value="hover" data-i18n="panelAutoHideHover">Ocultar y mostrar al pasar el mouse</option>
                                     </select>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- NOPAL Intelligence. Admin-only: define a qué
+                             servidor se le manda telemetría del taller. La
+                             API key nunca baja al navegador (ver
+                             API_KEY_UNCHANGED en ai_config_service.py). -->
+                        <div class="settings-card card-collapsible" data-settings-module="ai">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="aiSettingsTitle">Inteligencia artificial</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="aiSettingsDescription">Conecta NOPAL con un servidor de IA compatible con OpenAI: local, en tu red o de un proveedor externo.</p>
+
+                            <div class="settings-option-row">
+                                <div class="settings-option-label">
+                                    <span data-i18n="aiEnable">Activar NOPAL Intelligence</span>
+                                    <small data-i18n="aiEnableHint">Con esto apagado, NOPAL funciona exactamente igual que sin la capa de IA.</small>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="ai-enabled">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="ai-settings-fields" id="ai-settings-fields">
+                                <label class="ai-field">
+                                    <span data-i18n="aiProvider">Proveedor</span>
+                                    <select id="ai-preset" class="settings-select"></select>
+                                    <small class="ai-field-hint" id="ai-preset-note"></small>
+                                </label>
+
+                                <label class="ai-field">
+                                    <span data-i18n="aiBaseUrl">Dirección del servidor</span>
+                                    <input type="text" id="ai-base-url" class="ai-text-input" placeholder="http://192.168.0.30:8081/v1" autocomplete="off">
+                                    <small class="ai-field-hint" data-i18n="aiBaseUrlHint">La dirección completa, terminada en /v1</small>
+                                </label>
+
+                                <label class="ai-field">
+                                    <span data-i18n="aiModel">Modelo</span>
+                                    <input type="text" id="ai-model" class="ai-text-input" list="ai-model-options" placeholder="qwen2.5-7b-instruct" autocomplete="off">
+                                    <datalist id="ai-model-options"></datalist>
+                                    <small class="ai-field-hint" data-i18n="aiModelHint">Al probar la conexión se llenan los modelos que ofrece el servidor.</small>
+                                </label>
+
+                                <label class="ai-field" id="ai-api-key-field">
+                                    <span data-i18n="aiApiKey">Clave de API</span>
+                                    <input type="password" id="ai-api-key" class="ai-text-input" autocomplete="off">
+                                    <small class="ai-field-hint" data-i18n="aiApiKeyHint">Déjala vacía si tu servidor local no la pide.</small>
+                                </label>
+
+                                <div class="ai-public-warning" id="ai-public-warning" hidden>
+                                    <p data-i18n="aiPublicWarning">Este proveedor está fuera de tu red. Al usarlo, estos datos de tu taller salen hacia un tercero:</p>
+                                    <ul id="ai-data-sent"></ul>
+                                    <label class="ai-consent">
+                                        <input type="checkbox" id="ai-allow-public">
+                                        <span data-i18n="aiAllowPublic">Entiendo y autorizo usar un servidor externo</span>
+                                    </label>
+                                </div>
+
+                                <details class="ai-advanced">
+                                    <summary data-i18n="aiAdvanced">Opciones avanzadas</summary>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiToolMode">Uso de herramientas</span>
+                                        <select id="ai-tool-mode" class="settings-select">
+                                            <option value="auto" data-i18n="aiToolModeAuto">Automático</option>
+                                            <option value="native" data-i18n="aiToolModeNative">Nativo (el modelo elige)</option>
+                                            <option value="context" data-i18n="aiToolModeContext">Contexto (NOPAL precarga)</option>
+                                        </select>
+                                    </label>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiToolProfile">Catálogo de herramientas</span>
+                                        <select id="ai-tool-profile" class="settings-select">
+                                            <option value="full" data-i18n="aiToolProfileFull">Completo (11 herramientas)</option>
+                                            <option value="compact" data-i18n="aiToolProfileCompact">Compacto (5, para servidores lentos)</option>
+                                        </select>
+                                    </label>
+                                    <label class="ai-field">
+                                        <span data-i18n="aiTimeout">Tiempo de espera (segundos)</span>
+                                        <input type="number" id="ai-timeout" class="ai-text-input" min="1" max="3600">
+                                    </label>
+                                </details>
+
+                                <div class="ai-settings-actions">
+                                    <button type="button" class="btn-file-action" id="ai-test-btn">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                                        <span data-i18n="aiTestConnection">Probar conexión</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action btn-file-action-accent" id="ai-save-btn">
+                                        <span data-i18n="save">Guardar</span>
+                                    </button>
+                                    <span class="ai-test-result" id="ai-test-result"></span>
                                 </div>
                             </div>
                         </div>
@@ -4145,11 +4316,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=25"></script>
+    <script src="/static/js/translations.js?v=26"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=232"></script>
+    <script src="/static/js/app.js?v=233"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

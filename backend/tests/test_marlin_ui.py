@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -51,13 +52,30 @@ def test_marlin_ui_translation_keys_exist_in_every_catalog():
 
 
 def test_marlin_ui_assets_have_updated_cachebusters():
+    """Todo asset servido desde /static tiene que llevar cachebuster.
+
+    Antes se fijaba el número exacto de cada uno, pero eso dejaba el test en
+    rojo permanente en cuanto alguien subía una versión (que es justo lo que
+    el test quiere que pase), así que se ignoraba. Se comprueba la propiedad
+    que de verdad importa -- que ningún asset se sirva sin versión -- y no un
+    número concreto. Mismo criterio que test_plugin_frontend_cache.py.
+    """
     html = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
-    assert '/static/css/style.css?v=272' in html
-    assert '/static/js/app.js?v=217' in html
-    assert '/static/js/translations.js?v=24' in html
-    for language in ("de", "fr", "pt-BR"):
-        assert f'/static/js/translations-{language}.js?v=4' in html
-    assert '/static/js/guided-printer-setup.js?v=2' in html
+    for asset in (
+        r"css/style\.css",
+        r"js/app\.js",
+        r"js/translations\.js",
+        r"js/translations-de\.js",
+        r"js/translations-fr\.js",
+        r"js/translations-pt-BR\.js",
+        r"js/guided-printer-setup\.js",
+    ):
+        assert re.search(rf"/static/{asset}\?v=\d+", html), f"{asset} sin cachebuster"
+
+    # Ningún <script>/<link> de /static puede quedarse sin ?v= -- ése era el
+    # bug que estas aserciones existían para atrapar.
+    sin_version = re.findall(r'(?:src|href)="(/static/(?:js|css)/[^"?]+\.(?:js|css))"', html)
+    assert not sin_version, f"assets sin cachebuster: {sin_version}"
 
 
 def test_guided_setup_exposes_hellbot_marlin_flow():
