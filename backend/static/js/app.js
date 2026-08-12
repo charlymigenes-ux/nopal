@@ -18733,6 +18733,7 @@ function aiFillConfigForm(config) {
     set('ai-tool-mode', config.tool_mode);
     set('ai-tool-profile', config.tool_profile);
     check('ai-allow-public', config.allow_public_endpoint);
+    check('ai-actions-enabled', config.actions_enabled);
 
     const select = document.getElementById('ai-preset');
     if (select) select.value = aiPresetIdForUrl(config.base_url);
@@ -18779,6 +18780,7 @@ function aiReadConfigForm() {
         tool_mode: val('ai-tool-mode') || 'auto',
         tool_profile: val('ai-tool-profile') || 'full',
         allow_public_endpoint: checked('ai-allow-public'),
+        actions_enabled: checked('ai-actions-enabled'),
     };
 }
 
@@ -19367,6 +19369,15 @@ document.getElementById('ai-refresh-btn')?.addEventListener('click', loadAiSecti
 document.getElementById('ai-goto-settings-btn')?.addEventListener('click', () => switchSection('settings'));
 document.getElementById('ai-save-btn')?.addEventListener('click', saveAiSettings);
 document.getElementById('ai-provider-add-btn')?.addEventListener('click', aiResetProviderForm);
+document.getElementById('ai-suggestions-save-btn')?.addEventListener('click', async () => {
+    const aviso = document.getElementById('ai-suggestions-result');
+    await aiSaveSuggestions();
+    if (aviso) {
+        aviso.textContent = t('aiQuestionsSaved');
+        aviso.dataset.tone = 'ok';
+        setTimeout(() => { aviso.textContent = ''; }, 2500);
+    }
+});
 document.getElementById('ai-suggestion-add-btn')?.addEventListener('click', () => {
     aiStoredSuggestions = [...aiReadSuggestionEditor(), ''];
     aiRenderSuggestionEditor();
