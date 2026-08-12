@@ -16462,18 +16462,22 @@ body.dark, body.red {
    Claro y frío, tarjetas blancas, acento verde nopal. Mismas variables que
    redefinen dark/green/red/custom: ninguna tarjeta hardcodea un color. */
 body.ai {
-    --surface-base: #EDF3F5;
+    /* Blanco dominante, verde y azul del logotipo como acentos, y la arena
+       Desert reducida a detalles mínimos (--ai-sand). El fondo aporta el
+       ambiente; las superficies se mantienen blancas para que el dato se lea. */
+    --surface-base: #F1F6F8;
     --surface-raised: #FFFFFF;
-    --surface-sunken: #F6FAFB;
+    --surface-sunken: #F7FBFC;
     --surface-nav: #FFFFFF;
 
-    --text-strong: #0E1C28;
-    --text-soft: #52646F;
-    --text-faint: #7C8D97;
+    --text-strong: #0D1B26;
+    --text-soft: #4E626F;
+    --text-faint: #7A8D99;
 
-    --border-subtle: #DFE8EC;
-    --border-control: #C3D2D9;
+    --border-subtle: #E2EAEE;
+    --border-control: #C0D0D8;
 
+    /* Verde del nopal del logotipo */
     --accent-fill: #16A34A;
     --accent-fill-hover: #15803D;
     --accent-fill-active: #166534;
@@ -16482,13 +16486,31 @@ body.ai {
     --accent-fill-rgb: 22, 163, 74;
 
     --status-ok: #16A34A;
-    --status-warn: #F59E0B;
+    --status-warn: #C98A2E;
     --status-danger: #EF4444;
-    --status-info: #3B82F6;
+    /* Azul del degradado del logotipo, no un azul genérico */
+    --status-info: #0EA5E9;
 
     --green-emphasis: #16A34A;
     --violet: #8B5CF6;
+
+    /* Arena Desert: solo detalles, nunca superficie. Es el guiño al resto de
+       la identidad NOPAL dentro de un tema por lo demás frío. */
+    --ai-sand: #E7DCC6;
+    --ai-sand-soft: #F3EDE1;
+
+    /* --ai-wallpaper la fija applyThemeWallpaper() según lo elegido en
+       Configuración > Apariencia -- el url() es solo el respaldo. */
+    background-image: var(--ai-wallpaper, url('/static/img/FONDO1_IA.png'));
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
 }
+
+/* Los detalles de arena: separadores y realces sutiles, en dosis pequeñas. */
+body.ai .ai-capability + .ai-capability { border-left-color: var(--ai-sand); }
+body.ai .panel-card-mini { border-top: 2px solid var(--ai-sand-soft); }
 
 /* --- Elementos exclusivos: ocultos salvo con la IA encendida -------------- */
 [data-ai-only] { display: none; }

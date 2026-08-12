@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=296">
+    <link rel="stylesheet" href="/static/css/style.css?v=297">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -1926,6 +1926,7 @@
                                 <option value="dark" data-i18n="darkMode">Dark</option>
                                 <option value="green" data-i18n="greenMode">Green</option>
                                 <option value="red" data-i18n="redMode">Red</option>
+                                <option value="ai" data-i18n="aiThemeName">Modo IA</option>
                                 <option value="custom" id="settings-theme-custom-option" data-i18n="customMode" hidden>Custom</option>
                             </select>
                             <div class="theme-presets" id="settings-theme-presets">
@@ -1946,6 +1947,29 @@
                                         <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="0" title="Fondo 1"><img src="/static/img/fondo_NOPAL_DESERT_1.png" alt=""></button>
                                         <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="1" title="Fondo 2"><img src="/static/img/fondo_NOPAL_DESERT_2.png" alt=""></button>
                                         <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="2" title="Fondo 3"><img src="/static/img/fondoClaro3.png" alt=""></button>
+                                    </div>
+                                </div>
+                                <!-- Modo IA: misma estructura que la tarjeta Desert (selector +
+                                     3 fondos), porque también tiene fondos elegibles. Los tonos de
+                                     las muestras son los del logotipo: blanco, verde y azul, con
+                                     la arena Desert reducida a un detalle. -->
+                                <div class="theme-option-card theme-option-card-nopal" id="ai-theme-card" data-theme="ai">
+                                    <button type="button" class="theme-option-select" id="ai-theme-select-btn">
+                                        <div class="theme-option-title">
+                                            <span data-i18n="aiThemeName">Modo IA</span>
+                                        </div>
+                                        <div class="theme-option-swatches">
+                                            <span class="theme-option-swatch" style="background:#FFFFFF"></span>
+                                            <span class="theme-option-swatch" style="background:#F1F6F8"></span>
+                                            <span class="theme-option-swatch" style="background:#16A34A"></span>
+                                            <span class="theme-option-swatch" style="background:#0EA5E9"></span>
+                                            <span class="theme-option-swatch" style="background:#E7DCC6"></span>
+                                        </div>
+                                    </button>
+                                    <div class="theme-option-wallpapers" id="ai-theme-wallpapers" data-i18n-title="aiWallpaperPick" title="Elige el fondo del modo IA">
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="0" title="Fondo 1"><img src="/static/img/FONDO1_IA.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="1" title="Fondo 2"><img src="/static/img/FONDO2_IA.png" alt=""></button>
+                                        <button type="button" class="theme-option-wallpaper-thumb" data-wallpaper-index="2" title="Fondo 3"><img src="/static/img/FONDO3_IA.png" alt=""></button>
                                     </div>
                                 </div>
                                 <button type="button" class="theme-option-card" data-theme="dark">
@@ -4352,11 +4376,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=27"></script>
+    <script src="/static/js/translations.js?v=28"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=235"></script>
+    <script src="/static/js/app.js?v=236"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

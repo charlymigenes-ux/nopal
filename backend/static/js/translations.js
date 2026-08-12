@@ -1,5 +1,6 @@
 const translations = window.NopalTranslations = window.NopalTranslations || {
   es: {
+    aiWallpaperPick: 'Elige el fondo del modo IA',
     aiModeActive: 'Modo IA activado',
     aiBrand: 'NOPAL Intelligence',
     aiCapAutomation: 'Automatización activa',
@@ -1346,6 +1347,7 @@ const translations = window.NopalTranslations = window.NopalTranslations || {
     printerDiagNo: 'No',
   },
   en: {
+    aiWallpaperPick: 'Pick the AI mode background',
     aiModeActive: 'AI mode on',
     aiBrand: 'NOPAL Intelligence',
     aiCapAutomation: 'Automation active',
