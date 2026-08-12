@@ -16277,40 +16277,107 @@ body.light .laser-fire-btn-wide {
 }
 
 /* --- Tarjetas de máquina --- */
+/* Fichas de máquina del modo IA.
+
+   Todo el color sale del tono del estado (--status-*), incluidos el borde,
+   la píldora y los iconos de métricas: así la ficha se ve igual en tema
+   claro, oscuro, verde, rojo o IA, que era el pedido explícito. Nada
+   hardcodeado.
+
+   La ilustración de la máquina no es decoración: distinguir "TTS 55 PRO" de
+   "NOPAL-55-PRO" en una fila de cuatro rectángulos de texto obliga a leer;
+   con la foto se reconoce de un golpe. */
 .ai-machine-card {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-left: 3px solid var(--border-control);
-    border-radius: var(--radius-md);
-    padding: 14px;
+    position: relative;
+    background: var(--card-bg);
+    border: 1px solid color-mix(in srgb, var(--ai-tone) 35%, var(--border-subtle));
+    border-radius: var(--radius-lg);
+    padding: 14px 15px 12px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
+    overflow: hidden;
+    /* El tono tiñe apenas el fondo, más fuerte arriba: da profundidad sin
+       competir con el fondo del tema. */
+    background-image: linear-gradient(160deg, color-mix(in srgb, var(--ai-tone) 12%, transparent), transparent 60%);
+    transition: border-color .2s ease, transform .2s ease;
 }
-.ai-machine-card[data-tone="ok"] { border-left-color: var(--status-ok); }
-.ai-machine-card[data-tone="busy"] { border-left-color: var(--status-info); }
-.ai-machine-card[data-tone="off"] { border-left-color: var(--status-danger); }
+.ai-machine-card:hover { transform: translateY(-2px); border-color: var(--ai-tone); }
 
-.ai-machine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ai-machine-name { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-machine-kind { font-size: 0.75rem; color: var(--text-faint); text-transform: capitalize; }
+/* Un solo lugar define el color de cada estado; el resto lo hereda. */
+.ai-machine-card { --ai-tone: var(--status-ok); }
+.ai-machine-card[data-tone="busy"]  { --ai-tone: var(--status-info); }
+.ai-machine-card[data-tone="warn"]  { --ai-tone: var(--status-warn); }
+.ai-machine-card[data-tone="error"] { --ai-tone: var(--status-danger); }
+.ai-machine-card[data-tone="off"]   { --ai-tone: var(--text-faint); }
 
+.ai-machine-top { display: flex; align-items: center; gap: 11px; min-width: 0; }
+
+.ai-machine-art {
+    flex-shrink: 0;
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--ai-tone) 45%, transparent);
+    background: color-mix(in srgb, var(--ai-tone) 10%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.ai-machine-art img { width: 100%; height: 100%; object-fit: cover; }
+/* Sin conexión la máquina se ve apagada, no ausente. */
+.ai-machine-card[data-tone="off"] .ai-machine-art img { filter: grayscale(1); opacity: .55; }
+
+.ai-machine-id { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ai-machine-name {
+    font-weight: 700;
+    font-size: .92rem;
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .ai-machine-pill {
-    font-size: 0.7rem;
-    font-weight: 600;
+    align-self: flex-start;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .02em;
     padding: 2px 9px;
     border-radius: 999px;
-    white-space: nowrap;
-    border: 1px solid currentColor;
-    color: var(--text-soft);
+    color: var(--ai-tone);
+    border: 1px solid color-mix(in srgb, var(--ai-tone) 45%, transparent);
+    background: color-mix(in srgb, var(--ai-tone) 14%, transparent);
 }
-.ai-machine-pill[data-tone="ok"] { color: var(--status-ok); }
-.ai-machine-pill[data-tone="busy"] { color: var(--status-info); }
-.ai-machine-pill[data-tone="off"] { color: var(--status-danger); }
 
-.ai-machine-progress { height: 5px; border-radius: 999px; background: var(--surface-sunken); overflow: hidden; }
-.ai-machine-progress-bar { height: 100%; background: var(--accent-fill); }
-.ai-machine-progress-text { font-size: 0.72rem; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-machine-detail {
+    margin: 0;
+    font-size: .78rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ai-machine-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle);
+}
+.ai-machine-metric {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: .76rem;
+    font-weight: 600;
+    color: var(--text-soft);
+    font-variant-numeric: tabular-nums;   /* que no baile al actualizar */
+    min-width: 0;
+}
+.ai-machine-metric svg { color: var(--ai-tone); flex-shrink: 0; }
+.ai-machine-metric span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- Conversación --- */
 .ai-chat-card { display: flex; flex-direction: column; min-height: 420px; }
