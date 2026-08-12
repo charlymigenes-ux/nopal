@@ -471,6 +471,99 @@ async def get_camera_snapshot(machine_id: str) -> Dict[str, Any]:
     return _unavailable("La lectura de cámaras por IA todavía no está implementada")
 
 
+async def get_plugins() -> Dict[str, Any]:
+    """Qué plugins hay instalados y habilitados.
+
+    Sin esto la IA no sabe siquiera que NOPAL es extensible: puede leer el
+    inventario de filamento pero no puede decir de dónde salió, ni sugerir
+    lo que otro plugin instalado ya resuelve.
+    """
+    from backend.services import plugin_installer_service as installer
+
+    loop = asyncio.get_event_loop()
+
+    def _listar() -> List[Dict[str, Any]]:
+        instalados = installer.read_installed_state()
+        salida = []
+        for plugin_id, estado in instalados.items():
+            manifest = installer.read_manifest(plugin_id) or {}
+            salida.append({
+                "id": plugin_id,
+                "name": manifest.get("name") or plugin_id,
+                "category": manifest.get("category"),
+                "description": manifest.get("description"),
+                "version": estado.get("version"),
+                "enabled": bool(estado.get("enabled")),
+            })
+        return salida
+
+    plugins = await loop.run_in_executor(None, _listar)
+    return {"count": len(plugins), "plugins": plugins}
+
+
+async def get_accessories() -> Dict[str, Any]:
+    """Accesorios del taller: relés, tiras LED, ventiladores, sensores y
+    placas Arduino/ESP32 registradas, con su estado de encendido.
+
+    Viene del plugin de Automatización de Taller. `on: null` significa que el
+    accesorio no respondió, no que esté apagado — la distinción importa para
+    no reportar como apagado algo que en realidad está incomunicado.
+    """
+    module = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if module is None:
+        return _unavailable("El plugin de Automatización de Taller no está instalado o no está cargado")
+    try:
+        accesorios = await module.get_accessories_status()
+    except Exception as exc:
+        logger.warning(f"No se pudo consultar los accesorios para la capa de IA: {exc}")
+        return _unavailable("No se pudo consultar el estado de los accesorios")
+
+    return {
+        "count": len(accesorios),
+        "accessories": [
+            {
+                "id": a.get("id"),
+                "name": a.get("name"),
+                "driver": a.get("driver"),
+                "on": a.get("on"),
+                "responding": a.get("on") is not None,
+                "led_color": a.get("led_color"),
+            }
+            for a in accesorios
+        ],
+    }
+
+
+async def get_cameras() -> Dict[str, Any]:
+    """Cámaras registradas y a qué máquina está atada cada una.
+
+    NO devuelve imagen: eso es get_camera_snapshot, que sigue reservada para
+    un modelo multimodal futuro.
+    """
+    module = get_loaded_plugin_module("camera-viewer", "services.camera_service")
+    if module is None:
+        return _unavailable("El plugin de Cámaras no está instalado o no está cargado")
+
+    loop = asyncio.get_event_loop()
+    try:
+        camaras = await loop.run_in_executor(None, module.get_cameras)
+    except Exception as exc:
+        logger.warning(f"No se pudo consultar las cámaras para la capa de IA: {exc}")
+        return _unavailable("No se pudo consultar las cámaras")
+
+    return {
+        "count": len(camaras),
+        "cameras": [
+            {
+                "id": c.get("id"),
+                "name": c.get("name"),
+                "bound_device": c.get("bound_device"),
+            }
+            for c in camaras
+        ],
+    }
+
+
 # --------------------------------------------------------------------------
 # Registro
 # --------------------------------------------------------------------------
@@ -606,6 +699,26 @@ TOOLS: Dict[str, Tool] = {
             _MACHINE_ID_PARAM,
         ),
         Tool(
+            "get_plugins",
+            "Lista los plugins instalados en NOPAL y si están habilitados. Úsala cuando te pregunten "
+            "qué puede hacer NOPAL, o antes de decir que algo no se puede: puede haber un plugin que "
+            "ya lo resuelva.",
+            get_plugins,
+            core=True,
+        ),
+        Tool(
+            "get_accessories",
+            "Accesorios del taller: relés, tiras LED, ventiladores, sensores y placas Arduino/ESP32, "
+            "con su estado de encendido. Si 'responding' es false, el accesorio no contestó — no está "
+            "apagado, está incomunicado.",
+            get_accessories,
+        ),
+        Tool(
+            "get_cameras",
+            "Cámaras registradas y a qué máquina está atada cada una. No devuelve imagen.",
+            get_cameras,
+        ),
+        Tool(
             "get_material_status",
             "Inventario de filamento del plugin de Materiales (Spoolman), con qué spools están por acabarse.",
             get_material_status,
@@ -621,6 +734,28 @@ TOOLS: Dict[str, Tool] = {
 }
 
 
+def _plugin_tools() -> List["Tool"]:
+    """Herramientas que los propios plugins declaran (ver
+    plugin_loader_service.get_plugin_ai_tools). Un plugin puede así exponer
+    sus datos a la IA sin que el core tenga que conocerlo.
+
+    Las del core ganan ante un choque de nombres: un plugin no debe poder
+    sustituir una herramienta central por una suya.
+    """
+    from backend.services.plugin_loader_service import get_plugin_ai_tools
+
+    validas = []
+    for tool in get_plugin_ai_tools():
+        if not isinstance(tool, Tool):
+            logger.warning("Un plugin declaró en AI_TOOLS algo que no es un Tool, se omite")
+            continue
+        if tool.name in TOOLS:
+            logger.warning(f"El plugin quiso redefinir la herramienta '{tool.name}' del core, se omite")
+            continue
+        validas.append(tool)
+    return validas
+
+
 def get_exposed_tools(profile: str = "full") -> List[Tool]:
     """Las herramientas que se le ofrecen al modelo (excluye las reservadas).
 
@@ -634,8 +769,10 @@ def get_exposed_tools(profile: str = "full") -> List[Tool]:
     """
     tools = [tool for tool in TOOLS.values() if tool.exposed]
     if profile == "compact":
+        # El perfil compacto se queda solo con el núcleo: las de plugins son
+        # justo las que sobran cuando el servidor de IA es lento.
         return [tool for tool in tools if tool.core]
-    return tools
+    return tools + [t for t in _plugin_tools() if t.exposed]
 
 
 def get_tools_schema(profile: str = "full") -> List[Dict[str, Any]]:
@@ -647,7 +784,7 @@ async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Di
     argumento inválido devuelven un error estructurado en vez de levantar
     excepción: el ciclo del agente se lo pasa al modelo para que se
     corrija en la vuelta siguiente."""
-    tool = TOOLS.get(name)
+    tool = TOOLS.get(name) or next((t for t in _plugin_tools() if t.name == name), None)
     if tool is None or not tool.exposed:
         return {"error": "unknown_tool", "requested": name, "available": sorted(t.name for t in get_exposed_tools())}
 

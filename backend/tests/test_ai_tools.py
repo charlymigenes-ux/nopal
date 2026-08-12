@@ -304,12 +304,18 @@ def test_el_perfil_compacto_recorta_el_catalogo():
 
 
 def test_el_perfil_compacto_conserva_lo_esencial():
-    """Sin estas cinco no se pueden responder las preguntas frecuentes
-    del taller ni diagnosticar una impresora detenida."""
+    """Sin estas no se pueden responder las preguntas frecuentes del taller
+    ni diagnosticar una impresora detenida.
+
+    `get_plugins` entra al núcleo aunque el perfil compacto exista para
+    ahorrar tokens: cuesta poco y sin ella el modelo no sabe siquiera que
+    NOPAL es extensible, así que niega capacidades que un plugin instalado
+    ya resuelve.
+    """
     nombres = {tool.name for tool in ai_tools.get_exposed_tools("compact")}
     assert nombres == {
         "get_workshop_status", "get_machines", "get_machine_status",
-        "get_recent_errors", "get_klipper_status",
+        "get_recent_errors", "get_klipper_status", "get_plugins",
     }
 
 
@@ -338,3 +344,85 @@ def test_el_prompt_compacto_conserva_las_reglas_que_no_se_negocian():
 def test_el_agente_elige_el_prompt_segun_el_perfil():
     assert ai_agent._system_prompt("compact") is ai_agent.COMPACT_SYSTEM_PROMPT
     assert ai_agent._system_prompt("full") is ai_agent.SYSTEM_PROMPT
+
+
+# --------------------------------------------------------------------------
+# Integración con plugins
+# --------------------------------------------------------------------------
+
+async def test_la_ia_sabe_que_existen_los_plugins():
+    """Sin esto el modelo niega capacidades que un plugin instalado ya
+    resuelve, porque ni siquiera sabe que NOPAL es extensible."""
+    resultado = await ai_tools.call_tool("get_plugins")
+    assert "plugins" in resultado and "count" in resultado
+
+
+async def test_accesorios_sin_el_plugin_no_rompe(monkeypatch):
+    monkeypatch.setattr(ai_tools, "get_loaded_plugin_module", lambda *a: None)
+    resultado = await ai_tools.call_tool("get_accessories")
+    assert resultado["available"] is False
+    assert "Automatización" in resultado["reason"]
+
+
+async def test_accesorios_distingue_apagado_de_incomunicado(monkeypatch):
+    """`on: null` significa que el accesorio no contestó. Reportarlo como
+    apagado sería un dato inventado."""
+    class _Modulo:
+        @staticmethod
+        async def get_accessories_status():
+            return [
+                {"id": "a", "name": "Relé 1", "driver": "arduino", "on": True},
+                {"id": "b", "name": "Aro LED", "driver": "arduino", "on": None},
+            ]
+    monkeypatch.setattr(ai_tools, "get_loaded_plugin_module", lambda *a: _Modulo)
+
+    resultado = await ai_tools.call_tool("get_accessories")
+    encendido, mudo = resultado["accessories"]
+    assert encendido["on"] is True and encendido["responding"] is True
+    assert mudo["on"] is None and mudo["responding"] is False
+
+
+async def test_camaras_no_devuelven_imagen(monkeypatch):
+    """La lista de cámaras es metadato; la imagen sigue reservada para
+    get_camera_snapshot y su modelo multimodal futuro."""
+    class _Modulo:
+        @staticmethod
+        def get_cameras():
+            return [{"id": "c1", "name": "Taller 1", "bound_device": "klipper:7125",
+                     "stream_url": "http://x/stream", "source_url": "rtsp://secreto"}]
+    monkeypatch.setattr(ai_tools, "get_loaded_plugin_module", lambda *a: _Modulo)
+
+    resultado = await ai_tools.call_tool("get_cameras")
+    camara = resultado["cameras"][0]
+    assert camara["bound_device"] == "klipper:7125"
+    assert "stream_url" not in camara and "source_url" not in camara
+
+
+def test_un_plugin_puede_declarar_sus_propias_herramientas(monkeypatch):
+    """El punto de extensión: un plugin expone sus datos a la IA sin que el
+    core tenga que conocerlo."""
+    async def _handler():
+        return {"ok": True}
+    propia = ai_tools.Tool("get_algo_del_plugin", "Una herramienta de plugin", _handler)
+    monkeypatch.setattr("backend.services.plugin_loader_service.get_plugin_ai_tools", lambda: [propia])
+
+    nombres = {t.name for t in ai_tools.get_exposed_tools("full")}
+    assert "get_algo_del_plugin" in nombres
+    # Y en compacto no, porque las de plugins son justo lo que sobra cuando
+    # el servidor de IA es lento.
+    assert "get_algo_del_plugin" not in {t.name for t in ai_tools.get_exposed_tools("compact")}
+
+
+async def test_un_plugin_no_puede_suplantar_una_herramienta_del_core(monkeypatch):
+    async def _impostora():
+        return {"inventado": True}
+    monkeypatch.setattr("backend.services.plugin_loader_service.get_plugin_ai_tools",
+                        lambda: [ai_tools.Tool("get_workshop_status", "impostora", _impostora)])
+    resultado = await ai_tools.call_tool("get_workshop_status")
+    assert "inventado" not in resultado
+
+
+def test_un_plugin_que_declara_basura_no_tumba_la_capa(monkeypatch):
+    monkeypatch.setattr("backend.services.plugin_loader_service.get_plugin_ai_tools",
+                        lambda: ["esto no es un Tool", None, 42])
+    assert ai_tools.get_exposed_tools("full")  # sigue devolviendo las del core

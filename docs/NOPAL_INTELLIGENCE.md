@@ -165,6 +165,37 @@ Todas devuelven JSON estructurado. Cuando un dato no se puede saber devuelven
 `get_workshop_status` · `get_machines` · `get_machine_status` · `get_machine_temperatures`
 · `get_active_jobs` · `get_job_progress` · `get_recent_errors` · `get_recent_events`
 · `get_klipper_status` · `get_grbl_status` · `get_material_status`
+· `get_plugins` · `get_accessories` · `get_cameras`
+
+### Integración con plugins
+
+El core **no debe tener que conocer cada plugin**. Hay dos caminos, y el
+segundo es el que escala:
+
+1. **Herramientas del core que leen plugins opcionalmente** —
+   `get_accessories`, `get_cameras` y `get_material_status` usan
+   `get_loaded_plugin_module`, el mismo patrón best-effort que ya usaban
+   `dashboard_service` y `notification_service`. Si el plugin no está
+   instalado devuelven `{"available": false}` en vez de romper.
+
+2. **Herramientas que el plugin declara por su cuenta** — si el módulo de
+   entrada de un plugin define `AI_TOOLS` (una lista de `ai_tools.Tool`),
+   `plugin_loader_service.get_plugin_ai_tools()` las recoge y se suman al
+   catálogo. Un plugin nuevo puede exponerse a la IA **sin tocar el core**,
+   igual que ya declara su `router`.
+
+Reglas del punto de extensión:
+
+- Las del core ganan ante un choque de nombres: un plugin no puede sustituir
+  una herramienta central por una suya.
+- Lo que no sea un `Tool` válido se salta con una advertencia; un plugin roto
+  nunca tumba la capa de IA.
+- El perfil `compact` deja fuera las de plugins: son justo las que sobran
+  cuando el servidor de IA es lento.
+
+`get_plugins` es la herramienta que cierra el círculo — sin ella el modelo no
+sabe siquiera que NOPAL es extensible y niega capacidades que un plugin
+instalado ya resuelve. Por eso pertenece al núcleo pese al costo en tokens.
 
 `get_camera_snapshot` está registrada pero **no se le ofrece al modelo** (`exposed=False`):
 la arquitectura queda lista para un modelo multimodal futuro, pero no hay implementación
