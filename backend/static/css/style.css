@@ -16952,11 +16952,19 @@ body.ai .dashboard-dock-section .section-title h2 {
 .panel-ai-suggestions .ai-suggestion { font-size: .74rem; padding: 4px 10px; }
 
 /* El asistente del panel dejaba un hueco grande: el hilo tenía alto fijo y la
-   tarjeta es más alta. Ahora el panel ocupa la tarjeta y el hilo crece. */
-.panel-card-pos-trabajos { display: flex; flex-direction: column; min-height: 0; }
+   tarjeta es más alta. Ahora el panel ocupa la tarjeta y el hilo crece.
+
+   Pero crecer no puede ser infinito: esta tarjeta abarca las dos filas del
+   hero (grid-area: trabajos), así que cada mensaje nuevo estiraba la fila y
+   con ella las cuatro tarjetas de la izquierda, que se quedaban vacías y
+   enormes. El tope es del hilo, no de la tarjeta: el hilo se estira hasta
+   llenar el alto que le dan las tarjetas vecinas y a partir de ahí scrollea
+   dentro de sí mismo, sin empujar nada. El tope de la tarjeta es el techo
+   duro por si las vecinas también crecieran. */
+.panel-card-pos-trabajos { display: flex; flex-direction: column; min-height: 0; max-height: 52vh; }
 .panel-tab-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .panel-tab-pane[hidden] { display: none; }
-.panel-ai-thread { flex: 1; max-height: none; min-height: 0; }
+.panel-ai-thread { flex: 1; min-height: 0; max-height: 34vh; overflow-y: auto; }
 .panel-jobs-list { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* Respaldo de configuración */
