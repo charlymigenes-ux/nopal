@@ -22,6 +22,16 @@ Dos modos, porque los modelos chicos existen
 
 Cada respuesta viaja con la traza de qué herramientas se llamaron, para que
 el usuario pueda verificar de dónde salió cada dato.
+
+Un modelo por pregunta
+----------------------
+Con el modo automático encendido, ai_router elige el modelo según lo que se
+preguntó y esa elección vale para TODA la respuesta: el ciclo reenvía el
+historial completo en cada vuelta, así que cambiar de modelo a medias
+obligaría al nuevo a hacerse cargo de llamadas a herramientas que no hizo.
+Si el modelo elegido falla se reintenta la pregunta completa con el
+siguiente de la cadena -- salvo que ya se haya ejecutado una acción física,
+porque repetir la pregunta repetiría la acción.
 """
 
 import json
@@ -29,7 +39,13 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from backend.services import ai_actions, ai_config_service, ai_conversations_service, ai_tools
+from backend.services import (
+    ai_actions,
+    ai_config_service,
+    ai_conversations_service,
+    ai_router,
+    ai_tools,
+)
 from backend.services.ai_provider import AIProvider, AIProviderError, ToolsUnsupportedError, get_provider
 
 logger = logging.getLogger(__name__)
@@ -162,10 +178,17 @@ async def _run_native_loop(
     history: Optional[List[Dict[str, str]]] = None,
     role: str = "operador",
     username: str = "",
+    route: Optional[ai_router.Route] = None,
+    model: Optional[str] = None,
+    estado: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """Ciclo con function calling: el modelo pide herramientas hasta que
-    tiene con qué contestar (o hasta agotar `max_tool_iterations`)."""
-    profile = config.get("tool_profile") or "full"
+    tiene con qué contestar (o hasta agotar `max_tool_iterations`).
+
+    `estado` lleva la cuenta de acciones físicas ya ejecutadas, para que
+    quien maneja el fallback sepa que reintentar dejó de ser inocuo.
+    """
+    profile = (route.tool_profile if route else None) or config.get("tool_profile") or "full"
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": _system_prompt(profile, bool(config.get("actions_enabled")))},
         *(history or []),
@@ -179,10 +202,10 @@ async def _run_native_loop(
         schema = schema + ai_actions.get_actions_schema(role)
     pending_action = None
     trace: List[Dict[str, Any]] = []
-    max_iterations = int(config.get("max_tool_iterations") or 4)
+    max_iterations = route.max_tool_iterations if route else int(config.get("max_tool_iterations") or 4)
 
     for iteration in range(max_iterations):
-        message = await provider.chat(messages, tools=schema)
+        message = await provider.chat(messages, tools=schema, model=model)
         tool_calls = message.get("tool_calls") or []
 
         if not tool_calls:
@@ -212,6 +235,10 @@ async def _run_native_loop(
                     name, arguments, role, username, bool(config.get("actions_enabled")))
                 if pendiente is not None:
                     pending_action = pendiente
+                elif estado is not None and not (isinstance(result, dict) and result.get("error")):
+                    # Ya se tocó algo físico del taller. A partir de acá,
+                    # reintentar la pregunta con otro modelo la repetiría.
+                    estado["acciones_ejecutadas"] = estado.get("acciones_ejecutadas", 0) + 1
             else:
                 result = await ai_tools.call_tool(name, arguments)
             elapsed_ms = round((time.monotonic() - started) * 1000)
@@ -233,7 +260,7 @@ async def _run_native_loop(
 
     # Se agotaron las vueltas: se pide una respuesta final SIN herramientas
     # para no quedarse en un ciclo infinito de llamadas.
-    final = await provider.chat(messages)
+    final = await provider.chat(messages, model=model)
     return {
         "answer": (final.get("content") or "").strip(),
         "tool_calls": trace,
@@ -248,6 +275,7 @@ async def _run_context_mode(
     question: str,
     profile: str = "full",
     history: Optional[List[Dict[str, str]]] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Sin function calling: NOPAL decide qué datos hacen falta, los
     adjunta y el modelo solo redacta. Funciona con modelos chicos."""
@@ -278,8 +306,96 @@ async def _run_context_mode(
             ),
         },
     ]
-    message = await provider.chat(messages)
+    message = await provider.chat(messages, model=model)
     return {"answer": (message.get("content") or "").strip(), "tool_calls": trace, "mode": "context"}
+
+
+# Lo que se contesta cuando la pregunta necesita ver una imagen. NOPAL
+# todavía no manda imágenes al modelo (get_camera_snapshot está reservada,
+# ver ai_tools.py), y mandarle la pregunta a un modelo de texto haría que
+# describiera una foto que nunca vio. Decir que no se puede es la única
+# respuesta honesta, y de paso no gasta una petición de la cuota.
+VISION_UNAVAILABLE_ANSWER = (
+    "El análisis visual no está disponible en este momento. Puedo consultarte el estado, "
+    "las temperaturas y el avance de las máquinas, pero todavía no puedo ver las cámaras."
+)
+
+
+async def _run_with_model(
+    provider: AIProvider,
+    question: str,
+    config: Dict[str, Any],
+    history: Optional[List[Dict[str, str]]],
+    role: str,
+    username: str,
+    route: Optional[ai_router.Route],
+    model: Optional[str],
+    estado: Dict[str, int],
+) -> Dict[str, Any]:
+    """Una respuesta completa con un modelo concreto. El reparto entre modo
+    nativo y modo contexto es exactamente el de siempre; lo único nuevo es
+    que el modelo puede no ser el configurado."""
+    tool_mode = config.get("tool_mode") or "auto"
+    profile = (route.tool_profile if route else None) or config.get("tool_profile") or "full"
+
+    if tool_mode == "context":
+        return await _run_context_mode(provider, question, profile, history, model)
+    if tool_mode == "native":
+        return await _run_native_loop(
+            provider, question, config, history, role, username, route, model, estado)
+    try:
+        return await _run_native_loop(
+            provider, question, config, history, role, username, route, model, estado)
+    except ToolsUnsupportedError as exc:
+        logger.info(f"[IA] el modelo no soporta function calling ({exc}); se usa modo contexto")
+        resultado = await _run_context_mode(provider, question, profile, history, model)
+        resultado["fell_back"] = True
+        return resultado
+
+
+async def _run_routed(
+    provider: AIProvider,
+    question: str,
+    config: Dict[str, Any],
+    history: Optional[List[Dict[str, str]]],
+    role: str,
+    username: str,
+    route: Optional[ai_router.Route],
+) -> Dict[str, Any]:
+    """Intenta con el modelo elegido y, si falla, con los de respaldo.
+
+    Reintentar significa rehacer la pregunta completa, herramientas
+    incluidas. Es aceptable porque las herramientas son lecturas locales y
+    baratas -- pero deja de serlo en cuanto una acción física se ejecutó:
+    volver a preguntar volvería a encender el accesorio o a encolar el
+    archivo. Por eso, con una acción ya hecha, el error sube tal cual.
+    """
+    estado: Dict[str, int] = {"acciones_ejecutadas": 0}
+    if route is None:
+        return await _run_with_model(
+            provider, question, config, history, role, username, None, None, estado)
+
+    cadena = [route.model or None, *route.fallback_models]
+    for indice, modelo in enumerate(cadena):
+        try:
+            resultado = await _run_with_model(
+                provider, question, config, history, role, username, route, modelo, estado)
+            resultado["model"] = modelo or config.get("model")
+            return resultado
+        except AIProviderError as exc:
+            ultimo = indice == len(cadena) - 1
+            if ultimo or estado["acciones_ejecutadas"]:
+                if estado["acciones_ejecutadas"]:
+                    logger.warning(
+                        "[NOPAL-AI] no se reintenta con otro modelo: ya se ejecutaron "
+                        f"{estado['acciones_ejecutadas']} acciones en esta respuesta"
+                    )
+                raise
+            logger.warning(
+                f"[NOPAL-AI] {modelo} falló ({exc}); se reintenta con {cadena[indice + 1]}")
+
+    # Inalcanzable: el bucle siempre devuelve o levanta en la última vuelta.
+    raise AIProviderError("No quedó ningún modelo por intentar.")
 
 
 async def ask(question: str, conversation_id: Optional[str] = None,
@@ -300,28 +416,38 @@ async def ask(question: str, conversation_id: Optional[str] = None,
         raise AIDisabledError("Falta configurar la dirección del servidor de IA.")
 
     provider = get_provider(config)
-    tool_mode = config.get("tool_mode") or "auto"
-    profile = config.get("tool_profile") or "full"
     # Turnos previos para que "¿y el otro láser?" tenga sentido. Van
     # recortados: el prompt de herramientas ya es caro (ver HISTORY_TURNS).
     history = ai_conversations_service.recent_turns(conversation_id)
     started = time.monotonic()
 
-    if tool_mode == "context":
-        result = await _run_context_mode(provider, question, profile, history)
-    elif tool_mode == "native":
-        result = await _run_native_loop(provider, question, config, history, role, username)
+    # None = modo de modelo fijo: todo sigue exactamente como antes.
+    route = ai_router.route(question, config)
+
+    if route and route.tier == "vision":
+        result = {"answer": VISION_UNAVAILABLE_ANSWER, "tool_calls": [], "mode": "vision_unavailable"}
     else:
-        try:
-            result = await _run_native_loop(provider, question, config, history, role, username)
-        except ToolsUnsupportedError as exc:
-            logger.info(f"[IA] el modelo no soporta function calling ({exc}); se usa modo contexto")
-            result = await _run_context_mode(provider, question, profile, history)
-            result["fell_back"] = True
+        result = await _run_routed(provider, question, config, history, role, username, route)
 
     result["question"] = question
     result["elapsed_ms"] = round((time.monotonic() - started) * 1000)
-    result["model"] = config.get("model")
+    result["model"] = (result.get("model") or (route.model if route else None)
+                       or config.get("model"))
+    if route:
+        # Metadatos de ruteo: sin esto, ver que una respuesta salió cara o
+        # pobre no daría ninguna pista de por qué. No incluye razonamiento
+        # del modelo, solo la decisión local y su motivo.
+        result["route"] = {
+            "tier": route.tier,
+            "model": result["model"],
+            "reason": route.reason,
+            "tool_profile": route.tool_profile,
+            "fallback_used": result.get("model") != route.model,
+        }
+        logger.info(
+            f"[NOPAL-AI] route={route.tier} model={result['model']} intent={route.reason} "
+            f"tools={len(result.get('tool_calls') or [])}"
+        )
 
     if not result.get("answer"):
         # Un modelo que no contestó nada no debe verse como una respuesta

@@ -32,6 +32,8 @@ import socket
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+from backend.services import ai_router
+
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = "ai_config.json"
@@ -58,6 +60,17 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # NOPAL pueda adivinar correctamente para todas las instalaciones.
     "base_url": "",
     "model": "",
+    # "fixed" -> un solo modelo para todo, exactamente como funcionaba
+    #            antes de que existiera el router. Es el valor por omisión:
+    #            una instalación ya configurada no cambia de comportamiento
+    #            al actualizar.
+    # "auto"  -> ai_router elige el modelo según la pregunta.
+    "model_mode": "fixed",
+    # Tabla nivel -> modelo del modo automático, propia de cada IA guardada:
+    # los niveles de una cuenta de Groq no son los de un Ollama local. Los
+    # niveles sin modelo caen al de `model`, así que una tabla a medias
+    # sigue funcionando. Ver ai_router.TIERS.
+    "tier_models": {},
     "api_key": "",
     "timeout_s": 60,
     "max_tokens": 512,
@@ -197,6 +210,9 @@ ENV_OVERRIDES = {
     "NOPAL_AI_TEMPERATURE": ("temperature", float),
     "NOPAL_AI_TOOL_MODE": ("tool_mode", str),
     "NOPAL_AI_TOOL_PROFILE": ("tool_profile", str),
+    # Escape para instalaciones headless: NOPAL_AI_MODEL_MODE=fixed obliga
+    # al modelo único aunque el archivo diga automático.
+    "NOPAL_AI_MODEL_MODE": ("model_mode", str),
     "NOPAL_AI_ACTIONS_ENABLED": ("actions_enabled", _as_bool),
     "NOPAL_AI_MAX_TOOL_ITERATIONS": ("max_tool_iterations", _as_int),
     "NOPAL_AI_ALLOW_PUBLIC_ENDPOINT": ("allow_public_endpoint", _as_bool),
@@ -217,6 +233,7 @@ PROVIDER_FIELDS = (
     "name", "provider", "base_url", "model", "api_key", "timeout_s",
     "max_tokens", "temperature", "tool_mode", "tool_profile",
     "max_tool_iterations", "allow_public_endpoint", "actions_enabled",
+    "model_mode", "tier_models",
 )
 
 
@@ -362,6 +379,34 @@ def _host_is_private(host: str) -> Optional[bool]:
     return True
 
 
+def _validate_tier_models(raw: Any) -> Dict[str, str]:
+    """Normaliza la tabla nivel -> modelo del modo automático.
+
+    Se descartan los niveles desconocidos y los vacíos en vez de rechazar
+    todo el guardado: un nivel de más (o de una versión futura) no debería
+    impedir que el usuario guarde el resto de su configuración. Lo que sí
+    se rechaza es un tipo que no tenga sentido, porque eso sí sería un
+    error de quien llama.
+    """
+    if raw in (None, "", []):
+        return {}
+    if not isinstance(raw, dict):
+        raise AIConfigError("La tabla de modelos automáticos debe ser un objeto nivel -> modelo")
+
+    limpia: Dict[str, str] = {}
+    for tier, modelo in raw.items():
+        if tier not in ai_router.TIERS:
+            continue
+        if modelo is None:
+            continue
+        if not isinstance(modelo, str):
+            raise AIConfigError(f"El modelo del nivel '{tier}' debe ser texto")
+        nombre = modelo.strip()
+        if nombre:
+            limpia[tier] = nombre[:200]
+    return limpia
+
+
 def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Valida y normaliza una configuración candidata. Levanta
     AIConfigError con un mensaje mostrable al usuario."""
@@ -381,6 +426,12 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     if validated["tool_profile"] not in VALID_TOOL_PROFILES:
         raise AIConfigError(f"Perfil de herramientas inválido; usa uno de: {', '.join(VALID_TOOL_PROFILES)}")
+
+    if validated["model_mode"] not in ai_router.VALID_MODEL_MODES:
+        raise AIConfigError(
+            f"Modo de modelo inválido; usa uno de: {', '.join(ai_router.VALID_MODEL_MODES)}")
+
+    validated["tier_models"] = _validate_tier_models(validated.get("tier_models"))
 
     try:
         validated["timeout_s"] = max(1, int(validated["timeout_s"]))

@@ -122,7 +122,7 @@ async def test_con_acciones_apagadas_no_se_ejecuta_aunque_el_modelo_la_pida(monk
 
     class _Provocador:
         def __init__(self): self.n = 0
-        async def chat(self, messages, tools=None):
+        async def chat(self, messages, tools=None, model=None):
             self.n += 1
             if self.n == 1:
                 return {"role": "assistant", "content": None, "tool_calls": [{
@@ -154,7 +154,7 @@ async def test_con_acciones_encendidas_la_de_riesgo_bajo_si_corre(monkeypatch):
 
     class _Prov:
         def __init__(self): self.n = 0
-        async def chat(self, messages, tools=None):
+        async def chat(self, messages, tools=None, model=None):
             self.n += 1
             if self.n == 1:
                 return {"role": "assistant", "content": None, "tool_calls": [{

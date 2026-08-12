@@ -70,9 +70,14 @@ class AIProvider(ABC):
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Manda una conversación y devuelve el `message` de la respuesta
-        (el dict con `content` y, si hubo, `tool_calls`)."""
+        (el dict con `content` y, si hubo, `tool_calls`).
+
+        `model` pisa el modelo configurado solo para esta llamada; es lo
+        que usa ai_router para mandar cada pregunta al modelo que le
+        corresponde sin tener que construir un proveedor por modelo."""
 
     @abstractmethod
     async def test_connection(self) -> Dict[str, Any]:
@@ -119,11 +124,12 @@ class OpenAICompatibleProvider(AIProvider):
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         httpx = _load_httpx()
 
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": messages,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,

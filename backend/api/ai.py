@@ -13,7 +13,14 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from backend.auth_deps import require_auth, require_role
-from backend.services import ai_actions, ai_agent, ai_config_service, ai_conversations_service, ai_tools
+from backend.services import (
+    ai_actions,
+    ai_agent,
+    ai_config_service,
+    ai_conversations_service,
+    ai_router,
+    ai_tools,
+)
 from backend.services.ai_config_service import AIConfigError
 from backend.services.ai_provider import AIProviderError, get_provider
 
@@ -107,9 +114,29 @@ async def test_ai_connection_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        return await get_provider(effective).test_connection()
+        resultado = await get_provider(effective).test_connection()
     except AIProviderError as exc:
         return {"ok": False, "error": str(exc)}
+
+    # Se aprovecha la lista de modelos que el servidor acaba de reportar para
+    # proponer la tabla del modo automático. Solo se sugiere lo que ese
+    # servidor OFRECE de verdad, sea Groq, OpenRouter u Ollama: rellenar un
+    # nombre inventado fallaría recién en la primera pregunta.
+    if resultado.get("ok"):
+        resultado["suggested_tier_models"] = ai_router.suggest_tier_models(
+            resultado.get("models") or [])
+    return resultado
+
+
+@router.get("/tiers")
+async def ai_tiers_endpoint(user: dict = Depends(require_role("admin"))):
+    """Niveles del modo automático y cómo se encadenan si uno falla. La UI
+    los pinta; los nombres de modelo salen de la configuración, no de acá."""
+    return {
+        "tiers": list(ai_router.TIERS),
+        "modes": list(ai_router.VALID_MODEL_MODES),
+        "fallbacks": ai_router.FALLBACK_CHAINS,
+    }
 
 
 @router.get("/providers")

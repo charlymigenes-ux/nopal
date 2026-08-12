@@ -202,7 +202,7 @@ class _ProveedorFalso:
         self.respuestas = list(respuestas)
         self.pedidos = []
 
-    async def chat(self, messages, tools=None):
+    async def chat(self, messages, tools=None, model=None):
         self.pedidos.append({"messages": list(messages), "tools": tools})
         return self.respuestas.pop(0)
 
@@ -247,7 +247,7 @@ async def test_auto_cae_a_modo_contexto_si_el_modelo_no_sabe_tool_calling(monkey
     from backend.services.ai_provider import ToolsUnsupportedError
 
     class _SinHerramientas(_ProveedorFalso):
-        async def chat(self, messages, tools=None):
+        async def chat(self, messages, tools=None, model=None):
             if tools:
                 raise ToolsUnsupportedError("este modelo no soporta tools")
             return await super().chat(messages, tools=None)

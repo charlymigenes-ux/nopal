@@ -16854,3 +16854,10 @@ body.ai .dashboard-dock-section .section-title h2 {
     color: var(--status-warn);
 }
 .ai-cooldown-label { font-size: .8rem; color: var(--text-muted); line-height: 1.35; }
+
+/* Modo de modelo (fijo / automático) y su tabla de niveles. */
+.ai-radio-row { display: flex; gap: 18px; flex-wrap: wrap; margin: 4px 0 2px; }
+.ai-radio { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: .86rem; color: var(--text-soft); }
+.ai-radio input { accent-color: var(--accent-fill); cursor: pointer; }
+#ai-tier-models[hidden] { display: none; }
+#ai-tier-models .ai-field { margin-top: 10px; }

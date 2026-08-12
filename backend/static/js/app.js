@@ -18798,6 +18798,30 @@ function aiRenderPresets() {
     }
 }
 
+// Niveles del modo automático (backend/services/ai_router.py::TIERS). El
+// orden es el que se pinta en el formulario.
+const AI_TIERS = ['fast', 'medium', 'reasoning', 'vision', 'agent'];
+
+function aiTierModelsFromForm() {
+    const tabla = {};
+    AI_TIERS.forEach(tier => {
+        const valor = (document.getElementById(`ai-tier-${tier}`)?.value || '').trim();
+        if (valor) tabla[tier] = valor;
+    });
+    return tabla;
+}
+
+function aiUpdateModelModeUi() {
+    const auto = document.querySelector('input[name="ai-model-mode"]:checked')?.value === 'auto';
+    const bloque = document.getElementById('ai-tier-models');
+    if (bloque) {
+        bloque.hidden = !auto;
+        // Abierto al activarlo: si queda cerrado, el usuario prende el modo
+        // automático y no ve que hay modelos que configurar.
+        if (auto) bloque.open = true;
+    }
+}
+
 function aiPresetIdForUrl(baseUrl) {
     if (!baseUrl) return 'local';
     const match = aiPresets.find(p => p.base_url && p.base_url === baseUrl);
@@ -18818,6 +18842,13 @@ function aiFillConfigForm(config) {
     set('ai-tool-profile', config.tool_profile);
     check('ai-allow-public', config.allow_public_endpoint);
     check('ai-actions-enabled', config.actions_enabled);
+
+    const modo = config.model_mode === 'auto' ? 'auto' : 'fixed';
+    const radio = document.querySelector(`input[name="ai-model-mode"][value="${modo}"]`);
+    if (radio) radio.checked = true;
+    const tabla = config.tier_models || {};
+    AI_TIERS.forEach(tier => set(`ai-tier-${tier}`, tabla[tier]));
+    aiUpdateModelModeUi();
 
     const select = document.getElementById('ai-preset');
     if (select) select.value = aiPresetIdForUrl(config.base_url);
@@ -18865,6 +18896,8 @@ function aiReadConfigForm() {
         tool_profile: val('ai-tool-profile') || 'full',
         allow_public_endpoint: checked('ai-allow-public'),
         actions_enabled: checked('ai-actions-enabled'),
+        model_mode: document.querySelector('input[name="ai-model-mode"]:checked')?.value || 'fixed',
+        tier_models: aiTierModelsFromForm(),
     };
 }
 
@@ -19057,6 +19090,14 @@ async function testAiConnection() {
             datalist.innerHTML = (result.models || [])
                 .map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
         }
+        // Solo se rellena lo que esté vacío: nunca se pisa lo que el
+        // usuario eligió a mano. Las sugerencias vienen de la lista real
+        // del servidor, así que valen igual para Groq que para Ollama.
+        const sugeridos = result.suggested_tier_models || {};
+        AI_TIERS.forEach(tier => {
+            const campo = document.getElementById(`ai-tier-${tier}`);
+            if (campo && !campo.value.trim() && sugeridos[tier]) campo.value = sugeridos[tier];
+        });
         aiShowTestResult(result.warning || t('aiTestOk'), result.warning ? 'warn' : 'ok');
     } catch (error) {
         aiShowTestResult(error.message, 'error');
@@ -19246,7 +19287,13 @@ async function askAi() {
         // verificar de dónde salió cada dato en vez de confiar a ciegas.
         const tools = (result.tool_calls || []).map(c => c.tool).join(', ');
         const seconds = Math.round((result.elapsed_ms || 0) / 1000);
-        const meta = [tools && `${t('aiToolsUsed')}: ${tools}`, seconds ? `${seconds}s` : '']
+        // Con el modo automático encendido, el admin necesita poder ver POR
+        // QUÉ una respuesta salió cara o pobre. Es metadata de la decisión
+        // local, no razonamiento del modelo.
+        const ruta = (result.route && currentAuthUser?.role === 'admin')
+            ? `${result.route.tier.toUpperCase()} · ${result.route.model} · ${result.route.reason}`
+            : '';
+        const meta = [ruta, tools && `${t('aiToolsUsed')}: ${tools}`, seconds ? `${seconds}s` : '']
             .filter(Boolean).join(' · ');
         aiAppendMessage('assistant', result.answer || '', meta);
         aiConversationId = result.conversation_id || aiConversationId;
@@ -19484,6 +19531,8 @@ document.getElementById('ai-suggestion-add-btn')?.addEventListener('click', () =
 document.getElementById('ai-cancel-btn')?.addEventListener('click', aiResetProviderForm);
 document.getElementById('ai-enabled')?.addEventListener('change', event => setAiEnabled(event.target.checked));
 document.getElementById('ai-test-btn')?.addEventListener('click', testAiConnection);
+document.querySelectorAll('input[name="ai-model-mode"]').forEach(radio =>
+    radio.addEventListener('change', aiUpdateModelModeUi));
 document.getElementById('ai-preset')?.addEventListener('change', () => {
     const preset = aiCurrentPreset();
     const urlInput = document.getElementById('ai-base-url');
