@@ -7466,6 +7466,18 @@ function klipperDeviceModel(printer, datos) {
         info,
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
+        // Las olas térmicas: el color y la velocidad salen de la temperatura
+        // real de cama y boquilla, no del estado. Es lo que hace que la
+        // ficha se sienta viva sin tener que leer un número.
+        waves: printerThermalWaves(
+            Number.isFinite(bedTemp) ? bedTemp : null,
+            Number.isFinite(extruderTemp) ? extruderTemp : null,
+            datos.bedTarget ?? 0,
+            datos.extruderTarget ?? 0,
+            state,
+            state === 'offline',
+            printer.port,
+        ),
         dataAttr: `data-port="${escapeHtml(String(printer.port))}"`,
     };
 }
@@ -7633,20 +7645,27 @@ function deviceCardHtml(d) {
     // imagen que importa es la cámara, así que el render de la máquina se
     // encoge y sube a la cabecera aunque la máquina esté en reposo.
     const conCamara = Boolean(d.cameraSlot) && isCameraCardVisible(d.cameraSlot);
-    const ocupado = deviceIsBusy(d.state) || conCamara;
+    const modoMiniatura = deviceIsBusy(d.state) || conCamara;
+    const ocupado = modoMiniatura;
     const conexion = d.online
         ? `<span class="dev-conn is-online" title="${escapeHtml(t('online'))}">${deviceIcon('wifi', 15)}</span>`
         : `<span class="dev-conn" title="${escapeHtml(t('offline'))}">${deviceIcon('wifi', 15)}</span>`;
 
     // Trabajando: la máquina se encoge a icono en la esquina y el espacio se
     // usa para el trabajo. En reposo, la máquina es la protagonista.
-    const arte = d.art
-        ? `<span class="dev-art${ocupado ? ' is-thumb' : ''}"><img src="${escapeHtml(d.art)}" alt="" loading="lazy"></span>`
-        : '';
+    // Se emiten las dos formas de la imagen -- miniatura en la cabecera y
+    // protagonista en el cuerpo -- y el CSS enseña la que toca según la
+    // clase de la ficha. Antes había que reconstruir la ficha para
+    // cambiarlas, y eso repintaba la grilla entera: las cámaras de las otras
+    // máquinas se desmontaban y volvían a montar, dando ese parpadeo.
+    const arteMini = d.art
+        ? `<span class="dev-art is-thumb"><img src="${escapeHtml(d.art)}" alt="" loading="lazy"></span>` : '';
+    const arteGrande = d.art
+        ? `<span class="dev-art"><img src="${escapeHtml(d.art)}" alt="" loading="lazy"></span>` : '';
 
     const seccion = clave => `style="order:${deviceCardSectionOrder(clave)}"`;
     const cuerpo = [];
-    if (!ocupado && d.art) cuerpo.push(`<div class="dev-hero" ${seccion('thumbnail')}>${arte}</div>`);
+    if (d.art) cuerpo.push(`<div class="dev-hero" ${seccion('thumbnail')}>${arteGrande}</div>`);
 
     const trabajo = [];
     if (d.job && d.job.filename) trabajo.push(deviceCampo(d.jobLabel || t('devJob'), d.job.filename));
@@ -7674,9 +7693,10 @@ function deviceCardHtml(d) {
         ? `<div class="dev-actions" style="order:90">${d.actions.map(deviceAccionBtn).join('')}</div>` : '';
 
     return `
-    <article class="dev-card" data-tone="${tono}" data-state="${escapeHtml(d.state)}" ${d.dataAttr || ''}>
+    <article class="dev-card${modoMiniatura ? ' is-thumb-mode' : ''}" data-tone="${tono}" data-state="${escapeHtml(d.state)}" ${d.dataAttr || ''}>
+        ${d.waves || ''}
         <div class="dev-card-head" style="order:-1">
-            ${ocupado ? arte : ''}
+            ${arteMini}
             <div class="dev-card-id">
                 <span class="dev-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
                 <span class="dev-card-type">${escapeHtml(d.typeLabel)}</span>
@@ -7769,6 +7789,8 @@ function renderPrinters(printersInput) {
         const html = deviceCardHtml(klipperDeviceModel(printer, {
             extruderTemp: typeof extruderTemp === 'number' ? extruderTemp : null,
             bedTemp: typeof bedTemp === 'number' ? bedTemp : null,
+            bedTarget,
+            extruderTarget,
             isHeating,
             printerName,
         }));
@@ -7890,8 +7912,16 @@ function renderPrinters(printersInput) {
                     // lógica: tener dos implementaciones del mismo botón es
                     // lo que hacía aparecer la cámara dos veces.
                     card.querySelector('.printer-card-camera-toggle')?.click();
-                    // Repintar para que la palomita refleje el nuevo estado.
-                    renderPrinters(allPrinters);
+                    // Se actualiza esta ficha en el sitio. Repintar la
+                    // grilla entera desmontaba y volvía a montar TODAS las
+                    // cámaras, incluida la del láser de al lado: ese era el
+                    // parpadeo.
+                    const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
+                    const visible = clave ? isCameraCardVisible(clave) : false;
+                    card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
+                    btn.classList.toggle('is-checked', visible);
+                    btn.setAttribute('aria-pressed', String(visible));
+                    btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
                     return;
                 }
                 if (accion === 'preheat') {
