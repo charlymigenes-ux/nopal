@@ -14269,6 +14269,11 @@ body.green .option-switch {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 14px;
+    /* Cada ficha mide lo que su contenido pide. Con el estirado por omisión
+       de grid, una sola ficha alta -- por ejemplo la que muestra cámara --
+       obligaba a TODAS las de su fila a crecer igual, dejándolas con un
+       hueco vacío enorme abajo. */
+    align-items: start;
 }
 
 .machines-columns {
@@ -15096,9 +15101,22 @@ body.green .option-switch {
     object-fit: contain;
 }
 
-.printer-illustration-idle img {
+/* El apagado va por CONEXIÓN, no por estado de trabajo. Antes lo llevaba
+   .printer-illustration-idle -- que es una máquina EN LÍNEA y libre -- así
+   que lo de siempre se veía descolorido y lo desconectado a todo color,
+   justo al revés. De paso, esa transparencia era la razón por la que las
+   ondas se veían ATRAVESANDO la máquina: no estaban encima, se
+   transparentaban a través de una imagen a media opacidad. */
+.printer-card.offline .printer-illustration img,
+.printer-card.offline .printer-illustration-error img {
     opacity: 0.55;
     filter: grayscale(0.9);
+}
+
+/* Conectada: la máquina se ve entera y tapa las ondas, que es su lugar. */
+.printer-card:not(.offline) .printer-illustration img {
+    opacity: 1;
+    filter: none;
 }
 
 .laser-dashboard-metric {

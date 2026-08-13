@@ -7407,6 +7407,15 @@ function renderPrinters(printersInput) {
                     ${printerIllustrationImg(displayState)}
                 </div>
 
+                <!-- Las fichas de láser, CNC, Elegoo y FlashForge ya traían
+                     este hueco; la de Klipper era la única sin él, así que
+                     por más que se le asignara una cámara a la máquina no
+                     había dónde montarla. El id es el NOMBRE porque así se
+                     guarda el vínculo del lado del plugin de cámaras
+                     (bound_device.id), a diferencia de las otras marcas que
+                     usan su id nativo. -->
+                <div class="printer-card-camera" data-cam-container="klipper:${escapeHtml(printer.name || '')}"></div>
+
                 ${visualState === 'printing' || visualState === 'paused' || visualState === 'idle' ? `
                     <div class="printer-temps" data-printer-card-section="temps" style="order:${printerCardSectionOrder('temps')}">
                         <div class="temp-item">
