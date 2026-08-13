@@ -6092,6 +6092,14 @@ function bindMarlinTemperatureActions(root) {
 
 let dashboardLaserEntries = [];
 
+// Reintenta las dos cargas que alimentan las columnas de dispositivos. Se
+// disparan las dos aunque solo una haya fallado: son baratas, y acertar cuál
+// falló no vale el riesgo de dejar la otra colgada.
+function reintentarCargaDeDispositivos() {
+    loadPrinters();
+    refreshDashboardLaserCard();
+}
+
 async function refreshDashboardLaserCard() {
     if (document.hidden) return;
     try {
@@ -7453,7 +7461,25 @@ function renderPrinters(printersInput) {
             return null;
         }
         if (hasLoadError) {
-            grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
+            // Antes decía "Error cargando modelos" -- una clave prestada de la
+            // biblioteca de modelos, en una columna de máquinas. Mandaba a
+            // buscar el problema donde no estaba. Y no ofrecía salida: si el
+            // auto-refresco está apagado, esa columna se quedaba muerta hasta
+            // que alguien recargara la página, sin ninguna pista de que eso
+            // era lo que hacía falta.
+            grid.innerHTML = `
+                <div class="empty-state device-load-error">
+                    <span>${escapeHtml(t('deviceLoadError'))}</span>
+                    <button type="button" class="btn-file-action" data-device-retry>
+                        ${escapeHtml(t('deviceLoadRetry'))}
+                    </button>
+                </div>`;
+            grid.querySelector('[data-device-retry]')?.addEventListener('click', event => {
+                const boton = event.currentTarget;
+                boton.disabled = true;
+                boton.textContent = t('deviceLoadRetrying');
+                reintentarCargaDeDispositivos();
+            });
             return null;
         }
         let filtered = showOffline ? entries : entries.filter(entry => entry.isOnline);
