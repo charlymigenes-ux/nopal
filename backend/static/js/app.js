@@ -16732,6 +16732,9 @@ function switchSection(sectionName) {
         stopBambuPrintersPolling();
     }
     maybeStartTour(sectionName);
+    // Sin costo si la IA está apagada: la cortinilla queda oculta por
+    // [data-ai-only] y esto solo actualiza un <div> que nadie ve.
+    aiRenderCapabilityStrip(sectionName);
 }
 
 async function loadHelpVersion() {
@@ -19756,6 +19759,67 @@ function aiUpdateSettingsDimming(enabled) {
     document.getElementById('ai-settings-body')?.classList.toggle('is-off', !enabled);
 }
 
+// ── Cortinilla de IA: comandos según la sección ────────────────────────────
+// Cada entrada tiene que apoyarse en una herramienta real de la capa de IA
+// (ver backend/services/ai_tools.py / ai_actions.py) -- nunca se sugiere algo
+// que la IA no pueda contestar de verdad. Las secciones sin lista propia
+// caen en AI_DEFAULT_COMMANDS.
+const AI_SECTION_COMMANDS = {
+    dashboard: ['aiCmdWorkshopStatus', 'aiCmdAvailableMachines', 'aiCmdRecentErrors', 'aiCmdActiveJobs'],
+    models: ['aiCmdLibraryPrinter', 'aiCmdQueueFile'],
+    gcode: ['aiCmdLibraryLaser', 'aiCmdLibraryCnc', 'aiCmdQueueFile'],
+    queue: ['aiCmdPrintQueue', 'aiCmdActiveJobs'],
+    laser: ['aiCmdGrblStatus', 'aiCmdJobProgress', 'aiCmdRecentErrors'],
+    cnc: ['aiCmdGrblStatus', 'aiCmdJobProgress', 'aiCmdRecentErrors'],
+    marlin: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    elegoo: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    flashforge: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    bambu: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    console: ['aiCmdRecentErrors', 'aiCmdRecentEvents'],
+    plugins: ['aiCmdInstalledPlugins'],
+    'camera-viewer': ['aiCmdCameras'],
+    'matriz-led': ['aiCmdMatrixAnnouncements', 'aiCmdMatrixRules'],
+    spoolman: ['aiCmdMaterial'],
+    'arduino-accessories': ['aiCmdAccessories', 'aiCmdScenes'],
+};
+const AI_DEFAULT_COMMANDS = ['aiCmdWorkshopStatus', 'aiCmdAvailableMachines', 'aiCmdRecentErrors'];
+
+function aiCapabilityChipHtml(texto) {
+    return `<button type="button" class="ai-capability" data-ai-cap-question="${escapeHtml(texto)}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/></svg>
+        <span>${escapeHtml(texto)}</span>
+    </button>`;
+}
+
+function aiRenderCapabilityStrip(sectionName) {
+    const track = document.getElementById('ai-capability-track');
+    if (!track) return;
+    const section = sectionName
+        || document.querySelector('.view-section.active')?.id?.replace(/-section$/, '')
+        || 'dashboard';
+    const claves = AI_SECTION_COMMANDS[section] || AI_DEFAULT_COMMANDS;
+    const chips = claves.map(clave => aiCapabilityChipHtml(t(clave))).join('');
+    // El contenido se duplica: la animación desliza la cinta hasta -50% (ver
+    // .ai-capability-track en style.css), que es exactamente donde empieza
+    // esta segunda copia idéntica -- el salto de vuelta a 0% cae sobre
+    // contenido igual y no se nota, así el desfile no se corta nunca.
+    track.innerHTML = chips + chips;
+}
+
+// Delegado en el contenedor, que sobrevive a cada re-render (solo su
+// innerHTML cambia): no hace falta re-atar el clic cada vez que la cinta
+// se vuelve a pintar.
+document.getElementById('ai-capability-track')?.addEventListener('click', event => {
+    const boton = event.target.closest('[data-ai-cap-question]');
+    if (!boton) return;
+    const pregunta = boton.dataset.aiCapQuestion;
+    if (!pregunta) return;
+    switchSection('ai');
+    const input = document.getElementById('ai-question');
+    if (input) input.value = pregunta;
+    askAi();
+});
+
 // La primera llamada ocurre al cargar la página, no porque nadie haya
 // tocado el interruptor. Distinguirlas es lo que permite respetar el tema
 // que el usuario dejó elegido: antes, cada recarga con la IA encendida
@@ -19764,6 +19828,7 @@ function aiUpdateSettingsDimming(enabled) {
 let aiChromeInicializado = false;
 
 function aiApplyModeChrome(enabled) {
+    aiRenderCapabilityStrip();
     aiUpdateSettingsDimming(enabled);
     const wasActive = document.body.getAttribute('data-ai-active') === 'true';
     // La pestaña de IA desaparece al apagar la capa; si era la visible hay
