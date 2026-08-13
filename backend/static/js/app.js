@@ -7483,8 +7483,12 @@ function deviceCardSectionOrder(seccion) {
 // y el comportamiento por estado viven acá, en un lugar.
 
 const DEVICE_ICONS = {
-    nozzle: '<path d="M12 2v6l-3 4v6a3 3 0 0 0 6 0v-6l-3-4z"/>',
-    bed: '<path d="M2 17h20"/><path d="M4 17V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8"/><path d="M6 17v2"/><path d="M18 17v2"/>',
+    // Termómetro completo: columna, bulbo relleno y marcas de escala. El
+    // anterior era una silueta de boquilla que a tamaño chico se leía como
+    // un trazo suelto.
+    nozzle: '<path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4.5 4.5 0 1 0 4 0z"/><circle cx="12" cy="18.5" r="2" fill="currentColor" stroke="none"/><line x1="14" y1="8" x2="17" y2="8"/><line x1="14" y1="11" x2="16" y2="11"/>',
+    // Cama caliente: la placa, sus patas y el calor subiendo en ondas.
+    bed: '<path d="M3 16h18"/><path d="M5 16v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/><path d="M6 19v1"/><path d="M18 19v1"/><path d="M3 16v3h18v-3"/><path d="M8 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/><path d="M12 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/><path d="M16 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/>',
     layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
     spool: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -7545,7 +7549,7 @@ function deviceMetrica(icono, etiqueta, valor) {
         ? `${escapeHtml(conUnidad[1])}<small>${escapeHtml(conUnidad[2])}</small>`
         : escapeHtml(texto);
     return `<div class="dev-metric">
-        <span class="dev-metric-icon">${deviceIcon(icono, 14)}</span>
+        <span class="dev-metric-icon">${deviceIcon(icono, 28)}</span>
         <span class="dev-metric-text">
             <span class="dev-metric-label">${escapeHtml(etiqueta)}</span>
             <span class="dev-metric-value">${texto}</span>
@@ -7585,7 +7589,11 @@ function deviceProgreso(job) {
 
 function deviceCardHtml(d) {
     const tono = deviceTone(d.state);
-    const ocupado = deviceIsBusy(d.state);
+    // La miniatura no depende solo de si trabaja: con una cámara en vivo la
+    // imagen que importa es la cámara, así que el render de la máquina se
+    // encoge y sube a la cabecera aunque la máquina esté en reposo.
+    const conCamara = Boolean(d.cameraSlot) && isCameraCardVisible(d.cameraSlot);
+    const ocupado = deviceIsBusy(d.state) || conCamara;
     const conexion = d.online
         ? `<span class="dev-conn is-online" title="${escapeHtml(t('online'))}">${deviceIcon('wifi', 15)}</span>`
         : `<span class="dev-conn" title="${escapeHtml(t('offline'))}">${deviceIcon('wifi', 15)}</span>`;
