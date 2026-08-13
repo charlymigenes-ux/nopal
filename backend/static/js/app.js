@@ -3015,6 +3015,34 @@ async function handleActivePrintAction(action, port) {
     }
 }
 
+// Espejo de handleActivePrintAction pero para GRBL: el trabajo activo se
+// identifica por host (no hay "puerto"), y pausar/reanudar/cancelar son los
+// mismos tres verbos sobre /api/laser/job/*.
+async function handleLaserQuickAction(action, host) {
+    if (action === 'pause') {
+        const formData = new FormData();
+        formData.append('host', host);
+        await fetch('/api/laser/job/pause', { method: 'POST', body: formData });
+        refreshDashboardLaserCard();
+        return;
+    }
+    if (action === 'resume') {
+        const formData = new FormData();
+        formData.append('host', host);
+        await fetch('/api/laser/job/resume', { method: 'POST', body: formData });
+        refreshDashboardLaserCard();
+        return;
+    }
+    if (action === 'cancel') {
+        const confirmed = await appConfirm(t('laserCancelConfirm'), t('laserCancel'), 'danger');
+        if (!confirmed) return;
+        const formData = new FormData();
+        formData.append('host', host);
+        await fetch('/api/laser/job/cancel', { method: 'POST', body: formData });
+        refreshDashboardLaserCard();
+    }
+}
+
 async function loadModels() {
     try {
         const response = await fetch('/api/models');
@@ -5985,10 +6013,6 @@ const LASER_STATE_IMAGES = {
     offline: '/static/img/Laser_ready.png',
 };
 
-function laserIllustrationImg(visualState) {
-    return `<img src="${LASER_STATE_IMAGES[visualState]}" alt="" loading="lazy">`;
-}
-
 function getLaserVisualState(status) {
     if (!status || !status.connected) return 'offline';
     const state = (status.state || '').toLowerCase();
@@ -6019,59 +6043,6 @@ function laserDashboardSortPriority(status) {
     return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
 }
 
-function laserDashboardCardHtml(entry) {
-    const { host, status, kind } = entry;
-    const visualState = getLaserVisualState(status);
-    const isOnline = visualState !== 'offline';
-    const statusText = isOnline ? t('online') : t('offline');
-    const stateLabel = isOnline ? (status.state || t('idle')) : t('laserOffline');
-    const position = isOnline ? `X${status.x.toFixed(1)} Y${status.y.toFixed(1)} Z${status.z.toFixed(1)}` : '—';
-    // Marlin no reporta feed/velocidad realtime (feed/speed llegan null).
-    const feedSpeed = isOnline && status.feed != null && status.speed != null ? `${status.feed} / ${status.speed}` : '—';
-    const hostLabel = laserHostLabel(host);
-    const typeLabel = kind === 'cnc' ? t('cnc') : t('laser');
-    const typeClass = kind === 'cnc' ? 'printer-card-type-cnc' : 'printer-card-type-laser';
-
-    return `
-        <div class="printer-card ${typeClass} laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
-            ${deviceStateThermalWave(visualState, host)}
-            <div class="printer-card-top">
-                <div>
-                    <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
-                    ${hostLabel ? `<p class="printer-name-sub">${typeLabel}</p>` : ''}
-                </div>
-                <div class="printer-quick-actions">
-                    <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
-                    </div>
-                </div>
-            </div>
-
-            <div class="printer-status-line ${visualState}">
-                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
-            </div>
-
-            <div class="printer-illustration printer-illustration-${visualState}">
-                ${laserIllustrationImg(visualState)}
-            </div>
-
-            ${visualState === 'printing' || visualState === 'paused' ? `
-                <div class="printer-temps">
-                    <div class="temp-item">
-                        <div class="temp-label">${t('laserPosition')}</div>
-                        <div class="temp-value laser-dashboard-metric">${position}</div>
-                    </div>
-                    <div class="temp-item">
-                        <div class="temp-label">${t('laserFeedSpeed')}</div>
-                        <div class="temp-value laser-dashboard-metric">${feedSpeed}</div>
-                    </div>
-                </div>
-            ` : ''}
-            <div class="printer-card-camera" data-cam-container="${kind === 'cnc' ? 'cnc' : 'laser'}:${escapeHtml(host)}"></div>
-        </div>
-    `;
-}
-
 function bindMarlinTemperatureActions(root) {
     root.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
         card.querySelectorAll('[data-marlin-temp-action]').forEach(button => {
@@ -6095,6 +6066,10 @@ function bindMarlinTemperatureActions(root) {
 }
 
 let dashboardLaserEntries = [];
+// Trabajos activos de TODOS los láser/CNC, por host -- una sola llamada
+// (/api/laser/jobs/active) en vez de una por máquina para saber el archivo y
+// el progreso de la que esté cortando.
+let dashboardLaserJobsByHost = {};
 
 // Reintenta las dos cargas que alimentan las columnas de dispositivos. Se
 // disparan las dos aunque solo una haya fallado: son baratas, y acertar cuál
@@ -6107,9 +6082,18 @@ function reintentarCargaDeDispositivos() {
 async function refreshDashboardLaserCard() {
     if (document.hidden) return;
     try {
-        const registryResponse = await fetch('/api/laser/registry');
+        const [registryResponse, jobsResponse] = await Promise.all([
+            fetch('/api/laser/registry'),
+            fetch('/api/laser/jobs/active').catch(() => null),
+        ]);
         const registryData = await registryResponse.json();
         const lasers = registryData.lasers || [];
+        try {
+            const jobsData = jobsResponse ? await jobsResponse.json() : { jobs: [] };
+            dashboardLaserJobsByHost = Object.fromEntries((jobsData.jobs || []).map(j => [j.host, j]));
+        } catch (_) {
+            dashboardLaserJobsByHost = {}; // sin trabajos activos: la ficha se queda sin progreso, no sin ficha
+        }
         dashboardLaserEntries = await Promise.all(lasers.map(async laser => {
             try {
                 const response = await fetch(`/api/laser/status?host=${encodeURIComponent(laser.host)}`);
@@ -7490,6 +7474,109 @@ function klipperDeviceModel(printer, datos) {
     };
 }
 
+// Trabajo activo de este host, si lo hay -- viene de una sola consulta para
+// TODOS los láser/CNC (/api/laser/jobs/active), no una por máquina: barato
+// de llamar seguido, que es como se refresca el panel.
+function laserActiveJobFor(host, jobsByHost) {
+    return jobsByHost?.[host] || null;
+}
+
+// Estado real de un láser/CNC (GRBL) -> el vocabulario común de la ficha.
+function laserDeviceState(status) {
+    return getLaserVisualState(status); // offline | idle | printing | paused | error
+}
+
+function laserDeviceModel(entry, jobsByHost) {
+    const { host, status, kind } = entry;
+    const state = laserDeviceState(status);
+    const enLinea = state !== 'offline';
+    const enTrabajo = deviceIsBusy(state);
+    const esCnc = kind === 'cnc';
+    const nombre = laserHostLabel(host) || (esCnc ? t('cnc') : t('laser'));
+    const job = laserActiveJobFor(host, jobsByHost);
+    const claveCamara = `${esCnc ? 'cnc' : 'laser'}:${host}`;
+
+    const etiquetas = {
+        offline: t('offline'), printing: t('printing'), paused: t('paused'),
+        error: t('devStateError'), idle: t('devStateReady'),
+    };
+
+    // Solo lo que se puede hacer en ese estado. Igual que con Klipper: un
+    // INICIAR mientras corta, o un PAUSAR con la máquina parada, son
+    // botones que solo sirven para presionarlos y que no pase nada.
+    let actions;
+    if (state === 'printing') {
+        actions = [
+            { key: 'pause', label: t('devPause'), icon: 'pause', tone: 'warn' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'paused') {
+        actions = [
+            { key: 'resume', label: t('devResume'), icon: 'play', tone: 'ok' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'offline' || state === 'error') {
+        actions = [{ key: 'details', label: t('devDetails'), icon: 'details' }];
+    } else {
+        // Encuadrar abre el mismo selector de archivo que Iniciar -- GRBL no
+        // tiene un "archivo ya cargado" como Klipper/Marlin, así que ambas
+        // acciones empiezan preguntando cuál.
+        actions = [
+            { key: 'home', label: t('devHome'), icon: 'home' },
+            { key: 'frame', label: t('devFrame'), icon: 'frame' },
+            ...accionCamara(claveCamara),
+            { key: 'file', label: t('devStart'), icon: 'play', tone: 'ok' },
+        ];
+    }
+
+    const metrics = enTrabajo ? [
+        { icon: 'feed', label: t('devFeed'), value: Number.isFinite(status.feed) ? `${Math.round(status.feed)} mm/m` : null },
+        esCnc
+            ? { icon: 'rpm', label: t('devRpm'), value: Number.isFinite(status.speed) ? `${Math.round(status.speed)} rpm` : null }
+            : { icon: 'power', label: t('devPower'), value: Number.isFinite(status.speed) ? `S${Math.round(status.speed)}` : null },
+    ] : [];
+
+    const info = [];
+    if (enLinea && status.x != null && status.y != null && status.z != null) {
+        info.push({
+            label: t('devPosition'),
+            value: `X${Number(status.x).toFixed(1)} Y${Number(status.y).toFixed(1)} Z${Number(status.z).toFixed(1)}`,
+        });
+    }
+
+    // total en 0/ausente: GRBL no siempre expone cuántas líneas tiene el
+    // trabajo (un stream externo por Bluetooth, por ejemplo) -- sin ese
+    // dato no hay progreso que mostrar, y mostrar 0% sería inventarlo.
+    const progreso = job && job.total > 0 ? Math.round((job.current / job.total) * 100) : null;
+
+    return {
+        name: nombre,
+        typeLabel: esCnc ? t('cnc') : t('laser'),
+        state,
+        stateLabel: etiquetas[state] || state,
+        online: enLinea,
+        art: LASER_STATE_IMAGES[state] || LASER_STATE_IMAGES.idle,
+        job: enTrabajo ? {
+            // GRBL no da tiempo estimado (solo Klipper/Marlin lo calculan a
+            // partir del perfil de aceleración) -- no se inventa uno.
+            filename: job?.filename || '',
+            progress: progreso,
+            remainingLabel: null,
+        } : null,
+        jobLabel: t('devJob'),
+        metrics,
+        info,
+        actions,
+        cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
+        waves: deviceStateThermalWave(state, host),
+        dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}"`,
+    };
+}
+
 
 // Secciones que SÍ tiene sentido reordenar en la ficha nueva. Son tres, no
 // las cuatro de la ficha vieja: en la referencia la insignia vive dentro
@@ -7556,6 +7643,18 @@ const DEVICE_ICONS = {
     heat: '<path d="M12 2s4 5 4 9a4 4 0 0 1-8 0c0-4 4-9 4-9z"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.44.58.8.66H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     dots: '<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
+    // Cabezal sobre tres ejes: lo que importa comunicar es "dónde está",
+    // no una brújula genérica.
+    position: '<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2v5"/><path d="M12 17v5"/><path d="M2 12h5"/><path d="M17 12h5"/>',
+    feed: '<polyline points="5 12 3 12 3 20 21 20 21 12 19 12"/><path d="M8 12V4a4 4 0 0 1 8 0v8"/>',
+    // Rayo láser saliendo del cabezal: distinto del calor de la boquilla,
+    // que es un icono ya usado para otra cosa.
+    power: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    // Ventilador: giro (RPM) del husillo de la CNC, no potencia.
+    rpm: '<path d="M12 12a3 3 0 1 0 0-6c0 2 1 4 3 6z"/><path d="M12 12a3 3 0 1 0 0 6c0-2-1-4-3-6z"/><path d="M12 12a3 3 0 1 0 6 0c-2 0-4 1-6 3z"/><path d="M12 12a3 3 0 1 0-6 0c2 0 4-1 6-3z"/>',
+    // El rectángulo que recorre "Encuadrar": las cuatro esquinas del
+    // trabajo, no una lupa ni un marco genérico.
+    frame: '<path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/><path d="M21 17v3a1 1 0 0 1-1 1h-3"/><path d="M7 21H4a1 1 0 0 1-1-1v-3"/><rect x="7" y="7" width="10" height="10" rx="1"/>',
 };
 
 function deviceIcon(nombre, tamano = 15) {
@@ -7813,7 +7912,7 @@ function renderPrinters(printersInput) {
         return {
             isOnline,
             sortPriority: laserDashboardSortPriority(entry.status),
-            html: laserDashboardCardHtml(entry),
+            html: deviceCardHtml(laserDeviceModel(entry, dashboardLaserJobsByHost)),
         };
     });
 
@@ -7822,7 +7921,7 @@ function renderPrinters(printersInput) {
         return {
             isOnline,
             sortPriority: laserDashboardSortPriority(entry.status),
-            html: laserDashboardCardHtml(entry),
+            html: deviceCardHtml(laserDeviceModel(entry, dashboardLaserJobsByHost)),
         };
     });
 
@@ -7985,20 +8084,65 @@ function renderPrinters(printersInput) {
         });
     });
 
-    columnsRoot.querySelectorAll('.printer-card[data-laser-host]').forEach(card => {
+    // Ir a la sección completa (Láser o CNC) primero fija ese host como el
+    // "activo" -- es lo mismo que hacía la ficha vieja al hacer clic.
+    const irASeccionDeLaser = async (host, kind) => {
+        try {
+            const formData = new FormData();
+            formData.append('host', host);
+            await fetch('/api/laser/host', { method: 'POST', body: formData });
+        } catch (error) {
+            console.error(error);
+        }
+        switchSection(kind === 'cnc' ? 'cnc' : 'laser');
+    };
+
+    columnsRoot.querySelectorAll('.dev-card[data-laser-host]').forEach(card => {
         if (boundLaserCards.has(card)) return;
         boundLaserCards.add(card);
-        card.addEventListener('click', async () => {
-            const host = card.dataset.laserHost;
-            try {
-                const formData = new FormData();
-                formData.append('host', host);
-                await fetch('/api/laser/host', { method: 'POST', body: formData });
-            } catch (error) {
-                console.error(error);
-            }
-            switchSection(card.classList.contains('printer-card-type-cnc') ? 'cnc' : 'laser');
+        const host = card.dataset.laserHost;
+        const kind = card.dataset.laserKind;
+
+        card.querySelectorAll('[data-dev-action]').forEach(btn => {
+            btn.addEventListener('click', async event => {
+                event.stopPropagation();
+                const accion = btn.dataset.devAction;
+                if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
+                    await handleLaserQuickAction(accion, host);
+                    return;
+                }
+                if (accion === 'menu' || accion === 'camera-setup') {
+                    switchSection('camera-viewer');
+                    return;
+                }
+                if (accion === 'camera') {
+                    card.querySelector('.printer-card-camera-toggle')?.click();
+                    const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
+                    const visible = clave ? isCameraCardVisible(clave) : false;
+                    card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
+                    btn.classList.toggle('is-checked', visible);
+                    btn.setAttribute('aria-pressed', String(visible));
+                    btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
+                    return;
+                }
+                if (accion === 'home') {
+                    if (isLaserHomeConfirmEnabled()) {
+                        if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
+                    }
+                    await sendLaserHome(host);
+                    return;
+                }
+                if (accion === 'frame' || accion === 'file') {
+                    openDevLaserFileModal(host, kind);
+                    return;
+                }
+                // Detalles (y cualquier otra acción sin manejo propio) lleva
+                // a la sección completa, que es donde vive el resto.
+                await irASeccionDeLaser(host, kind);
+            });
         });
+
+        card.addEventListener('click', () => irASeccionDeLaser(host, kind));
     });
 
     columnsRoot.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
@@ -12556,6 +12700,94 @@ function confirmLaserJobStart(gcodeText, options = {}) {
         frameBtn.addEventListener('click', onFrame);
     });
 }
+
+// Selector de archivo para "Encuadrar"/"Iniciar" desde la ficha del
+// dashboard -- a diferencia de confirmLaserJobStart (pensado para el láser
+// "activo" de la sección Láser/CNC), este apunta siempre al host de la
+// ficha que lo abrió, sin importar cuál esté activo en ese momento.
+let devLaserFileModalTarget = null; // { host, kind }
+
+async function openDevLaserFileModal(host, kind) {
+    devLaserFileModalTarget = { host, kind };
+    const modal = document.getElementById('dev-laser-file-modal');
+    const selectEl = document.getElementById('dev-laser-file-modal-select');
+    if (!modal || !selectEl) return;
+
+    selectEl.innerHTML = `<option value="">${t('laserSdLoading')}</option>`;
+    modal.classList.add('active');
+
+    try {
+        const response = await fetch('/api/models');
+        const models = await response.json();
+        const files = models.filter(m => m.id.startsWith('gcode/'));
+        selectEl.innerHTML = files.length
+            ? files.map(f => `<option value="${escapeHtml(stripSectionPrefix(f.id, 'gcode'))}">${escapeHtml(f.name)}</option>`).join('')
+            : `<option value="">${t('noFilesFound')}</option>`;
+    } catch (error) {
+        console.error(error);
+        selectEl.innerHTML = `<option value="">${t('laserSdError')}</option>`;
+    }
+}
+
+function closeDevLaserFileModal() {
+    document.getElementById('dev-laser-file-modal')?.classList.remove('active');
+    devLaserFileModalTarget = null;
+}
+
+document.getElementById('dev-laser-file-modal-close')?.addEventListener('click', closeDevLaserFileModal);
+document.getElementById('dev-laser-file-modal-backdrop')?.addEventListener('click', closeDevLaserFileModal);
+document.getElementById('dev-laser-file-modal-cancel-btn')?.addEventListener('click', closeDevLaserFileModal);
+
+document.getElementById('dev-laser-file-modal-start-btn')?.addEventListener('click', async (event) => {
+    if (!devLaserFileModalTarget) return;
+    const path = document.getElementById('dev-laser-file-modal-select')?.value;
+    if (!path) return;
+    const { host } = devLaserFileModalTarget;
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('path', path);
+        formData.append('host', host);
+        const response = await fetch('/api/laser/job/start', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('laserSdError'));
+        }
+        closeDevLaserFileModal();
+        refreshDashboardLaserCard();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('laserSdError'), '', 'danger');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+document.getElementById('dev-laser-file-modal-frame-btn')?.addEventListener('click', async (event) => {
+    if (!devLaserFileModalTarget) return;
+    const path = document.getElementById('dev-laser-file-modal-select')?.value;
+    if (!path) return;
+    const { host } = devLaserFileModalTarget;
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('path', path);
+        formData.append('host', host);
+        const response = await fetch('/api/laser/job/frame', { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || t('laserFrameError'));
+        if (data.warning) appAlert(data.warning, '', 'warning');
+        closeDevLaserFileModal();
+        refreshDashboardLaserCard();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('laserFrameError'), '', 'danger');
+    } finally {
+        btn.disabled = false;
+    }
+});
 
 let laserJogStep = 10;
 const LASER_JOG_FEED = 1500;
