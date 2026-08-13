@@ -17160,7 +17160,9 @@ body.ai .dashboard-dock-section .section-title h2 {
     min-width: 0;
 }
 .dev-metric + .dev-metric { border-left: 1px solid var(--border-subtle); }
+/* Al doble: a 14 px estos iconos se leían como un par de rayas sueltas. */
 .dev-metric-icon { display: inline-flex; color: var(--dev-tone); flex-shrink: 0; }
+.dev-metric-icon svg { width: 28px; height: 28px; }
 .dev-metric-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .dev-metric-label { font-size: .78rem; color: var(--text-muted); }
 .dev-metric-value {
