@@ -7492,12 +7492,18 @@ function deviceCampo(etiqueta, valor) {
 function deviceMetrica(icono, etiqueta, valor) {
     // Sin dato va una raya, nunca un cero: un 0 °C leído como real
     // es peor que admitir que no se sabe.
-    const texto = (valor === null || valor === undefined || valor === '') ? '—' : String(valor);
+    let texto = (valor === null || valor === undefined || valor === '') ? '—' : String(valor);
+    // La unidad se separa para poder pintarla más chica: "205 °C" con el
+    // 205 grande es lo que hace legible la temperatura de un vistazo.
+    const conUnidad = /^(-?[\d.]+)\s*(°C|rpm|mm\/m|%)$/.exec(texto);
+    texto = conUnidad
+        ? `${escapeHtml(conUnidad[1])}<small>${escapeHtml(conUnidad[2])}</small>`
+        : escapeHtml(texto);
     return `<div class="dev-metric">
         <span class="dev-metric-icon">${deviceIcon(icono, 14)}</span>
         <span class="dev-metric-text">
             <span class="dev-metric-label">${escapeHtml(etiqueta)}</span>
-            <span class="dev-metric-value">${escapeHtml(texto)}</span>
+            <span class="dev-metric-value">${texto}</span>
         </span>
     </div>`;
 }
@@ -7552,12 +7558,17 @@ function deviceCardHtml(d) {
     if (d.cameraSlot) {
         cuerpo.push(`<div class="printer-card-camera dev-camera" data-cam-container="${escapeHtml(d.cameraSlot)}"></div>`);
     }
+    // Métricas e información van en la MISMA caja, separadas por divisores,
+    // como en la referencia: dos recuadros sueltos partían la ficha en
+    // bloques que compiten en vez de leerse como un solo panel de datos.
+    const panel = [];
     if (d.metrics && d.metrics.length) {
-        cuerpo.push(`<div class="dev-metrics">${d.metrics.map(m => deviceMetrica(m.icon, m.label, m.value)).join('')}</div>`);
+        panel.push(`<div class="dev-metrics">${d.metrics.map(m => deviceMetrica(m.icon, m.label, m.value)).join('')}</div>`);
     }
     if (d.info && d.info.length) {
-        cuerpo.push(`<div class="dev-info">${d.info.map(i => deviceCampo(i.label, i.value)).join('')}</div>`);
+        panel.push(`<div class="dev-info">${d.info.map(i => deviceCampo(i.label, i.value)).join('')}</div>`);
     }
+    if (panel.length) cuerpo.push(`<div class="dev-panel">${panel.join('')}</div>`);
 
     const acciones = (d.actions || []).length
         ? `<div class="dev-actions">${d.actions.map(deviceAccionBtn).join('')}</div>` : '';
@@ -7569,13 +7580,13 @@ function deviceCardHtml(d) {
             <div class="dev-card-id">
                 <span class="dev-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
                 <span class="dev-card-type">${escapeHtml(d.typeLabel)}</span>
+                <span class="dev-badge">${escapeHtml(d.stateLabel)}</span>
             </div>
             <div class="dev-card-head-right">
                 ${conexion}
                 <button type="button" class="dev-menu" data-dev-action="menu" title="${escapeHtml(t('devMore'))}">${deviceIcon('dots', 16)}</button>
             </div>
         </header>
-        <span class="dev-badge">${escapeHtml(d.stateLabel)}</span>
         ${cuerpo.filter(Boolean).join('')}
         ${acciones}
     </article>`;
