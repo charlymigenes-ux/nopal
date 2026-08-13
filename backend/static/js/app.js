@@ -7301,7 +7301,10 @@ async function mountCameraCardsIn(root) {
     containers.forEach(container => {
         const [deviceType, deviceId] = (container.dataset.camContainer || '').split(':');
         if (!deviceType || !deviceId) return;
-        const card = container.closest('.printer-card');
+        // Las dos clases: sin '.dev-card' esto devolvía nulo en la ficha
+        // nueva, el interruptor del plugin nunca se inyectaba y el botón de
+        // cámara no tenía a quién llamar -- por eso el visor no se ocultaba.
+        const card = container.closest('.printer-card, .dev-card');
         const camera = cameras.find(c => c.purpose === 'timelapse' && c.bound_device
             && c.bound_device.type === deviceType && String(c.bound_device.id) === String(deviceId));
         if (!camera) {
@@ -7387,8 +7390,13 @@ function klipperDeviceState(printer, isHeating) {
 // máquina tiene cámara asignada, y su palomita dice si el visor está
 // encendido.
 function accionCamara(clave) {
-    if (!clave || !deviceCameraKeys.has(clave)) return [];
-    return [{ key: 'camera', label: t('devCamera'), icon: 'camera', check: isCameraCardVisible(clave) }];
+    // Con cámara asignada es un interruptor del visor y lleva palomita de
+    // estado. Sin cámara sigue estando, pero lleva al panel del plugin para
+    // asignar una: es la diferencia entre "apagado" y "todavía no hay".
+    if (clave && deviceCameraKeys.has(clave)) {
+        return [{ key: 'camera', label: t('devCamera'), icon: 'camera', check: isCameraCardVisible(clave) }];
+    }
+    return [{ key: 'camera-setup', label: t('devCamera'), icon: 'camera' }];
 }
 
 function klipperDeviceModel(printer, datos) {
@@ -7904,6 +7912,13 @@ function renderPrinters(printersInput) {
                 const accion = btn.dataset.devAction;
                 if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
                     await handleActivePrintAction(accion, port);
+                    return;
+                }
+                if (accion === 'menu' || accion === 'camera-setup') {
+                    // Los tres puntos y el botón de cámara sin cámara
+                    // asignada llevan al plugin: es donde se asigna una, y
+                    // sin visor que alternar no hay nada más útil que hacer.
+                    switchSection('camera-viewer');
                     return;
                 }
                 if (accion === 'camera') {

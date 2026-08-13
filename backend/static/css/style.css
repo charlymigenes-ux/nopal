@@ -17337,9 +17337,24 @@ body.ai .dashboard-dock-section .section-title h2 {
 .printers-grid.list-view .dev-action svg { width: 18px; height: 18px; }
 .printers-grid.list-view .dev-action-primary { grid-column: auto; }
 
-/* La cámara no cabe en una fila y es justo lo contrario de lo que busca
-   esta vista: ver muchas máquinas a la vez. */
-.printers-grid.list-view .dev-camera { display: none; }
+/* En lista la cámara sí se ve, pero del tamaño de la fila: una miniatura
+   al final, no un bloque que rompa el renglón. Ocultarla del todo tenía el
+   problema de que la vista compacta es justo donde uno quiere echar el ojo
+   rápido a todas las máquinas. */
+.printers-grid.list-view .dev-camera {
+    display: block;
+    width: 132px;
+    flex: 0 0 132px;
+    margin-left: auto;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.printers-grid.list-view .dev-camera .cam-live-wrap { aspect-ratio: 16 / 9; }
+/* Los controles superpuestos no caben en una miniatura de fila: quedarían
+   encima de toda la imagen. La cámara se sigue viendo; para operarla está
+   la vista de rejilla o el propio plugin. */
+.printers-grid.list-view .dev-camera .cam-overlay-bar { display: none; }
+.printers-grid.list-view .dev-camera .cam-live-badge { transform: scale(.75); transform-origin: top right; }
 
 .dev-card-head-right .printer-card-camera-toggle {
     width: 26px;
