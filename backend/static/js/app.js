@@ -74,6 +74,14 @@ function updateTopbarUser(user) {
     // el rol por las dudas si igual se llegara a invocar).
     const guidedSetupBtn = document.getElementById('guided-printer-setup-open-btn');
     if (guidedSetupBtn) guidedSetupBtn.hidden = user.role !== 'admin';
+
+    // La configuración de IA decide a qué servidor externo se le manda
+    // telemetría del taller: mismo criterio que la galería de plugins, es
+    // admin-only en el backend (require_role("admin") en backend/api/ai.py)
+    // y un operador no debe ni verla. Preguntarle a la IA sí es para
+    // cualquiera, así que la sección del asistente no se toca acá.
+    const aiCard = document.querySelector('[data-settings-module="ai"]');
+    if (aiCard) aiCard.hidden = user.role !== 'admin';
 }
 
 function showFullscreenRecommendation() {
@@ -1655,8 +1663,8 @@ function clearCustomThemeTokens() {
 
 function applyTheme(theme) {
     let resolvedTheme = theme === 'custom' && getCustomTheme() ? 'custom' : theme;
-    if (!['dark', 'green', 'red', 'custom'].includes(resolvedTheme)) resolvedTheme = 'light';
-    document.body.classList.remove('dark', 'green', 'red', 'custom', 'light');
+    if (!['dark', 'green', 'red', 'custom', 'ai'].includes(resolvedTheme)) resolvedTheme = 'light';
+    document.body.classList.remove('dark', 'green', 'red', 'custom', 'light', 'ai');
     document.body.classList.add(resolvedTheme);
     document.body.setAttribute('data-theme', resolvedTheme);
     applyCustomThemeBackground();
@@ -5122,7 +5130,9 @@ const SETTINGS_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 
 const SETTINGS_MODULE_ICON_MACROS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
 const SETTINGS_MODULE_ICON_SETTINGS_HELP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
-// Las 8 tarjetas reales de #settings-modules-pool.
+const SETTINGS_MODULE_ICON_AI = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>';
+
+// Las tarjetas reales de #settings-modules-pool.
 const SETTINGS_MODULE_DEFS = [
     { key: 'general', labelKey: 'generalSettings', iconSvg: SETTINGS_MODULE_ICON_GENERAL },
     { key: 'appearance', labelKey: 'appearanceSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_APPEARANCE },
@@ -5132,6 +5142,8 @@ const SETTINGS_MODULE_DEFS = [
     { key: 'devices', labelKey: 'devicesTitle', iconSvg: SETTINGS_MODULE_ICON_DEVICES },
     { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
     { key: 'tunascreen', labelKey: 'tunascreenTitle', iconSvg: SETTINGS_MODULE_ICON_TUNASCREEN },
+    { key: 'ai', labelKey: 'aiSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_AI },
+    { key: 'backup', labelKey: 'backupTitle', iconSvg: SETTINGS_MODULE_ICON_UPDATES },
 ];
 // Centro de ayuda (layout fijo, sin personalización por arrastre -- ver
 // renderHelpCenter() más abajo en este archivo) reusa estos mismos íconos
@@ -8904,6 +8916,7 @@ async function handleDeviceUnlinkConfirm() {
         closeDeviceUnlinkModal();
         refreshUsbPorts();
         loadWifiDevices();
+        loadRegistryDevices();
         if (document.getElementById('laser-host-select')) loadLaserHostSelector();
     } catch (error) {
         console.error(error);
@@ -9009,9 +9022,21 @@ async function loadRegistryDevices() {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
     try {
-        const response = await fetch('/api/devices/registry');
+        // El registro de láser/CNC va en paralelo solo para conocer el chip
+        // de cada placa: es lo que muestra el popup de desvincular, y sin él
+        // saldría con un guion donde debería decir ESP32/CH340. Si falla, la
+        // lista se pinta igual.
+        const [response, laserResponse] = await Promise.all([
+            fetch('/api/devices/registry'),
+            fetch('/api/laser/registry').catch(() => null),
+        ]);
         const data = await response.json();
-        renderRegistryDevices(data.machines || []);
+        let chips = new Map();
+        try {
+            const laserData = laserResponse ? await laserResponse.json() : null;
+            chips = new Map((laserData?.lasers || []).map(l => [l.host, l.chip || '']));
+        } catch (_) { /* sin datos de chip: el popup mostrará un guion */ }
+        renderRegistryDevices(data.machines || [], chips);
     } catch (error) {
         console.error(error);
     }
@@ -9030,22 +9055,47 @@ function deviceDriverBadgeLabel(driver) {
     return brandLabels[driver] || driver;
 }
 
-function renderRegistryDevices(machines) {
+function renderRegistryDevices(machines, chips = new Map()) {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
     if (!machines.length) {
         container.innerHTML = `<div class="empty-state-small">${t('registryDevicesEmpty')}</div>`;
         return;
     }
-    container.innerHTML = machines.map(machine => `
+    container.innerHTML = machines.map(machine => {
+        // Editar y desvincular solo para láser/CNC: son los que el registro
+        // de NOPAL puede tocar (/api/laser/registry). Una impresora Klipper
+        // se administra desde su propia tarjeta, y poner acá un botón que
+        // pegara al endpoint equivocado sería peor que no tenerlo.
+        const esGrbl = machine.driver === 'grbl';
+        const host = String(machine.id || '').replace(/^laser:/, '');
+        const nombre = machine.name || machine.id;
+        // La píldora de estado va DENTRO del grupo de la derecha: el item es
+        // flex con space-between, y dejarla suelta la empujaría al centro.
+        const pildora = `<span class="device-status-pill ${machine.online ? 'online' : 'offline'}">${machine.online ? t('online') : t('offline')}</span>`;
+        const acciones = esGrbl ? `
+            <div class="usb-port-registered">
+                ${pildora}
+                <button type="button" class="theme-option-icon-btn usb-port-rename-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(nombre)}" title="${escapeHtml(t('usbPortRename'))}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger usb-port-unlink-btn" data-host="${escapeHtml(host)}" data-name="${escapeHtml(nombre)}" data-chip="${escapeHtml(chips.get(host) || '')}" data-transport="${host.startsWith('usb:') ? 'usb' : 'wifi'}" title="${escapeHtml(t('usbPortUnlink'))}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>` : pildora;
+        return `
         <div class="usb-port-item">
             <div class="usb-port-item-info">
-                <strong>${escapeHtml(machine.name || machine.id)}</strong>
+                <strong>${escapeHtml(nombre)}</strong>
                 <span>${escapeHtml(deviceDriverBadgeLabel(machine.driver))}</span>
             </div>
-            <span class="device-status-pill ${machine.online ? 'online' : 'offline'}">${machine.online ? t('online') : t('offline')}</span>
-        </div>
-    `).join('');
+            ${acciones}
+        </div>`;
+    }).join('');
+
+    // Mismo cableado que la lista de puertos USB: el popup de editar y el de
+    // desvincular ya existían, esta lista simplemente nunca pintó los botones.
+    wireRegisteredDeviceActions(container);
 }
 
 document.getElementById('registry-devices-refresh-btn')?.addEventListener('click', loadRegistryDevices);
@@ -9624,6 +9674,7 @@ async function handleUsbClassifyNameConfirm() {
         showToast(`${name}: ${t('usbRegisterSuccess').replace('{kind}', kindLabel)}`);
         refreshUsbPorts();
         loadWifiDevices();
+        loadRegistryDevices();
         if (document.getElementById('laser-host-select')) loadLaserHostSelector();
     } catch (error) {
         console.error(error);
@@ -9820,6 +9871,7 @@ async function handleDeviceRenameConfirm() {
         await fetch('/api/laser/registry', { method: 'POST', body: formData });
         refreshUsbPorts();
         loadWifiDevices();
+        loadRegistryDevices();
         if (document.getElementById('laser-host-select')) loadLaserHostSelector();
 
         const changes = [];
@@ -13127,6 +13179,152 @@ document.getElementById('cnc-wizard-run-btn')?.addEventListener('click', async (
     closeCncWizardModal();
 });
 
+// ── Asistente de configuración del CNC ("Asistente de configuración") —
+// mismo mecanismo de pasos-dentro-de-un-modal que "Guía para dibujar" de
+// arriba, pero para configuración de la máquina (punto cero por eje, altura
+// máxima de Z, tipo de trabajo con preguntas según el tipo elegido) en vez
+// de un trabajo puntual. Por ahora solo arma el layout visual de los pasos
+// -- finishCncSetupWizard() todavía no manda nada a un endpoint real ni a
+// la máquina, ver el comentario del modal en index.html.
+
+const CNC_SETUP_WORK_TYPES = ['carving', 'engraving', 'cutting', 'painting', 'drawing'];
+
+let cncSetupWizardStep = 1;
+let cncSetupWizardState = { zeroXY: 'front-left', zeroZ: 'material-surface', maxZ: '', workType: null };
+
+function showCncSetupWizardStep(step) {
+    cncSetupWizardStep = step;
+    [1, 2, 3, 4].forEach(n => {
+        const el = document.getElementById(`cnc-setup-step-${n}`);
+        if (el) el.hidden = n !== step;
+        const dot = document.querySelector(`.cnc-wizard-step-dot[data-setup-step-dot="${n}"]`);
+        if (dot) {
+            dot.classList.toggle('active', n === step);
+            dot.classList.toggle('done', n < step);
+        }
+    });
+    const backBtn = document.getElementById('cnc-setup-wizard-back-btn');
+    const nextBtn = document.getElementById('cnc-setup-wizard-next-btn');
+    const finishBtn = document.getElementById('cnc-setup-wizard-finish-btn');
+    if (backBtn) backBtn.hidden = step === 1;
+    if (nextBtn) nextBtn.hidden = step === 4;
+    if (finishBtn) finishBtn.hidden = step !== 4;
+    if (step === 4) renderCncSetupWizardSummary();
+}
+
+function selectCncSetupZeroXY(value) {
+    cncSetupWizardState.zeroXY = value;
+    document.querySelectorAll('#cnc-setup-zero-xy-grid .cnc-setup-zero-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.zeroXy === value);
+    });
+}
+
+function selectCncSetupZeroZ(value) {
+    cncSetupWizardState.zeroZ = value;
+    document.querySelectorAll('#cnc-setup-zero-z-switch .option-switch-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.zeroZ === value);
+    });
+}
+
+function selectCncSetupWorkType(value) {
+    cncSetupWizardState.workType = value;
+    document.querySelectorAll('#cnc-setup-type-grid .cnc-setup-type-card').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.workType === value);
+    });
+    CNC_SETUP_WORK_TYPES.forEach(type => {
+        const el = document.getElementById(`cnc-setup-followup-${type}`);
+        if (el) el.hidden = type !== value;
+    });
+}
+
+function cncSetupWorkTypeLabel(type) {
+    const key = {
+        carving: 'cncSetupTypeCarving', engraving: 'cncSetupTypeEngraving', cutting: 'cncSetupTypeCutting',
+        painting: 'cncSetupTypePainting', drawing: 'cncSetupTypeDrawing',
+    }[type];
+    return key ? t(key) : t('cncSetupNoneSelected');
+}
+
+function cncSetupZeroXYLabel(value) {
+    const key = {
+        'front-left': 'cncSetupZeroFrontLeft', 'front-right': 'cncSetupZeroFrontRight', center: 'cncSetupZeroCenter',
+        'back-left': 'cncSetupZeroBackLeft', 'back-right': 'cncSetupZeroBackRight',
+    }[value];
+    return key ? t(key) : t('cncSetupNoneSelected');
+}
+
+function cncSetupZeroZLabel(value) {
+    const key = {
+        'material-surface': 'cncSetupZeroMaterialSurface', 'stock-top': 'cncSetupZeroStockTop', 'machine-bed': 'cncSetupZeroMachineBed',
+    }[value];
+    return key ? t(key) : t('cncSetupNoneSelected');
+}
+
+function renderCncSetupWizardSummary() {
+    const el = document.getElementById('cnc-setup-summary-list');
+    if (!el) return;
+    const maxZInput = document.getElementById('cnc-setup-max-z-input');
+    cncSetupWizardState.maxZ = maxZInput ? maxZInput.value : '';
+    const rows = [
+        [t('cncSetupSummaryZeroXY'), cncSetupZeroXYLabel(cncSetupWizardState.zeroXY)],
+        [t('cncSetupSummaryZeroZ'), cncSetupZeroZLabel(cncSetupWizardState.zeroZ)],
+        [t('cncSetupSummaryMaxZ'), cncSetupWizardState.maxZ ? `${cncSetupWizardState.maxZ} mm` : t('cncSetupNoneSelected')],
+        [t('cncSetupSummaryWorkType'), cncSetupWorkTypeLabel(cncSetupWizardState.workType)],
+    ];
+    el.innerHTML = rows.map(([label, value]) => `
+        <div class="cnc-setup-summary-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+    `).join('');
+}
+
+function openCncSetupWizardModal() {
+    cncSetupWizardState = { zeroXY: 'front-left', zeroZ: 'material-surface', maxZ: '', workType: null };
+    selectCncSetupZeroXY('front-left');
+    selectCncSetupZeroZ('material-surface');
+    selectCncSetupWorkType(null);
+    const maxZInput = document.getElementById('cnc-setup-max-z-input');
+    if (maxZInput) maxZInput.value = '';
+    showCncSetupWizardStep(1);
+    document.getElementById('cnc-setup-wizard-modal')?.classList.add('active');
+}
+
+function closeCncSetupWizardModal() {
+    document.getElementById('cnc-setup-wizard-modal')?.classList.remove('active');
+}
+
+function finishCncSetupWizard() {
+    // Vista previa por ahora -- todavía no hay endpoint que persista esta
+    // configuración ni la mande a la máquina real.
+    closeCncSetupWizardModal();
+    showToast(t('cncSetupPreviewHint'));
+}
+
+document.getElementById('cnc-setup-wizard-open-btn')?.addEventListener('click', openCncSetupWizardModal);
+document.getElementById('cnc-setup-wizard-cancel-btn')?.addEventListener('click', closeCncSetupWizardModal);
+document.getElementById('cnc-setup-wizard-backdrop')?.addEventListener('click', closeCncSetupWizardModal);
+document.getElementById('cnc-setup-wizard-modal-close')?.addEventListener('click', closeCncSetupWizardModal);
+
+document.getElementById('cnc-setup-wizard-back-btn')?.addEventListener('click', () => {
+    if (cncSetupWizardStep > 1) showCncSetupWizardStep(cncSetupWizardStep - 1);
+});
+
+document.getElementById('cnc-setup-wizard-next-btn')?.addEventListener('click', () => {
+    if (cncSetupWizardStep < 4) showCncSetupWizardStep(cncSetupWizardStep + 1);
+});
+
+document.getElementById('cnc-setup-wizard-finish-btn')?.addEventListener('click', finishCncSetupWizard);
+
+document.querySelectorAll('#cnc-setup-zero-xy-grid .cnc-setup-zero-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectCncSetupZeroXY(btn.dataset.zeroXy));
+});
+
+document.querySelectorAll('#cnc-setup-zero-z-switch .option-switch-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectCncSetupZeroZ(btn.dataset.zeroZ));
+});
+
+document.querySelectorAll('#cnc-setup-type-grid .cnc-setup-type-card').forEach(btn => {
+    btn.addEventListener('click', () => selectCncSetupWorkType(btn.dataset.workType));
+});
+
 // ── Overrides de feed/husillo: bytes de tiempo real de GRBL (0x90-0x9E).
 // El campo "Ov:" del status solo aparece en algunos reportes (no todos), por
 // eso el valor mostrado se actualiza en cuanto refreshCncStatus lo capture,
@@ -16014,6 +16212,13 @@ function switchSection(sectionName) {
     } else {
         stopConsolePolling();
     }
+    if (sectionName === 'ai') {
+        loadAiSection();
+    }
+    if (sectionName === 'settings') {
+        loadAiSettings();
+        backupLoadGroups();
+    }
     if (sectionName === 'laser') {
         stopCncPolling();
         window.NopalCameraCard?.unmount(document.getElementById('cnc-modal-camera'));
@@ -17737,6 +17942,12 @@ const LIGHT_WALLPAPER_OPTIONS = [
     '/static/img/fondo_NOPAL_DESERT_2.png',
     '/static/img/fondoClaro3.png',
 ];
+const AI_WALLPAPER_KEY = 'aiThemeWallpaper';
+const AI_WALLPAPER_OPTIONS = [
+    '/static/img/FONDO1_IA.jpg',
+    '/static/img/FONDO2_IA.jpg',
+    '/static/img/FONDO3_IA.jpg',
+];
 const RED_WALLPAPER_KEY = 'redThemeWallpaper';
 const RED_WALLPAPER_OPTIONS = [
     '/static/img/fondo_NOPAL_GRAY.png',
@@ -17748,6 +17959,7 @@ const THEME_WALLPAPER_CONFIG = {
     green: { storageKey: NOPAL_WALLPAPER_KEY, cssVar: '--nopal-wallpaper', options: NOPAL_WALLPAPER_OPTIONS },
     light: { storageKey: LIGHT_WALLPAPER_KEY, cssVar: '--light-wallpaper', options: LIGHT_WALLPAPER_OPTIONS },
     red: { storageKey: RED_WALLPAPER_KEY, cssVar: '--red-wallpaper', options: RED_WALLPAPER_OPTIONS },
+    ai: { storageKey: AI_WALLPAPER_KEY, cssVar: '--ai-wallpaper', options: AI_WALLPAPER_OPTIONS },
 };
 
 function getThemeWallpaperUrl(theme) {
@@ -17804,6 +18016,16 @@ if (lightThemeSelectBtn) {
     lightThemeSelectBtn.addEventListener('click', () => {
         if (settingsTheme) settingsTheme.value = 'light';
         setActiveThemeCard('light');
+        saveSettings();
+        refreshWallpaperThumbActiveStates();
+    });
+}
+
+const aiThemeSelectBtn = document.getElementById('ai-theme-select-btn');
+if (aiThemeSelectBtn) {
+    aiThemeSelectBtn.addEventListener('click', () => {
+        if (settingsTheme) settingsTheme.value = 'ai';
+        setActiveThemeCard('ai');
         saveSettings();
         refreshWallpaperThumbActiveStates();
     });
@@ -18500,4 +18722,1199 @@ document.querySelectorAll('#user-add-role-switch .option-switch-btn').forEach(bt
     btn.addEventListener('click', () => {
         document.querySelectorAll('#user-add-role-switch .option-switch-btn').forEach(b => b.classList.toggle('active', b === btn));
     });
+});
+
+
+// ===========================================================================
+// NOPAL Intelligence
+// ---------------------------------------------------------------------------
+// La vista del asistente se alimenta de /api/ai/tools/* -- exactamente las
+// mismas funciones de solo lectura que consulta el modelo. Así la pantalla y
+// la IA nunca pueden discrepar sobre el estado del taller: si una tarjeta dice
+// que el láser está desconectado, es porque la herramienta lo reportó así, no
+// porque el frontend lo calcule por su cuenta.
+//
+// Todo el color sale de las variables CSS del tema (ver style.css), nunca
+// hardcodeado -- esta sección tiene que verse bien en claro, oscuro, verde,
+// rojo y personalizado igual que el resto de NOPAL.
+// ===========================================================================
+
+const AI_API_KEY_UNCHANGED = '__unchanged__';
+
+let aiPresets = [];
+let aiDataSent = [];
+let aiConfigCache = null;
+let aiBusy = false;
+let aiConversationId = null;
+
+// Una acción de riesgo NO se ejecutó: el backend la dejó esperando. Se pinta
+// con lo que va a pasar en texto claro, porque confirmar a ciegas un
+// "precalentar a 200" es justo lo que los niveles de riesgo evitan.
+function aiRenderPendingAction(pendiente) {
+    const thread = document.getElementById('ai-thread');
+    if (!thread) return;
+    const caja = document.createElement('div');
+    caja.className = 'ai-pending-action';
+    const args = Object.entries(pendiente.arguments || {})
+        .map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(String(v))}`).join(' · ');
+    caja.innerHTML = `
+        <div class="ai-pending-head">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>${escapeHtml(t('aiConfirmNeeded'))}</span>
+        </div>
+        <p class="ai-pending-what"><strong>${escapeHtml(pendiente.action)}</strong>${args ? ' — ' + args : ''}</p>
+        <div class="ai-pending-actions">
+            <button type="button" class="btn-file-action btn-file-action-accent" data-confirm>${escapeHtml(t('aiConfirmRun'))}</button>
+            <button type="button" class="btn-file-action" data-cancel>${escapeHtml(t('cancelAction'))}</button>
+        </div>`;
+    thread.appendChild(caja);
+    thread.scrollTop = thread.scrollHeight;
+
+    const cerrar = (texto, tono) => {
+        caja.innerHTML = `<div class="ai-pending-done" data-tone="${tono}">${escapeHtml(texto)}</div>`;
+    };
+
+    caja.querySelector('[data-confirm]').addEventListener('click', async () => {
+        caja.querySelectorAll('button').forEach(b => (b.disabled = true));
+        try {
+            await aiFetchJson(`/api/ai/actions/${pendiente.id}/confirm`, { method: 'POST' });
+            cerrar(t('aiActionDone'), 'ok');
+        } catch (error) {
+            cerrar(error.message, 'error');
+        }
+    });
+    caja.querySelector('[data-cancel]').addEventListener('click', async () => {
+        caja.querySelectorAll('button').forEach(b => (b.disabled = true));
+        try { await aiFetchJson(`/api/ai/actions/${pendiente.id}/cancel`, { method: 'POST' }); } catch (_) {}
+        cerrar(t('aiActionCancelled'), 'muted');
+    });
+}
+
+// Guardadas por el usuario. Vacío = usar las de fábrica, que sí se traducen.
+let aiStoredSuggestions = [];
+
+function aiSuggestedQuestions() {
+    if (aiStoredSuggestions.length) return aiStoredSuggestions;
+    return [
+        t('aiSuggestWorkshop'),
+        t('aiSuggestAvailable'),
+        t('aiSuggestErrors'),
+    ];
+}
+
+async function aiLoadSuggestions() {
+    try {
+        const data = await aiFetchJson('/api/ai/suggestions');
+        aiStoredSuggestions = data.suggestions || [];
+    } catch (_) {
+        aiStoredSuggestions = [];
+    }
+}
+
+function aiRenderSuggestionEditor() {
+    const rows = document.getElementById('ai-suggestions-rows');
+    if (!rows) return;
+    // Al editar se parte de lo que se ve hoy, sean guardadas o de fábrica:
+    // así el usuario ajusta las de fábrica en vez de empezar de cero.
+    const base = aiStoredSuggestions.length ? aiStoredSuggestions : aiSuggestedQuestions();
+    rows.innerHTML = base.map((texto, i) => `
+        <div class="ai-suggestion-row">
+            <input type="text" class="ai-text-input" data-suggestion-index="${i}" value="${escapeHtml(texto)}" maxlength="120">
+            <button type="button" class="btn-file-action" data-suggestion-remove="${i}" title="${escapeHtml(t('aiDelete'))}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`).join('');
+
+    rows.querySelectorAll('[data-suggestion-remove]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const i = Number(btn.dataset.suggestionRemove);
+            const actuales = aiReadSuggestionEditor();
+            actuales.splice(i, 1);
+            aiStoredSuggestions = actuales;
+            aiRenderSuggestionEditor();
+        });
+    });
+}
+
+function aiReadSuggestionEditor() {
+    return Array.from(document.querySelectorAll('[data-suggestion-index]'))
+        .map(input => input.value.trim())
+        .filter(Boolean);
+}
+
+async function aiSaveSuggestions() {
+    // Una lista vacía es válida (significa "usa las de fábrica"), pero solo
+    // si el usuario borró las filas a mano, no si el editor no se renderizó.
+    if (!document.getElementById('ai-suggestions-rows')) return;
+    try {
+        const data = await aiFetchJson('/api/ai/suggestions', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ suggestions: aiReadSuggestionEditor() }),
+        });
+        aiStoredSuggestions = data.suggestions || [];
+        aiRenderSuggestionEditor();
+        aiRenderSuggestions();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function aiFetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    let payload = null;
+    try {
+        payload = await response.json();
+    } catch (_) {
+        payload = null;
+    }
+    if (!response.ok) {
+        const error = new Error(payload?.detail || `HTTP ${response.status}`);
+        // Campo hermano de `detail` (ver backend/api/ai.py): segundos que el
+        // proveedor pidió esperar. Se propaga en el Error para que quien
+        // atrape sepa que esto no es una falla cualquiera, sino una espera.
+        error.retryAfter = payload?.retry_after ?? null;
+        throw error;
+    }
+    return payload;
+}
+
+// --- Enfriamiento tras un límite de cuota ----------------------------------
+// Cuando el proveedor responde "límite alcanzado, reintenta en 4.5s", ese
+// dato llega en retry_after y aquí se vuelve un cronómetro en cuenta
+// regresiva. Sin él el usuario solo ve un error rojo, vuelve a preguntar de
+// inmediato y gasta cuota justo cuando no la tiene, alargando la espera.
+// El estado es uno solo para toda la app: la sección de IA y el panel de
+// Inicio pegan al mismo proveedor, así que la espera de uno es la del otro.
+
+let aiCooldownUntil = 0;
+let aiCooldownTotal = 0;
+let aiCooldownTimer = null;
+
+function aiCooldownRemaining() {
+    return Math.max(0, (aiCooldownUntil - Date.now()) / 1000);
+}
+
+function aiStartCooldown(segundos) {
+    const espera = Number(segundos);
+    if (!Number.isFinite(espera) || espera <= 0) return;
+    const hasta = Date.now() + espera * 1000;
+    // Si ya corría una espera más larga, se respeta: acortarla solo
+    // provocaría otro rechazo del proveedor.
+    if (hasta <= aiCooldownUntil) return;
+    aiCooldownUntil = hasta;
+    aiCooldownTotal = espera;
+    if (aiCooldownTimer) clearInterval(aiCooldownTimer);
+    aiCooldownTimer = setInterval(aiCooldownTick, 100);
+    aiCooldownTick();
+}
+
+function aiCooldownTick() {
+    const restante = aiCooldownRemaining();
+    if (restante <= 0) aiEndCooldown();
+    else aiRenderCooldown(restante);
+}
+
+function aiEndCooldown() {
+    if (aiCooldownTimer) clearInterval(aiCooldownTimer);
+    aiCooldownTimer = null;
+    aiCooldownUntil = 0;
+    aiCooldownTotal = 0;
+    document.querySelectorAll('.ai-cooldown').forEach(nodo => { nodo.hidden = true; });
+    aiSetComposersDisabled(false);
+}
+
+function aiFormatCooldown(restante) {
+    // Bajo un minuto se muestran décimas: un contador de enteros en una
+    // espera de 4 s parece congelado.
+    if (restante < 60) return `${restante.toFixed(1)}s`;
+    return `${Math.floor(restante / 60)}:${String(Math.floor(restante % 60)).padStart(2, '0')}`;
+}
+
+function aiRenderCooldown(restante) {
+    // El aro tiene radio 15.9155 (circunferencia 100), así que el desfase
+    // del trazo es directamente el porcentaje ya transcurrido.
+    const proporcion = aiCooldownTotal > 0 ? Math.min(1, restante / aiCooldownTotal) : 0;
+    document.querySelectorAll('.ai-cooldown').forEach(nodo => {
+        nodo.hidden = false;
+        const tiempo = nodo.querySelector('[data-cooldown-time]');
+        if (tiempo) tiempo.textContent = aiFormatCooldown(restante);
+        const aro = nodo.querySelector('.ai-cooldown-progress');
+        if (aro) aro.style.strokeDashoffset = String(100 - proporcion * 100);
+    });
+    aiSetComposersDisabled(true);
+}
+
+function aiSetComposersDisabled(bloqueado) {
+    document.querySelectorAll('#ai-composer, #panel-ai-composer').forEach(form => {
+        form.querySelectorAll('input, button').forEach(el => { el.disabled = bloqueado; });
+    });
+    document.querySelectorAll('#ai-suggestions .ai-suggestion, #panel-ai-suggestions .ai-suggestion')
+        .forEach(btn => { btn.disabled = bloqueado; });
+}
+
+// --- Configuración (Ajustes → Inteligencia artificial) ---------------------
+
+function aiCurrentPreset() {
+    return aiPresets.find(p => p.id === document.getElementById('ai-preset')?.value) || null;
+}
+
+function aiUpdatePresetUi() {
+    const preset = aiCurrentPreset();
+    const note = document.getElementById('ai-preset-note');
+    const warning = document.getElementById('ai-public-warning');
+    const keyField = document.getElementById('ai-api-key-field');
+    if (note) note.textContent = preset?.note || '';
+    // El aviso de datos aparece por lo que el usuario ESTÁ eligiendo, no por
+    // lo que ya guardó: tiene que verlo antes de aceptar, no después.
+    if (warning) warning.hidden = !preset?.cloud;
+    if (keyField) keyField.hidden = false;
+}
+
+function aiRenderPresets() {
+    const select = document.getElementById('ai-preset');
+    if (!select) return;
+    select.innerHTML = aiPresets
+        .map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
+        .join('');
+
+    const list = document.getElementById('ai-data-sent');
+    if (list) {
+        list.innerHTML = aiDataSent.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    }
+}
+
+// Niveles del modo automático (backend/services/ai_router.py::TIERS). El
+// orden es el que se pinta en el formulario.
+const AI_TIERS = ['fast', 'medium', 'reasoning', 'vision', 'agent'];
+
+function aiTierModelsFromForm() {
+    const tabla = {};
+    AI_TIERS.forEach(tier => {
+        const valor = (document.getElementById(`ai-tier-${tier}`)?.value || '').trim();
+        if (valor) tabla[tier] = valor;
+    });
+    return tabla;
+}
+
+function aiUpdateModelModeUi() {
+    const auto = document.querySelector('input[name="ai-model-mode"]:checked')?.value === 'auto';
+    const bloque = document.getElementById('ai-tier-models');
+    if (bloque) {
+        bloque.hidden = !auto;
+        // Abierto al activarlo: si queda cerrado, el usuario prende el modo
+        // automático y no ve que hay modelos que configurar.
+        if (auto) bloque.open = true;
+    }
+}
+
+function aiPresetIdForUrl(baseUrl) {
+    if (!baseUrl) return 'local';
+    const match = aiPresets.find(p => p.base_url && p.base_url === baseUrl);
+    return match ? match.id : 'custom';
+}
+
+function aiFillConfigForm(config) {
+    aiConfigCache = config;
+    const set = (id, value) => { const el = document.getElementById(id); if (el) el.value = value ?? ''; };
+    const check = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
+
+    check('ai-enabled', config.enabled);
+    set('ai-name', config.name);
+    set('ai-base-url', config.base_url);
+    set('ai-model', config.model);
+    set('ai-timeout', config.timeout_s);
+    set('ai-tool-mode', config.tool_mode);
+    set('ai-tool-profile', config.tool_profile);
+    check('ai-allow-public', config.allow_public_endpoint);
+    check('ai-actions-enabled', config.actions_enabled);
+
+    const modo = config.model_mode === 'auto' ? 'auto' : 'fixed';
+    const radio = document.querySelector(`input[name="ai-model-mode"][value="${modo}"]`);
+    if (radio) radio.checked = true;
+    const tabla = config.tier_models || {};
+    AI_TIERS.forEach(tier => set(`ai-tier-${tier}`, tabla[tier]));
+    aiUpdateModelModeUi();
+
+    const select = document.getElementById('ai-preset');
+    if (select) select.value = aiPresetIdForUrl(config.base_url);
+
+    // La clave nunca baja al navegador. Si el servidor dice que hay una
+    // guardada se muestra un relleno visual, y al guardar se manda el
+    // centinela para conservarla (ver API_KEY_UNCHANGED en el backend).
+    const keyInput = document.getElementById('ai-api-key');
+    if (keyInput) {
+        keyInput.value = config.api_key_set ? AI_API_KEY_UNCHANGED : '';
+        keyInput.dataset.untouched = config.api_key_set ? 'true' : 'false';
+    }
+
+    // Campos forzados por variables de entorno: se bloquean en vez de dejar
+    // que el usuario "guarde" un cambio que el entorno va a pisar igual.
+    const locked = new Set(config.env_locked_fields || []);
+    const lockMap = {
+        enabled: 'ai-enabled', base_url: 'ai-base-url', model: 'ai-model',
+        timeout_s: 'ai-timeout', tool_mode: 'ai-tool-mode',
+        tool_profile: 'ai-tool-profile', allow_public_endpoint: 'ai-allow-public',
+    };
+    Object.entries(lockMap).forEach(([key, id]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = locked.has(key);
+        if (locked.has(key)) el.title = t('aiEnvLocked');
+    });
+
+    aiUpdatePresetUi();
+    aiUpdateNavVisibility(config.enabled);
+}
+
+function aiReadConfigForm() {
+    const val = id => document.getElementById(id)?.value ?? '';
+    const checked = id => !!document.getElementById(id)?.checked;
+    const keyInput = document.getElementById('ai-api-key');
+    return {
+        enabled: checked('ai-enabled'),
+        provider: 'openai-compatible',
+        base_url: val('ai-base-url').trim(),
+        model: val('ai-model').trim(),
+        api_key: keyInput?.dataset.untouched === 'true' ? AI_API_KEY_UNCHANGED : (keyInput?.value ?? ''),
+        timeout_s: Number(val('ai-timeout')) || 60,
+        tool_mode: val('ai-tool-mode') || 'auto',
+        tool_profile: val('ai-tool-profile') || 'full',
+        allow_public_endpoint: checked('ai-allow-public'),
+        actions_enabled: checked('ai-actions-enabled'),
+        model_mode: document.querySelector('input[name="ai-model-mode"]:checked')?.value || 'fixed',
+        tier_models: aiTierModelsFromForm(),
+    };
+}
+
+function aiShowTestResult(message, tone) {
+    const el = document.getElementById('ai-test-result');
+    if (!el) return;
+    el.textContent = message;
+    el.dataset.tone = tone;
+}
+
+// null = el formulario está creando una IA nueva; un id = la está editando.
+let aiEditingId = null;
+
+function aiRenderProviders(data) {
+    const list = document.getElementById('ai-providers-list');
+    if (!list) return;
+    const providers = data.providers || [];
+    if (!providers.length) {
+        list.innerHTML = `<p class="ai-empty">${escapeHtml(t('aiNoProviders'))}</p>`;
+        return;
+    }
+    list.innerHTML = providers.map(p => `
+        <div class="ai-provider-row${p.active ? ' is-active' : ''}" data-id="${escapeHtml(p.id)}">
+            <div class="ai-provider-info">
+                <span class="ai-provider-name">${escapeHtml(p.name || p.base_url)}${p.active ? `<span class="ai-provider-badge">${escapeHtml(t('aiActive'))}</span>` : ''}</span>
+                <span class="ai-provider-meta">${escapeHtml(p.model || '—')} · ${escapeHtml(p.base_url)}</span>
+            </div>
+            <div class="ai-provider-actions">
+                ${p.active ? '' : `<button type="button" class="btn-file-action" data-ai-act="activate">${escapeHtml(t('aiUseThis'))}</button>`}
+                <button type="button" class="btn-file-action" data-ai-act="edit">${escapeHtml(t('aiEdit'))}</button>
+                <button type="button" class="btn-file-action" data-ai-act="delete">${escapeHtml(t('aiDelete'))}</button>
+            </div>
+        </div>`).join('');
+
+    list.querySelectorAll('[data-ai-act]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const row = btn.closest('.ai-provider-row');
+            const id = row?.dataset.id;
+            const accion = btn.dataset.aiAct;
+            if (!id) return;
+            try {
+                if (accion === 'activate') {
+                    await aiFetchJson(`/api/ai/providers/${id}/activate`, { method: 'POST' });
+                    showToast(t('aiActivated'), 'success');
+                } else if (accion === 'delete') {
+                    // Borrar una IA guardada tira su dirección y su clave: se
+                    // confirma, igual que cualquier borrado en NOPAL.
+                    const nombre = row.querySelector('.ai-provider-name')?.textContent || '';
+                    if (!confirm(`${t('aiDeleteConfirm')}\n\n${nombre}`)) return;
+                    await aiFetchJson(`/api/ai/providers/${id}`, { method: 'DELETE' });
+                    if (aiEditingId === id) aiResetProviderForm();
+                    showToast(t('aiDeleted'), 'success');
+                } else if (accion === 'edit') {
+                    const actual = (aiProvidersCache.providers || []).find(x => x.id === id);
+                    if (actual) aiEditProvider(actual);
+                    return;
+                }
+                await loadAiSettings();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        });
+    });
+}
+
+let aiProvidersCache = { providers: [] };
+
+function aiEditProvider(provider) {
+    aiEditingId = provider.id;
+    aiFillConfigForm({ ...provider, enabled: aiProvidersCache.enabled });
+    const title = document.getElementById('ai-form-title');
+    if (title) title.textContent = `${t('aiEditing')}: ${provider.name || provider.base_url}`;
+    const cancel = document.getElementById('ai-cancel-btn');
+    if (cancel) cancel.hidden = false;
+    document.getElementById('ai-settings-fields')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function aiResetProviderForm() {
+    aiEditingId = null;
+    aiFillConfigForm({ ...DEFAULT_AI_FORM, enabled: aiProvidersCache.enabled });
+    const title = document.getElementById('ai-form-title');
+    if (title) title.textContent = t('aiNewProvider');
+    const cancel = document.getElementById('ai-cancel-btn');
+    if (cancel) cancel.hidden = true;
+    aiShowTestResult('', '');
+}
+
+const DEFAULT_AI_FORM = {
+    name: '', base_url: '', model: '', api_key_set: false, timeout_s: 60,
+    tool_mode: 'auto', tool_profile: 'full', allow_public_endpoint: false,
+    env_locked_fields: [],
+};
+
+async function loadAiSettings() {
+    if (currentAuthUser?.role !== 'admin') return;
+    try {
+        if (!aiPresets.length) {
+            const data = await aiFetchJson('/api/ai/presets');
+            aiPresets = data.presets || [];
+            aiDataSent = data.data_sent || [];
+            aiRenderPresets();
+        }
+        await aiLoadSuggestions();
+        aiRenderSuggestionEditor();
+        aiProvidersCache = await aiFetchJson('/api/ai/providers');
+        aiRenderProviders(aiProvidersCache);
+        const activa = (aiProvidersCache.providers || []).find(p => p.active);
+        // El interruptor global refleja el estado de la capa, no el de una
+        // entrada; el resto del formulario muestra la IA que se está editando.
+        const check = document.getElementById('ai-enabled');
+        if (check) check.checked = !!aiProvidersCache.enabled;
+        aiUpdateSettingsDimming(!!aiProvidersCache.enabled);
+        if (aiEditingId === null && activa) aiEditProvider(activa);
+        else if (!activa) aiResetProviderForm();
+    } catch (error) {
+        aiShowTestResult(error.message, 'error');
+    }
+}
+
+async function saveAiSettings() {
+    const button = document.getElementById('ai-save-btn');
+    if (button) button.disabled = true;
+    try {
+        const cuerpo = aiReadConfigForm();
+        cuerpo.name = document.getElementById('ai-name')?.value.trim() || '';
+        // Sin id se crea una IA nueva; con id se actualiza la que se edita.
+        const nueva = aiEditingId === null;
+        const guardada = await aiFetchJson(
+            nueva ? '/api/ai/providers' : `/api/ai/providers/${aiEditingId}`,
+            {
+                method: nueva ? 'POST' : 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo),
+            },
+        );
+        aiEditingId = guardada.id;
+        // Las preguntas rápidas tienen su propio botón. Guardarlas aquí leía
+        // el DOM aunque el editor no estuviera renderizado -- y una lectura
+        // vacía BORRABA las guardadas. Solo se arrastran si el editor existe
+        // y tiene filas.
+        if (document.querySelectorAll('[data-suggestion-index]').length) {
+            await aiSaveSuggestions();
+        }
+        showToast(t('aiSaved'), 'success');
+        aiShowTestResult('', '');
+        await loadAiSettings();
+    } catch (error) {
+        showToast(error.message, 'error');
+        aiShowTestResult(error.message, 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+// El interruptor global no pertenece a ninguna IA guardada: enciende o apaga
+// la capa entera, así que va por su propio endpoint.
+async function setAiEnabled(enabled) {
+    try {
+        aiProvidersCache = await aiFetchJson('/api/ai/enabled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        aiUpdateNavVisibility(!!aiProvidersCache.enabled);
+        showToast(enabled ? t('aiTurnedOn') : t('aiTurnedOff'), 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+        const check = document.getElementById('ai-enabled');
+        if (check) check.checked = !enabled;  // revertir el visual si el backend dijo que no
+    }
+}
+
+async function testAiConnection() {
+    const button = document.getElementById('ai-test-btn');
+    if (button) button.disabled = true;
+    aiShowTestResult(t('aiTesting'), 'pending');
+    try {
+        // Se manda el formulario tal como está para poder probar ANTES de
+        // guardar, que es lo que uno quiere al configurar por primera vez.
+        const result = await aiFetchJson('/api/ai/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(aiReadConfigForm()),
+        });
+        if (!result.ok) {
+            aiShowTestResult(result.error || t('aiTestFailed'), 'error');
+            return;
+        }
+        const datalist = document.getElementById('ai-model-options');
+        if (datalist) {
+            datalist.innerHTML = (result.models || [])
+                .map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+        }
+        // Solo se rellena lo que esté vacío: nunca se pisa lo que el
+        // usuario eligió a mano. Las sugerencias vienen de la lista real
+        // del servidor, así que valen igual para Groq que para Ollama.
+        const sugeridos = result.suggested_tier_models || {};
+        AI_TIERS.forEach(tier => {
+            const campo = document.getElementById(`ai-tier-${tier}`);
+            if (campo && !campo.value.trim() && sugeridos[tier]) campo.value = sugeridos[tier];
+        });
+        aiShowTestResult(result.warning || t('aiTestOk'), result.warning ? 'warn' : 'ok');
+    } catch (error) {
+        aiShowTestResult(error.message, 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+// --- Sección del asistente -------------------------------------------------
+
+// El modo IA tiene DOS interruptores independientes (ver docs/MODO_IA_PLAN.md):
+// la clase de tema decide los COLORES, y este atributo decide qué elementos
+// EXISTEN. Separarlos es lo que permite tener la IA encendida con el tema
+// oscuro y seguir viendo la píldora, la marca y la franja de capacidades.
+const AI_THEME_BEFORE_KEY = 'themeBeforeAi';
+
+function aiUpdateSettingsDimming(enabled) {
+    // El gris es solo señal visual: los campos siguen siendo usables porque
+    // configurar la IA es paso previo a poder encenderla.
+    document.getElementById('ai-settings-body')?.classList.toggle('is-off', !enabled);
+}
+
+function aiApplyModeChrome(enabled) {
+    aiUpdateSettingsDimming(enabled);
+    const wasActive = document.body.getAttribute('data-ai-active') === 'true';
+    // La pestaña de IA desaparece al apagar la capa; si era la visible hay
+    // que devolver el panel a Trabajos o quedaría en blanco.
+    if (!enabled && document.querySelector('[data-panel-tab="ai"]')?.classList.contains('active')) {
+        aiSwitchPanelTab('jobs');
+    }
+    document.body.setAttribute('data-ai-active', enabled ? 'true' : 'false');
+    if (enabled === wasActive) return;  // sin transición, no se toca el tema
+
+    // Al encender la IA el ambiente completo cambia al tema 'ai', pero se
+    // recuerda el anterior para devolverlo al apagar. Si mientras tanto el
+    // usuario elige otro tema a mano, se respeta: al apagar solo se restaura
+    // cuando el tema vigente sigue siendo 'ai'.
+    const actual = document.body.getAttribute('data-theme');
+    if (enabled) {
+        if (actual !== 'ai') {
+            try { localStorage.setItem(AI_THEME_BEFORE_KEY, actual || 'light'); } catch (_) {}
+            applyTheme('ai');
+        }
+    } else if (actual === 'ai') {
+        let previo = 'light';
+        try { previo = localStorage.getItem(AI_THEME_BEFORE_KEY) || 'light'; } catch (_) {}
+        applyTheme(previo);
+    }
+}
+
+// El chrome del modo IA no puede esperar a que alguien entre a la sección de
+// IA: si la capa está encendida, la píldora y la marca tienen que estar desde
+// que carga la página.
+async function aiInitModeChrome() {
+    try {
+        const status = await aiFetchJson('/api/ai/status');
+        aiApplyModeChrome(!!status.enabled);
+        aiUpdateNavVisibility(!!status.enabled);
+    } catch (_) {
+        aiApplyModeChrome(false);
+    }
+}
+
+function aiUpdateNavVisibility(enabled) {
+    const button = document.getElementById('nav-ai-btn');
+    if (button) button.hidden = !enabled;
+    aiApplyModeChrome(enabled);
+}
+
+// Render por tipo de máquina. Son las mismas ilustraciones del modo IA que
+// ya usan las tarjetas del panel: una ficha con la foto de la máquina se
+// reconoce de un vistazo, un rectángulo con texto no.
+const AI_MACHINE_ART = {
+    printer: '/static/img/3D_IA.webp',
+    laser: '/static/img/LASER_IA.webp',
+    cnc: '/static/img/CNC_IA.webp',
+};
+
+const AI_METRIC_ICONS = {
+    temp: '<path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>',
+    bed: '<path d="M2 17h20"/><path d="M4 17V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8"/><path d="M6 17v2"/><path d="M18 17v2"/>',
+    power: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    speed: '<path d="M12 20a8 8 0 1 0-8-8"/><path d="M12 12l4-3"/>',
+    progress: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+};
+
+function aiMetric(icon, value) {
+    // Sin dato se muestra una raya, nunca un cero: un 0 °C leído como real
+    // es peor que admitir que no se sabe.
+    return `<span class="ai-machine-metric">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${AI_METRIC_ICONS[icon]}</svg>
+        <span>${escapeHtml(value === null || value === undefined || value === '' ? '—' : String(value))}</span>
+    </span>`;
+}
+
+function aiMachineTone(machine) {
+    const estado = String(machine.status?.state || '').toLowerCase();
+    if (!machine.online) return 'off';
+    if (['error', 'alarm', 'alarma'].includes(estado)) return 'error';
+    if (estado === 'paused') return 'warn';
+    if (['printing', 'running', 'busy'].includes(estado)) return 'busy';
+    return 'ok';
+}
+
+function aiMachineStateLabel(machine, tone) {
+    const etiquetas = { off: 'aiOffline', error: 'aiStateAlert', warn: 'aiStatePaused', busy: 'aiWorking', ok: 'aiReady' };
+    return t(etiquetas[tone] || 'aiReady');
+}
+
+function aiMachineMetrics(machine) {
+    const st = machine.status || {};
+    const grados = v => (Number.isFinite(v) ? `${Math.round(v)}°C` : null);
+    const avance = Number.isFinite(st.job?.progress) ? `${Math.round(st.job.progress)}%` : null;
+
+    if (machine.type === 'printer') {
+        return aiMetric('temp', grados(st.hotend?.current)) +
+               aiMetric('bed', grados(st.bed?.current)) +
+               aiMetric('progress', avance);
+    }
+    // Láser y CNC no tienen boquilla ni cama: lo que importa es cuánta
+    // potencia/giro se está entregando y a qué velocidad se mueve.
+    const potencia = machine.type === 'cnc'
+        ? (Number.isFinite(st.spindle_rpm) ? `${Math.round(st.spindle_rpm)} rpm` : null)
+        : (Number.isFinite(st.laser_power) ? `S${Math.round(st.laser_power)}` : null);
+    const velocidad = Number.isFinite(st.feed) ? `${Math.round(st.feed)} mm/m` : null;
+    return aiMetric('power', potencia) + aiMetric('speed', velocidad) + aiMetric('progress', avance);
+}
+
+function aiMachineDetail(machine, tone) {
+    const st = machine.status || {};
+    if (!machine.online) return t('aiNoConnection');
+    const job = st.job || {};
+    if (Number.isFinite(job.progress) && job.progress > 0) {
+        const archivo = job.filename ? ` · ${job.filename}` : '';
+        return `${Math.round(job.progress)}%${archivo}`;
+    }
+    return t(tone === 'error' ? 'aiNeedsAttention' : 'aiIdle');
+}
+
+function aiMachineCard(machine) {
+    const tone = aiMachineTone(machine);
+    const art = AI_MACHINE_ART[machine.type] || AI_MACHINE_ART.printer;
+    return `
+        <article class="ai-machine-card" data-tone="${tone}">
+            <div class="ai-machine-top">
+                <span class="ai-machine-art"><img src="${art}" alt="" loading="lazy"></span>
+                <span class="ai-machine-id">
+                    <span class="ai-machine-name" title="${escapeHtml(machine.name || machine.id)}">${escapeHtml(machine.name || machine.id)}</span>
+                    <span class="ai-machine-pill">${escapeHtml(aiMachineStateLabel(machine, tone))}</span>
+                </span>
+            </div>
+            <p class="ai-machine-detail">${escapeHtml(aiMachineDetail(machine, tone))}</p>
+            <div class="ai-machine-metrics">${aiMachineMetrics(machine)}</div>
+        </article>`;
+}
+
+async function aiLoadMachines() {
+    const container = document.getElementById('ai-machines');
+    if (!container) return;
+    try {
+        const data = await aiFetchJson('/api/devices/registry');
+        const machines = data.machines || [];
+        container.innerHTML = machines.length
+            ? machines.map(aiMachineCard).join('')
+            : `<p class="ai-empty">${escapeHtml(t('aiNoMachines'))}</p>`;
+    } catch (error) {
+        container.innerHTML = `<p class="ai-empty">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+async function aiLoadEvents() {
+    const container = document.getElementById('ai-events');
+    if (!container) return;
+    try {
+        const data = await aiFetchJson('/api/ai/tools/get_recent_events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 12 }),
+        });
+        const events = (data.events || []).slice().reverse();
+        container.innerHTML = events.length
+            ? events.map(event => `
+                <div class="ai-event" data-level="${escapeHtml((event.level || '').toLowerCase())}">
+                    <span class="ai-event-dot"></span>
+                    <div class="ai-event-body">
+                        <span class="ai-event-message">${escapeHtml(event.message || '')}</span>
+                        <span class="ai-event-meta">${escapeHtml(event.timestamp || '')} · ${escapeHtml(event.source || '')}</span>
+                    </div>
+                </div>`).join('')
+            : `<p class="ai-empty">${escapeHtml(t('aiNoEvents'))}</p>`;
+    } catch (error) {
+        container.innerHTML = `<p class="ai-empty">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+function aiAppendMessage(role, text, meta = null) {
+    const thread = document.getElementById('ai-thread');
+    if (!thread) return null;
+    const bubble = document.createElement('div');
+    bubble.className = `ai-msg ai-msg-${role}`;
+    bubble.innerHTML = `<div class="ai-msg-text">${escapeHtml(text)}</div>` +
+        (meta ? `<div class="ai-msg-meta">${escapeHtml(meta)}</div>` : '');
+    thread.appendChild(bubble);
+    thread.scrollTop = thread.scrollHeight;
+    return bubble;
+}
+
+function aiRenderSuggestions() {
+    const container = document.getElementById('ai-suggestions');
+    if (!container) return;
+    container.innerHTML = aiSuggestedQuestions()
+        .map(q => `<button type="button" class="ai-suggestion">${escapeHtml(q)}</button>`).join('');
+    container.querySelectorAll('.ai-suggestion').forEach(button => {
+        button.addEventListener('click', () => {
+            const input = document.getElementById('ai-question');
+            if (input) input.value = button.textContent;
+            askAi();
+        });
+    });
+    // Los botones se acaban de recrear: si hay una espera en curso, vuelven
+    // a bloquearse.
+    if (aiCooldownRemaining() > 0) aiSetComposersDisabled(true);
+}
+
+function aiResetThread() {
+    aiConversationId = null;
+    const thread = document.getElementById('ai-thread');
+    if (thread) thread.innerHTML = '';
+    aiAppendMessage('assistant', t('aiGreeting'));
+    aiRenderSuggestions();
+}
+
+async function askAi() {
+    // El bloqueo de verdad está aquí, no en los botones deshabilitados:
+    // Enter en el campo de texto también llega a este punto.
+    if (aiBusy || aiCooldownRemaining() > 0) return;
+    const input = document.getElementById('ai-question');
+    const question = (input?.value || '').trim();
+    if (!question) return;
+
+    aiBusy = true;
+    if (input) input.value = '';
+    const sendBtn = document.getElementById('ai-send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    aiAppendMessage('user', question);
+    const pending = aiAppendMessage('assistant', t('aiThinking'));
+    pending?.classList.add('ai-msg-pending');
+
+    try {
+        const result = await aiFetchJson('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, conversation_id: aiConversationId }),
+        });
+        pending?.remove();
+        // La traza de herramientas se muestra siempre: es lo que permite
+        // verificar de dónde salió cada dato en vez de confiar a ciegas.
+        const tools = (result.tool_calls || []).map(c => c.tool).join(', ');
+        const seconds = Math.round((result.elapsed_ms || 0) / 1000);
+        // Con el modo automático encendido, el admin necesita poder ver POR
+        // QUÉ una respuesta salió cara o pobre. Es metadata de la decisión
+        // local, no razonamiento del modelo.
+        const ruta = (result.route && currentAuthUser?.role === 'admin')
+            ? `${result.route.tier.toUpperCase()} · ${result.route.model} · ${result.route.reason}`
+            : '';
+        const meta = [ruta, tools && `${t('aiToolsUsed')}: ${tools}`, seconds ? `${seconds}s` : '']
+            .filter(Boolean).join(' · ');
+        aiAppendMessage('assistant', result.answer || '', meta);
+        aiConversationId = result.conversation_id || aiConversationId;
+        if (result.pending_action) aiRenderPendingAction(result.pending_action);
+        aiLoadHistory();
+    } catch (error) {
+        pending?.remove();
+        aiAppendMessage('assistant', error.message, t('aiError'));
+        aiStartCooldown(error.retryAfter);
+    } finally {
+        aiBusy = false;
+        if (sendBtn) sendBtn.disabled = aiCooldownRemaining() > 0;
+    }
+}
+
+async function aiLoadHistory() {
+    const list = document.getElementById('ai-history-list');
+    if (!list) return;
+    let data = { conversations: [] };
+    try {
+        data = await aiFetchJson('/api/ai/conversations');
+    } catch (_) { /* sin sesión: se deja vacío */ }
+
+    const limpiar = document.getElementById('ai-history-clear-btn');
+    if (limpiar) limpiar.hidden = currentAuthUser?.role !== 'admin' || !data.conversations.length;
+
+    if (!data.conversations.length) {
+        list.innerHTML = `<p class="ai-empty">${escapeHtml(t('aiNoHistory'))}</p>`;
+        return;
+    }
+    list.innerHTML = data.conversations.map(c => `
+        <div class="ai-history-row${c.id === aiConversationId ? ' is-active' : ''}" data-id="${escapeHtml(c.id)}">
+            <button type="button" class="ai-history-open" data-open>
+                <span class="ai-history-title">${escapeHtml(c.title)}</span>
+                <span class="ai-history-meta">${c.message_count} · ${escapeHtml(aiFormatDate(c.updated_at))}</span>
+            </button>
+            <button type="button" class="ai-history-del" data-del data-i18n-title="aiDelete" title="Eliminar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`).join('');
+
+    list.querySelectorAll('[data-open]').forEach(btn => btn.addEventListener('click', () =>
+        aiOpenConversation(btn.closest('.ai-history-row').dataset.id)));
+    list.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        const id = btn.closest('.ai-history-row').dataset.id;
+        if (!confirm(t('aiDeleteConversationConfirm'))) return;
+        try {
+            await aiFetchJson(`/api/ai/conversations/${id}`, { method: 'DELETE' });
+            if (aiConversationId === id) aiResetThread();
+            await aiLoadHistory();
+        } catch (error) { showToast(error.message, 'error'); }
+    }));
+}
+
+function aiFormatDate(seconds) {
+    if (!seconds) return '';
+    try {
+        return new Date(seconds * 1000).toLocaleString(undefined,
+            { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch (_) { return ''; }
+}
+
+async function aiOpenConversation(id) {
+    try {
+        const c = await aiFetchJson(`/api/ai/conversations/${id}`);
+        aiConversationId = c.id;
+        const thread = document.getElementById('ai-thread');
+        if (thread) thread.innerHTML = '';
+        (c.messages || []).forEach(m => {
+            const meta = m.role === 'assistant' && (m.tool_calls || []).length
+                ? `${t('aiToolsUsed')}: ${(m.tool_calls || []).filter(Boolean).join(', ')}`
+                : null;
+            aiAppendMessage(m.role === 'user' ? 'user' : 'assistant', m.content || '', meta);
+        });
+        aiRenderSuggestions();
+        await aiLoadHistory();
+    } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function loadAiSection() {
+    const notice = document.getElementById('ai-disabled-notice');
+    const layout = document.getElementById('ai-layout');
+    const pill = document.getElementById('ai-conn-pill');
+
+    let status = { enabled: false };
+    try {
+        status = await aiFetchJson('/api/ai/status');
+    } catch (_) { /* sin sesión o backend viejo: se trata como apagado */ }
+
+    aiUpdateNavVisibility(status.enabled);
+
+    if (!status.enabled) {
+        if (notice) notice.hidden = false;
+        if (layout) layout.hidden = true;
+        if (pill) pill.hidden = true;
+        return;
+    }
+
+    if (notice) notice.hidden = true;
+    if (layout) layout.hidden = false;
+    if (pill) {
+        pill.hidden = false;
+        pill.textContent = status.model || t('aiConnected');
+        pill.dataset.tone = 'ok';
+    }
+
+    await aiLoadSuggestions();
+    const thread = document.getElementById('ai-thread');
+    if (thread && !thread.children.length) aiResetThread();
+    else aiRenderSuggestions();
+
+    aiLoadMachines();
+    aiLoadEvents();
+    aiLoadHistory();
+}
+
+// --- Asistente compacto del panel de control -----------------------------
+// Comparte la conversación con la sección completa (mismo aiConversationId),
+// así que empezar aquí y seguir allá es un solo hilo.
+function aiSwitchPanelTab(nombre) {
+    document.querySelectorAll('[data-panel-tab]').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.panelTab === nombre));
+    document.querySelectorAll('[data-panel-pane]').forEach(pane => {
+        pane.hidden = pane.dataset.panelPane !== nombre;
+    });
+    const verTodos = document.getElementById('panel-jobs-see-all');
+    if (verTodos) verTodos.hidden = nombre !== 'jobs';
+    if (nombre === 'ai') aiRenderPanelSuggestions();
+}
+
+function aiRenderPanelSuggestions() {
+    const cont = document.getElementById('panel-ai-suggestions');
+    if (!cont) return;
+    cont.innerHTML = aiSuggestedQuestions()
+        .map(q => `<button type="button" class="ai-suggestion">${escapeHtml(q)}</button>`).join('');
+    cont.querySelectorAll('.ai-suggestion').forEach(btn => btn.addEventListener('click', () => {
+        const input = document.getElementById('panel-ai-question');
+        if (input) input.value = btn.textContent;
+        askAiFromPanel();
+    }));
+    if (aiCooldownRemaining() > 0) aiSetComposersDisabled(true);
+}
+
+function aiAppendPanelMessage(role, text, meta) {
+    const thread = document.getElementById('panel-ai-thread');
+    if (!thread) return null;
+    const bubble = document.createElement('div');
+    bubble.className = `ai-msg ai-msg-${role}`;
+    bubble.innerHTML = `<div class="ai-msg-text">${escapeHtml(text)}</div>` +
+        (meta ? `<div class="ai-msg-meta">${escapeHtml(meta)}</div>` : '');
+    thread.appendChild(bubble);
+    thread.scrollTop = thread.scrollHeight;
+    return bubble;
+}
+
+let aiPanelBusy = false;
+
+async function askAiFromPanel() {
+    if (aiPanelBusy || aiCooldownRemaining() > 0) return;
+    const input = document.getElementById('panel-ai-question');
+    const question = (input?.value || '').trim();
+    if (!question) return;
+
+    aiPanelBusy = true;
+    if (input) input.value = '';
+    aiAppendPanelMessage('user', question);
+    const pendiente = aiAppendPanelMessage('assistant', t('aiThinking'));
+    pendiente?.classList.add('ai-msg-pending');
+
+    try {
+        const result = await aiFetchJson('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, conversation_id: aiConversationId }),
+        });
+        pendiente?.remove();
+        aiConversationId = result.conversation_id || aiConversationId;
+        const tools = (result.tool_calls || []).map(c => c.tool).join(', ');
+        aiAppendPanelMessage('assistant', result.answer || '', tools ? `${t('aiToolsUsed')}: ${tools}` : null);
+        // Una acción de riesgo pedida desde aquí se confirma en la sección
+        // completa: el panel es demasiado angosto para mostrar bien qué se
+        // va a ejecutar, y confirmar a ciegas es justo lo que se evita.
+        if (result.pending_action) {
+            aiAppendPanelMessage('assistant', t('aiConfirmInSection'));
+        }
+    } catch (error) {
+        pendiente?.remove();
+        aiAppendPanelMessage('assistant', error.message, t('aiError'));
+        aiStartCooldown(error.retryAfter);
+    } finally {
+        aiPanelBusy = false;
+    }
+}
+
+document.querySelectorAll('[data-panel-tab]').forEach(btn =>
+    btn.addEventListener('click', () => aiSwitchPanelTab(btn.dataset.panelTab)));
+document.getElementById('panel-ai-composer')?.addEventListener('submit', event => {
+    event.preventDefault();
+    askAiFromPanel();
+});
+
+aiInitModeChrome();
+
+document.getElementById('ai-composer')?.addEventListener('submit', event => {
+    event.preventDefault();
+    askAi();
+});
+document.getElementById('ai-clear-btn')?.addEventListener('click', () => { aiResetThread(); aiLoadHistory(); });
+document.getElementById('ai-history-clear-btn')?.addEventListener('click', async () => {
+    if (!confirm(t('aiClearHistoryConfirm'))) return;
+    try {
+        await aiFetchJson('/api/ai/conversations', { method: 'DELETE' });
+        aiResetThread();
+        await aiLoadHistory();
+    } catch (error) { showToast(error.message, 'error'); }
+});
+document.getElementById('ai-refresh-btn')?.addEventListener('click', loadAiSection);
+document.getElementById('ai-goto-settings-btn')?.addEventListener('click', () => switchSection('settings'));
+document.getElementById('ai-save-btn')?.addEventListener('click', saveAiSettings);
+document.getElementById('ai-provider-add-btn')?.addEventListener('click', aiResetProviderForm);
+document.getElementById('ai-suggestions-save-btn')?.addEventListener('click', async () => {
+    const aviso = document.getElementById('ai-suggestions-result');
+    await aiSaveSuggestions();
+    if (aviso) {
+        aviso.textContent = t('aiQuestionsSaved');
+        aviso.dataset.tone = 'ok';
+        setTimeout(() => { aviso.textContent = ''; }, 2500);
+    }
+});
+document.getElementById('ai-suggestion-add-btn')?.addEventListener('click', () => {
+    aiStoredSuggestions = [...aiReadSuggestionEditor(), ''];
+    aiRenderSuggestionEditor();
+    document.querySelector('[data-suggestion-index]:last-of-type')?.focus();
+});
+document.getElementById('ai-cancel-btn')?.addEventListener('click', aiResetProviderForm);
+document.getElementById('ai-enabled')?.addEventListener('change', event => {
+    aiUpdateSettingsDimming(event.target.checked);   // respuesta inmediata al clic
+    setAiEnabled(event.target.checked);
+});
+document.getElementById('ai-test-btn')?.addEventListener('click', testAiConnection);
+document.querySelectorAll('input[name="ai-model-mode"]').forEach(radio =>
+    radio.addEventListener('change', aiUpdateModelModeUi));
+document.getElementById('ai-preset')?.addEventListener('change', () => {
+    const preset = aiCurrentPreset();
+    const urlInput = document.getElementById('ai-base-url');
+    if (preset?.base_url && urlInput) urlInput.value = preset.base_url;
+    aiUpdatePresetUi();
+});
+document.getElementById('ai-api-key')?.addEventListener('input', event => {
+    event.target.dataset.untouched = 'false';
+});
+
+
+// ===========================================================================
+// Respaldo de configuración
+// ---------------------------------------------------------------------------
+// Selección múltiple a propósito: respaldar todo cuando solo querías las
+// impresoras es tan molesto como no tener respaldo.
+// ===========================================================================
+
+function backupShow(mensaje, tono) {
+    const el = document.getElementById('backup-result');
+    if (!el) return;
+    el.textContent = mensaje;
+    el.dataset.tone = tono || '';
+}
+
+async function backupLoadGroups() {
+    const cont = document.getElementById('backup-groups');
+    if (!cont || currentAuthUser?.role !== 'admin') return;
+    let data = { groups: [] };
+    try {
+        data = await aiFetchJson('/api/config-backup/groups');
+    } catch (_) { return; }
+
+    cont.innerHTML = data.groups.map(g => `
+        <label class="backup-group${g.available ? '' : ' is-empty'}">
+            <input type="checkbox" value="${escapeHtml(g.id)}" ${g.available ? '' : 'disabled'}>
+            <span class="backup-group-text">
+                <span class="backup-group-label">${escapeHtml(g.label)}${g.sensitive ? `<span class="backup-sensitive">${escapeHtml(t('backupSensitive'))}</span>` : ''}</span>
+                ${g.warning ? `<small>${escapeHtml(g.warning)}</small>` : ''}
+                ${g.available ? '' : `<small>${escapeHtml(t('backupNoData'))}</small>`}
+            </span>
+        </label>`).join('');
+}
+
+function backupSelected() {
+    return Array.from(document.querySelectorAll('#backup-groups input:checked')).map(i => i.value);
+}
+
+document.getElementById('backup-export-btn')?.addEventListener('click', async () => {
+    const groups = backupSelected();
+    if (!groups.length) { backupShow(t('backupPickSomething'), 'error'); return; }
+    backupShow(t('backupWorking'), 'pending');
+    try {
+        const response = await fetch('/api/config-backup/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groups, passphrase: document.getElementById('backup-passphrase')?.value || '' }),
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+        // Descarga directa: el archivo nunca pasa por el portapapeles ni por
+        // otro servicio.
+        const blob = await response.blob();
+        const enlace = document.createElement('a');
+        enlace.href = URL.createObjectURL(blob);
+        enlace.download = (response.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1]
+            || 'nopal-config.nopal';
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        URL.revokeObjectURL(enlace.href);
+        backupShow(t('backupExported'), 'ok');
+    } catch (error) {
+        backupShow(error.message, 'error');
+    }
+});
+
+document.getElementById('backup-import-input')?.addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const passphrase = document.getElementById('backup-passphrase')?.value || '';
+    backupShow(t('backupWorking'), 'pending');
+
+    // Primero se inspecciona: la persona tiene derecho a ver qué va a
+    // sobrescribir antes de aceptarlo.
+    let info;
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('passphrase', passphrase);
+        const r = await fetch('/api/config-backup/inspect', { method: 'POST', body: fd });
+        info = await r.json();
+        if (!r.ok) throw new Error(info.detail || `HTTP ${r.status}`);
+    } catch (error) { backupShow(error.message, 'error'); return; }
+
+    if (info.needs_passphrase) {
+        backupShow(t('backupNeedsPassphrase'), 'error');
+        return;
+    }
+
+    const seleccionados = backupSelected();
+    const groups = seleccionados.length ? seleccionados : info.groups;
+    if (!confirm(`${t('backupImportConfirm')}\n\n${groups.join(', ')}\n\n${info.files.length} ${t('backupFiles')}`)) {
+        backupShow('', '');
+        return;
+    }
+
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('groups', groups.join(','));
+        fd.append('passphrase', passphrase);
+        const r = await fetch('/api/config-backup/import', { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+        backupShow(`${t('backupImported')} (${data.restored.length}) — ${t('backupRestartNeeded')}`, 'ok');
+    } catch (error) {
+        backupShow(error.message, 'error');
+    }
 });
