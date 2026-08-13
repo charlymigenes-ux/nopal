@@ -280,14 +280,38 @@ sudo systemctl restart nopal
 
 ## Uninstall
 
-To remove NOPAL from the system:
+Run the uninstaller from the installation directory:
 
 ```bash
-sudo systemctl disable --now nopal
-sudo rm /etc/systemd/system/nopal.service
-sudo systemctl daemon-reload
-rm -rf ~/nopal
+./uninstall.sh
 ```
+
+It stops and removes the `nopal.service` unit and deletes the virtual
+environment — the mirror image of what `install.sh` created. **Your data is
+kept**: the model/G-code library, the registered machines, quotes, pricing,
+users and settings all stay in place, so reinstalling over the same
+directory picks up exactly where you left off.
+
+To remove the data as well:
+
+```bash
+./uninstall.sh --purgar
+```
+
+That one asks you to type `PURGAR` to confirm and writes a timestamped
+backup of your configuration to your home directory before deleting
+anything. Use `--dry-run` first if you want to see the list without
+touching anything.
+
+> The old instructions here ended in `rm -rf ~/nopal`. That directory is not
+> just the program: it holds `uploads/` with your entire model and G-code
+> library, the `*_registry.json` files with every machine you ever
+> registered, your quotes and pricing, and `auth_users.json` with the user
+> accounts. Deleting it wholesale is not reversible, which is why the
+> uninstaller keeps your data unless you explicitly ask otherwise.
+
+Nothing else on the system is touched — Klipper, Moonraker and crowsnest are
+left exactly as they were.
 
 ---
 
