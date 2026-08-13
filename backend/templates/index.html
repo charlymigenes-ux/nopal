@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=321">
+    <link rel="stylesheet" href="/static/css/style.css?v=322">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -434,25 +434,23 @@
             </main>
         </section>
 
-            <!-- Franja de capacidades: exclusiva del modo IA. Describe lo que la
-                 capa hace, no un estado medido, así que no necesita datos nuevos. -->
-            <div class="ai-capability-strip ai-only-flex" data-ai-only>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    <span data-i18n="aiCapAutomation">Automatización activa</span>
-                </span>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><polyline points="7 14 11 9 15 12 21 5"/></svg>
-                    <span data-i18n="aiCapPredictive">Asistencia predictiva</span>
-                </span>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-                    <span data-i18n="aiCapRealtime">Optimización en tiempo real</span>
-                </span>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/></svg>
-                    <span data-i18n="aiCapDiagnostic">Diagnóstico inteligente</span>
-                </span>
+            <!-- Cortinilla de IA: exclusiva del modo IA. Sugiere comandos para
+                 la sección en la que se está parado -- no un estado medido, así
+                 que no necesita datos nuevos.
+
+                 Fija al fondo del VIEWPORT (no de la sección): antes vivía en el
+                 flujo normal del documento, como hermana de cada <section> de
+                 página. Con las secciones alternando display:none/'', quedaba
+                 flotando en el hueco que dejaba la sección oculta -- por eso
+                 aparecía encimada con controles del láser, a la mitad de
+                 Configuración, etc. Estar fija la saca de ese flujo por completo:
+                 vive en un solo lugar sin importar qué sección esté activa. El
+                 envoltorio de afuera (transparente, reserva el ancho de la
+                 barra lateral) solo centra; el pellet de adentro es lo que se ve. -->
+            <div class="ai-capability-dock ai-only-flex" data-ai-only>
+                <div class="ai-capability-strip" id="ai-capability-strip">
+                    <div class="ai-capability-track" id="ai-capability-track"></div>
+                </div>
             </div>
 
             <section id="models-section" class="view-section" style="display: none;">
@@ -4575,11 +4573,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=41"></script>
+    <script src="/static/js/translations.js?v=42"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=262"></script>
+    <script src="/static/js/app.js?v=263"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

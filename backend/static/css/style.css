@@ -16594,6 +16594,7 @@ body.ai {
 }
 
 /* Los detalles de arena: separadores y realces sutiles, en dosis pequeñas. */
+body.ai .ai-capability-strip { border-color: var(--ai-sand); }
 body.ai .ai-capability + .ai-capability { border-left-color: var(--ai-sand); }
 body.ai .panel-card-mini { border-top: 2px solid var(--ai-sand-soft); }
 
@@ -16630,31 +16631,103 @@ body[data-ai-active="true"] .nav-item[data-section="ai"] {
 body[data-ai-active="true"] .nav-item[data-section="ai"] svg { color: #FFFFFF; }
 body[data-ai-active="true"] .nav-item[data-section="ai"]:hover { filter: brightness(1.06); }
 
-/* Franja de capacidades bajo los dispositivos */
-.ai-capability-strip {
-    align-items: center;
+/* ── Cortinilla de IA ──────────────────────────────────────────────────────
+   Comandos para la sección en la que se está parado, en una cinta que se
+   desliza sola. Fija al VIEWPORT, no al flujo del documento -- antes vivía
+   como hermana de cada <section> de página, y con las secciones alternando
+   display:none/'' quedaba flotando en el hueco que dejaba la sección oculta
+   (por eso aparecía encimada con controles del láser, a la mitad de
+   Configuración...). Fija, sale de ese flujo por completo: un solo lugar,
+   sin importar qué sección esté activa.
+
+   El envoltorio de afuera (.ai-capability-dock) no es visible -- solo
+   reserva el ancho del sidebar y centra; mismo patrón de left:240/76px que
+   ya usa .dashboard-fixed-stack (el dock de Accesorios/Matriz LED) un poco
+   más arriba en este archivo. Va en z-index por encima de ese dock (40) y
+   de cualquier contenido de sección, para que nunca quede tapada por nada
+   -- y por debajo de los modales reales (3000+), que sí deben cubrirla. */
+.ai-capability-dock {
+    position: fixed;
+    left: 240px;
+    right: 0;
+    bottom: 18px;
+    z-index: 2000;
     justify-content: center;
-    flex-wrap: wrap;
-    gap: 10px 28px;
-    padding: 14px 20px;
-    margin-top: 16px;
+    padding: 0 24px;
+    pointer-events: none;
+}
+.app-shell.sidebar-collapsed .ai-capability-dock { left: 76px; }
+@media (max-width: 768px) {
+    /* El sidebar es un cajón flotante en móvil, no ocupa columna. */
+    .ai-capability-dock { left: 0; bottom: 12px; padding: 0 16px; }
+}
+
+/* El dock de Accesorios/Matriz LED (.dashboard-fixed-stack, ver más arriba
+   en este archivo) también vive pegado al fondo, en la misma franja
+   horizontal. Con la IA encendida se corre hacia arriba lo que ocupa la
+   cortinilla, para que ninguna de las dos tape a la otra -- el pedido
+   explícito era que la cortinilla quedara "abajo de todo, sola, sin que
+   nada la acompañe", y eso incluye no compartir sitio con este dock. */
+body[data-ai-active="true"] .dashboard-fixed-stack { bottom: 78px; }
+
+.ai-capability-strip {
+    pointer-events: auto;
+    position: relative;
+    width: 100%;
+    max-width: 860px;
+    overflow: hidden;
+    padding: 12px 0;
     background: var(--surface-raised);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    border-radius: 999px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .2);
+    /* Los bordes de la píldora difuminan el texto en vez de cortarlo en
+       seco: se nota que la cinta sigue de largo hacia los dos lados. */
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+            mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
 }
+
+/* El contenido real se duplica al armarlo en JS (ver aiRenderCapabilityStrip)
+   y la cinta se desliza hasta -50%: ahí empieza la segunda copia, idéntica a
+   la primera, así que el salto de vuelta a 0% es invisible y el desfile no
+   se corta nunca. */
+.ai-capability-track {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    width: max-content;
+    padding: 0 28px;
+    animation: aiCapabilityScroll 34s linear infinite;
+}
+.ai-capability-strip:hover .ai-capability-track,
+.ai-capability-strip:focus-within .ai-capability-track {
+    animation-play-state: paused; /* para poder leer y hacer clic sin perseguirla */
+}
+@keyframes aiCapabilityScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ai-capability-track { animation: none; }
+}
+
 .ai-capability {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
     font-size: .82rem;
     color: var(--text-soft);
     white-space: nowrap;
+    cursor: pointer;
 }
 .ai-capability svg { color: var(--ai-grad-from); flex-shrink: 0; }
+.ai-capability:hover, .ai-capability:focus-visible { color: var(--text-strong); }
 .ai-capability + .ai-capability { border-left: 1px solid var(--border-subtle); padding-left: 28px; }
-@media (max-width: 767px) {
-    .ai-capability + .ai-capability { border-left: none; padding-left: 0; }
-}
 
 /* Marca de la barra lateral: con la IA encendida el logotipo pasa a
    NOPAL Intelligence. Si el archivo del logotipo aún no está en
