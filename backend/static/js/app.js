@@ -7241,11 +7241,16 @@ function setCameraCardVisible(deviceKey, visible) {
 // verdad una cámara vinculada, así que se crea desde mountCameraCardsIn una
 // vez que ya sabe la respuesta, nunca de entrada en el HTML estático.
 function ensureCameraToggleButton(card, deviceKey) {
-    const header = card.querySelector('.printer-card-top');
+    // Las dos cabeceras mientras dure la migración: la ficha nueva no tiene
+    // '.printer-card-top', y sin esto la impresora migrada se quedaba sin el
+    // botón de mostrar/ocultar cámara -- el mismo tropiezo que con el de
+    // alertas LED.
+    const header = card.querySelector('.printer-card-top') || card.querySelector('.dev-card-head');
     if (!header) return;
     let button = header.querySelector('.printer-card-camera-toggle');
     if (!button) {
-        const actions = header.querySelector('.printer-quick-actions') || header;
+        const actions = header.querySelector('.printer-quick-actions')
+            || header.querySelector('.dev-card-head-right') || header;
         actions.insertAdjacentHTML('afterbegin', `
             <button type="button" class="printer-card-camera-toggle" data-cam-toggle-key="${escapeHtml(deviceKey)}" title="${escapeHtml(t('cameraToggleTitle'))}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -7396,23 +7401,20 @@ function klipperDeviceModel(printer, datos) {
         ];
     }
 
-    const metrics = enTrabajo || state === 'heating' ? [
+    // Las temperaturas van con icono y número grande siempre que la máquina
+    // esté conectada, no solo mientras trabaja: son el dato que se busca de
+    // un vistazo y en reposo quedaban como dos renglones de texto chico.
+    const metrics = state !== 'offline' ? [
         { icon: 'nozzle', label: t('devNozzle'), value: Number.isFinite(extruderTemp) ? `${extruderTemp} °C` : null },
         { icon: 'bed', label: t('devBed'), value: Number.isFinite(bedTemp) ? `${bedTemp} °C` : null },
     ] : [];
 
     const info = [];
-    if (enTrabajo) {
-        // Solo se muestra lo que existe: una impresión sin capas informadas
-        // no debe pintar "Capa 0 / 0" como si fuera un dato.
-        if (spool && spool.label) info.push({ label: t('devMaterial'), value: spool.label });
-        if (Number.isFinite(job.current_layer) && Number.isFinite(job.total_layer)) {
-            info.push({ label: t('devLayer'), value: `${job.current_layer} / ${job.total_layer}` });
-        }
-    } else if (state !== 'offline') {
-        info.push({ label: t('devNozzle'), value: Number.isFinite(extruderTemp) ? `${extruderTemp} °C` : '—' });
-        info.push({ label: t('devBed'), value: Number.isFinite(bedTemp) ? `${bedTemp} °C` : '—' });
-        if (spool && spool.label) info.push({ label: t('devMaterial'), value: spool.label });
+    // Solo se muestra lo que existe: una impresión sin capas informadas no
+    // debe pintar "Capa 0 / 0" como si fuera un dato.
+    if (spool && spool.label) info.push({ label: t('devMaterial'), value: spool.label });
+    if (enTrabajo && Number.isFinite(job.current_layer) && Number.isFinite(job.total_layer)) {
+        info.push({ label: t('devLayer'), value: `${job.current_layer} / ${job.total_layer}` });
     }
 
     return {
@@ -7625,7 +7627,7 @@ function deviceCardHtml(d) {
 
     return `
     <article class="dev-card" data-tone="${tono}" data-state="${escapeHtml(d.state)}" ${d.dataAttr || ''}>
-        <header class="dev-card-head" style="order:-1">
+        <div class="dev-card-head" style="order:-1">
             ${ocupado ? arte : ''}
             <div class="dev-card-id">
                 <span class="dev-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
@@ -7636,7 +7638,7 @@ function deviceCardHtml(d) {
                 ${conexion}
                 <button type="button" class="dev-menu" data-dev-action="menu" title="${escapeHtml(t('devMore'))}">${deviceIcon('dots', 16)}</button>
             </div>
-        </header>
+        </div>
         ${cuerpo.filter(Boolean).join('')}
         ${acciones}
     </article>`;

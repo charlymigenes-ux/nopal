@@ -17172,6 +17172,9 @@ body.ai .dashboard-dock-section .section-title h2 {
 }
 .dev-metric-value small { font-size: .72rem; font-weight: 600; margin-left: 3px; color: var(--text-muted); }
 .dev-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; padding: 14px 16px; }
+/* Un campo solo ocupa la fila entera. El material trae nombres largos
+   ("Kingroom AZUL 1.75mm PLA") y a media columna se cortaba a la mitad. */
+.dev-info > .dev-field:only-child { grid-column: 1 / -1; }
 .dev-metrics + .dev-info { border-top: 1px solid var(--border-subtle); }
 
 /* Acciones */
@@ -17335,3 +17338,10 @@ body.ai .dashboard-dock-section .section-title h2 {
 /* La cámara no cabe en una fila y es justo lo contrario de lo que busca
    esta vista: ver muchas máquinas a la vez. */
 .printers-grid.list-view .dev-camera { display: none; }
+
+.dev-card-head-right .printer-card-camera-toggle {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    border-radius: 8px;
+}
