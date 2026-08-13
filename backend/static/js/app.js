@@ -6523,7 +6523,8 @@ async function fetchMachineLedEnabledStates() {
 }
 
 function machineLedCardIdentity(card) {
-    const name = card.querySelector('.printer-name')?.textContent?.trim() || 'Máquina';
+    const name = (card.querySelector('.printer-name') || card.querySelector('.dev-card-name'))
+        ?.textContent?.trim() || 'Máquina';
     if (card.dataset.port) return { type: 'klipper', id: card.dataset.port, name };
     if (card.dataset.marlinDevice) return { type: 'marlin', id: card.dataset.marlinDevice, name };
     if (card.dataset.elegooId) return { type: 'elegoo', id: card.dataset.elegooId, name };
@@ -6543,6 +6544,8 @@ function machineLedCardState(card) {
     // por la clase printer-card-cool que ya usa el tema visual de la
     // tarjeta mientras la temperatura sigue bajando.
     if (card.classList.contains('printer-card-cool')) return 'cooling';
+    // La ficha nueva lleva el estado en un atributo, no repartido en clases.
+    if (card.dataset.state) return card.dataset.state;
     return ['heating', 'printing', 'paused', 'completed', 'error', 'offline', 'idle']
         .find(state => card.classList.contains(state)) || (card.classList.contains('offline') ? 'offline' : 'idle');
 }
@@ -6674,9 +6677,10 @@ function machineLedIndicatorHtml(runs) {
 }
 
 function ensureMachineLedIndicator(card, key) {
-    const header = card.querySelector('.printer-card-top');
+    const header = card.querySelector('.printer-card-top') || card.querySelector('.dev-card-head');
     if (!header) return;
-    const actions = header.querySelector('.printer-quick-actions') || header;
+    const actions = header.querySelector('.printer-quick-actions')
+        || header.querySelector('.dev-card-head-right') || header;
     const existing = actions.querySelector('.machine-led-indicator');
     const runs = machineLedRenderCache.get(key);
     const html = runs ? machineLedIndicatorHtml(runs) : '';
@@ -6698,11 +6702,12 @@ function machineLedButtonHtml(machine) {
 // reconstruye por innerHTML en cada ciclo de polling y, mientras la
 // promesa seguía pendiente, quedaba sin botón unos cuantos frames.
 function ensureMachineLedButton(card, machine) {
-    const header = card.querySelector('.printer-card-top');
+    const header = card.querySelector('.printer-card-top') || card.querySelector('.dev-card-head');
     if (!header) return null;
     let button = header.querySelector('.machine-led-settings-btn');
     if (button) return button;
-    const actions = header.querySelector('.printer-quick-actions') || header;
+    const actions = header.querySelector('.printer-quick-actions')
+        || header.querySelector('.dev-card-head-right') || header;
     actions.insertAdjacentHTML('afterbegin', machineLedButtonHtml(machine));
     button = header.querySelector('.machine-led-settings-btn');
     button.addEventListener('click', event => {
@@ -6713,7 +6718,9 @@ function ensureMachineLedButton(card, machine) {
 }
 
 function decorateMachineCardsWithLedSettings(root) {
-    const entries = Array.from(root.querySelectorAll('.printer-card'))
+    // Las dos clases mientras dure la migración de fichas: '.dev-card' es
+    // la nueva y '.printer-card' las marcas que todavía no migran.
+    const entries = Array.from(root.querySelectorAll('.printer-card, .dev-card'))
         .map(card => ({ card, machine: machineLedCardIdentity(card) }))
         .filter(entry => entry.machine);
     if (!entries.length) return;
