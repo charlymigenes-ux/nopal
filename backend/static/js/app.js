@@ -5796,6 +5796,7 @@ async function loadPrinters() {
         // El material cambia cuando alguien cambia el carrete, no cada 5 s:
         // se pide junto con las impresoras y se cachea (ver refreshDeviceSpools).
         if (!Object.keys(deviceSpoolsByPort).length) refreshDeviceSpools();
+        if (!deviceCameraKeys.size) refreshDeviceCameras();
         dashboardPrintersLoaded = true;
         dashboardPrintersLoadError = false;
         renderPrinters(allPrinters);
@@ -7322,6 +7323,8 @@ async function mountCameraCardsIn(root) {
         card?.classList.toggle('has-live-camera', mostrandoCamara);
         if (!mostrandoCamara) return;
         if (container.childElementCount > 0) return;
+        // mount() desmonta antes de montar, así que no puede acumular
+        // instancias sobre el mismo contenedor.
         window.NopalCameraCard.mount(container, { deviceType, deviceId, compact: true });
     });
 }
@@ -7332,6 +7335,26 @@ async function mountCameraCardsIn(root) {
 // materiales. Se cachea porque cambia cuando alguien cambia el carrete, no
 // cada 5 segundos como el resto de la telemetría.
 let deviceSpoolsByPort = {};
+
+// Máquinas que tienen una cámara asignada, por clave "tipo:id". Sin esto la
+// ficha no puede saber si ofrecer el botón del visor: ofrecerlo cuando no
+// hay cámara -- o cuando el plugin ni está instalado -- es un botón que solo
+// sirve para que alguien lo presione y no pase nada.
+let deviceCameraKeys = new Set();
+
+async function refreshDeviceCameras() {
+    try {
+        const respuesta = await fetch('/api/cameras');
+        if (!respuesta.ok) { deviceCameraKeys = new Set(); return; }
+        const camaras = (await respuesta.json()).cameras || [];
+        deviceCameraKeys = new Set(camaras
+            .filter(c => c.purpose === 'timelapse' && c.bound_device)
+            .map(c => `${c.bound_device.type}:${c.bound_device.id}`));
+    } catch (_) {
+        // Plugin ausente o sin responder: ninguna máquina tiene visor.
+        deviceCameraKeys = new Set();
+    }
+}
 
 async function refreshDeviceSpools() {
     try {
@@ -7360,9 +7383,18 @@ function klipperDeviceState(printer, isHeating) {
     return 'idle';
 }
 
+// El visor de cámara es un interruptor, no una acción: solo aparece si esa
+// máquina tiene cámara asignada, y su palomita dice si el visor está
+// encendido.
+function accionCamara(clave) {
+    if (!clave || !deviceCameraKeys.has(clave)) return [];
+    return [{ key: 'camera', label: t('devCamera'), icon: 'camera', check: isCameraCardVisible(clave) }];
+}
+
 function klipperDeviceModel(printer, datos) {
     const { extruderTemp, bedTemp, isHeating, printerName } = datos;
     const state = klipperDeviceState(printer, isHeating);
+    const claveCamara = `klipper:${printerName}`;
     const job = printer.job || {};
     const enTrabajo = deviceIsBusy(state);
     const spool = deviceSpoolsByPort[String(printer.port)];
@@ -7380,14 +7412,14 @@ function klipperDeviceModel(printer, datos) {
         actions = [
             { key: 'pause', label: t('devPause'), icon: 'pause', tone: 'warn' },
             { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
-            { key: 'camera', label: t('devCamera'), icon: 'camera' },
+            ...accionCamara(claveCamara),
             { key: 'details', label: t('devDetails'), icon: 'details' },
         ];
     } else if (state === 'paused') {
         actions = [
             { key: 'resume', label: t('devResume'), icon: 'play', tone: 'ok' },
             { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
-            { key: 'camera', label: t('devCamera'), icon: 'camera' },
+            ...accionCamara(claveCamara),
             { key: 'details', label: t('devDetails'), icon: 'details' },
         ];
     } else if (state === 'offline' || state === 'error') {
@@ -7397,7 +7429,7 @@ function klipperDeviceModel(printer, datos) {
             { key: 'file', label: t('devLoadFile'), icon: 'file' },
             { key: 'home', label: t('devHome'), icon: 'home' },
             { key: 'preheat', label: t('devPreheat'), icon: 'heat' },
-            { key: 'camera', label: t('devCamera'), icon: 'camera' },
+            ...accionCamara(claveCamara),
         ];
     }
 
@@ -7433,7 +7465,7 @@ function klipperDeviceModel(printer, datos) {
         metrics,
         info,
         actions,
-        cameraSlot: `klipper:${printerName}`,
+        cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         dataAttr: `data-port="${escapeHtml(String(printer.port))}"`,
     };
 }
@@ -7560,10 +7592,18 @@ function deviceMetrica(icono, etiqueta, valor) {
 function deviceAccionBtn(accion) {
     const tono = accion.tone ? ` dev-action-${accion.tone}` : '';
     const grande = accion.primary ? ' dev-action-primary' : '';
+    // Palomita de estado en la esquina, para los botones que son un
+    // interruptor y no una acción de una sola vez: dice si está encendido
+    // sin que haya que mirar el resto de la ficha.
+    const palomita = accion.check === undefined ? '' : `
+        <span class="dev-action-check${accion.check ? ' is-on' : ''}" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </span>`;
     // El title va siempre: en modo lista la etiqueta se oculta y sin él el
     // botón quedaría mudo.
-    return `<button type="button" class="dev-action${tono}${grande}" data-dev-action="${escapeHtml(accion.key)}" title="${escapeHtml(accion.label)}">
-        ${deviceIcon(accion.icon, 17)}<span>${escapeHtml(accion.label)}</span>
+    const encendido = accion.check ? ' is-checked' : '';
+    return `<button type="button" class="dev-action${tono}${grande}${encendido}" data-dev-action="${escapeHtml(accion.key)}" title="${escapeHtml(accion.label)}" ${accion.check === undefined ? '' : `aria-pressed="${accion.check}"`}>
+        ${palomita}${deviceIcon(accion.icon, 17)}<span>${escapeHtml(accion.label)}</span>
     </button>`;
 }
 
@@ -7822,6 +7862,13 @@ function renderPrinters(printersInput) {
     // mixto. Pedido explícito del usuario sobre una captura de ambos modos.
     if (groupMode === 'mixed') mountCameraCardsIn(columnsRoot);
 
+    // openPrinterModal recibe el OBJETO de la impresora, no el puerto: con
+    // un número el panel abría vacío, sin dar error.
+    const abrirPanelDeImpresora = puerto => {
+        const impresora = allPrinters.find(p => String(p.port) === String(puerto));
+        if (impresora) openPrinterModal(impresora);
+    };
+
     columnsRoot.querySelectorAll('.dev-card[data-port]').forEach(card => {
         if (boundPrinterCards.has(card)) return;
         boundPrinterCards.add(card);
@@ -7838,15 +7885,13 @@ function renderPrinters(printersInput) {
                     return;
                 }
                 if (accion === 'camera') {
-                    // Misma preferencia que usa el resto del panel, para que
-                    // mostrar u ocultar la cámara sea una sola decisión por
-                    // máquina y no una por sitio donde aparezca.
-                    const contenedor = card.querySelector('[data-cam-container]');
-                    const clave = contenedor?.dataset.camContainer;
-                    if (clave) {
-                        setCameraCardVisible(clave, !isCameraCardVisible(clave));
-                        mountCameraCardsIn(card.closest('.printers-grid') || card.parentElement);
-                    }
+                    // Se delega en el interruptor que el plugin de cámaras
+                    // ya inyecta en la cabecera, en vez de repetir su
+                    // lógica: tener dos implementaciones del mismo botón es
+                    // lo que hacía aparecer la cámara dos veces.
+                    card.querySelector('.printer-card-camera-toggle')?.click();
+                    // Repintar para que la palomita refleje el nuevo estado.
+                    renderPrinters(allPrinters);
                     return;
                 }
                 if (accion === 'preheat') {
@@ -7856,21 +7901,11 @@ function renderPrinters(printersInput) {
                 }
                 // Cargar archivo, home, detalles y el menú abren el panel
                 // completo de la impresora, que es donde viven de verdad.
-                openPrinterModal(port);
+                abrirPanelDeImpresora(port);
             });
         });
 
-        card.addEventListener('click', () => openPrinterModal(port));
-    });
-
-    columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
-        if (boundPrinterCards.has(card)) return;
-        boundPrinterCards.add(card);
-        card.addEventListener('click', () => {
-            const port = Number(card.dataset.port);
-            const printer = allPrinters.find(p => p.port === port);
-            if (printer) openPrinterModal(printer);
-        });
+        card.addEventListener('click', () => abrirPanelDeImpresora(port));
     });
 
     columnsRoot.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
