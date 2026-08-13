@@ -160,7 +160,11 @@ if [ "$PURGAR" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
     configs=()
     for item in "${DATOS[@]}"; do
         case "${item}" in
-            uploads|previews|backups|database|logs|camera_captures) continue ;;
+            # Pesados y recuperables: la biblioteca y los respaldos se
+            # copian con rsync si hacen falta, y plugins/ son repos de git
+            # que la galería vuelve a clonar. Lo que sí va es data/, que es
+            # chico y guarda qué plugins estaban instalados y habilitados.
+            uploads|previews|backups|database|logs|camera_captures|plugins) continue ;;
         esac
         [ -e "${SRCDIR}/${item}" ] && configs+=("${item}")
     done
@@ -177,16 +181,33 @@ fi
 # Servicio systemd
 # --------------------------------------------------------------------------
 
+# Cada paso puede fallar por su cuenta -- típicamente porque sudo pide una
+# contraseña que nadie escribe, o porque no hay sudo. Que eso aborte el
+# script entero (set -e) dejaría la desinstalación a medias: servicio
+# detenido pero entorno virtual intacto, y sin decir por qué. Así que acá
+# los fallos se anotan y se sigue; el resumen final los reporta.
+FALLOS_SERVICIO=()
+
+paso_servicio() {
+    if ! ejecutar "$@"; then
+        FALLOS_SERVICIO+=("$*")
+    fi
+}
+
 if [ -f "${UNIT_FILE}" ]; then
     echo "-- Deteniendo y desactivando ${SERVICE_NAME}.service"
-    ejecutar sudo systemctl disable --now "${SERVICE_NAME}.service"
-    ejecutar sudo rm -f "${UNIT_FILE}"
+    paso_servicio sudo systemctl disable --now "${SERVICE_NAME}.service"
+    paso_servicio sudo rm -f "${UNIT_FILE}"
     # Los overrides de systemctl edit viven aparte y sobrevivirían al
     # borrado del .service, dejando basura que confunde en la próxima
     # instalación (por ejemplo un Environment= con puertos viejos).
-    [ -d "${UNIT_FILE}.d" ] && ejecutar sudo rm -rf "${UNIT_FILE}.d"
-    ejecutar sudo systemctl daemon-reload
-    ejecutar sudo systemctl reset-failed "${SERVICE_NAME}.service" || true
+    if [ -d "${UNIT_FILE}.d" ]; then
+        paso_servicio sudo rm -rf "${UNIT_FILE}.d"
+    fi
+    paso_servicio sudo systemctl daemon-reload
+    # reset-failed falla si la unidad no estaba en estado fallido, que es lo
+    # normal: no es un problema y no se reporta como tal.
+    ejecutar sudo systemctl reset-failed "${SERVICE_NAME}.service" >/dev/null 2>&1 || true
 else
     echo "-- Sin servicio que quitar"
 fi
@@ -221,8 +242,20 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-echo "== NOPAL desinstalado =="
-echo ""
+if [ "${#FALLOS_SERVICIO[@]}" -gt 0 ]; then
+    echo "== NOPAL desinstalado, PERO quedaron pasos pendientes =="
+    echo ""
+    echo "Estos comandos no se pudieron completar (lo normal es que falte sudo):"
+    for fallo in "${FALLOS_SERVICIO[@]}"; do
+        echo "   ${fallo}"
+    done
+    echo ""
+    echo "Córrelos a mano para terminar de quitar el servicio."
+    echo ""
+else
+    echo "== NOPAL desinstalado =="
+    echo ""
+fi
 if [ "$PURGAR" -eq 1 ]; then
     [ -n "${RESPALDO:-}" ] && [ -f "${RESPALDO:-}" ] && \
         echo "Tu configuración quedó respaldada en: ${RESPALDO}"
