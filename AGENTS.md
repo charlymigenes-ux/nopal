@@ -62,6 +62,15 @@ que lo cambie. Un AGENTS.md desactualizado es peor que no tenerlo.
    trae los `?v=` nuevos.
 7. Nunca se le pide al usuario reiniciar sin haber verificado 1-6 primero.
 
+**Nota de entorno**: no des por sentado que `node`/`pytest` están en el
+`PATH` del worktree — en algún entorno de ejecución de esta sesión no lo
+estaban. `pytest` vive en `/home/jcjc/nopal/.venv/bin/pytest` (el venv de
+producción; el worktree no tiene uno propio, se puede correr contra ese
+mismo sin problema ya que solo lee el repo). Un `node` suelto apareció en
+`~/.local/nodejs/bin/node` — sirve para `node --check` y las simulaciones
+de render. Si ninguno de los dos aparece, dilo explícitamente en vez de
+saltarte la verificación en silencio.
+
 ## Qué es NOPAL Intelligence (la capa de IA)
 
 Todo lo construido en esta sesión gira alrededor de esto. Resumen rápido:
@@ -104,13 +113,13 @@ normalizado en vez de generar su propio HTML.
 
 ### Estado real de la migración
 
-**Solo Klipper está migrada.** `klipperDeviceModel()` → `deviceCardHtml()`.
-Las otras cinco siguen con su marcado viejo (verifica con
-`grep -n 'printer-card printer-card-type-3d\|laser-dashboard-card' app.js`
+**Klipper y láser/CNC están migradas.** `klipperDeviceModel()` y
+`laserDeviceModel()` → `deviceCardHtml()`. Las otras tres siguen con su
+marcado viejo (verifica con
+`grep -n 'printer-card\[data-marlin-device\]\|elegoo-id\|flashforge-id\|bambu-id' app.js`
 por si esto ya avanzó desde que se escribió este archivo):
 
 ```
-laserDashboardCardHtml()  — láser/CNC
 Marlin
 Elegoo
 FlashForge
@@ -120,10 +129,41 @@ Bambu
 El usuario ya vio y aprobó la ficha de Klipper en su forma final (fichas
 color crema, imagen grande/miniatura según estado, panel de temperaturas
 con iconos grandes, visor de cámara como interruptor con palomita, olas
-térmicas). El siguiente paso natural es repetir el mismo patrón para el
-láser (que además necesita: vista de cámara con controles superpuestos —
-ya construida en el plugin `camera-viewer`, ver abajo — y estados propios
-de GRBL) y luego CNC, Marlin, Elegoo, FlashForge, Bambu.
+térmicas). El siguiente paso natural es repetir el mismo patrón para
+Marlin, Elegoo, FlashForge y Bambu.
+
+**Láser/CNC** (`laserDeviceModel()`, junto a `klipperDeviceModel()` en
+`app.js`) comparte el mismo estado GRBL — `getLaserVisualState()` — para
+láser de grabado y CNC (se distinguen por `kind: 'laser'|'cnc'`, con
+métrica de Potencia vs. RPM según cuál sea). Datos reales, nada inventado:
+
+- El progreso de trabajo viene de `/api/laser/jobs/active` (**una sola
+  llamada por refresco para TODOS los láser/CNC registrados**, no una por
+  host — lee el diccionario `_jobs` en memoria del backend, sin ida y
+  vuelta a cada máquina). El archivo/progreso pueden venir vacíos si el
+  trabajo se inició por fuera de NOPAL (GRBL no expone esos metadatos) —
+  no se rellenan con un valor inventado.
+- GRBL no da tiempo restante ni siempre da total de líneas: si no hay
+  `total`, no hay barra de progreso (mostrar 0% habría sido mentir).
+- **"Encuadrar" e "Iniciar"** abren un modal nuevo (`dev-laser-file-modal`)
+  que por fin conecta `/api/laser/job/frame` — el endpoint que ya existía
+  desde un turno anterior (`gcode_bounds.py` + `build_frame_gcode()`) pero
+  no tenía ni un botón. **Ojo**: esto es un flujo *distinto* del que ya
+  existía en la sección Láser/CNC completa (`confirmLaserJobStart` /
+  `frameLaserJob`, que encuadra jogueando en vivo sobre el láser "activo"
+  global vía `/api/laser/command`). El del dashboard apunta siempre al
+  `host` de la ficha que lo abrió, a propósito: el dashboard puede mostrar
+  varios láser/CNC a la vez, y encuadrar sobre el "activo" equivocado
+  mueve el cabezal de una máquina real que no es la que el usuario miró.
+  Si en algún momento se quiere unificar ambos flujos, hazlo con cuidado
+  de no perder ese aislamiento por host.
+- Se borró `laserDashboardCardHtml()` (el generador de markup viejo) y
+  `laserIllustrationImg()` (solo la usaba esa función). El binding de
+  clic viejo, atado a `.printer-card[data-laser-host]`, se reescribió
+  para `.dev-card[data-laser-host]` reutilizando el mismo `WeakSet`
+  (`boundLaserCards`) — antes el clic entero solo navegaba a la sección
+  completa; ahora la ficha también resuelve pausar/reanudar/cancelar/home
+  sin salir del dashboard, igual que Klipper.
 
 ### Lecciones ya aprendidas (no las repitas)
 
