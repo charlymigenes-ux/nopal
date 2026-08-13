@@ -5793,6 +5793,9 @@ async function loadPrinters() {
         if (!response.ok) throw new Error('No se pudo cargar el estado de impresoras');
         const data = await response.json();
         allPrinters = data.printers || [];
+        // El material cambia cuando alguien cambia el carrete, no cada 5 s:
+        // se pide junto con las impresoras y se cachea (ver refreshDeviceSpools).
+        if (!Object.keys(deviceSpoolsByPort).length) refreshDeviceSpools();
         dashboardPrintersLoaded = true;
         dashboardPrintersLoadError = false;
         renderPrinters(allPrinters);
@@ -7303,6 +7306,274 @@ async function mountCameraCardsIn(root) {
     });
 }
 
+
+
+// Material cargado por impresora, resuelto de una pasada por el plugin de
+// materiales. Se cachea porque cambia cuando alguien cambia el carrete, no
+// cada 5 segundos como el resto de la telemetría.
+let deviceSpoolsByPort = {};
+
+async function refreshDeviceSpools() {
+    try {
+        const respuesta = await fetch('/api/spoolman/printers/active-spools?resolve=true');
+        if (!respuesta.ok) return;                       // plugin ausente: la ficha va sin material
+        deviceSpoolsByPort = (await respuesta.json()).links || {};
+    } catch (_) { /* sin materiales: la ficha se queda sin ese dato, no sin ficha */ }
+}
+
+function deviceTiempoCorto(minutos) {
+    if (!Number.isFinite(minutos) || minutos <= 0) return null;
+    const h = Math.floor(minutos / 60);
+    const m = Math.round(minutos % 60);
+    return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+// Estado real de una impresora Klipper -> el vocabulario común de la ficha.
+function klipperDeviceState(printer, isHeating) {
+    const estado = (printer.state || '').toLowerCase();
+    const enLinea = printer.status === 'online';
+    if (!enLinea) return 'offline';
+    if (estado === 'printing') return 'printing';
+    if (estado === 'paused') return 'paused';
+    if (['error', 'shutdown', 'disconnected'].includes(estado)) return 'error';
+    if (isHeating) return 'heating';
+    return 'idle';
+}
+
+function klipperDeviceModel(printer, datos) {
+    const { extruderTemp, bedTemp, isHeating, printerName } = datos;
+    const state = klipperDeviceState(printer, isHeating);
+    const job = printer.job || {};
+    const enTrabajo = deviceIsBusy(state);
+    const spool = deviceSpoolsByPort[String(printer.port)];
+
+    const etiquetas = {
+        offline: t('offline'), printing: t('printing'), paused: t('paused'),
+        error: t('devStateError'), heating: t('heating'), idle: t('devStateReady'),
+    };
+
+    // Solo se ofrece lo que se puede hacer en ese estado: un INICIAR
+    // mientras imprime, o un PAUSAR con la máquina parada, son botones que
+    // solo sirven para que alguien los presione y no pase nada.
+    let actions;
+    if (state === 'printing') {
+        actions = [
+            { key: 'pause', label: t('devPause'), icon: 'pause', tone: 'warn' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            { key: 'camera', label: t('devCamera'), icon: 'camera' },
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'paused') {
+        actions = [
+            { key: 'resume', label: t('devResume'), icon: 'play', tone: 'ok' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            { key: 'camera', label: t('devCamera'), icon: 'camera' },
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'offline' || state === 'error') {
+        actions = [{ key: 'details', label: t('devDetails'), icon: 'details' }];
+    } else {
+        actions = [
+            { key: 'file', label: t('devLoadFile'), icon: 'file' },
+            { key: 'home', label: t('devHome'), icon: 'home' },
+            { key: 'preheat', label: t('devPreheat'), icon: 'heat' },
+            { key: 'camera', label: t('devCamera'), icon: 'camera' },
+        ];
+    }
+
+    const metrics = enTrabajo || state === 'heating' ? [
+        { icon: 'nozzle', label: t('devNozzle'), value: Number.isFinite(extruderTemp) ? `${extruderTemp} °C` : null },
+        { icon: 'bed', label: t('devBed'), value: Number.isFinite(bedTemp) ? `${bedTemp} °C` : null },
+    ] : [];
+
+    const info = [];
+    if (enTrabajo) {
+        // Solo se muestra lo que existe: una impresión sin capas informadas
+        // no debe pintar "Capa 0 / 0" como si fuera un dato.
+        if (spool && spool.label) info.push({ label: t('devMaterial'), value: spool.label });
+        if (Number.isFinite(job.current_layer) && Number.isFinite(job.total_layer)) {
+            info.push({ label: t('devLayer'), value: `${job.current_layer} / ${job.total_layer}` });
+        }
+    } else if (state !== 'offline') {
+        info.push({ label: t('devNozzle'), value: Number.isFinite(extruderTemp) ? `${extruderTemp} °C` : '—' });
+        info.push({ label: t('devBed'), value: Number.isFinite(bedTemp) ? `${bedTemp} °C` : '—' });
+        if (spool && spool.label) info.push({ label: t('devMaterial'), value: spool.label });
+    }
+
+    return {
+        name: printerName,
+        typeLabel: t('printerType3D'),
+        state,
+        stateLabel: etiquetas[state] || state,
+        online: printer.status === 'online',
+        art: PRINTER_STATE_IMAGES[state === 'offline' || state === 'error' ? 'error' : (state === 'heating' ? 'heating' : (enTrabajo ? 'printing' : 'idle'))],
+        job: enTrabajo ? {
+            filename: job.filename || '',
+            progress: Number.isFinite(job.progress) ? job.progress : null,
+            remainingLabel: deviceTiempoCorto(job.estimated_remaining != null ? job.estimated_remaining / 60 : null),
+        } : null,
+        jobLabel: t('devFile'),
+        metrics,
+        info,
+        actions,
+        cameraSlot: `klipper:${printerName}`,
+        dataAttr: `data-port="${escapeHtml(String(printer.port))}"`,
+    };
+}
+
+// ── Fichas de dispositivo ─────────────────────────────────────────────────
+// Un solo constructor para todas las marcas. Antes había seis marcados
+// distintos (Klipper, Marlin, Elegoo, FlashForge, Bambu, láser/CNC) que se
+// fueron separando solos: por eso la ficha de Klipper se quedó sin cámara y
+// el apagado por estado quedó invertido en unas y no en otras.
+//
+// Cada marca solo tiene que traducir sus datos a un modelo común; el aspecto
+// y el comportamiento por estado viven acá, en un lugar.
+
+const DEVICE_ICONS = {
+    nozzle: '<path d="M12 2v6l-3 4v6a3 3 0 0 0 6 0v-6l-3-4z"/>',
+    bed: '<path d="M2 17h20"/><path d="M4 17V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8"/><path d="M6 17v2"/><path d="M18 17v2"/>',
+    layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    spool: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    wifi: '<path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+    pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
+    play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+    details: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+    home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+    move: '<polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    heat: '<path d="M12 2s4 5 4 9a4 4 0 0 1-8 0c0-4 4-9 4-9z"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.44.58.8.66H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    dots: '<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
+};
+
+function deviceIcon(nombre, tamano = 15) {
+    const trazo = DEVICE_ICONS[nombre] || DEVICE_ICONS.settings;
+    return `<svg width="${tamano}" height="${tamano}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${trazo}</svg>`;
+}
+
+// Estado -> tono. Es la jerarquía de siempre de NOPAL: verde lo que va bien,
+// ámbar lo que espera, rojo lo que se detuvo mal, gris lo que no está.
+const DEVICE_STATE_TONE = {
+    offline: 'off', connecting: 'off',
+    idle: 'ok', ready: 'ok', working: 'ok', printing: 'ok',
+    engraving: 'ok', cutting: 'ok', milling: 'ok', completed: 'ok',
+    homing: 'warn', paused: 'warn', warning: 'warn', heating: 'warn',
+    error: 'danger', alarm: 'danger',
+};
+
+function deviceTone(estado) {
+    return DEVICE_STATE_TONE[estado] || 'off';
+}
+
+// Un estado "de trabajo" es el que hace desaparecer la imagen grande: la
+// ficha necesita ese espacio para el progreso, las temperaturas y el resto.
+const DEVICE_BUSY_STATES = ['printing', 'working', 'engraving', 'cutting', 'milling', 'paused'];
+
+function deviceIsBusy(estado) {
+    return DEVICE_BUSY_STATES.includes(estado);
+}
+
+function deviceCampo(etiqueta, valor) {
+    return `<div class="dev-field"><span class="dev-field-label">${escapeHtml(etiqueta)}</span>
+        <span class="dev-field-value">${escapeHtml(valor)}</span></div>`;
+}
+
+function deviceMetrica(icono, etiqueta, valor) {
+    // Sin dato va una raya, nunca un cero: un 0 °C leído como real
+    // es peor que admitir que no se sabe.
+    const texto = (valor === null || valor === undefined || valor === '') ? '—' : String(valor);
+    return `<div class="dev-metric">
+        <span class="dev-metric-icon">${deviceIcon(icono, 14)}</span>
+        <span class="dev-metric-text">
+            <span class="dev-metric-label">${escapeHtml(etiqueta)}</span>
+            <span class="dev-metric-value">${escapeHtml(texto)}</span>
+        </span>
+    </div>`;
+}
+
+function deviceAccionBtn(accion) {
+    const tono = accion.tone ? ` dev-action-${accion.tone}` : '';
+    const grande = accion.primary ? ' dev-action-primary' : '';
+    return `<button type="button" class="dev-action${tono}${grande}" data-dev-action="${escapeHtml(accion.key)}">
+        ${deviceIcon(accion.icon, 17)}<span>${escapeHtml(accion.label)}</span>
+    </button>`;
+}
+
+function deviceProgreso(job) {
+    if (!job || !Number.isFinite(job.progress)) return '';
+    const pct = Math.max(0, Math.min(100, Math.round(job.progress)));
+    const restante = job.remainingLabel
+        ? `<div class="dev-progress-right">
+               <span class="dev-field-label">${escapeHtml(t('devRemaining'))}</span>
+               <span class="dev-progress-remaining">${escapeHtml(job.remainingLabel)}</span>
+           </div>` : '';
+    return `<div class="dev-progress">
+        <div class="dev-progress-head">
+            <div>
+                <span class="dev-field-label">${escapeHtml(t('devProgress'))}</span>
+                <span class="dev-progress-pct">${pct}%</span>
+            </div>
+            ${restante}
+        </div>
+        <div class="dev-progress-track"><div class="dev-progress-fill" style="width:${pct}%"></div></div>
+    </div>`;
+}
+
+function deviceCardHtml(d) {
+    const tono = deviceTone(d.state);
+    const ocupado = deviceIsBusy(d.state);
+    const conexion = d.online
+        ? `<span class="dev-conn is-online" title="${escapeHtml(t('online'))}">${deviceIcon('wifi', 15)}</span>`
+        : `<span class="dev-conn" title="${escapeHtml(t('offline'))}">${deviceIcon('wifi', 15)}</span>`;
+
+    // Trabajando: la máquina se encoge a icono en la esquina y el espacio se
+    // usa para el trabajo. En reposo, la máquina es la protagonista.
+    const arte = d.art
+        ? `<span class="dev-art${ocupado ? ' is-thumb' : ''}"><img src="${escapeHtml(d.art)}" alt="" loading="lazy"></span>`
+        : '';
+
+    const cuerpo = [];
+    if (!ocupado && d.art) cuerpo.push(`<div class="dev-hero">${arte}</div>`);
+    if (d.job && d.job.filename) {
+        cuerpo.push(deviceCampo(d.jobLabel || t('devJob'), d.job.filename));
+    }
+    cuerpo.push(deviceProgreso(d.job));
+    if (d.cameraSlot) {
+        cuerpo.push(`<div class="printer-card-camera dev-camera" data-cam-container="${escapeHtml(d.cameraSlot)}"></div>`);
+    }
+    if (d.metrics && d.metrics.length) {
+        cuerpo.push(`<div class="dev-metrics">${d.metrics.map(m => deviceMetrica(m.icon, m.label, m.value)).join('')}</div>`);
+    }
+    if (d.info && d.info.length) {
+        cuerpo.push(`<div class="dev-info">${d.info.map(i => deviceCampo(i.label, i.value)).join('')}</div>`);
+    }
+
+    const acciones = (d.actions || []).length
+        ? `<div class="dev-actions">${d.actions.map(deviceAccionBtn).join('')}</div>` : '';
+
+    return `
+    <article class="dev-card" data-tone="${tono}" data-state="${escapeHtml(d.state)}" ${d.dataAttr || ''}>
+        <header class="dev-card-head">
+            ${ocupado ? arte : ''}
+            <div class="dev-card-id">
+                <span class="dev-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
+                <span class="dev-card-type">${escapeHtml(d.typeLabel)}</span>
+            </div>
+            <div class="dev-card-head-right">
+                ${conexion}
+                <button type="button" class="dev-menu" data-dev-action="menu" title="${escapeHtml(t('devMore'))}">${deviceIcon('dots', 16)}</button>
+            </div>
+        </header>
+        <span class="dev-badge">${escapeHtml(d.stateLabel)}</span>
+        ${cuerpo.filter(Boolean).join('')}
+        ${acciones}
+    </article>`;
+}
+
 function renderPrinters(printersInput) {
     if (!printersGrid) return;
 
@@ -7373,80 +7644,17 @@ function renderPrinters(printersInput) {
         const thumbRightClass = getPrinterCardLayout().indexOf('thumbnail') === PRINTER_CARD_SECTIONS_DEFAULT_ORDER.length - 1
             ? ' printer-card-thumb-right' : '';
 
-        const html = `
-            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}${thumbRightClass}" data-port="${printer.port}" data-heat-progress="${heatProgress ?? ''}">
-                ${printerThermalWaves(
-                    typeof bedTemp === 'number' ? bedTemp : null,
-                    typeof extruderTemp === 'number' ? extruderTemp : null,
-                    bedTarget,
-                    extruderTarget,
-                    displayState,
-                    !isOnline,
-                    printer.port
-                )}
-                <div class="printer-card-top" data-printer-card-section="header" style="order:${printerCardSectionOrder('header')}">
-                    <div>
-                        <h3 class="printer-name">${escapeHtml(printerName)}</h3>
-                        <p class="printer-name-sub">${t('printerType3D')}</p>
-                    </div>
-                    <div class="printer-quick-actions">
-                        ${visualState === 'idle' ? `
-                            <button type="button" class="printer-quick-action-btn" data-quick-action="cool" data-port="${printer.port}" title="${t('tempCool')}">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
-                            </button>
-                            <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent" data-quick-action="preheat" data-port="${printer.port}" title="${t('tempPreset')}">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z"/><path d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z"/></svg>
-                            </button>
-                        ` : ''}
-                        <div class="printer-status-icon ${normalizedStatus}" title="${statusText}">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
+        // Ficha nueva: un solo constructor para todas las marcas (ver
+        // deviceCardHtml). Se le pasa el mismo cálculo de siempre --
+        // temperaturas, si está calentando, el nombre resuelto -- traducido
+        // al modelo común.
+        const html = deviceCardHtml(klipperDeviceModel(printer, {
+            extruderTemp: typeof extruderTemp === 'number' ? extruderTemp : null,
+            bedTemp: typeof bedTemp === 'number' ? bedTemp : null,
+            isHeating,
+            printerName,
+        }));
 
-                <div class="printer-status-line ${displayState}" data-printer-card-section="badge" style="order:${printerCardSectionOrder('badge')}">
-                    <span class="printer-status-dot ${displayState}"></span>${displayStateText}
-                </div>
-
-                <div class="printer-illustration printer-illustration-${displayState}" data-printer-card-section="thumbnail" style="order:${printerCardSectionOrder('thumbnail')}">
-                    ${printerIllustrationImg(displayState)}
-                </div>
-
-                <!-- Las fichas de láser, CNC, Elegoo y FlashForge ya traían
-                     este hueco; la de Klipper era la única sin él, así que
-                     por más que se le asignara una cámara a la máquina no
-                     había dónde montarla. El id es el NOMBRE porque así se
-                     guarda el vínculo del lado del plugin de cámaras
-                     (bound_device.id), a diferencia de las otras marcas que
-                     usan su id nativo. -->
-                <div class="printer-card-camera" data-cam-container="klipper:${escapeHtml(printer.name || '')}"></div>
-
-                ${visualState === 'printing' || visualState === 'paused' || visualState === 'idle' ? `
-                    <div class="printer-temps" data-printer-card-section="temps" style="order:${printerCardSectionOrder('temps')}">
-                        <div class="temp-item">
-                            <div class="temp-label">${t('bedTemp')}</div>
-                            <div class="temp-value" style="color:${heatColor(bedPercent)}">${bedTemp}<span class="temp-unit">°C</span></div>
-                        </div>
-                        <div class="temp-item">
-                            <div class="temp-label">${t('extruderTemp')}</div>
-                            <div class="temp-value" style="color:${heatColor(extruderPercent)}">${extruderTemp}<span class="temp-unit">°C</span></div>
-                        </div>
-                    </div>
-                ` : ''}
-
-                ${visualState === 'printing' || visualState === 'paused' ? `
-                    <div class="printer-progress" style="order:99">
-                        <div class="printer-progress-labels">
-                            <span>${jobProgress}% ${t('printed')}</span>
-                            <span>${jobRemainingMinutes != null ? formatEstimatedTime(jobRemainingMinutes) : '—'}</span>
-                        </div>
-                        <div class="temp-progress"><div class="temp-progress-fill" style="width: ${jobProgress}%"></div></div>
-                    </div>
-                ` : ''}
-            </div>
-        `;
 
         return { isOnline, sortPriority: getPrinterSortPriority(printer), html };
     });
@@ -7535,6 +7743,47 @@ function renderPrinters(printersInput) {
     // se ve desproporcionada, además de duplicar lo que ya se ve en modo
     // mixto. Pedido explícito del usuario sobre una captura de ambos modos.
     if (groupMode === 'mixed') mountCameraCardsIn(columnsRoot);
+
+    columnsRoot.querySelectorAll('.dev-card[data-port]').forEach(card => {
+        if (boundPrinterCards.has(card)) return;
+        boundPrinterCards.add(card);
+        const port = Number(card.dataset.port);
+
+        card.querySelectorAll('[data-dev-action]').forEach(btn => {
+            btn.addEventListener('click', async event => {
+                // La ficha entera abre el panel de la impresora; un botón no
+                // debe hacer las dos cosas.
+                event.stopPropagation();
+                const accion = btn.dataset.devAction;
+                if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
+                    await handleActivePrintAction(accion, port);
+                    return;
+                }
+                if (accion === 'camera') {
+                    // Misma preferencia que usa el resto del panel, para que
+                    // mostrar u ocultar la cámara sea una sola decisión por
+                    // máquina y no una por sitio donde aparezca.
+                    const contenedor = card.querySelector('[data-cam-container]');
+                    const clave = contenedor?.dataset.camContainer;
+                    if (clave) {
+                        setCameraCardVisible(clave, !isCameraCardVisible(clave));
+                        mountCameraCardsIn(card.closest('.printers-grid') || card.parentElement);
+                    }
+                    return;
+                }
+                if (accion === 'preheat') {
+                    const impresora = allPrinters.find(p => String(p.port) === String(port)) || {};
+                    openMaterialPreheatModal({ type: 'klipper', id: port, name: impresora.name || `Klipper ${port}` });
+                    return;
+                }
+                // Cargar archivo, home, detalles y el menú abren el panel
+                // completo de la impresora, que es donde viven de verdad.
+                openPrinterModal(port);
+            });
+        });
+
+        card.addEventListener('click', () => openPrinterModal(port));
+    });
 
     columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
         if (boundPrinterCards.has(card)) return;
