@@ -6396,17 +6396,21 @@ function printerCardSectionOrder(sectionKey) {
 function renderPrinterCardCustomizer() {
     const list = document.getElementById('printer-card-customizer-list');
     if (!list) return;
-    const layout = getPrinterCardLayout();
+    // Las tres secciones de la ficha nueva. La insignia salió de la lista
+    // porque dejó de ser una pieza suelta -- vive dentro del bloque del
+    // nombre -- y la cabecera tampoco se mueve: quién es la máquina se lee
+    // primero, y las acciones quedan abajo, al alcance del pulgar.
+    const layout = getDeviceCardLayout();
     list.innerHTML = layout.map(key => `
         <div class="module-customizer-row printer-card-customizer-row" data-printer-card-section="${key}">
             <span class="module-customizer-row-handle" title="${escapeHtml(t('printerCardOrganizerDragHint'))}">${PRINTER_MODULE_DRAG_ICON}</span>
-            <span class="module-customizer-row-label">${escapeHtml(t(PRINTER_CARD_SECTION_LABEL_KEYS[key]))}</span>
+            <span class="module-customizer-row-label">${escapeHtml(t(DEVICE_CARD_SECTION_LABEL_KEYS[key]))}</span>
         </div>
     `).join('');
 
     initModuleCustomizerDrag(list, () => {
         const rows = Array.from(list.querySelectorAll(':scope > .printer-card-customizer-row'));
-        savePrinterCardLayout(rows.map(row => row.dataset.printerCardSection));
+        saveDeviceCardLayout(rows.map(row => row.dataset.printerCardSection));
         renderPrinters(allPrinters);
     });
 }
@@ -6424,6 +6428,10 @@ printerCardCustomizerBtn?.addEventListener('click', openPrinterCardCustomizer);
 document.getElementById('printer-card-customizer-modal-close')?.addEventListener('click', closePrinterCardCustomizer);
 document.getElementById('printer-card-customizer-modal-backdrop')?.addEventListener('click', closePrinterCardCustomizer);
 document.getElementById('printer-card-customizer-reset-btn')?.addEventListener('click', () => {
+    // Se limpian los dos registros: el de la ficha nueva y el de las marcas
+    // que todavía no migran. Restablecer a medias dejaría media mitad del
+    // panel con el orden viejo y sería peor que no restablecer.
+    localStorage.removeItem(DEVICE_CARD_LAYOUT_KEY);
     localStorage.removeItem(PRINTER_CARD_LAYOUT_KEY);
     renderPrinterCardCustomizer();
     renderPrinters(allPrinters);
@@ -7428,6 +7436,41 @@ function klipperDeviceModel(printer, datos) {
     };
 }
 
+
+// Secciones que SÍ tiene sentido reordenar en la ficha nueva. Son tres, no
+// las cuatro de la ficha vieja: en la referencia la insignia vive dentro
+// del bloque del nombre y ya no es una pieza suelta, y la cabecera y las
+// acciones tienen un sitio fijo -- quién es la máquina se lee primero y lo
+// que se puede hacer con ella queda al alcance del pulgar, abajo.
+const DEVICE_CARD_SECTIONS_DEFAULT_ORDER = ['thumbnail', 'job', 'data'];
+const DEVICE_CARD_LAYOUT_KEY = 'deviceCardLayout';
+const DEVICE_CARD_SECTION_LABEL_KEYS = {
+    thumbnail: 'devSectionMachine',
+    job: 'devSectionJob',
+    data: 'devSectionData',
+};
+
+function getDeviceCardLayout() {
+    let guardado = [];
+    try {
+        guardado = JSON.parse(localStorage.getItem(DEVICE_CARD_LAYOUT_KEY) || '[]');
+    } catch (_) { guardado = []; }
+    const validas = Array.isArray(guardado)
+        ? guardado.filter(k => DEVICE_CARD_SECTIONS_DEFAULT_ORDER.includes(k)) : [];
+    // Las que falten se agregan al final: así, agregar una sección nueva en
+    // el futuro no deja la ficha sin ella para quien ya guardó un orden.
+    return [...validas, ...DEVICE_CARD_SECTIONS_DEFAULT_ORDER.filter(k => !validas.includes(k))];
+}
+
+function saveDeviceCardLayout(orden) {
+    localStorage.setItem(DEVICE_CARD_LAYOUT_KEY, JSON.stringify(orden));
+}
+
+function deviceCardSectionOrder(seccion) {
+    const i = getDeviceCardLayout().indexOf(seccion);
+    return i === -1 ? 0 : i;
+}
+
 // ── Fichas de dispositivo ─────────────────────────────────────────────────
 // Un solo constructor para todas las marcas. Antes había seis marcados
 // distintos (Klipper, Marlin, Elegoo, FlashForge, Bambu, láser/CNC) que se
@@ -7551,14 +7594,17 @@ function deviceCardHtml(d) {
         ? `<span class="dev-art${ocupado ? ' is-thumb' : ''}"><img src="${escapeHtml(d.art)}" alt="" loading="lazy"></span>`
         : '';
 
+    const seccion = clave => `style="order:${deviceCardSectionOrder(clave)}"`;
     const cuerpo = [];
-    if (!ocupado && d.art) cuerpo.push(`<div class="dev-hero">${arte}</div>`);
-    if (d.job && d.job.filename) {
-        cuerpo.push(deviceCampo(d.jobLabel || t('devJob'), d.job.filename));
-    }
-    cuerpo.push(deviceProgreso(d.job));
+    if (!ocupado && d.art) cuerpo.push(`<div class="dev-hero" ${seccion('thumbnail')}>${arte}</div>`);
+
+    const trabajo = [];
+    if (d.job && d.job.filename) trabajo.push(deviceCampo(d.jobLabel || t('devJob'), d.job.filename));
+    const barra = deviceProgreso(d.job);
+    if (barra) trabajo.push(barra);
+    if (trabajo.length) cuerpo.push(`<div class="dev-section-job" ${seccion('job')}>${trabajo.join('')}</div>`);
     if (d.cameraSlot) {
-        cuerpo.push(`<div class="printer-card-camera dev-camera" data-cam-container="${escapeHtml(d.cameraSlot)}"></div>`);
+        cuerpo.push(`<div class="printer-card-camera dev-camera" data-cam-container="${escapeHtml(d.cameraSlot)}" ${seccion('thumbnail')}></div>`);
     }
     // Métricas e información van en la MISMA caja, separadas por divisores,
     // como en la referencia: dos recuadros sueltos partían la ficha en
@@ -7570,14 +7616,16 @@ function deviceCardHtml(d) {
     if (d.info && d.info.length) {
         panel.push(`<div class="dev-info">${d.info.map(i => deviceCampo(i.label, i.value)).join('')}</div>`);
     }
-    if (panel.length) cuerpo.push(`<div class="dev-panel">${panel.join('')}</div>`);
+    if (panel.length) cuerpo.push(`<div class="dev-panel" ${seccion('data')}>${panel.join('')}</div>`);
 
+    // Orden fijo: la cabecera arriba y las acciones al final, pase lo que
+    // pase con el resto.
     const acciones = (d.actions || []).length
-        ? `<div class="dev-actions">${d.actions.map(deviceAccionBtn).join('')}</div>` : '';
+        ? `<div class="dev-actions" style="order:90">${d.actions.map(deviceAccionBtn).join('')}</div>` : '';
 
     return `
     <article class="dev-card" data-tone="${tono}" data-state="${escapeHtml(d.state)}" ${d.dataAttr || ''}>
-        <header class="dev-card-head">
+        <header class="dev-card-head" style="order:-1">
             ${ocupado ? arte : ''}
             <div class="dev-card-id">
                 <span class="dev-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
