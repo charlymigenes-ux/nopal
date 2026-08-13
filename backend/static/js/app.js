@@ -7281,6 +7281,7 @@ async function mountCameraCardsIn(root) {
         const camera = cameras.find(c => c.purpose === 'timelapse' && c.bound_device
             && c.bound_device.type === deviceType && String(c.bound_device.id) === String(deviceId));
         if (!camera) {
+            card?.classList.remove('has-live-camera');
             card?.querySelector('.printer-card-camera-toggle')?.remove();
             if (container.childElementCount > 0) {
                 window.NopalCameraCard.unmount(container);
@@ -7290,7 +7291,13 @@ async function mountCameraCardsIn(root) {
         }
         const deviceKey = `${deviceType}:${deviceId}`;
         if (card) ensureCameraToggleButton(card, deviceKey);
-        if (!isCameraCardVisible(deviceKey)) return;
+        // Con la cámara visible, ella pasa a ser la imagen principal de la
+        // ficha y el render de la máquina se encoge a icono junto al
+        // título: dos ilustraciones grandes compitiendo hacían la ficha el
+        // doble de alta y ninguna de las dos se leía mejor por eso.
+        const mostrandoCamara = isCameraCardVisible(deviceKey);
+        card?.classList.toggle('has-live-camera', mostrandoCamara);
+        if (!mostrandoCamara) return;
         if (container.childElementCount > 0) return;
         window.NopalCameraCard.mount(container, { deviceType, deviceId, compact: true });
     });
@@ -19196,6 +19203,13 @@ function aiUpdateSettingsDimming(enabled) {
     document.getElementById('ai-settings-body')?.classList.toggle('is-off', !enabled);
 }
 
+// La primera llamada ocurre al cargar la página, no porque nadie haya
+// tocado el interruptor. Distinguirlas es lo que permite respetar el tema
+// que el usuario dejó elegido: antes, cada recarga con la IA encendida
+// volvía a forzar el tema 'ai' y se comía la elección (por ejemplo el tema
+// NOPAL con fondo de IA). El tema solo se cambia en una transición real.
+let aiChromeInicializado = false;
+
 function aiApplyModeChrome(enabled) {
     aiUpdateSettingsDimming(enabled);
     const wasActive = document.body.getAttribute('data-ai-active') === 'true';
@@ -19205,6 +19219,13 @@ function aiApplyModeChrome(enabled) {
         aiSwitchPanelTab('jobs');
     }
     document.body.setAttribute('data-ai-active', enabled ? 'true' : 'false');
+
+    if (!aiChromeInicializado) {
+        // Carga de página: se pinta el resto del ambiente (píldora, marca,
+        // pestaña) pero el tema lo manda quien lo guardó.
+        aiChromeInicializado = true;
+        return;
+    }
     if (enabled === wasActive) return;  // sin transición, no se toca el tema
 
     // Al encender la IA el ambiente completo cambia al tema 'ai', pero se
