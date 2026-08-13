@@ -3651,6 +3651,35 @@
         </div>
     </div>
 
+    <!-- Laser/CNC dashboard card: file picker for Encuadrar/Iniciar (por host, no depende del laser "activo") -->
+    <div id="dev-laser-file-modal" class="modal">
+        <div class="modal-backdrop" id="dev-laser-file-modal-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="dev-laser-file-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <h2 data-i18n="devPickFileTitle">Elegir archivo</h2>
+            <p data-i18n="laserSdSelectFile">Selecciona un archivo de tu biblioteca</p>
+            <select id="dev-laser-file-modal-select" class="settings-select"></select>
+            <div class="laser-start-confirm-actions">
+                <div class="laser-start-confirm-row">
+                    <button type="button" class="btn-file-action btn-file-action-danger" id="dev-laser-file-modal-cancel-btn">
+                        <span data-i18n="cancelAction">Cancelar</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-decision" id="dev-laser-file-modal-frame-btn">
+                        <span data-i18n="devFrame">Encuadrar</span>
+                    </button>
+                    <button type="button" class="btn-file-action" id="dev-laser-file-modal-start-btn">
+                        <span data-i18n="devStart">Iniciar</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Send to Printer Modal -->
     <div id="printer-send-modal" class="modal">
         <div class="modal-backdrop" id="printer-send-backdrop"></div>
@@ -4778,11 +4807,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=42"></script>
+    <script src="/static/js/translations.js?v=43"></script>
     <script src="/static/js/translations-pt-BR.js?v=4"></script>
     <script src="/static/js/translations-fr.js?v=4"></script>
     <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=263"></script>
+    <script src="/static/js/app.js?v=264"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
