@@ -16946,3 +16946,15 @@ body.ai .dashboard-dock-section .section-title h2 {
     filter: none;
     opacity: 1;
 }
+
+/* Columna de dispositivos que no se pudo cargar. Lleva botón a propósito:
+   con el auto-refresco apagado no hay reintento automático, y sin salida
+   visible la columna se quedaba muerta hasta recargar la página. */
+.device-load-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+}
+.device-load-error button { align-self: center; }
