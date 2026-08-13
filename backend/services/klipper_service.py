@@ -395,12 +395,57 @@ _moonraker_discovery_cache_at = 0.0
 _mainsail_name_cache: Dict[int, tuple] = {}
 MOONRAKER_DISCOVERY_TTL_SECONDS = 5.0
 
+# Puertos donde vive una instalación normal de Klipper: 7125 es el de
+# Moonraker por convención, y KIAUH numera las instancias adicionales hacia
+# arriba desde ahí.
+MOONRAKER_DEFAULT_PORTS = tuple(range(7125, 7128))
+
+
+def _extra_moonraker_ports() -> List[int]:
+    """Puertos adicionales declarados en NOPAL_KLIPPER_PORTS.
+
+    Una instancia de Moonraker no tiene por qué estar en el rango de siempre:
+    una granja virtual en Docker publica cada contenedor en el puerto que le
+    toque (7211, 7212...), y esos nunca se iban a descubrir solos. No se
+    escanea un rango ancho a ciegas -- son peticiones HTTP cada 5 segundos --
+    sino exactamente los que la instalación declare.
+
+    Un valor inválido se ignora con aviso en vez de tumbar el descubrimiento:
+    quedarse sin ver NINGUNA impresora por una coma de más sería peor.
+    """
+    crudo = os.environ.get("NOPAL_KLIPPER_PORTS", "")
+    puertos = []
+    for pieza in crudo.replace(";", ",").split(","):
+        pieza = pieza.strip()
+        if not pieza:
+            continue
+        try:
+            puerto = int(pieza)
+        except ValueError:
+            logger.warning(f"NOPAL_KLIPPER_PORTS: '{pieza}' no es un puerto válido, se ignora")
+            continue
+        if 1 <= puerto <= 65535:
+            puertos.append(puerto)
+        else:
+            logger.warning(f"NOPAL_KLIPPER_PORTS: el puerto {puerto} está fuera de rango, se ignora")
+    return puertos
+
+
+def get_moonraker_discovery_ports() -> List[int]:
+    """Los puertos a sondear, sin repetidos y en orden estable."""
+    vistos = []
+    for puerto in (*MOONRAKER_DEFAULT_PORTS, *_extra_moonraker_ports()):
+        if puerto not in vistos:
+            vistos.append(puerto)
+    return vistos
+
 
 def find_moonraker_instances() -> List[Dict[str, Any]]:
     """
     Busca instancias activas de Moonraker.
 
-    Escanea desde el puerto 7125 hasta el 7127.
+    Sondea los puertos de get_moonraker_discovery_ports(): los de una
+    instalación normal más los que declare NOPAL_KLIPPER_PORTS.
     """
 
     global _moonraker_discovery_cache, _moonraker_discovery_cache_at
@@ -411,7 +456,7 @@ def find_moonraker_instances() -> List[Dict[str, Any]]:
     printers = []
     ports_found = set()
 
-    for port in range(7125, 7128):
+    for port in get_moonraker_discovery_ports():
 
         client = MoonrakerClient(port)
 
