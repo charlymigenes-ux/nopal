@@ -17421,3 +17421,84 @@ body.ai .dashboard-dock-section .section-title h2 {
     background: var(--surface-sunken);
 }
 .dev-card-head-right .machine-led-settings-btn.is-enabled { color: var(--status-ok); }
+
+/* ── Ficha de dispositivo en modo lista ───────────────────────────────────
+   El panel tiene un selector de vista y la ficha nueva lo ignoraba: cambiar
+   de rejilla a lista no le hacía nada. En lista la ficha se vuelve una fila
+   compacta -- la máquina como miniatura, los datos en línea y las acciones
+   solo con icono -- porque el punto de esa vista es ver muchas máquinas de
+   un vistazo, no cada una en detalle. */
+.printers-grid.list-view .dev-card {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 12px 14px;
+}
+
+/* La imagen pasa a miniatura, esté trabajando o no. */
+.printers-grid.list-view .dev-hero { padding: 0; }
+.printers-grid.list-view .dev-hero .dev-art,
+.printers-grid.list-view .dev-art.is-thumb { width: 40px; height: 40px; max-width: 40px; }
+
+/* Identidad en una línea: nombre, tipo e insignia uno al lado del otro. */
+.printers-grid.list-view .dev-card-head { flex: 1; min-width: 190px; align-items: center; }
+.printers-grid.list-view .dev-card-id { flex-direction: row; align-items: center; gap: 9px; flex-wrap: wrap; }
+.printers-grid.list-view .dev-card-name { font-size: .95rem; }
+.printers-grid.list-view .dev-card-type { display: none; }
+.printers-grid.list-view .dev-badge {
+    margin-top: 0;
+    padding: 2px 9px;
+    font-size: .62rem;
+}
+
+/* Datos en línea, sin cajas: en una fila las cajas anidadas solo suman
+   bordes que no separan nada. */
+.printers-grid.list-view .dev-panel {
+    border: none;
+    background: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+}
+.printers-grid.list-view .dev-metrics { display: flex; gap: 16px; }
+.printers-grid.list-view .dev-metric { padding: 0; gap: 7px; }
+.printers-grid.list-view .dev-metric + .dev-metric { border-left: none; }
+.printers-grid.list-view .dev-metric-value { font-size: .95rem; }
+.printers-grid.list-view .dev-metrics + .dev-info { border-top: none; }
+.printers-grid.list-view .dev-info { display: flex; gap: 16px; padding: 0; }
+.printers-grid.list-view .dev-field-value { font-size: .85rem; }
+
+/* Progreso: sin caja, el número y una barra fina. */
+.printers-grid.list-view .dev-progress {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    border: none;
+    background: none;
+    flex: 1;
+    min-width: 150px;
+}
+.printers-grid.list-view .dev-progress-head { flex-direction: row; align-items: center; gap: 8px; }
+.printers-grid.list-view .dev-progress-pct { font-size: 1.1rem; margin: 0; }
+.printers-grid.list-view .dev-progress-remaining { font-size: .9rem; margin: 0; }
+.printers-grid.list-view .dev-progress .dev-field-label { display: none; }
+.printers-grid.list-view .dev-progress-track { flex: 1; height: 6px; }
+
+/* Acciones: solo icono. La etiqueta se conserva como title para que se
+   siga sabiendo qué hace cada una. */
+.printers-grid.list-view .dev-actions {
+    display: flex;
+    gap: 6px;
+    margin: 0;
+    flex-shrink: 0;
+}
+.printers-grid.list-view .dev-action { padding: 9px; border-radius: 11px; }
+.printers-grid.list-view .dev-action span { display: none; }
+.printers-grid.list-view .dev-action svg { width: 18px; height: 18px; }
+.printers-grid.list-view .dev-action-primary { grid-column: auto; }
+
+/* La cámara no cabe en una fila y es justo lo contrario de lo que busca
+   esta vista: ver muchas máquinas a la vez. */
+.printers-grid.list-view .dev-camera { display: none; }
