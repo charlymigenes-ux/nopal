@@ -7511,7 +7511,9 @@ function deviceMetrica(icono, etiqueta, valor) {
 function deviceAccionBtn(accion) {
     const tono = accion.tone ? ` dev-action-${accion.tone}` : '';
     const grande = accion.primary ? ' dev-action-primary' : '';
-    return `<button type="button" class="dev-action${tono}${grande}" data-dev-action="${escapeHtml(accion.key)}">
+    // El title va siempre: en modo lista la etiqueta se oculta y sin él el
+    // botón quedaría mudo.
+    return `<button type="button" class="dev-action${tono}${grande}" data-dev-action="${escapeHtml(accion.key)}" title="${escapeHtml(accion.label)}">
         ${deviceIcon(accion.icon, 17)}<span>${escapeHtml(accion.label)}</span>
     </button>`;
 }
