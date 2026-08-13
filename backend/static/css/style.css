@@ -17372,3 +17372,15 @@ body.ai .dashboard-dock-section .section-title h2 {
     color: #fff;
 }
 .dev-action.is-checked { border-color: color-mix(in srgb, var(--status-ok) 40%, transparent); }
+
+/* Qué imagen se ve: la ficha emite las dos y acá se elige. Hacerlo por CSS
+   evita reconstruir la ficha al encender el visor, que era lo que repintaba
+   la grilla entera y hacía parpadear las cámaras vecinas. */
+.dev-card .dev-art.is-thumb { display: none; }
+.dev-card.is-thumb-mode .dev-art.is-thumb { display: block; }
+.dev-card.is-thumb-mode .dev-hero { display: none; }
+
+/* Las olas térmicas van al fondo de la ficha, como en las fichas de
+   siempre: la capa en el nivel 0 y todo lo demás por encima. */
+.dev-card > .printer-thermal-layer { z-index: 0; }
+.dev-card > *:not(.printer-thermal-layer) { position: relative; z-index: 1; }
