@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from backend.auth_deps import require_auth, require_role
 from backend.services import printer_profiles
+from backend.services.gcode_bounds import bounds_for_file
 from backend.services.laser_service import (
+    build_frame_gcode,
+    frame_area_check,
     get_status,
     get_parser_state,
     get_board_info,
@@ -272,6 +275,50 @@ async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = 
         raise HTTPException(status_code=409, detail=str(e))
 
     return job
+
+
+@router.post("/api/laser/job/frame")
+async def laser_job_frame_endpoint(
+    path: str = Form(...),
+    host: Optional[str] = Form(None),
+    power: int = Form(0),
+    user: dict = Depends(require_auth),
+):
+    """Recorre el rectángulo que ocupa un trabajo, sin cortarlo.
+
+    Sirve para ver dónde va a caer sobre el material antes de encender nada.
+    El láser va apagado salvo que se pida potencia a propósito: ver el trazo
+    ayuda a alinear, pero es fuego, y eso lo decide quien está frente a la
+    máquina.
+
+    Los límites se miden una vez por archivo y se recuerdan (ver
+    gcode_bounds), porque medir un grabado grande toma segundos y este botón
+    se presiona esperando que la máquina se mueva ya.
+    """
+    file_path = safe_section_path("gcode", path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    target = host or get_active_host()
+    loop = asyncio.get_event_loop()
+    bounds = await loop.run_in_executor(None, bounds_for_file, file_path)
+    if bounds is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Ese archivo no tiene ningún movimiento de corte, no hay nada que encuadrar.")
+
+    entrada = next((e for e in get_registered_lasers() if e.get("host") == target), None)
+    revision = frame_area_check(bounds, (entrada or {}).get("work_area"))
+    if revision["blocked"]:
+        raise HTTPException(status_code=422, detail=revision["blocked"])
+
+    try:
+        job = start_job(target, build_frame_gcode(bounds, power=power),
+                        filename=f"encuadre · {os.path.basename(path)}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return {"job": job, "bounds": bounds, "warning": revision["warning"]}
 
 
 @router.get("/api/laser/job/status")

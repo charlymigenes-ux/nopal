@@ -37,6 +37,9 @@ ai_config.json
 # Historial de conversaciones con la IA — puede contener detalles del
 # taller y de sus fallas; es estado por instalación, nunca se versiona.
 ai_conversations.json
+# Límites medidos de cada G-code (para el encuadre del láser/CNC). Es un
+# caché reconstruible a partir de los archivos, no configuración.
+gcode_bounds_cache.json
 *.corrupt-*.bak
 .session_secret
 

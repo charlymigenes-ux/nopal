@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.services.ai_config_service as ai_config_service
+import backend.services.gcode_bounds as gcode_bounds
 import backend.services.ai_conversations_service as ai_conversations_service
 import backend.services.bambu_service as bambu_service
 import backend.services.elegoo_service as elegoo_service
@@ -66,6 +67,7 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     # real del repo (que puede tener la API key del usuario).
     monkeypatch.setattr(ai_config_service, "CONFIG_PATH", str(tmp_path / "ai_config.json"))
     monkeypatch.setattr(ai_conversations_service, "STORE_PATH", str(tmp_path / "ai_conversations.json"))
+    monkeypatch.setattr(gcode_bounds, "CACHE_PATH", str(tmp_path / "gcode_bounds_cache.json"))
     # Las variables NOPAL_AI_* pisan al archivo (ver ai_config_service):
     # sin limpiarlas, el entorno de quien corre la suite decidiría el
     # resultado de los tests de configuración.

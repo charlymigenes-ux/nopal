@@ -1756,3 +1756,79 @@ def pop_from_queue(entry_id: int) -> Optional[Dict[str, Any]]:
         if item["id"] == entry_id:
             return _laser_queue.pop(index)
     return None
+
+
+# --------------------------------------------------------------------------
+# Encuadre
+# --------------------------------------------------------------------------
+
+# Avance del recorrido de encuadre. Lo bastante lento para seguirlo con la
+# vista -- que es para lo que sirve -- y lo bastante rápido para no aburrir.
+FRAME_FEED_MM_MIN = 3000
+
+
+def build_frame_gcode(bounds: Dict[str, Any], feed: int = FRAME_FEED_MM_MIN, power: int = 0) -> str:
+    """Recorrido del rectángulo que ocupa un trabajo, para ver dónde va a
+    caer sobre el material antes de cortar.
+
+    El láser va APAGADO salvo que se pida potencia explícitamente. Ver un
+    trazo tenue ayuda a alinear, pero es fuego: encenderlo tiene que ser una
+    decisión de quien está parado frente a la máquina, nunca el valor por
+    omisión de un botón.
+
+    Z no se toca en ningún momento. En una CNC eso es la diferencia entre
+    pasear la herramienta por encima y arrastrarla dentro del material.
+    """
+    x0, y0 = bounds["min_x"], bounds["min_y"]
+    x1, y1 = bounds["max_x"], bounds["max_y"]
+    encendido = f"M3 S{int(power)}" if power > 0 else "M5"
+    return "\n".join([
+        "G21",            # milímetros
+        "G90",            # coordenadas absolutas
+        "M5",             # apagado antes de moverse
+        f"G0 X{x0:.3f} Y{y0:.3f} F{int(feed)}",
+        encendido,
+        f"G1 X{x1:.3f} Y{y0:.3f} F{int(feed)}",
+        f"G1 X{x1:.3f} Y{y1:.3f}",
+        f"G1 X{x0:.3f} Y{y1:.3f}",
+        f"G1 X{x0:.3f} Y{y0:.3f}",
+        "M5",             # y apagado al terminar, pase lo que pase
+        "",
+    ])
+
+
+def frame_area_check(bounds: Dict[str, Any], work_area: Optional[Dict[str, Any]]) -> Dict[str, Optional[str]]:
+    """Comprueba el rectángulo contra el área de la máquina.
+
+    Se distingue entre lo que es seguro afirmar y lo que no:
+
+    - BLOQUEA solo si el trabajo es MÁS GRANDE que la máquina. Eso no
+      depende de dónde esté el origen: no cabe de ninguna manera, y
+      encuadrarlo la mandaría contra los finales de carrera.
+
+    - AVISA si las coordenadas caen fuera del área contando desde el cero,
+      pero deja seguir. NOPAL no sabe dónde puso el usuario su origen de
+      trabajo, y un archivo real bien puede empezar en X-0.8 por un redondeo
+      del diseño. Bloquear por eso haría inútil el botón en la mayoría de
+      los archivos -- comprobado con la biblioteca de este taller.
+    """
+    if not work_area:
+        return {"blocked": None, "warning": None}   # sin área declarada no hay contra qué comparar
+    ancho = work_area.get("width")
+    alto = work_area.get("height")
+    if not ancho or not alto:
+        return {"blocked": None, "warning": None}
+
+    if bounds["width"] > ancho or bounds["height"] > alto:
+        return {"blocked": (f"El trabajo mide {bounds['width']:.0f} x {bounds['height']:.0f} mm y el "
+                            f"área de esta máquina es de {ancho:.0f} x {alto:.0f} mm."),
+                "warning": None}
+
+    if (bounds["min_x"] < 0 or bounds["min_y"] < 0
+            or bounds["max_x"] > ancho or bounds["max_y"] > alto):
+        return {"blocked": None,
+                "warning": (f"El trabajo va de X{bounds['min_x']:.1f} Y{bounds['min_y']:.1f} a "
+                            f"X{bounds['max_x']:.1f} Y{bounds['max_y']:.1f} mm. Cabe por tamaño, "
+                            "pero según dónde tengas el origen puede salirse del área.")}
+
+    return {"blocked": None, "warning": None}
