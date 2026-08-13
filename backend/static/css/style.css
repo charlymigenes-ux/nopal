@@ -17514,3 +17514,28 @@ body.ai .dashboard-dock-section .section-title h2 {
     flex: 0 0 26px;
     border-radius: 8px;
 }
+
+/* Palomita de estado en la esquina de los botones que son interruptor.
+   Apagada se ve como un contorno vacío; encendida se rellena del verde de
+   NOPAL. Así el mismo botón dice qué hace y en qué estado está. */
+.dev-action { position: relative; }
+.dev-action-check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--text-faint) 55%, transparent);
+    color: transparent;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.dev-action-check.is-on {
+    background: var(--status-ok);
+    border-color: var(--status-ok);
+    color: #fff;
+}
+.dev-action.is-checked { border-color: color-mix(in srgb, var(--status-ok) 40%, transparent); }
