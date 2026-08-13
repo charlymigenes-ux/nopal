@@ -17143,3 +17143,36 @@ body.ai .dashboard-dock-section .section-title h2 {
     text-align: center;
 }
 .device-load-error button { align-self: center; }
+
+/* Ficha con cámara en vivo: la cámara es la imagen que importa, así que el
+   render de la máquina se encoge a icono y se va junto al título. Con las
+   dos ilustraciones a tamaño completo la ficha medía el doble de alto y
+   ninguna de las dos se leía mejor por ello.
+
+   Se posiciona sobre la esquina en vez de mover el nodo en el DOM: el orden
+   de las secciones de la ficha es configurable por el usuario (ver
+   printerCardSectionOrder), y reordenar por JS pelearía con esa opción. */
+.printer-card.has-live-camera {
+    position: relative;
+}
+.printer-card.has-live-camera .printer-illustration {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    width: 30px;
+    height: 30px;
+    min-height: 0;
+    flex: none;
+    padding: 0;
+    margin: 0;
+    z-index: 2;          /* por encima de las ondas, como el resto */
+}
+.printer-card.has-live-camera .printer-illustration img {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+}
+/* Hueco para el icono, para que no se encime con el nombre. */
+.printer-card.has-live-camera .printer-card-top {
+    padding-left: 38px;
+}
