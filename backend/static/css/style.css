@@ -17011,43 +17011,47 @@ body.ai .dashboard-dock-section .section-title h2 {
 }
 
 /* ── Fichas de dispositivo ────────────────────────────────────────────────
-   Un solo aspecto para todas las marcas. Todo sale de las variables del
-   tema: la ficha se ve igual en claro, oscuro, verde, rojo y modo IA, que
-   es la regla del proyecto para estas fichas.
+   Medidas tomadas de la referencia visual: la insignia va dentro del bloque
+   del nombre, temperaturas y material comparten un solo panel con divisores,
+   y los números que importan (progreso, temperatura) van grandes con la
+   unidad más chica.
 
-   El tono del estado se define UNA vez por ficha (--dev-tone) y de ahí lo
-   heredan borde, badge, barra de progreso e iconos. */
+   Todo el color sale de las variables del tema y del tono del estado
+   (--dev-tone), que cada estado redefine una vez. */
 .dev-card {
     --dev-tone: var(--status-ok);
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 11px;
-    padding: 15px 16px 14px;
+    gap: 14px;
+    padding: 18px;
     background: var(--card-bg);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+    border-radius: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
     min-width: 0;
 }
 .dev-card[data-tone="warn"]   { --dev-tone: var(--status-warn); }
 .dev-card[data-tone="danger"] { --dev-tone: var(--status-danger); }
 .dev-card[data-tone="off"]    { --dev-tone: var(--text-faint); }
 
-/* Cabecera */
-.dev-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.dev-card-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+/* Cabecera: la máquina a la izquierda, y a su derecha nombre, tipo e
+   insignia apilados -- los tres alineados entre sí, como en la referencia. */
+.dev-card-head { display: flex; align-items: flex-start; gap: 13px; min-width: 0; }
+.dev-card-id { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; flex: 1; }
 .dev-card-name {
-    font-size: .95rem;
+    font-size: 1.15rem;
     font-weight: 700;
+    line-height: 1.2;
     color: var(--text-strong);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 100%;
 }
-.dev-card-type { font-size: .72rem; color: var(--text-muted); }
-.dev-card-head-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.dev-conn { display: inline-flex; color: var(--text-faint); }
+.dev-card-type { font-size: .82rem; color: var(--text-muted); }
+.dev-card-head-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.dev-conn { display: inline-flex; color: var(--text-faint); padding: 4px; }
 .dev-conn.is-online { color: var(--status-ok); }
 .dev-menu {
     display: inline-flex;
@@ -17060,56 +17064,36 @@ body.ai .dashboard-dock-section .section-title h2 {
 }
 .dev-menu:hover { color: var(--text-strong); background: var(--surface-sunken); }
 
-/* Imagen de la máquina: protagonista en reposo, icono cuando trabaja. */
-.dev-hero { display: flex; justify-content: center; padding: 2px 0 4px; }
+/* Imagen de la máquina: protagonista en reposo, miniatura al trabajar. */
+.dev-hero { display: flex; justify-content: center; padding: 2px 0; }
 .dev-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.dev-hero .dev-art { width: 100%; max-width: 210px; height: 132px; }
-.dev-art.is-thumb {
-    width: 38px;
-    height: 38px;
-    flex-shrink: 0;
-    border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--dev-tone) 40%, transparent);
-    background: color-mix(in srgb, var(--dev-tone) 10%, transparent);
-    padding: 3px;
-}
+.dev-hero .dev-art { width: 100%; max-width: 200px; height: 140px; }
+.dev-art.is-thumb { width: 62px; height: 62px; flex-shrink: 0; }
 .dev-card[data-tone="off"] .dev-art img { filter: grayscale(1); opacity: .5; }
 
-/* Badge de estado */
+/* Insignia de estado */
 .dev-badge {
-    align-self: flex-start;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: .66rem;
+    gap: 7px;
+    margin-top: 3px;
+    font-size: .72rem;
     font-weight: 700;
-    letter-spacing: .05em;
-    text-transform: uppercase;
-    padding: 3px 10px;
-    border-radius: 999px;
-    color: var(--dev-tone);
-    border: 1px solid color-mix(in srgb, var(--dev-tone) 40%, transparent);
-    background: color-mix(in srgb, var(--dev-tone) 12%, transparent);
-}
-.dev-badge::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-}
-
-/* Campos etiqueta/valor */
-.dev-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.dev-field-label {
-    font-size: .64rem;
-    font-weight: 600;
     letter-spacing: .04em;
     text-transform: uppercase;
-    color: var(--text-faint);
+    padding: 5px 13px;
+    border-radius: 999px;
+    color: var(--dev-tone);
+    border: 1px solid color-mix(in srgb, var(--dev-tone) 35%, transparent);
+    background: color-mix(in srgb, var(--dev-tone) 12%, transparent);
 }
+.dev-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* Campos etiqueta/valor */
+.dev-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dev-field-label { font-size: .78rem; color: var(--text-muted); }
 .dev-field-value {
-    font-size: .82rem;
+    font-size: 1rem;
     color: var(--text-strong);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -17120,111 +17104,134 @@ body.ai .dashboard-dock-section .section-title h2 {
 .dev-progress {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 11px 12px;
+    gap: 12px;
+    padding: 15px 16px;
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    border-radius: 14px;
     background: var(--surface-sunken);
 }
-.dev-progress-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.dev-progress-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .dev-progress-pct {
     display: block;
-    font-size: 1.55rem;
+    margin-top: 2px;
+    font-size: 2rem;
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1;
     color: var(--text-strong);
     font-variant-numeric: tabular-nums;
 }
 .dev-progress-right { text-align: right; }
 .dev-progress-remaining {
     display: block;
-    font-size: .95rem;
+    margin-top: 2px;
+    font-size: 1.6rem;
     font-weight: 700;
+    line-height: 1;
     color: var(--text-strong);
     font-variant-numeric: tabular-nums;
 }
 .dev-progress-track {
-    height: 6px;
+    height: 9px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--text-faint) 25%, transparent);
+    background: color-mix(in srgb, var(--text-faint) 22%, transparent);
     overflow: hidden;
 }
 .dev-progress-fill {
     height: 100%;
     border-radius: 999px;
-    background: var(--dev-tone);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--dev-tone) 70%, transparent), var(--dev-tone));
     transition: width .4s ease;
 }
 
-/* Métricas e información */
-.dev-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+/* Panel de datos: temperaturas arriba, material y capa abajo, todo en una
+   sola caja separada por divisores. */
+.dev-panel {
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    background: var(--surface-sunken);
+    overflow: hidden;
+}
+.dev-metrics { display: grid; grid-template-columns: repeat(2, 1fr); }
 .dev-metric {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 9px 10px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    gap: 11px;
+    padding: 14px 16px;
     min-width: 0;
 }
+.dev-metric + .dev-metric { border-left: 1px solid var(--border-subtle); }
 .dev-metric-icon { display: inline-flex; color: var(--dev-tone); flex-shrink: 0; }
-.dev-metric-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.dev-metric-label {
-    font-size: .62rem;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-}
+.dev-metric-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dev-metric-label { font-size: .78rem; color: var(--text-muted); }
 .dev-metric-value {
-    font-size: .86rem;
+    font-size: 1.45rem;
     font-weight: 700;
+    line-height: 1.1;
     color: var(--text-strong);
     font-variant-numeric: tabular-nums;
 }
-.dev-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; }
+.dev-metric-value small { font-size: .72rem; font-weight: 600; margin-left: 3px; color: var(--text-muted); }
+.dev-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; padding: 14px 16px; }
+.dev-metrics + .dev-info { border-top: 1px solid var(--border-subtle); }
 
 /* Acciones */
-.dev-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(66px, 1fr)); gap: 7px; margin-top: 2px; }
+.dev-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 9px; margin-top: 2px; }
 .dev-action {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 5px;
-    padding: 9px 4px;
+    gap: 8px;
+    padding: 14px 6px;
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    border-radius: 14px;
     background: transparent;
     color: var(--text-soft);
-    font-size: .62rem;
+    font-size: .68rem;
     font-weight: 700;
-    letter-spacing: .04em;
+    letter-spacing: .03em;
     text-transform: uppercase;
+    text-align: center;
+    line-height: 1.2;
     cursor: pointer;
     transition: border-color .15s ease, color .15s ease, background .15s ease;
 }
+.dev-action svg { width: 21px; height: 21px; }
 .dev-action:hover { border-color: var(--accent-fill); color: var(--text-strong); }
-.dev-action-ok     { color: var(--status-ok); border-color: color-mix(in srgb, var(--status-ok) 35%, transparent); }
-.dev-action-warn   { color: var(--status-warn); border-color: color-mix(in srgb, var(--status-warn) 35%, transparent); }
-.dev-action-danger { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 35%, transparent); }
+/* Las acciones con consecuencia se tiñen del color de su consecuencia. */
+.dev-action-ok {
+    color: var(--status-ok);
+    border-color: color-mix(in srgb, var(--status-ok) 30%, transparent);
+    background: color-mix(in srgb, var(--status-ok) 9%, transparent);
+}
+.dev-action-warn {
+    color: var(--status-warn);
+    border-color: color-mix(in srgb, var(--status-warn) 30%, transparent);
+    background: color-mix(in srgb, var(--status-warn) 9%, transparent);
+}
+.dev-action-danger {
+    color: var(--status-danger);
+    border-color: color-mix(in srgb, var(--status-danger) 30%, transparent);
+    background: color-mix(in srgb, var(--status-danger) 9%, transparent);
+}
 .dev-action-primary {
     grid-column: 1 / -1;
     flex-direction: row;
-    gap: 8px;
-    padding: 11px;
-    font-size: .72rem;
+    gap: 9px;
+    padding: 14px;
+    font-size: .8rem;
     color: #fff;
     background: var(--status-ok);
     border-color: var(--status-ok);
 }
 .dev-action-primary:hover { color: #fff; filter: brightness(1.06); }
 
-/* La cámara dentro de la ficha */
-.dev-camera { border-radius: var(--radius-md); overflow: hidden; }
+.dev-camera { border-radius: 14px; overflow: hidden; }
 
-/* En columnas angostas, las métricas pasan a una sola. */
 @media (max-width: 520px) {
-    .dev-metrics, .dev-info { grid-template-columns: 1fr; }
+    .dev-metrics { grid-template-columns: 1fr; }
+    .dev-metric + .dev-metric { border-left: none; border-top: 1px solid var(--border-subtle); }
+    .dev-info { grid-template-columns: 1fr; }
 }
 
 /* Botón e indicador de alertas visuales LED: los inyecta el plugin de
