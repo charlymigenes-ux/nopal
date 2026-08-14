@@ -492,6 +492,123 @@ verificación de balance de HTML/sintaxis JS. No debería necesitar más
 trabajo salvo que el usuario pida ajustar la lista de comandos por sección
 o encuentre un problema visual nuevo.
 
+## Versionado y diagnóstico ("Acerca de NOPAL")
+
+Pedido explícito del usuario, con instrucción de investigar antes de
+escribir código — y valió la pena: casi toda la base ya existía.
+
+- **Versión global**: ya existía. Archivo `VERSION` en la raíz (semver
+  real, ej. `1.2.0-alpha.1`, no un placeholder) + `get_app_version()` en
+  `backend/utils.py`. No se creó nada nuevo acá, solo se expuso.
+- **Commit/rama de git**: ya existía en `GET /api/system/version`
+  (`backend/api/status.py`, con `_run_git()` que ya maneja limpio la
+  ausencia de git devolviendo `None`). Se agregó `GET /api/system/diagnostics`
+  aparte (mismo archivo) en vez de inflar ese endpoint — junta lo mismo
+  más sistema operativo (`platform.freedesktop_os_release()`, con
+  fallback a `system()+release()`), arquitectura y versión de Python. El
+  idioma activo NO viaja en la respuesta del servidor: es 100% un dato
+  del navegador (`currentLanguage`).
+- **Versión de plugins**: los manifiestos (`plugins/*/nopal-plugin.json`)
+  YA declaran `"version"` — no hizo falta agregar ese campo. Se reusa
+  `GET /api/plugins` (ya existente, `_serialize_catalog()` en
+  `backend/api/plugins.py` ya resuelve la versión real desde el manifest
+  del plugin instalado) filtrando `installed === true`, en vez de
+  duplicar esa lectura en un endpoint nuevo.
+- **UI**: tarjeta "Acerca de NOPAL" en Configuración
+  (`data-settings-module="about"`), mismo patrón exacto que la tarjeta
+  "Actualizaciones" de al lado (`.settings-card.card-collapsible`,
+  `card-header-std`, etc.) — cárgala con `loadAboutInfo()` en `app.js`,
+  llamada desde `switchSection('settings')` junto a `loadUpdatesStatus()`.
+  El botón "Copiar información de diagnóstico" arma el texto con
+  `buildDiagnosticsText()` y usa `navigator.clipboard.writeText()`.
+
+## Issue #50: plugins que no heredan el cambio de idioma
+
+`setLanguage()` (`translations.js`) ya disparaba
+`window.dispatchEvent(new CustomEvent('nopal:language-changed'))` — un
+mecanismo genérico construido a propósito para que cada plugin decida si
+le importa (el comentario en el propio código lo dice: viene de cuando
+Cotizador se sacó del core). El problema real: **casi nadie lo escuchaba**.
+
+- `cotizador.js`: sí lo escuchaba (el original, la referencia del patrón).
+- `font-library.js`: resuelve lo mismo por otra vía — un
+  `MutationObserver` sobre `document.documentElement.lang` que llama
+  `applyLanguage()`. Funciona igual de bien, no se tocó.
+- **Arreglados esta sesión** (agregado el listener, llamando a la función
+  de re-render que cada uno ya tenía): `arduino-accessories.js`,
+  `spoolman.js`, `camera-viewer.js` (los tres tienen `render()`/
+  `renderGrid()` con guard de `root`), y `camera-card.js` (caso especial:
+  se monta varias veces a la vez, una por cada ficha con cámara vinculada
+  — se le agregó un `Set` de instancias activas porque el `WeakMap` que
+  ya tenía no se puede recorrer, y se expuso `render()` en el objeto que
+  devuelve cada instancia).
+- **Deliberadamente sin arreglar**: `matriz-led.js`, `shape-creator.js`,
+  `svg-toolkit.js`. Ninguno tiene una función de repintado que no sea
+  remontar por completo (`unmount()` + `mount()`), y para shape-creator/
+  svg-toolkit remontar **borra trabajo en curso** (formas dibujadas en el
+  canvas, archivo SVG cargado — ninguno de los dos persiste su estado en
+  `localStorage`, confirmado antes de descartar la idea). Un remontaje
+  ciego ahí sería peor que el bug original. Si se quiere cerrar esto de
+  verdad, la vía correcta es enseñarles un `render()`/`applyLanguage()`
+  propio como el de font-library, no forzar un remount — mismo criterio
+  que "no rompas la arquitectura existente".
+
+## Deuda de traducción encontrada (no es de esta sesión, quedó anotada)
+
+Auditando esto se encontró que `translations-fr.js` y
+`translations-pt-BR.js` tienen un backlog real de **~180 claves
+faltantes** contra `es`/`en` (verificar con el checker de abajo, el
+número baja con el tiempo si alguien corre el generador). Es anterior a
+esta sesión, sin relación con el issue #50, y no se intentó cerrar acá
+— hubiera sido scope creep sobre un pedido que no era ese.
+
+`scripts/generate_i18n.py` (llama a un endpoint de traducción automática)
+**tardó más de 60s y se cortó a la mitad** al intentarlo para solo ~15
+claves nuevas — y lo poco que alcanzó a traducir tenía errores reales
+("Commit" tradujo como el VERBO "comprometerse"/"Begehen"/"S'engager" en
+vez de dejarlo como término técnico). Las claves nuevas de esta sesión
+(`about*`) se tradujeron a mano en de/fr/pt-BR en vez de confiar en esa
+salida — y se descartó el `.i18n-cache-{de,fr}.json` parcial que el
+intento cortado había alcanzado a escribir, para que un futuro run del
+script no reuse esa traducción mala.
+
+Forma confiable de auditar sincronización real entre idiomas (no usar
+regex simple — falla con claves que comparten línea o valores que
+contienen `:` — ver más abajo por qué): evaluar el objeto JS de verdad.
+
+```js
+// extractObjectLiteral(text, startIdx): recorta con conteo de llaves
+// respetando strings (ver el propio código de este archivo si hace
+// falta reconstruirlo) -- luego eval('(' + literal + ')') y comparar
+// Object.keys(obj.es) contra Object.keys(obj[otroIdioma]).
+```
+
+**Lección de esta sesión, para no repetirla**: un primer intento de esta
+misma auditoría (sobre los plugins, turno anterior) usó expresiones
+regulares (`/^\s*(\w+):\s*['"]/`) y dio resultados **falsos** — no
+manejaba varias claves por línea, y confundía palabras dentro de un
+valor (ej. `portLabel: 'Puerto:'`) con claves reales. Reportó huecos que
+no existían. Si necesitas auditar traducciones, evalúa el objeto de
+verdad en Node, no adivines con regex.
+
+## Recordatorio de flujo (se repitió el error esta sesión)
+
+**Dos veces en esta sesión** se editó código directo en
+`/home/jcjc/nopal` en vez del worktree, a pesar de que este mismo
+archivo ya lo advertía. La segunda vez (trabajo de versionado/
+diagnóstico) terminó en un merge con conflictos reales en los tres
+`translations-{de,fr,pt-BR}.js` porque producción ya tenía una versión
+más completa que la copia del worktree (production había subido de
+~1050 a ~1320 claves por otra vía, y el worktree nunca se sincronizó).
+Se resolvió tomando la versión de producción como base
+(`git checkout --ours`) y reaplicando encima solo las claves nuevas —
+pero **el chequeo correcto es más barato que el arreglo**: antes de
+escribir con una ruta absoluta, correr `pwd` y confirmar que sea el
+worktree, no producción. Si en algún punto un archivo compartido entre
+ambos (como `AGENTS.md` o `translations-*.js`) se ve sospechosamente
+distinto entre worktree y producción, es señal de que ya pasó esto: hay
+que sincronizar ANTES de seguir editando, no después.
+
 ## Estado de los repos (commits locales sin publicar)
 
 Revisa el número exacto al empezar, esta tabla envejece rápido:
