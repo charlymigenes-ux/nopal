@@ -11207,6 +11207,51 @@ body.light .sidebar-order-select {
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
+/* ── Acerca de NOPAL (versión + diagnóstico) ── */
+.about-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px 16px;
+    margin-bottom: 16px;
+}
+.about-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.about-field-label { font-size: 0.76rem; color: var(--text-muted); }
+.about-field-value {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-strong);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.about-plugins { margin-bottom: 16px; }
+.about-plugins-title {
+    margin: 0 0 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.about-plugins-list { display: flex; flex-direction: column; gap: 2px; }
+.about-plugin-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.85rem;
+}
+.about-plugin-row:last-child { border-bottom: none; }
+.about-plugin-name { color: var(--text); }
+.about-plugin-version {
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.8rem;
+}
+
 .update-safety-modal {
     position: fixed;
     inset: 0;
