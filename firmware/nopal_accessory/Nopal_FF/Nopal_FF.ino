@@ -70,7 +70,9 @@
  *     LED BLE (relay, solo ESP32)" más abajo para el detalle completo y el
  *     porqué de esta división de responsabilidades.
  *
- * Cambios en 4.5.0-ff (TODAVÍA NO PROBADO EN HARDWARE REAL):
+ * Cambios en 4.5.0-ff (confirmado en hardware real: un DHT11 cableado a
+ * GPIO32 en una placa ESP32, lectura de temperatura/humedad visible en el
+ * panel web):
  *   - Reemplaza el sensor T/H analógico sin calibrar (dos canales de
  *     voltaje crudos, sin datasheet propio) por un DHT11 real: sensor
  *     digital de un solo cable, calibrado de fábrica, con checksum -- ver
