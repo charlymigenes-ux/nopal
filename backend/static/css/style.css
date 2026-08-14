@@ -17293,16 +17293,6 @@ body.ai .dashboard-dock-section .section-title h2 {
 .dev-card-head-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .dev-conn { display: inline-flex; color: var(--text-faint); padding: 4px; }
 .dev-conn.is-online { color: var(--status-ok); }
-.dev-menu {
-    display: inline-flex;
-    padding: 4px;
-    border: none;
-    background: none;
-    color: var(--text-faint);
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-}
-.dev-menu:hover { color: var(--text-strong); background: var(--surface-sunken); }
 
 /* Imagen de la máquina: protagonista en reposo, miniatura al trabajar. */
 .dev-hero { display: flex; justify-content: center; padding: 2px 0; }
@@ -17338,6 +17328,34 @@ body.ai .dashboard-dock-section .section-title h2 {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Material: nombre a la izquierda, divisor, carrete del color real del
+   filamento y sus datos (diámetro/peso) a la derecha -- un dev-field
+   normal no tenía dónde meter el icono ni el divisor interno. */
+.dev-field-material { grid-column: 1 / -1; gap: 6px; }
+.dev-material-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dev-material-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 1rem;
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dev-material-divider { align-self: stretch; width: 1px; background: var(--border-subtle); flex-shrink: 0; }
+.dev-material-icon { display: inline-flex; flex-shrink: 0; color: var(--text-faint); }
+.dev-material-icon svg { width: 22px; height: 22px; }
+.dev-material-specs {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--text-strong);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 /* Progreso */

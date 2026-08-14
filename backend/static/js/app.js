@@ -7446,10 +7446,19 @@ function klipperDeviceModel(printer, datos) {
     const info = [];
     // Solo se muestra lo que existe: una impresión sin capas informadas no
     // debe pintar "Capa 0 / 0" como si fuera un dato.
-    if (spool && spool.label) info.push({ label: t('devMaterial'), value: spool.label });
     if (enTrabajo && Number.isFinite(job.current_layer) && Number.isFinite(job.total_layer)) {
         info.push({ label: t('devLayer'), value: `${job.current_layer} / ${job.total_layer}` });
     }
+    // Material: fila propia (no un dev-field genérico) porque lleva el
+    // carrete del color real del filamento -- diámetro/color/peso vienen
+    // resueltos por Spoolman (/api/spoolman/printers/active-spools), nunca
+    // inventados si el plugin no responde.
+    const material = spool && spool.label ? {
+        label: spool.label,
+        colorHex: spool.color_hex || null,
+        diameter: Number.isFinite(spool.diameter) ? spool.diameter : null,
+        remainingWeight: Number.isFinite(spool.remaining_weight) ? spool.remaining_weight : null,
+    } : null;
 
     return {
         name: printerName,
@@ -7466,6 +7475,7 @@ function klipperDeviceModel(printer, datos) {
         jobLabel: t('devFile'),
         metrics,
         info,
+        material,
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         // Las olas térmicas: el color y la velocidad salen de la temperatura
@@ -7718,6 +7728,34 @@ function deviceMetrica(icono, etiqueta, valor) {
     </div>`;
 }
 
+// Fila de material: propia y no un dev-field genérico porque necesita
+// mostrar el carrete del color real del filamento, separado del nombre por
+// un divisor -- un simple label/valor no tenía dónde meter el icono.
+function deviceMaterialCampo(material) {
+    const color = material.colorHex
+        ? (material.colorHex.startsWith('#') ? material.colorHex : `#${material.colorHex}`)
+        : null;
+    const specs = [];
+    if (material.diameter != null) specs.push(`${material.diameter} mm`);
+    if (material.remainingWeight != null) {
+        specs.push(material.remainingWeight >= 1000
+            ? `${(material.remainingWeight / 1000).toFixed(1)} kg`
+            : `${Math.round(material.remainingWeight)} g`);
+    }
+    const specsHtml = specs.length
+        ? `<span class="dev-material-specs">${specs.map(s => `<span>${escapeHtml(s)}</span>`).join('')}</span>`
+        : '';
+    return `<div class="dev-field dev-field-material">
+        <span class="dev-field-label">${escapeHtml(t('devMaterial'))}</span>
+        <div class="dev-material-row">
+            <span class="dev-material-name" title="${escapeHtml(material.label)}">${escapeHtml(material.label)}</span>
+            <span class="dev-material-divider" aria-hidden="true"></span>
+            <span class="dev-material-icon"${color ? ` style="color:${escapeHtml(color)}"` : ''}>${deviceIcon('spool', 22)}</span>
+            ${specsHtml}
+        </div>
+    </div>`;
+}
+
 function deviceAccionBtn(accion) {
     const tono = accion.tone ? ` dev-action-${accion.tone}` : '';
     const grande = accion.primary ? ' dev-action-primary' : '';
@@ -7799,8 +7837,10 @@ function deviceCardHtml(d) {
     if (d.metrics && d.metrics.length) {
         panel.push(`<div class="dev-metrics">${d.metrics.map(m => deviceMetrica(m.icon, m.label, m.value)).join('')}</div>`);
     }
-    if (d.info && d.info.length) {
-        panel.push(`<div class="dev-info">${d.info.map(i => deviceCampo(i.label, i.value)).join('')}</div>`);
+    if ((d.info && d.info.length) || d.material) {
+        const camposInfo = (d.info || []).map(i => deviceCampo(i.label, i.value));
+        if (d.material) camposInfo.unshift(deviceMaterialCampo(d.material));
+        panel.push(`<div class="dev-info">${camposInfo.join('')}</div>`);
     }
     if (panel.length) cuerpo.push(`<div class="dev-panel" ${seccion('data')}>${panel.join('')}</div>`);
 
@@ -7821,7 +7861,6 @@ function deviceCardHtml(d) {
             </div>
             <div class="dev-card-head-right">
                 ${conexion}
-                <button type="button" class="dev-menu" data-dev-action="menu" title="${escapeHtml(t('devMore'))}">${deviceIcon('dots', 16)}</button>
             </div>
         </div>
         ${cuerpo.filter(Boolean).join('')}
@@ -8023,10 +8062,10 @@ function renderPrinters(printersInput) {
                     await handleActivePrintAction(accion, port);
                     return;
                 }
-                if (accion === 'menu' || accion === 'camera-setup') {
-                    // Los tres puntos y el botón de cámara sin cámara
-                    // asignada llevan al plugin: es donde se asigna una, y
-                    // sin visor que alternar no hay nada más útil que hacer.
+                if (accion === 'camera-setup') {
+                    // El botón de cámara sin cámara asignada lleva al
+                    // plugin: es donde se asigna una, y sin visor que
+                    // alternar no hay nada más útil que hacer.
                     switchSection('camera-viewer');
                     return;
                 }
@@ -8121,7 +8160,7 @@ function renderPrinters(printersInput) {
                     await handleLaserQuickAction(accion, host);
                     return;
                 }
-                if (accion === 'menu' || accion === 'camera-setup') {
+                if (accion === 'camera-setup') {
                     switchSection('camera-viewer');
                     return;
                 }
