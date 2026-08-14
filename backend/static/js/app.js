@@ -4030,7 +4030,9 @@ function renderDashboardPanel(data) {
 let dashboardPanelLoading = false;
 
 async function loadDashboardPanel() {
-    if (dashboardPanelLoading || document.hidden) return;
+    // Ver el comentario en loadPrinters(): mismo motivo para sacar
+    // document.hidden de esta condición.
+    if (dashboardPanelLoading) return;
     dashboardPanelLoading = true;
     try {
         const response = await fetch('/api/dashboard/summary');
@@ -5826,7 +5828,15 @@ function renderInitialDeviceLoaders() {
 }
 
 async function loadPrinters() {
-    if (printersLoading || document.hidden) return;
+    // document.hidden se sacó de esta condición: en un uso real por RDP
+    // (ver AGENTS.md) esa API del navegador no siempre refleja si alguien
+    // está mirando la pantalla de verdad, y una pestaña que el navegador
+    // cree "oculta" para siempre significa una ficha que nunca se
+    // actualiza -- confirmado con un hueco de 20 minutos sin una sola
+    // llamada a /api/printers/status en los logs del servidor, justo
+    // después de mandar un comando. El costo de sondear cada 5s en una
+    // LAN local es insignificante comparado con el de una ficha muerta.
+    if (printersLoading) return;
     printersLoading = true;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -5890,7 +5900,9 @@ async function refreshDashboardMarlinStatuses(printers) {
 }
 
 async function loadDashboardStandalonePrinters({ skipMarlinStatusRefresh = false } = {}) {
-    if (dashboardStandalonePrintersLoading || document.hidden) return;
+    // Ver el comentario en loadPrinters(): mismo motivo para sacar
+    // document.hidden de esta condición.
+    if (dashboardStandalonePrintersLoading) return;
     dashboardStandalonePrintersLoading = true;
     try {
         const requests = [
@@ -6106,7 +6118,8 @@ function reintentarCargaDeDispositivos() {
 }
 
 async function refreshDashboardLaserCard() {
-    if (document.hidden) return;
+    // Ver el comentario en loadPrinters(): mismo motivo para sacar
+    // document.hidden de esta condición.
     try {
         const [registryResponse, jobsResponse] = await Promise.all([
             fetch('/api/laser/registry'),
@@ -7771,7 +7784,7 @@ function deviceMaterialCampo(material) {
         <div class="dev-material-row">
             <span class="dev-material-name" title="${escapeHtml(material.label)}">${escapeHtml(material.label)}</span>
             <span class="dev-material-divider" aria-hidden="true"></span>
-            <span class="dev-material-icon"${color ? ` style="color:${escapeHtml(color)}"` : ''}>${deviceIcon('spool', 26)}</span>
+            <span class="dev-material-icon"${color ? ` style="color:${escapeHtml(color)}"` : ''}>${deviceIcon('spool', 52)}</span>
             ${specsHtml}
         </div>
     </div>`;
