@@ -4004,18 +4004,36 @@ function renderPanelAlerts(data) {
         </div>`;
 }
 
+// Las tres fichas mini solo se muestran cuando hay un dato real que
+// mostrar -- a diferencia del resto del panel (que siempre está visible
+// con un estado de "sin datos"), estas dependen de que el usuario haya
+// configurado algo aparte (un sensor DHT11 como ambiente del taller,
+// potencias en Cotizador, o NOPAL Intelligence activada) y no tiene
+// sentido ocupar espacio con una ficha que nunca va a tener nada.
 function renderPanelMiniCards(data) {
-    const ambientValue = document.getElementById('panel-ambient-value');
-    if (ambientValue) ambientValue.textContent = data.ambient != null ? `${data.ambient}°C` : t('panelNoSensor');
-
-    const powerValue = document.getElementById('panel-power-value');
-    if (powerValue) {
-        const power = data.power || {};
-        powerValue.textContent = power.active_watts != null ? `~${power.active_watts} W (${t('panelEstimated')})` : '—';
+    const ambientCard = document.getElementById('panel-ambient-card');
+    if (ambientCard) {
+        ambientCard.hidden = data.ambient == null;
+        if (data.ambient != null) {
+            document.getElementById('panel-ambient-value').textContent = `${data.ambient}°C`;
+        }
     }
 
-    const maintenanceValue = document.getElementById('panel-maintenance-value');
-    if (maintenanceValue) maintenanceValue.textContent = data.maintenance != null ? data.maintenance : t('panelNoData');
+    const powerCard = document.getElementById('panel-power-card');
+    if (powerCard) {
+        powerCard.hidden = data.power == null;
+        if (data.power != null) {
+            document.getElementById('panel-power-value').textContent = `~${data.power.active_watts} W (${t('panelEstimated')})`;
+        }
+    }
+
+    const maintenanceCard = document.getElementById('panel-maintenance-card');
+    if (maintenanceCard) {
+        maintenanceCard.hidden = data.maintenance == null;
+        if (data.maintenance != null) {
+            document.getElementById('panel-maintenance-value').textContent = data.maintenance;
+        }
+    }
 }
 
 function renderDashboardPanel(data) {

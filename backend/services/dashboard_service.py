@@ -10,6 +10,7 @@ from backend.services.flashforge_service import get_registered_printers_with_sta
 from backend.services.klipper_service import get_all_printers_status, get_system_stats
 from backend.services.laser_service import get_active_job_hosts, get_registered_lasers_status
 from backend.services.marlin_printer_service import get_active_job_devices, get_registered_printers_with_status
+from backend.services import maintenance_service
 from backend.services.notification_service import get_notifications
 from backend.services.plugin_loader_service import get_loaded_plugin_module
 from backend.utils import is_git_update_available
@@ -25,6 +26,19 @@ def _get_camera_health_counts() -> Dict[str, int]:
     if module is None:
         return {"online": 0, "total": 0}
     return module.get_camera_health_counts()
+
+
+async def _get_ambient_temperature_c() -> Optional[float]:
+    """Temperatura ambiente del taller, si el usuario eligió una placa con
+    DHT11 en Automatización de Taller -- ver
+    accessory_service.get_ambient_temperature_c(). Ese plugin no es un
+    módulo de core -- si no está instalado/cargado, o si nadie eligió una
+    placa todavía, se trata como None en vez de inventar un dato (mismo
+    patrón que _get_camera_health_counts más arriba)."""
+    module = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if module is None:
+        return None
+    return await module.get_ambient_temperature_c()
 
 # Historial de carga del host para el sparkline de "Rendimiento del host" —
 # se va llenando con cada consulta al resumen (cada ~10s desde el frontend),
@@ -236,7 +250,7 @@ def _active_jobs(
     return jobs
 
 
-def _estimated_active_power_watts(active_job_kinds: List[str]) -> int:
+def _estimated_active_power_watts(active_job_kinds: List[str]) -> Optional[int]:
     """Estimación, no medición: suma la potencia nominal configurada (en
     Cotizador > Ajustes) de cada máquina con un trabajo corriendo ahora
     mismo. NOPAL no tiene integración con medidores de energía reales.
@@ -244,9 +258,17 @@ def _estimated_active_power_watts(active_job_kinds: List[str]) -> int:
     Cotizador es un plugin, no un módulo de core -- si no está
     instalado/cargado no hay ajustes reales que sumar, se trata como {} en
     vez de romper el arranque de NOPAL (mismo patrón que
-    _get_camera_health_counts más arriba)."""
+    _get_camera_health_counts más arriba).
+
+    None (no 0) si no hay NINGUNA potencia configurada -- 0 significa "sí
+    está configurado pero ahora mismo no hay nada corriendo", una
+    distinción real: el dashboard oculta la ficha entera con None, en vez
+    de mostrar un "~0 W" que no significa nada para quien nunca configuró
+    esto."""
     module = get_loaded_plugin_module("cotizador", "services.pricing_service")
     watts_default = module.get_settings().get("machine_watts_default", {}) if module else {}
+    if not any(float(value or 0) > 0 for value in watts_default.values()):
+        return None
     total = sum(float(watts_default.get(kind, 0) or 0) for kind in active_job_kinds)
     return round(total)
 
@@ -263,6 +285,7 @@ async def get_dashboard_summary() -> Dict[str, Any]:
         update_available,
         host_stats,
         storage,
+        ambient,
     ) = await asyncio.gather(
         loop.run_in_executor(None, get_all_printers_status),
         loop.run_in_executor(None, get_registered_printers_with_status),
@@ -277,6 +300,7 @@ async def get_dashboard_summary() -> Dict[str, Any]:
         loop.run_in_executor(None, is_git_update_available),
         loop.run_in_executor(None, get_system_stats),
         loop.run_in_executor(None, get_storage_snapshot),
+        _get_ambient_temperature_c(),
     )
     marlin_jobs = await loop.run_in_executor(None, get_active_job_devices)
     laser_cnc_jobs = await loop.run_in_executor(None, get_active_job_hosts)
@@ -317,6 +341,16 @@ async def get_dashboard_summary() -> Dict[str, Any]:
     if host.get("cpu_percent") is not None:
         _cpu_history.append(host["cpu_percent"])
 
+    power_watts = _estimated_active_power_watts([job["machine_type"] for job in jobs])
+
+    # Bajo demanda, cacheado (ver maintenance_service.py): dispara un
+    # recálculo en segundo plano si la IA está activada y el caché venció,
+    # pero NUNCA espera el resultado acá -- este resumen se sondea cada
+    # pocos segundos y no puede depender de que la IA responda a tiempo.
+    await maintenance_service.maybe_refresh(
+        notifications.get("items", []), jobs, services_online, services_total,
+    )
+
     return {
         "system": {
             "health": health,
@@ -345,10 +379,15 @@ async def get_dashboard_summary() -> Dict[str, Any]:
         "devices": device_counts,
         "jobs": {"active": jobs[:6], "total_active": len(jobs)},
         "alerts": alert_counts,
-        "power": {"active_watts": _estimated_active_power_watts([job["machine_type"] for job in jobs]), "estimated": True},
-        # Sin sensor ambiental ni tracking de mantenimiento en NOPAL hoy — se
-        # dejan en null a propósito para que el frontend muestre un estado de
-        # "sin datos" en vez de un número inventado.
-        "ambient": None,
-        "maintenance": None,
+        # None (no un objeto con "~0 W") si Cotizador no tiene ninguna
+        # potencia configurada -- el frontend oculta la ficha entera en vez
+        # de mostrar un número que no significa nada.
+        "power": {"active_watts": power_watts, "estimated": True} if power_watts is not None else None,
+        # None si no hay ninguna placa elegida como sensor ambiente en
+        # Automatización de Taller (o el plugin no está instalado) -- ver
+        # _get_ambient_temperature_c más arriba.
+        "ambient": ambient,
+        # None si NOPAL Intelligence está apagada, o si todavía no hay
+        # ninguna sugerencia cacheada -- ver maintenance_service.py.
+        "maintenance": maintenance_service.get_cached_suggestion(),
     }
