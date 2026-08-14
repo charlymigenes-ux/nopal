@@ -658,8 +658,13 @@ body.green .global-topbar {
 /* Botón hamburguesa: abre el cajón lateral (.sidebar) en mobile. Oculto en
    escritorio — el sidebar siempre está visible ahí, no hace falta. Se
    muestra dentro de @media (max-width: 768px) más abajo, junto con el resto
-   de los ajustes de layout mobile del shell. */
-.mobile-nav-toggle-btn {
+   de los ajustes de layout mobile del shell.
+   Selector compuesto (no solo .mobile-nav-toggle-btn): el botón también
+   lleva .topbar-icon-btn, que fija display:inline-flex más abajo en este
+   mismo archivo -- con la misma especificidad (una sola clase cada uno),
+   gana la regla que aparece después, y el botón quedaba visible siempre en
+   vez de solo en mobile. */
+.topbar-icon-btn.mobile-nav-toggle-btn {
     display: none;
     align-items: center;
     justify-content: center;
@@ -15485,7 +15490,7 @@ body.green .option-switch {
        (#mobile-nav-toggle-btn) y la clase .mobile-nav-open en .app-shell
        (ver app.js). Tocar el fondo oscuro (.mobile-nav-backdrop) o un
        ítem de navegación también lo cierra. */
-    .mobile-nav-toggle-btn {
+    .topbar-icon-btn.mobile-nav-toggle-btn {
         display: inline-flex;
     }
 
@@ -17261,6 +17266,13 @@ body.ai .dashboard-dock-section .section-title h2 {
 .dev-card {
     --dev-tone: var(--status-ok);
     position: relative;
+    isolation: isolate;
+    /* Las ondas térmicas (.printer-thermal-layer) se dibujan a propósito
+       un 8% más anchas que la ficha (ver renderThermalLayer) para que el
+       recorte de este overflow, no el suyo propio, les dé un borde
+       limpio contra las esquinas redondeadas -- sin esto se salían de la
+       ficha y cruzaban por encima de las de al lado. */
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -17270,10 +17282,41 @@ body.ai .dashboard-dock-section .section-title h2 {
     border-radius: 20px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
     min-width: 0;
+    animation: devCardCategoryPulse 4s ease-in-out infinite;
 }
 .dev-card[data-tone="warn"]   { --dev-tone: var(--status-warn); }
 .dev-card[data-tone="danger"] { --dev-tone: var(--status-danger); }
 .dev-card[data-tone="off"]    { --dev-tone: var(--text-faint); }
+
+/* Bisel animado por categoría de máquina: cada columna del dashboard fija
+   --dev-category con el mismo color que ya usa su encabezado (IMPRESORA
+   3D/LÁSER/CNC, ver .machines-column-title-*). Sin columna que lo fije
+   (modo mixto, una sola grilla para todo tipo de máquina) el borde cae al
+   neutro de siempre -- no hay un atributo de "tipo" uniforme en la ficha
+   para colorear ahí sin una columna que lo indique. */
+#printers-grid .dev-card { --dev-category: var(--accent); }
+#lasers-grid .dev-card { --dev-category: var(--purple); }
+#cnc-grid .dev-card { --dev-category: var(--orange); }
+
+@keyframes devCardCategoryPulse {
+    0%, 100% { border-color: color-mix(in srgb, var(--dev-category, var(--border-subtle)) 40%, var(--border-subtle)); }
+    50%      { border-color: color-mix(in srgb, var(--dev-category, var(--border-subtle)) 90%, var(--border-subtle)); }
+}
+
+/* Desconectada: sin pulso de color -- el gris neutro ya dice "no hay nada
+   que mirar aquí", animar un color vivo encima de una máquina apagada
+   contradice esa lectura. */
+.dev-card[data-tone="off"] {
+    animation: none;
+    border-color: var(--border-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dev-card {
+        animation: none;
+        border-color: color-mix(in srgb, var(--dev-category, var(--border-subtle)) 55%, var(--border-subtle));
+    }
+}
 
 /* Cabecera: la máquina a la izquierda, y a su derecha nombre, tipo e
    insignia apilados -- los tres alineados entre sí, como en la referencia. */
