@@ -17046,6 +17046,7 @@ function switchSection(sectionName) {
         updateGamepadConsoleForSection();
     }
     if (sectionName === 'settings') {
+        loadAboutInfo();
         loadUpdatesStatus();
         refreshUsbPorts();
         loadRegistryDevices();
@@ -18421,6 +18422,107 @@ function loadSettingsPanel() {
 
     setActiveThemeCard(savedTheme);
 }
+
+// Se cachea lo último cargado para que el botón de copiar no tenga que
+// volver a pedir nada -- ya se pidió al entrar a Configuración
+// (loadAboutInfo), y copiar debe ser instantáneo.
+let aboutDiagnosticsData = null;
+
+async function loadAboutInfo() {
+    const versionEl = document.getElementById('about-version');
+    if (!versionEl) return;
+    const commitEl = document.getElementById('about-commit');
+    const branchEl = document.getElementById('about-branch');
+    const osEl = document.getElementById('about-os');
+    const archEl = document.getElementById('about-arch');
+    const pythonEl = document.getElementById('about-python');
+    const languageEl = document.getElementById('about-language');
+    const pluginsListEl = document.getElementById('about-plugins-list');
+
+    // Nombre legible del idioma activo: se reusa el mismo texto que ya
+    // muestra el selector de idioma de la topbar (Español/English/...) en
+    // vez de mantener un segundo mapeo aparte.
+    const langLabel = document.querySelector(`.lang-switch-btn[data-lang="${currentLanguage}"]`)?.textContent || currentLanguage;
+    if (languageEl) languageEl.textContent = langLabel;
+
+    try {
+        const [diagResponse, pluginsResponse] = await Promise.all([
+            fetch('/api/system/diagnostics'),
+            fetch('/api/plugins'),
+        ]);
+        const diag = diagResponse.ok ? await diagResponse.json() : null;
+        const pluginsData = pluginsResponse.ok ? await pluginsResponse.json() : { plugins: [] };
+        const installedPlugins = (pluginsData.plugins || []).filter(plugin => plugin.installed);
+
+        if (diag) {
+            versionEl.textContent = diag.app_version || '—';
+            // "unavailable" en vez de "—": NOPAL puede correr sin .git (un
+            // .zip descargado), y ese caso se distingue de "no se pudo leer
+            // por ahora" en vez de verse igual.
+            if (commitEl) commitEl.textContent = diag.commit || t('aboutUnavailable');
+            if (branchEl) branchEl.textContent = diag.branch || t('aboutUnavailable');
+            if (osEl) osEl.textContent = diag.os || '—';
+            if (archEl) archEl.textContent = diag.architecture || '—';
+            if (pythonEl) pythonEl.textContent = diag.python_version || '—';
+        }
+
+        if (pluginsListEl) {
+            pluginsListEl.innerHTML = installedPlugins.length
+                ? installedPlugins.map(plugin => `
+                    <div class="about-plugin-row">
+                        <span class="about-plugin-name">${escapeHtml(plugin.name || plugin.id)}</span>
+                        <span class="about-plugin-version">${escapeHtml(plugin.version || '—')}</span>
+                    </div>`).join('')
+                : `<div class="empty-state-small">${escapeHtml(t('aboutNoPlugins'))}</div>`;
+        }
+
+        aboutDiagnosticsData = { diag, installedPlugins, langLabel };
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+// Texto exacto que copia el botón "Copiar información de diagnóstico" --
+// formato de bloque de texto plano (no JSON) pensado para pegarse directo
+// en un reporte de soporte o un issue de GitHub.
+function buildDiagnosticsText() {
+    const data = aboutDiagnosticsData;
+    const diag = data?.diag;
+    const lines = [
+        'NOPAL Diagnostic Information',
+        `NOPAL: ${diag?.app_version || 'unknown'}`,
+        `Commit: ${diag?.commit || 'unavailable'}`,
+        `Branch: ${diag?.branch || 'unavailable'}`,
+        `OS: ${diag?.os || 'unknown'}`,
+        `Architecture: ${diag?.architecture || 'unknown'}`,
+        `Python: ${diag?.python_version || 'unknown'}`,
+        `Language: ${data?.langLabel || currentLanguage}`,
+        '',
+        'Installed plugins:',
+    ];
+    const plugins = data?.installedPlugins || [];
+    if (plugins.length) {
+        plugins.forEach(plugin => lines.push(`- ${plugin.name || plugin.id}: ${plugin.version || 'unknown'}`));
+    } else {
+        lines.push('- (none)');
+    }
+    return lines.join('\n');
+}
+
+document.getElementById('about-copy-diagnostics-btn')?.addEventListener('click', async () => {
+    // Si Configuración nunca se visitó en esta sesión, aboutDiagnosticsData
+    // sigue null -- se carga antes de copiar en vez de copiar un bloque a
+    // medias.
+    if (!aboutDiagnosticsData) await loadAboutInfo();
+    const text = buildDiagnosticsText();
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast(t('aboutDiagnosticsCopied'));
+    } catch (error) {
+        console.error(error);
+        showToast(t('aboutDiagnosticsCopyFailed'), 'error');
+    }
+});
 
 async function loadUpdatesStatus() {
     const versionEl = document.getElementById('updates-version');
