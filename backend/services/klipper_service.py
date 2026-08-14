@@ -180,6 +180,32 @@ class MoonrakerClient:
     def get_server_info(self):
         return self._get("/server/info")
 
+    def set_spoolman_active_spool(self, spool_id: Optional[int]) -> bool:
+        """Fija el carrete activo del componente [spoolman] DE MOONRAKER (no
+        el vínculo de NOPAL) -- es el único que de verdad descuenta gramos
+        reales de Spoolman mientras corre una impresión. Endpoint confirmado
+        contra el código fuente real de Moonraker (moonraker/components/
+        spoolman.py::_handle_spool_id_request): POST /server/spoolman/spool_id
+        con {"spool_id": int|None}.
+
+        Si Moonraker no tiene el componente [spoolman] configurado en su
+        moonraker.conf, esto falla y devuelve False -- quien llama (ver
+        plugins/spoolman) sigue guardando su propio vínculo de todos modos;
+        perder la sincronización con Moonraker no debe romper la asignación
+        que se ve en la ficha.
+        """
+        try:
+            response = requests.post(
+                f"{self.base_url}/server/spoolman/spool_id",
+                json={"spool_id": spool_id},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.info(f"[{self.port}] No se pudo fijar el spool activo en Moonraker: {e}")
+            return False
+
     def get_printer_info(self):
         return self._get("/printer/info")
 
