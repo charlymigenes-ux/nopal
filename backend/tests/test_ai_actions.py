@@ -102,6 +102,29 @@ async def test_precalentar_exige_alguna_temperatura(monkeypatch):
         await ai_actions.execute("preheat_machine", {"machine_id": "nopal-i3"}, "admin")
 
 
+def test_asignar_carrete_es_admin_como_en_el_panel():
+    """set_active_spool_endpoint (plugin de Materiales) es require_role('admin')."""
+    assert ai_actions.ACTIONS["assign_spool"].role == "admin"
+
+
+async def test_asignar_carrete_solo_en_klipper(monkeypatch):
+    async def _maquina(machine_id):
+        return {"id": "laser:192.168.0.61", "name": "TTS 55 PRO", "brand": "grbl"}
+    monkeypatch.setattr(ai_actions, "_resolve_machine", _maquina)
+    with pytest.raises(ai_actions.ActionError, match="Klipper"):
+        await ai_actions.execute("assign_spool", {"machine_id": "TTS 55 PRO", "spool_id": 3}, "admin")
+
+
+async def test_asignar_carrete_sin_plugin_instalado(monkeypatch):
+    """El plugin de Materiales no está cargado en este proceso de pruebas
+    (es un repo aparte, ver CLAUDE.md) -- debe fallar claro, no romper."""
+    async def _maquina(machine_id):
+        return {"id": "klipper:7125", "name": "nopal-i3", "brand": "klipper"}
+    monkeypatch.setattr(ai_actions, "_resolve_machine", _maquina)
+    with pytest.raises(ai_actions.ActionError, match="Materiales"):
+        await ai_actions.execute("assign_spool", {"machine_id": "nopal-i3", "spool_id": 3}, "admin")
+
+
 # --------------------------------------------------------------------------
 # El interruptor se revalida al ejecutar, no solo al ofrecer
 # --------------------------------------------------------------------------
