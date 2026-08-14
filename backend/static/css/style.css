@@ -17220,19 +17220,25 @@ body.ai .dashboard-dock-section .section-title h2 {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dev-material-divider { align-self: stretch; width: 1px; background: var(--border-subtle); flex-shrink: 0; }
+/* Centrada en la fila, no de borde a borde -- estirarla al 100% del alto
+   se veía pesada/descentrada apenas el lado de los datos crecía a dos
+   líneas y el nombre se quedaba en una sola. */
+.dev-material-divider { align-self: center; width: 1px; height: 30px; background: var(--border-subtle); flex-shrink: 0; }
 .dev-material-icon { display: inline-flex; flex-shrink: 0; color: var(--text-faint); }
-.dev-material-icon svg { width: 22px; height: 22px; }
+.dev-material-icon svg { width: 26px; height: 26px; }
 .dev-material-specs {
     display: flex;
     flex-direction: column;
-    gap: 1px;
-    font-size: .82rem;
-    font-weight: 600;
+    gap: 2px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.1;
     color: var(--text-strong);
     white-space: nowrap;
     flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
 }
+.dev-material-specs small { font-size: .68rem; font-weight: 600; margin-left: 2px; color: var(--text-muted); }
 
 /* Progreso */
 .dev-progress {

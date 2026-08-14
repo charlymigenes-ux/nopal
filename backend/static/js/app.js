@@ -3501,6 +3501,10 @@ function renderTemperaturesCard(data, port) {
             temperatureCardThemeMode = 'cool';
             heaterSensors.forEach(sensor => setTemperatureTarget(port, sensor.key, 0));
             setTimeout(() => loadPrinterTemperatures(port), 400);
+            // Mismo motivo que en applyMaterialPreheat: el target ya se
+            // mandó, pero la ficha del dashboard solo lo refleja en su
+            // siguiente sondeo de 5s si nadie la avisa antes.
+            loadPrinters();
         });
     }
 
@@ -6023,6 +6027,18 @@ const LASER_STATE_IMAGES = {
     offline: '/static/img/Laser_ready.png',
 };
 
+// La ficha de la CNC usaba esta misma tabla y terminaba con el dibujo del
+// láser -- son máquinas distintas. Solo hay dos ilustraciones propias de
+// CNC en el repo (encendida/apagada, sin variantes por estado), así que se
+// usan esas dos en vez de inventar variantes que no existen.
+const CNC_STATE_IMAGES = {
+    printing: '/static/img/cncready2.png',
+    paused: '/static/img/cncready2.png',
+    error: '/static/img/cncready2.png',
+    idle: '/static/img/cncready2.png',
+    offline: '/static/img/cncoff.png',
+};
+
 function getLaserVisualState(status) {
     if (!status || !status.connected) return 'offline';
     const state = (status.state || '').toLowerCase();
@@ -7579,7 +7595,7 @@ function laserDeviceModel(entry, jobsByHost) {
         state,
         stateLabel: etiquetas[state] || state,
         online: enLinea,
-        art: LASER_STATE_IMAGES[state] || LASER_STATE_IMAGES.idle,
+        art: (esCnc ? CNC_STATE_IMAGES : LASER_STATE_IMAGES)[state] || (esCnc ? CNC_STATE_IMAGES : LASER_STATE_IMAGES).idle,
         job: enTrabajo ? {
             // GRBL no da tiempo estimado (solo Klipper/Marlin lo calculan a
             // partir del perfil de aceleración) -- no se inventa uno.
@@ -7649,7 +7665,10 @@ const DEVICE_ICONS = {
     // Cama caliente: la placa, sus patas y el calor subiendo en ondas.
     bed: '<path d="M3 16h18"/><path d="M5 16v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/><path d="M6 19v1"/><path d="M18 19v1"/><path d="M3 16v3h18v-3"/><path d="M8 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/><path d="M12 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/><path d="M16 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/>',
     layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
-    spool: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
+    // Carrete de filamento de perfil: dos pestañas (arriba/abajo), el eje que
+    // las une y las capas de filamento enrolladas entre ellas. Dos círculos
+    // concéntricos se leían como un blanco/diana, no como un carrete.
+    spool: '<ellipse cx="12" cy="5" rx="7" ry="2.5"/><ellipse cx="12" cy="19" rx="7" ry="2.5"/><path d="M5 5v14"/><path d="M19 5v14"/><path d="M8 8.5c1.6 1 6.4 1 8 0M8 12c1.6 1 6.4 1 8 0M8 15.5c1.6 1 6.4 1 8 0"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     wifi: '<path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
     pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
@@ -7735,22 +7754,24 @@ function deviceMaterialCampo(material) {
     const color = material.colorHex
         ? (material.colorHex.startsWith('#') ? material.colorHex : `#${material.colorHex}`)
         : null;
+    // Mismo patrón que deviceMetrica: el número grande, la unidad chica al
+    // lado -- "1.75mm" leído de un vistazo, no un texto corrido chico.
     const specs = [];
-    if (material.diameter != null) specs.push(`${material.diameter} mm`);
+    if (material.diameter != null) specs.push([`${material.diameter}`, 'mm']);
     if (material.remainingWeight != null) {
         specs.push(material.remainingWeight >= 1000
-            ? `${(material.remainingWeight / 1000).toFixed(1)} kg`
-            : `${Math.round(material.remainingWeight)} g`);
+            ? [(material.remainingWeight / 1000).toFixed(1), 'kg']
+            : [String(Math.round(material.remainingWeight)), 'g']);
     }
     const specsHtml = specs.length
-        ? `<span class="dev-material-specs">${specs.map(s => `<span>${escapeHtml(s)}</span>`).join('')}</span>`
+        ? `<span class="dev-material-specs">${specs.map(([n, u]) => `<span>${escapeHtml(n)}<small>${escapeHtml(u)}</small></span>`).join('')}</span>`
         : '';
     return `<div class="dev-field dev-field-material">
         <span class="dev-field-label">${escapeHtml(t('devMaterial'))}</span>
         <div class="dev-material-row">
             <span class="dev-material-name" title="${escapeHtml(material.label)}">${escapeHtml(material.label)}</span>
             <span class="dev-material-divider" aria-hidden="true"></span>
-            <span class="dev-material-icon"${color ? ` style="color:${escapeHtml(color)}"` : ''}>${deviceIcon('spool', 22)}</span>
+            <span class="dev-material-icon"${color ? ` style="color:${escapeHtml(color)}"` : ''}>${deviceIcon('spool', 26)}</span>
             ${specsHtml}
         </div>
     </div>`;
@@ -16240,7 +16261,11 @@ function renderMarlinTemperaturesCard(data, device) {
     });
     const heaterKeys = sensors.map(sensor => sensor.key);
     document.getElementById('marlin-temp-cool-btn')?.addEventListener('click', async () => {
-        try { await Promise.all(heaterKeys.map(heater => setMarlinHeaterTarget(device, heater, 0))); refreshMarlinModalTemperatures(); }
+        try {
+            await Promise.all(heaterKeys.map(heater => setMarlinHeaterTarget(device, heater, 0)));
+            refreshMarlinModalTemperatures();
+            loadDashboardStandalonePrinters();
+        }
         catch (error) { showToast(error.message, 'error'); }
     });
     document.getElementById('marlin-temp-preset-btn')?.addEventListener('click', () => {
