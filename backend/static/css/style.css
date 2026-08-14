@@ -17389,15 +17389,16 @@ body.ai .dashboard-dock-section .section-title h2 {
 }
 /* Centrada en la fila, no de borde a borde -- estirarla al 100% del alto
    se veía pesada/descentrada apenas el lado de los datos crecía a dos
-   líneas y el nombre se quedaba en una sola. */
-.dev-material-divider { align-self: center; width: 1px; height: 30px; background: var(--border-subtle); flex-shrink: 0; }
+   líneas y el nombre se quedaba en una sola. Alto fijo a juego con el
+   icono grande, no con el contenido de al lado. */
+.dev-material-divider { align-self: center; width: 1px; height: 44px; background: var(--border-subtle); flex-shrink: 0; }
 .dev-material-icon { display: inline-flex; flex-shrink: 0; color: var(--text-faint); }
-.dev-material-icon svg { width: 26px; height: 26px; }
+.dev-material-icon svg { width: 52px; height: 52px; }
 .dev-material-specs {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    font-size: 1.15rem;
+    gap: 3px;
+    font-size: 1.45rem;
     font-weight: 700;
     line-height: 1.1;
     color: var(--text-strong);
@@ -17405,7 +17406,7 @@ body.ai .dashboard-dock-section .section-title h2 {
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
 }
-.dev-material-specs small { font-size: .68rem; font-weight: 600; margin-left: 2px; color: var(--text-muted); }
+.dev-material-specs small { font-size: .72rem; font-weight: 600; margin-left: 3px; color: var(--text-muted); }
 
 /* Progreso */
 .dev-progress {
