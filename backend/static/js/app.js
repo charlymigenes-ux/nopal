@@ -3370,6 +3370,16 @@ async function applyMaterialPreheat(material) {
     }));
     document.getElementById('material-preheat-modal')?.classList.remove('active');
     showToast(`${material.name}: cama ${material.heater_bed}°C · boquilla ${material.extruder}°C`);
+    // El objetivo ya se mandó, pero la ficha del dashboard solo se repinta en
+    // su siguiente ciclo de sondeo (5s, y pausado si la pestaña está en
+    // segundo plano) -- sin este refresco inmediato, el "no se actualiza" se
+    // sentía como que el precalentado no hizo nada. pause/resume/cancel ya
+    // siguen este mismo patrón (ver handleActivePrintAction).
+    if (target.type === 'marlin') {
+        loadDashboardStandalonePrinters();
+    } else {
+        loadPrinters();
+    }
 }
 
 async function openMaterialPreheatModal(target) {
@@ -16880,6 +16890,14 @@ function switchSection(sectionName) {
     if (topbarTitle) topbarTitle.hidden = !isDashboard;
     if (topbarMeta) topbarMeta.hidden = !isDashboard;
     if (topbarClock) topbarClock.hidden = !isDashboard;
+
+    // El material cargado por impresora (deviceSpoolsByPort) se cachea para
+    // no volver a resolverlo en cada sondeo de 5s -- pero eso significa que
+    // si alguien cambia la asignación de carrete desde el plugin de
+    // materiales y vuelve al dashboard, la ficha seguía mostrando el carrete
+    // viejo hasta un refresh de página completo. Se refresca aquí, al volver
+    // a entrar a la sección, en vez de agregarlo al sondeo de 5s.
+    if (sectionName === 'dashboard') refreshDeviceSpools().then(() => renderPrinters(allPrinters));
 
     // Handle models section
     if (sectionName === 'models') {
