@@ -100,6 +100,24 @@ def test_ruta_completa_de_diagnostico():
     assert ruta.fallback_models == ["openai/gpt-oss-20b", "llama-3.1-8b-instant"]
 
 
+@pytest.mark.parametrize("pregunta", [
+    "cambia el carrete de nopal-i3 a verde",
+    "¿cuánto filamento me queda?",
+    "¿qué bobinas tengo disponibles?",
+])
+def test_las_preguntas_de_material_van_al_nivel_medio(pregunta):
+    """No es solo el catálogo de herramientas lo que hacía falta ampliar:
+    probado en vivo contra Groq, el nivel rápido (incluso con el catálogo
+    completo) a veces llama a assign_spool adivinando un spool_id en vez
+    de consultar get_material_status primero. El nivel medio sí lo hace
+    bien de forma consistente -- por eso esto sube de nivel, no solo de
+    catálogo."""
+    ruta = ai_router.route(pregunta, CONFIG_AUTO)
+    assert ruta.tier == "medium"
+    assert ruta.reason == "material_request"
+    assert ruta.tool_profile == "full"
+
+
 def test_el_nivel_rapido_recorta_el_catalogo_de_herramientas():
     """El esquema completo son ~1.500 tokens en cada llamada y el modelo
     chico es el que menos margen por minuto tiene."""

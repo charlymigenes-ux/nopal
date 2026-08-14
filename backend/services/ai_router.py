@@ -242,6 +242,17 @@ MULTI_MACHINE_HINTS = (
     "cada maquina", "cada impresora", "todos los laser", "todas mis",
 )
 
+# Material/carrete: probado en vivo contra Groq (ver commit que agregó
+# assign_spool) -- el nivel rápido (llama-3.1-8b-instant), incluso con el
+# catálogo completo, a veces llama a assign_spool adivinando un spool_id
+# en vez de consultar get_material_status primero. El nivel medio
+# (gpt-oss-20b) sí lo hace bien de forma consistente. No es solo el
+# catálogo lo que hacía falta ampliar acá, es el modelo.
+MATERIAL_HINTS = (
+    "carrete", "carretes", "bobina", "bobinas", "spool", "spools",
+    "spoolman", "material", "materiales", "filamento", "filamentos",
+)
+
 
 def classify(question: str, has_image: bool = False) -> tuple:
     """Devuelve (nivel, motivo) mirando solo el texto de la pregunta.
@@ -273,6 +284,8 @@ def classify(question: str, has_image: bool = False) -> tuple:
         return "medium", "comparison_or_summary"
     if _contiene(texto, MULTI_MACHINE_HINTS):
         return "medium", "multi_machine_context"
+    if _contiene(texto, MATERIAL_HINTS):
+        return "medium", "material_request"
 
     return "fast", "simple_lookup"
 
