@@ -70,6 +70,16 @@
  *     LED BLE (relay, solo ESP32)" más abajo para el detalle completo y el
  *     porqué de esta división de responsabilidades.
  *
+ * Cambios en 4.5.0-ff (TODAVÍA NO PROBADO EN HARDWARE REAL):
+ *   - Reemplaza el sensor T/H analógico sin calibrar (dos canales de
+ *     voltaje crudos, sin datasheet propio) por un DHT11 real: sensor
+ *     digital de un solo cable, calibrado de fábrica, con checksum -- ver
+ *     "SENSOR DHT11" más abajo para el protocolo (implementado a mano,
+ *     sin librería) y el porqué de GPIO32. Solo ESP32 por ahora: el
+ *     ESP8266 de este mapeo ya tiene los 8 pines D0-D8 ocupados y no
+ *     queda ninguno libre y seguro para el sensor sin reordenar el resto
+ *     del mapeo de pines.
+ *
  * Cambios en 4.4.0-ff (confirmados en hardware real: una pantalla LED BLE
  * "iPixel Color" 16x32 conectada por esta placa):
  *   - La pantalla LED BLE usa la librería NimBLE-Arduino (h2zero) en vez
@@ -100,6 +110,7 @@
  *   - Tira RGB analógica por PWM
  *   - Tira WS2812 / NeoPixel (color global, individual y por segmento)
  *   - Buzzer activo con patrones no bloqueantes
+ *   - Sensor DHT11 de temperatura/humedad (solo ESP32)
  *   - Wi-Fi STA con reconexión automática
  *   - Punto de acceso de recuperación si falla el Wi-Fi
  *   - ElegantOTA (actualización de firmware por red) con autenticación
@@ -130,6 +141,7 @@
  *   NOPAL:BUZZER:ALARM
  *   NOPAL:BUZZER:READY | WORKING | WAITING | MAINTENANCE | DISCONNECTED
  *   NOPAL:BLE:STATUS?        (solo ESP32, ver "PANTALLA LED BLE" más abajo)
+ *   NOPAL:DHT?               (solo ESP32, ver "SENSOR DHT11" más abajo)
  *
  * Respuesta de NOPAL:ID? (protocolo 4):
  *   NOPAL,role=accessory,chip=...,fw=4.2.0-ff,protocol=4,relays=4,pwm_led=1,
@@ -250,12 +262,22 @@ enum class BuzzerPattern : uint8_t {
   DISCONNECTED
 };
 
+// Mismo motivo que BuzzerStep/BuzzerPattern arriba: dhtRead() lo devuelve
+// por valor, así que tiene que existir antes de que Arduino autogenere su
+// prototipo. El resto del subsistema DHT11 (dhtReadRaw, handleDhtCommand,
+// etc.) sigue viviendo en su lugar original, más abajo, en "SENSOR DHT11".
+struct DhtReading {
+  bool valid;
+  float humidityPct;
+  float temperatureC;
+};
+
 
 // ============================================================================
 // CONFIGURACIÓN GENERAL
 // ============================================================================
 
-#define FW_VERSION "4.4.0-ff"
+#define FW_VERSION "4.5.0-ff"
 #define NOPAL_PROTOCOL 4
 
 // La mayoría de módulos de relés se activan con LOW (pin en LOW = relé
@@ -356,27 +378,16 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define BUZZER_ENABLE true
 #define BUZZER_PIN 4
 
-// Sensor analógico de temperatura/humedad (2 salidas de voltaje separadas,
-// T y H, sin protocolo digital -- no es un SHT10 real pese a como lo
-// vendían, es una placa con un op-amp LM324 acondicionando dos sensores
-// crudos). Sin datasheet de esta placa puntual, el firmware NO convierte
-// a °C/%HR todavía -- reporta milivolts crudos de cada canal, para
-// calibrar después comparando con un termómetro/higrómetro de referencia.
-// GPIO34/35 son ADC1 (funcionan con WiFi activo, a diferencia de ADC2) y
-// son "input only" -- no los usa ningún relé/PWM/WS2812/LED/buzzer de
-// arriba, y al ser de solo entrada son ideales para un sensor analógico
-// que nunca necesita ser salida.
-//
-// *** OJO ANTES DE CABLEAR ***: esta placa se alimenta a +5V, y no hay
-// datasheet que confirme que sus salidas T/H se quedan por debajo de
-// 3.3V (el máximo seguro de un GPIO/ADC del ESP32 -- pasarse daña el
-// pin). Si al medir con un multímetro T o H superan ~3.3V con la placa
-// alimentada, no los conectes directo: hace falta un divisor resistivo
-// (dos resistencias, ej. 10k+20k) entre esa salida y el GPIO para bajar
-// el voltaje a un rango seguro antes de wirearlo.
-#define TH_SENSOR_ENABLE true
-#define TH_SENSOR_T_PIN 34
-#define TH_SENSOR_H_PIN 35
+// Sensor DHT11 de temperatura/humedad, un solo cable de datos. Reemplaza
+// al sensor analógico sin calibrar que traía este firmware (ver el
+// historial de cambios al principio del archivo) -- el DHT11 ya viene
+// calibrado de fábrica y manda un checksum, así que una lectura corrupta
+// se puede detectar en vez de reportarse como si fuera un dato bueno.
+// GPIO32 no lo usa ningún relé/PWM/WS2812/LED/buzzer de arriba, no es un
+// pin de solo-entrada (el protocolo del DHT11 necesita mandar Y recibir
+// por el mismo cable) y no es uno de los pines de strapping del ESP32.
+#define DHT_ENABLE true
+#define DHT_PIN 32
 
 
 #elif defined(ESP8266)
@@ -454,14 +465,13 @@ const uint8_t RELAY_PINS[RELAY_COUNT] = {
 #define BUZZER_ENABLE true
 #define BUZZER_PIN 16  // D0
 
-// Sensor T/H analógico: no soportado en ESP8266 -- solo trae un pin
-// analógico (A0), y este sensor necesita dos canales independientes (T y
-// H) al mismo tiempo. Queda desactivado acá solo para que el resto del
-// código compile igual en las dos plataformas (mismo criterio que
-// WS2812_2/3_ENABLE más arriba).
-#define TH_SENSOR_ENABLE false
-#define TH_SENSOR_T_PIN 0
-#define TH_SENSOR_H_PIN 0
+// Sensor DHT11: no habilitado en ESP8266 -- en este mapeo los 8 pines
+// D0-D8 ya están todos ocupados (relés, PWM RGB, WS2812, buzzer) y no
+// queda ninguno libre y seguro sin reordenar el resto del mapeo. Queda
+// desactivado acá solo para que el resto del código compile igual en las
+// dos plataformas (mismo criterio que WS2812_2/3_ENABLE más arriba).
+#define DHT_ENABLE false
+#define DHT_PIN 0
 
 #endif
 
@@ -915,59 +925,143 @@ bool hexToBytes(const String& hex, uint8_t* out, size_t maxLength, size_t& outLe
 
 
 // ============================================================================
-// SENSOR T/H (analógico, sin calibrar)
+// SENSOR DHT11 (temperatura/humedad, solo ESP32)
 // ============================================================================
 //
-// Placa con salida analógica de temperatura y humedad por separado (no un
-// SHT10 digital real pese al nombre con el que se vendía -- ver el
-// comentario de TH_SENSOR_ENABLE en "CONFIGURACIÓN DE PINES"). Sin
-// datasheet de esta placa puntual, NO se convierte a °C/%HR acá -- se
-// reportan milivolts crudos de cada canal, listos para calibrar después
-// comparando con un termómetro/higrómetro de referencia (ver
-// thSensorReadMilliVolts()).
+// Reemplaza al sensor analógico sin calibrar que traía este firmware (dos
+// canales de voltaje crudos, sin datasheet propio -- ver el historial de
+// cambios al principio del archivo). El DHT11 es un sensor digital real,
+// calibrado de fábrica, con un byte de checksum que permite detectar una
+// lectura corrupta en vez de reportar un dato inventado.
+//
+// Protocolo de un solo cable, por temporización de pulsos -- implementado
+// a mano (sin sumar una librería del Library Manager) siguiendo el mismo
+// criterio que el resto de protocolos de este archivo (hexToBytes,
+// jsonEscape, el propio puente BLE). Referencia: datasheet DHT11 (Aosong),
+// sección de temporización de la señal.
+//
+// Solo ESP32 por ahora (ver DHT_ENABLE en "CONFIGURACIÓN DE PINES") -- el
+// ESP8266 de este mapeo ya tiene los 8 pines D0-D8 ocupados y no queda
+// ninguno libre y seguro sin reordenar el resto del mapeo de pines.
 
-#if TH_SENSOR_ENABLE
+#if DHT_ENABLE
 
-float thSensorReadMilliVolts(uint8_t pin) {
-  // analogReadMilliVolts() ya compensa la curva no lineal del ADC del
-  // ESP32 (a diferencia de analogRead() + una regla de tres simple con
-  // 3300/4095, que en los extremos del rango se desvía bastante) -- mismo
-  // criterio que evitar "inventar" una fórmula de calibración: usar la
-  // función más precisa disponible en vez de la más simple.
-  return static_cast<float>(analogReadMilliVolts(pin));
+DhtReading dhtLastReading = {false, 0.0f, 0.0f};
+uint32_t dhtLastReadAtMs = 0;
+
+// El DHT11 no soporta más de ~1 lectura por segundo (datasheet: "sampling
+// period at least 1 second") -- pedirle una lectura más seguido devuelve
+// timeout o datos corruptos. dhtRead() cachea el último resultado válido
+// y solo dispara el protocolo bit a bit cuando ya pasó este intervalo, así
+// /api/status (sondeado cada 2.5s por el panel web) casi siempre devuelve
+// un dato ya leído en vez de repetir la lectura en cada request.
+const uint32_t DHT_MIN_INTERVAL_MS = 2000;
+
+// Umbral (en microsegundos) para distinguir un bit 0 de un bit 1: el
+// pulso HIGH que codifica cada bit dura ~26-28us (bit 0) o ~70us (bit 1)
+// según el datasheet -- 40us queda a mitad de camino entre ambos.
+const uint32_t DHT_BIT_THRESHOLD_US = 40;
+
+// Espera hasta que el pin tenga el nivel pedido, hasta `timeoutUs`
+// microsegundos. Devuelve cuánto tardó en llegar ese nivel, o -1 si se
+// venció el timeout -- se usa para medir el ancho de cada pulso del
+// protocolo, que es lo que codifica la respuesta del sensor y cada bit.
+int32_t dhtWaitForLevel(uint8_t level, uint32_t timeoutUs) {
+  const uint32_t startedAt = micros();
+
+  while (digitalRead(DHT_PIN) != level) {
+    if (micros() - startedAt > timeoutUs) {
+      return -1;
+    }
+  }
+
+  return static_cast<int32_t>(micros() - startedAt);
 }
 
-// Calibración preliminar del canal T (temperatura), sacada de solo DOS
-// puntos de referencia tomados con un termómetro externo:
-//   719 mV -> 22°C
-//   778 mV -> 23°C
-// Con apenas 1°C de separación entre los dos puntos, la pendiente
-// (~59 mV/°C) tiene muy poco margen: ruido del ADC o imprecisión del
-// termómetro de referencia pueden desviar el estimado varios grados. Es
-// un punto de partida para mostrar algo útil en el panel, NO una
-// calibración confiable todavía -- por eso "calibrated" se sigue
-// reportando en false. Hay que seguir juntando puntos de referencia
-// (frío/calor real, no solo temperatura ambiente) y ajustar estas dos
-// constantes a medida que se junten más datos. Todavía no hay ningún
-// punto de referencia para el canal H (humedad), así que ese canal sigue
-// reportando solo milivolts crudos.
-#define TH_SENSOR_T_CAL_SLOPE_C_PER_MV   0.016949f
-#define TH_SENSOR_T_CAL_OFFSET_C         9.814f
+bool dhtReadRaw(uint8_t data[5]) {
+  for (uint8_t index = 0; index < 5; index++) {
+    data[index] = 0;
+  }
 
-float thSensorEstimateTempC(float t_mv) {
-  return TH_SENSOR_T_CAL_SLOPE_C_PER_MV * t_mv + TH_SENSOR_T_CAL_OFFSET_C;
+  // Señal de arranque: el maestro (esta placa) baja la línea 18ms como
+  // mínimo (datasheet) para pedirle una lectura al sensor.
+  pinMode(DHT_PIN, OUTPUT);
+  digitalWrite(DHT_PIN, LOW);
+  delay(18);
+  digitalWrite(DHT_PIN, HIGH);
+  delayMicroseconds(30);
+  pinMode(DHT_PIN, INPUT_PULLUP);
+
+  // Respuesta del sensor: 80us en LOW + 80us en HIGH antes de empezar a
+  // mandar los 40 bits de datos.
+  if (dhtWaitForLevel(LOW, 100) < 0) return false;
+  if (dhtWaitForLevel(HIGH, 100) < 0) return false;
+  if (dhtWaitForLevel(LOW, 100) < 0) return false;
+
+  // Cada bit: ~50us en LOW (siempre igual, se descarta) seguido de un
+  // HIGH cuyo ancho codifica el valor -- ver DHT_BIT_THRESHOLD_US.
+  for (uint8_t bitIndex = 0; bitIndex < 40; bitIndex++) {
+    if (dhtWaitForLevel(HIGH, 100) < 0) return false;
+
+    const int32_t highDurationUs = dhtWaitForLevel(LOW, 100);
+    if (highDurationUs < 0) return false;
+
+    data[bitIndex / 8] <<= 1;
+
+    if (static_cast<uint32_t>(highDurationUs) > DHT_BIT_THRESHOLD_US) {
+      data[bitIndex / 8] |= 1;
+    }
+  }
+
+  const uint8_t checksum = data[0] + data[1] + data[2] + data[3];
+  return checksum == data[4];
+}
+
+// Fuerza una lectura nueva (ignora el caché y el intervalo mínimo) -- la
+// usa dhtRead() cuando corresponde, no se llama directo desde afuera.
+void dhtForceRead() {
+  uint8_t data[5];
+  dhtLastReadAtMs = millis();
+
+  if (!dhtReadRaw(data)) {
+    dhtLastReading.valid = false;
+    return;
+  }
+
+  // El DHT11 (a diferencia del DHT22) no trae decimales reales: los bytes
+  // data[1]/data[3] valen 0 en el hardware real, pero se suman igual
+  // por si alguna variante del sensor sí los usa (mismo criterio que el
+  // datasheet de referencia).
+  dhtLastReading.valid = true;
+  dhtLastReading.humidityPct = data[0] + (data[1] / 10.0f);
+  dhtLastReading.temperatureC = data[2] + (data[3] / 10.0f);
+}
+
+// Lectura para JSON/comandos: devuelve la última lectura en caché si
+// todavía está fresca, o dispara una nueva si ya venció
+// DHT_MIN_INTERVAL_MS -- ver el comentario de esa constante más arriba.
+DhtReading dhtRead() {
+  if (millis() - dhtLastReadAtMs >= DHT_MIN_INTERVAL_MS) {
+    dhtForceRead();
+  }
+
+  return dhtLastReading;
 }
 
 // Mismo criterio que handleBuzzerCommand(): devuelve la respuesta por
-// referencia para reusarse desde Serial (NOPAL:TH?) y desde /api/sensors
-// (HTTP) sin duplicar la lectura.
-void handleThSensorCommand(String& response) {
-  float t_mv = thSensorReadMilliVolts(TH_SENSOR_T_PIN);
+// referencia para reusarse desde Serial (NOPAL:DHT?) y desde buildStatusJson()
+// sin duplicar la lectura.
+void handleDhtCommand(String& response) {
+  const DhtReading reading = dhtRead();
+
+  if (!reading.valid) {
+    response = "DHT,valid=0";
+    return;
+  }
+
   response =
-    String("TH,t_mv=") + t_mv +
-    ",t_c_est=" + thSensorEstimateTempC(t_mv) +
-    ",h_mv=" + thSensorReadMilliVolts(TH_SENSOR_H_PIN) +
-    ",calibrated=0";
+    String("DHT,valid=1,t_c=") + String(reading.temperatureC, 1) +
+    ",h_pct=" + String(reading.humidityPct, 1);
 }
 
 #endif
@@ -1175,20 +1269,13 @@ footer{margin:18px 2px;color:var(--muted);font-size:12px}
     <p class="sub" id="buzzerInfo">—</p>
   </article>
 
-  <article class="card" id="cardThSensor">
-    <h2>Sensor T/H (sin calibrar)</h2>
+  <article class="card" id="cardDht">
+    <h2>Sensor DHT11</h2>
     <div class="statgrid">
-      <div class="stat"><b id="thT">—</b><span>Canal T (mV)</span></div>
-      <div class="stat"><b id="thTEst">—</b><span>Temp. estimada</span></div>
-      <div class="stat"><b id="thH">—</b><span>Canal H (mV)</span></div>
+      <div class="stat"><b id="dhtTemp">—</b><span>Temperatura</span></div>
+      <div class="stat"><b id="dhtHum">—</b><span>Humedad</span></div>
     </div>
-    <p class="sub">La temperatura estimada sale de una calibración
-      preliminar de solo 2 puntos (719 mV=22°C, 778 mV=23°C) -- puede estar
-      desviada varios grados, todavía no es confiable. El canal H sigue en
-      milivolts crudos, sin ningún punto de referencia de humedad todavía.
-      Este módulo no trae datasheet propio: anotá estos valores junto a una
-      lectura de referencia (termómetro/higrómetro) para seguir ajustando
-      la calibración.</p>
+    <p class="sub" id="dhtInfo">—</p>
   </article>
 
   <article class="card full">
@@ -1337,13 +1424,13 @@ async function refresh(){
     const hasWs=!!(s.io&&s.io.ws2812);
     const hasPwm=!!(s.io&&s.io.pwm_led);
     const hasBuzzer=!!(s.io&&s.io.buzzer);
-    const hasThSensor=!!(s.th_sensor&&s.th_sensor.enabled);
+    const hasDht=!!(s.dht&&s.dht.enabled);
     document.getElementById('cardWs').style.display=hasWs?'':'none';
     document.getElementById('cardWsPixel').style.display=hasWs?'':'none';
     document.getElementById('cardScenes').style.display=hasWs?'':'none';
     document.getElementById('cardPwm').style.display=hasPwm?'':'none';
     document.getElementById('cardBuzzer').style.display=hasBuzzer?'':'none';
-    document.getElementById('cardThSensor').style.display=hasThSensor?'':'none';
+    document.getElementById('cardDht').style.display=hasDht?'':'none';
 
     lastStatus=s;
     if(hasWs){
@@ -1360,10 +1447,12 @@ async function refresh(){
         (buzzerSceneSounds?' · suena con las escenas':' · silencioso con las escenas');
     }
 
-    if(hasThSensor){
-      document.getElementById('thT').textContent=s.th_sensor.t_mv.toFixed(0)+' mV';
-      document.getElementById('thTEst').textContent=s.th_sensor.t_c_est.toFixed(1)+' °C';
-      document.getElementById('thH').textContent=s.th_sensor.h_mv.toFixed(0)+' mV';
+    if(hasDht){
+      const dhtValid=!!s.dht.valid;
+      document.getElementById('dhtTemp').textContent=dhtValid?s.dht.t_c.toFixed(1)+' °C':'—';
+      document.getElementById('dhtHum').textContent=dhtValid?s.dht.h_pct.toFixed(1)+' %':'—';
+      document.getElementById('dhtInfo').textContent=
+        'GPIO '+s.dht.pin+' · '+(dhtValid?'lectura OK':'sin lectura válida todavía (reintenta cada '+(s.dht.min_interval_ms/1000)+'s)');
     }
 
     document.getElementById('details').textContent=
@@ -1376,7 +1465,7 @@ async function refresh(){
       (hasWs&&s.io.ws2812_3?`NeoPixel 3: ${s.io.ws2812_3_count} LED(s), GPIO ${s.io.ws2812_3_pin}\n`:``)+
       (hasPwm&&s.io.pwm_pins?`PWM RGB: GPIO ${s.io.pwm_pins.join('/')}\n`:``)+
       (hasBuzzer?`Buzzer: GPIO ${s.buzzer.gpio}, patrón ${s.buzzer.pattern}, salida ${s.buzzer.on?'ON':'OFF'}\n`:``)+
-      (hasThSensor?`Sensor T/H: T ${s.th_sensor.t_mv.toFixed(0)} mV ≈ ${s.th_sensor.t_c_est.toFixed(1)}°C est. (GPIO ${s.th_sensor.t_pin}), H ${s.th_sensor.h_mv.toFixed(0)} mV (GPIO ${s.th_sensor.h_pin}), sin calibrar\n`:``)+
+      (hasDht?`DHT11: ${s.dht.valid?s.dht.t_c.toFixed(1)+'°C, '+s.dht.h_pct.toFixed(1)+'%HR':'sin lectura válida todavía'} (GPIO ${s.dht.pin})\n`:``)+
       `Heap libre: ${s.free_heap} bytes\nUptime: ${Math.floor(s.uptime_ms/1000)} s\n`+
       `Reset: ${s.reset_reason||'—'}`;
   }catch(e){
@@ -2569,24 +2658,27 @@ String buildStatusJson() {
   json += (NOPAL_BUZZER_SCENE_SOUNDS != 0) ? "true" : "false";
   json += "},";
 
-  // Sensor T/H analógico sin calibrar -- ver el comentario grande en
-  // "SENSOR T/H" más arriba. "calibrated":false a propósito, para que el
-  // panel/NOPAL avisen que t_mv/h_mv son milivolts crudos, no °C/%HR.
-  json += "\"th_sensor\":{";
+  // Sensor DHT11 -- ver el comentario grande en "SENSOR DHT11" más arriba.
+  // dhtRead() cachea el resultado y solo dispara una lectura nueva si ya
+  // venció DHT_MIN_INTERVAL_MS, así que llamarlo acá en cada /api/status
+  // no golpea al sensor más seguido de lo que soporta.
+  json += "\"dht\":{";
   json += "\"enabled\":";
-#if TH_SENSOR_ENABLE
+#if DHT_ENABLE
   json += "true,";
-  json += "\"t_pin\":";
-  json += String(TH_SENSOR_T_PIN);
-  json += ",\"h_pin\":";
-  json += String(TH_SENSOR_H_PIN);
-  json += ",\"t_mv\":";
-  json += String(thSensorReadMilliVolts(TH_SENSOR_T_PIN), 1);
-  json += ",\"t_c_est\":";
-  json += String(thSensorEstimateTempC(thSensorReadMilliVolts(TH_SENSOR_T_PIN)), 1);
-  json += ",\"h_mv\":";
-  json += String(thSensorReadMilliVolts(TH_SENSOR_H_PIN), 1);
-  json += ",\"calibrated\":false";
+  json += "\"pin\":";
+  json += String(DHT_PIN);
+  json += ",\"min_interval_ms\":";
+  json += String(DHT_MIN_INTERVAL_MS);
+  {
+    const DhtReading reading = dhtRead();
+    json += ",\"valid\":";
+    json += reading.valid ? "true" : "false";
+    json += ",\"t_c\":";
+    json += String(reading.temperatureC, 1);
+    json += ",\"h_pct\":";
+    json += String(reading.humidityPct, 1);
+  }
 #else
   json += "false";
 #endif
@@ -3367,10 +3459,10 @@ void handleCommand(String line) {
     return;
   }
 
-#if TH_SENSOR_ENABLE
-  if (command == "TH?") {
+#if DHT_ENABLE
+  if (command == "DHT?") {
     String response;
-    handleThSensorCommand(response);
+    handleDhtCommand(response);
     Serial.println(response);
     return;
   }
