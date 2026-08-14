@@ -185,8 +185,13 @@ class MoonrakerClient:
         el vínculo de NOPAL) -- es el único que de verdad descuenta gramos
         reales de Spoolman mientras corre una impresión. Endpoint confirmado
         contra el código fuente real de Moonraker (moonraker/components/
-        spoolman.py::_handle_spool_id_request): POST /server/spoolman/spool_id
-        con {"spool_id": int|None}.
+        spoolman.py::_handle_spool_id_request): POST /server/spoolman/spool_id.
+
+        Para limpiar (spool_id=None) el body va VACÍO, no {"spool_id": null}
+        -- get_int() de Moonraker intenta convertir el valor aunque la clave
+        exista con null, y revienta con un 400 en vez de usar el default.
+        Solo omitiendo la clave por completo cae en su propio default (None).
+        Confirmado a mano contra el Moonraker real de esta máquina.
 
         Si Moonraker no tiene el componente [spoolman] configurado en su
         moonraker.conf, esto falla y devuelve False -- quien llama (ver
@@ -197,7 +202,7 @@ class MoonrakerClient:
         try:
             response = requests.post(
                 f"{self.base_url}/server/spoolman/spool_id",
-                json={"spool_id": spool_id},
+                json=({"spool_id": spool_id} if spool_id is not None else {}),
                 timeout=self.timeout,
             )
             response.raise_for_status()
