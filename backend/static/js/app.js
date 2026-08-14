@@ -7781,14 +7781,18 @@ function normalizeSpoolHex(hex) {
 function deviceMaterialSpoolIcon(colores) {
     const paleta = colores && colores.length ? colores : null;
     const trazo = i => paleta ? escapeHtml(paleta[i % paleta.length]) : 'var(--text-faint)';
+    // De costado (eje horizontal), como se ve un carrete real -- parado
+    // (eje vertical) se leía como un ícono de base de datos, no un carrete.
+    // Las tres capas van separadas en X (no apiladas y pegadas en Y como
+    // antes) para que no se fundan en un bloque sólido con un solo color.
     return `<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <ellipse cx="12" cy="5" rx="7" ry="2.5" stroke="var(--text-faint)"/>
-        <ellipse cx="12" cy="19" rx="7" ry="2.5" stroke="var(--text-faint)"/>
-        <path d="M5 5v14" stroke="var(--text-faint)"/>
-        <path d="M19 5v14" stroke="var(--text-faint)"/>
-        <path d="M8 8.5c1.6 1 6.4 1 8 0" stroke="${trazo(0)}"/>
-        <path d="M8 12c1.6 1 6.4 1 8 0" stroke="${trazo(1)}"/>
-        <path d="M8 15.5c1.6 1 6.4 1 8 0" stroke="${trazo(2)}"/>
+        <ellipse cx="5" cy="12" rx="2.5" ry="7" stroke="var(--text-faint)"/>
+        <ellipse cx="19" cy="12" rx="2.5" ry="7" stroke="var(--text-faint)"/>
+        <path d="M5 5h14" stroke="var(--text-faint)"/>
+        <path d="M5 19h14" stroke="var(--text-faint)"/>
+        <path d="M8.5 8c1 1.6 1 6.4 0 8" stroke="${trazo(0)}"/>
+        <path d="M12 8c1 1.6 1 6.4 0 8" stroke="${trazo(1)}"/>
+        <path d="M15.5 8c1 1.6 1 6.4 0 8" stroke="${trazo(2)}"/>
     </svg>`;
 }
 
