@@ -167,12 +167,12 @@ métrica de Potencia vs. RPM según cuál sea). Datos reales, nada inventado:
 
 ### Lecciones ya aprendidas (no las repitas)
 
-Migrar una ficha rompió, uno por uno y en silencio, **cinco enganches
+Migrar una ficha rompió, uno por uno y en silencio, **seis enganches
 implícitos** que otras partes del sistema esperaban encontrar en el
 marcado viejo (`.printer-card`, `.printer-card-top`, `.printer-name`,
 `.printer-quick-actions`). Cada vez que uno se rompía, no había ningún
 error: simplemente faltaba un botón o una función no hacía nada. La lista
-de los cinco, para no repetirlos al migrar las siguientes marcas:
+de los seis, para no repetirlos al migrar las siguientes marcas:
 
 1. **Botón de escenas LED** (`decorateMachineCardsWithLedSettings`) — lo
    inyecta el plugin de accesorios buscando esas clases. Ya se enseñó a
@@ -192,6 +192,25 @@ de los cinco, para no repetirlos al migrar las siguientes marcas:
    `<header>`, y NOPAL tiene una regla CSS **global** para ese elemento (la
    barra superior de la app) que se colaba encima (línea + relleno
    grandes). Cambiado a `<div>`.
+6. **Clics de la cámara montada se colaban a la ficha entera** — esta no
+   es un enganche `.printer-card` vs `.dev-card`, es un bug de
+   *propagación de eventos* que solo se hizo visible al migrar láser.
+   `camera-card.js` (plugin `camera-viewer`, componente compartido por
+   TODAS las marcas) monta sus controles (ampliar/capturar/grabar/
+   configurar) con un único listener delegado en el contenedor de la
+   cámara, y ese listener nunca llamaba `event.stopPropagation()`. Como
+   la cámara vive dentro de la ficha, y la ficha tiene su propio clic en
+   toda la tarjeta (abrir panel / navegar a la sección), cualquier botón
+   de la cámara hacía lo suyo **y además** disparaba esa navegación por
+   encima. Para Klipper pasaba desapercibido (abrir el panel de la
+   impresora "encima" no se sentía tan mal); con láser, navegar fuera del
+   dashboard al tocar "ampliar visor" sí se notó. Arreglado en
+   `plugins/camera-viewer/frontend/camera-card.js` (repo aparte, propio,
+   no en núcleo — ver más abajo). **Si agregas un botón/control nuevo
+   dentro de una ficha** (sea en `app.js` o en un plugin), o si un plugin
+   nuevo empieza a inyectar controles en las fichas, revisa que su
+   listener de clic llame `stopPropagation()` — si no, se hereda este
+   mismo bug en silencio.
 
 **Antes de migrar cada marca nueva**, busca en `app.js` todo lo que haga
 `querySelector` sobre clases de la ficha vieja (`.printer-card`,
