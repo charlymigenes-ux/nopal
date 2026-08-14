@@ -5180,6 +5180,7 @@ const SETTINGS_MODULE_ICON_AI = '<svg width="16" height="16" viewBox="0 0 24 24"
 const SETTINGS_MODULE_DEFS = [
     { key: 'general', labelKey: 'generalSettings', iconSvg: SETTINGS_MODULE_ICON_GENERAL },
     { key: 'appearance', labelKey: 'appearanceSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_APPEARANCE },
+    { key: 'about', labelKey: 'aboutTitle', iconSvg: SETTINGS_MODULE_ICON_ABOUT },
     { key: 'updates', labelKey: 'updates', iconSvg: SETTINGS_MODULE_ICON_UPDATES },
     { key: 'logs', labelKey: 'systemLogs', iconSvg: SETTINGS_MODULE_ICON_LOGS },
     { key: 'users', labelKey: 'usersTitle', iconSvg: SETTINGS_MODULE_ICON_USERS },
