@@ -7485,6 +7485,10 @@ function klipperDeviceModel(printer, datos) {
     const material = spool && spool.label ? {
         label: spool.label,
         colorHex: spool.color_hex || null,
+        // Un filamento multicolor (coextruido/longitudinal) no trae
+        // color_hex -- Spoolman guarda sus colores por separado.
+        multiColorHexes: Array.isArray(spool.multi_color_hexes) && spool.multi_color_hexes.length
+            ? spool.multi_color_hexes : null,
         diameter: Number.isFinite(spool.diameter) ? spool.diameter : null,
         remainingWeight: Number.isFinite(spool.remaining_weight) ? spool.remaining_weight : null,
     } : null;
@@ -7763,10 +7767,35 @@ function deviceMetrica(icono, etiqueta, valor) {
 // Fila de material: propia y no un dev-field genérico porque necesita
 // mostrar el carrete del color real del filamento, separado del nombre por
 // un divisor -- un simple label/valor no tenía dónde meter el icono.
+function normalizeSpoolHex(hex) {
+    if (!hex) return null;
+    return hex.startsWith('#') ? hex : `#${hex}`;
+}
+
+// Carrete de perfil coloreado con el/los color(es) real(es) del filamento:
+// las capas enrolladas (las tres líneas onduladas) llevan cada color, la
+// pestaña/eje se queda neutro (es la estructura del carrete, no el
+// filamento). Con dos o más colores (coextruido/longitudinal en Spoolman,
+// sin color_hex único) las líneas alternan entre ellos -- así un filamento
+// bicolor real se ve bicolor, no de un solo tono inventado.
+function deviceMaterialSpoolIcon(colores) {
+    const paleta = colores && colores.length ? colores : null;
+    const trazo = i => paleta ? escapeHtml(paleta[i % paleta.length]) : 'var(--text-faint)';
+    return `<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <ellipse cx="12" cy="5" rx="7" ry="2.5" stroke="var(--text-faint)"/>
+        <ellipse cx="12" cy="19" rx="7" ry="2.5" stroke="var(--text-faint)"/>
+        <path d="M5 5v14" stroke="var(--text-faint)"/>
+        <path d="M19 5v14" stroke="var(--text-faint)"/>
+        <path d="M8 8.5c1.6 1 6.4 1 8 0" stroke="${trazo(0)}"/>
+        <path d="M8 12c1.6 1 6.4 1 8 0" stroke="${trazo(1)}"/>
+        <path d="M8 15.5c1.6 1 6.4 1 8 0" stroke="${trazo(2)}"/>
+    </svg>`;
+}
+
 function deviceMaterialCampo(material) {
-    const color = material.colorHex
-        ? (material.colorHex.startsWith('#') ? material.colorHex : `#${material.colorHex}`)
-        : null;
+    const colores = material.multiColorHexes
+        ? material.multiColorHexes.map(normalizeSpoolHex).filter(Boolean)
+        : (normalizeSpoolHex(material.colorHex) ? [normalizeSpoolHex(material.colorHex)] : null);
     // Mismo patrón que deviceMetrica: el número grande, la unidad chica al
     // lado -- "1.75mm" leído de un vistazo, no un texto corrido chico.
     const specs = [];
@@ -7784,7 +7813,7 @@ function deviceMaterialCampo(material) {
         <div class="dev-material-row">
             <span class="dev-material-name" title="${escapeHtml(material.label)}">${escapeHtml(material.label)}</span>
             <span class="dev-material-divider" aria-hidden="true"></span>
-            <span class="dev-material-icon"${color ? ` style="color:${escapeHtml(color)}"` : ''}>${deviceIcon('spool', 52)}</span>
+            <span class="dev-material-icon">${deviceMaterialSpoolIcon(colores)}</span>
             ${specsHtml}
         </div>
     </div>`;
