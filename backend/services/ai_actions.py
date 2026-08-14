@@ -322,12 +322,17 @@ async def control_print(machine_id: str, action: str) -> Dict[str, Any]:
 async def assign_spool(machine_id: str, spool_id: int) -> Dict[str, Any]:
     """Cambia qué carrete de Spoolman tiene cargado una impresora Klipper.
 
-    A diferencia de preheat_machine/control_print, esto no manda nada a la
-    máquina -- es un cambio de inventario en NOPAL/Spoolman (qué carrete
-    dice la ficha que está puesto), no una acción física. Sigue siendo
-    admin porque el endpoint del panel lo es (set_active_spool_endpoint en
-    plugins/spoolman/backend/router.py).
+    A diferencia de preheat_machine/control_print no le pide a la impresora
+    que HAGA nada (sin G-code, sin calor, sin movimiento) -- solo actualiza
+    qué carrete muestra la ficha, e intenta sincronizarlo con el carrete
+    "activo" del componente [spoolman] de Moonraker si está configurado
+    (mismo comportamiento que set_active_spool_endpoint en
+    plugins/spoolman/backend/router.py, que es lo que copia el rol admin
+    de acá). Si Moonraker no tiene [spoolman] configurado, la asignación en
+    NOPAL se guarda igual -- perder esa sincronización no es motivo para
+    fallar la acción.
     """
+    from backend.services.klipper_service import MoonrakerClient
     from backend.services.plugin_loader_service import get_loaded_plugin_module
 
     machine = await _resolve_machine(machine_id)
@@ -351,6 +356,7 @@ async def assign_spool(machine_id: str, spool_id: int) -> Dict[str, Any]:
             f"No existe el carrete {spool_id} en Spoolman. Usa get_material_status para ver los reales.")
 
     port = int(str(machine["id"]).split(":", 1)[1])
+    sincronizado = MoonrakerClient(port).set_spoolman_active_spool(spool_id)
     link_module.set_link(port, spool_id)
     filamento = spool.get("filament") or {}
     return {
@@ -359,6 +365,7 @@ async def assign_spool(machine_id: str, spool_id: int) -> Dict[str, Any]:
         "spool_id": spool_id,
         "material": filamento.get("material"),
         "label": filamento.get("name") or filamento.get("material"),
+        "moonraker_synced": sincronizado,
     }
 
 
