@@ -319,6 +319,56 @@ async def control_print(machine_id: str, action: str) -> Dict[str, Any]:
     return {"ok": True, "machine": machine["name"], "action": action}
 
 
+async def assign_spool(machine_id: str, spool_id: int) -> Dict[str, Any]:
+    """Cambia qué carrete de Spoolman tiene cargado una impresora Klipper.
+
+    A diferencia de preheat_machine/control_print no le pide a la impresora
+    que HAGA nada (sin G-code, sin calor, sin movimiento) -- solo actualiza
+    qué carrete muestra la ficha, e intenta sincronizarlo con el carrete
+    "activo" del componente [spoolman] de Moonraker si está configurado
+    (mismo comportamiento que set_active_spool_endpoint en
+    plugins/spoolman/backend/router.py, que es lo que copia el rol admin
+    de acá). Si Moonraker no tiene [spoolman] configurado, la asignación en
+    NOPAL se guarda igual -- perder esa sincronización no es motivo para
+    fallar la acción.
+    """
+    from backend.services.klipper_service import MoonrakerClient
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    machine = await _resolve_machine(machine_id)
+    if machine["brand"] != "klipper":
+        raise ActionError(
+            f"Solo se puede vincular material a impresoras Klipper; {machine['name']} no lo es "
+            "(por ahora el plugin de Materiales solo vincula por puerto de Moonraker).")
+
+    config_module = get_loaded_plugin_module("spoolman", "services.config_service")
+    link_module = get_loaded_plugin_module("spoolman", "services.spool_link_service")
+    if config_module is None or link_module is None:
+        raise ActionError("El plugin de Materiales (Spoolman) no está instalado o no está cargado")
+
+    client = config_module.get_client()
+    if client is None:
+        raise ActionError("El plugin de Materiales no tiene un servidor Spoolman configurado")
+
+    spool = client.get_spool(spool_id)
+    if spool is None:
+        raise ActionError(
+            f"No existe el carrete {spool_id} en Spoolman. Usa get_material_status para ver los reales.")
+
+    port = int(str(machine["id"]).split(":", 1)[1])
+    sincronizado = MoonrakerClient(port).set_spoolman_active_spool(spool_id)
+    link_module.set_link(port, spool_id)
+    filamento = spool.get("filament") or {}
+    return {
+        "ok": True,
+        "machine": machine["name"],
+        "spool_id": spool_id,
+        "material": filamento.get("material"),
+        "label": filamento.get("name") or filamento.get("material"),
+        "moonraker_synced": sincronizado,
+    }
+
+
 # --------------------------------------------------------------------------
 # Registro
 # --------------------------------------------------------------------------
@@ -453,6 +503,25 @@ ACTIONS: Dict[str, Action] = {
             },
             risk="confirm",
             role="any",
+        ),
+        Action(
+            "assign_spool",
+            "Cambia qué carrete de Spoolman tiene cargado una impresora Klipper. No manda nada a "
+            "la máquina, es un cambio de inventario. Usa get_material_status para conocer los ids "
+            "reales de los carretes; nunca inventes uno.",
+            assign_spool,
+            {
+                "type": "object",
+                "properties": {
+                    **_MACHINE_PARAM,
+                    "spool_id": {"type": "integer", "description": "Id del carrete en Spoolman, de get_material_status."},
+                },
+                "required": ["machine_id", "spool_id"],
+            },
+            risk="low",
+            # Copiado de set_active_spool_endpoint en el plugin de Materiales,
+            # que es admin-only: la IA no puede ser más permisiva que el panel.
+            role="admin",
         ),
     ]
 }

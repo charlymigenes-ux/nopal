@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=309">
+    <link rel="stylesheet" href="/static/css/style.css?v=327">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -434,25 +434,23 @@
             </main>
         </section>
 
-            <!-- Franja de capacidades: exclusiva del modo IA. Describe lo que la
-                 capa hace, no un estado medido, así que no necesita datos nuevos. -->
-            <div class="ai-capability-strip ai-only-flex" data-ai-only>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    <span data-i18n="aiCapAutomation">Automatización activa</span>
-                </span>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><polyline points="7 14 11 9 15 12 21 5"/></svg>
-                    <span data-i18n="aiCapPredictive">Asistencia predictiva</span>
-                </span>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-                    <span data-i18n="aiCapRealtime">Optimización en tiempo real</span>
-                </span>
-                <span class="ai-capability">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/></svg>
-                    <span data-i18n="aiCapDiagnostic">Diagnóstico inteligente</span>
-                </span>
+            <!-- Cortinilla de IA: exclusiva del modo IA. Sugiere comandos para
+                 la sección en la que se está parado -- no un estado medido, así
+                 que no necesita datos nuevos.
+
+                 Fija al fondo del VIEWPORT (no de la sección): antes vivía en el
+                 flujo normal del documento, como hermana de cada <section> de
+                 página. Con las secciones alternando display:none/'', quedaba
+                 flotando en el hueco que dejaba la sección oculta -- por eso
+                 aparecía encimada con controles del láser, a la mitad de
+                 Configuración, etc. Estar fija la saca de ese flujo por completo:
+                 vive en un solo lugar sin importar qué sección esté activa. El
+                 envoltorio de afuera (transparente, reserva el ancho de la
+                 barra lateral) solo centra; el pellet de adentro es lo que se ve. -->
+            <div class="ai-capability-dock ai-only-flex" data-ai-only>
+                <div class="ai-capability-strip" id="ai-capability-strip">
+                    <div class="ai-capability-track" id="ai-capability-track"></div>
+                </div>
             </div>
 
             <section id="models-section" class="view-section" style="display: none;">
@@ -2389,6 +2387,60 @@
                             </div>
                             </div><!-- /ai-settings-body -->
                         </div>
+                        <div class="settings-card card-collapsible" data-settings-module="about">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="aboutTitle">Acerca de NOPAL</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="aboutDescription">Versión y datos de diagnóstico de este servidor NOPAL.</p>
+                            <div class="about-grid" id="about-grid">
+                                <div class="about-field">
+                                    <span class="about-field-label" data-i18n="aboutVersion">Versión</span>
+                                    <span class="about-field-value" id="about-version">—</span>
+                                </div>
+                                <div class="about-field">
+                                    <span class="about-field-label" data-i18n="aboutCommit">Commit</span>
+                                    <span class="about-field-value" id="about-commit">—</span>
+                                </div>
+                                <div class="about-field">
+                                    <span class="about-field-label" data-i18n="aboutBranch">Rama</span>
+                                    <span class="about-field-value" id="about-branch">—</span>
+                                </div>
+                                <div class="about-field">
+                                    <span class="about-field-label" data-i18n="aboutOs">Sistema operativo</span>
+                                    <span class="about-field-value" id="about-os">—</span>
+                                </div>
+                                <div class="about-field">
+                                    <span class="about-field-label" data-i18n="aboutArch">Arquitectura</span>
+                                    <span class="about-field-value" id="about-arch">—</span>
+                                </div>
+                                <div class="about-field">
+                                    <span class="about-field-label" data-i18n="aboutPython">Python</span>
+                                    <span class="about-field-value" id="about-python">—</span>
+                                </div>
+                                <div class="about-field">
+                                    <span class="about-field-label" data-i18n="aboutLanguage">Idioma activo</span>
+                                    <span class="about-field-value" id="about-language">—</span>
+                                </div>
+                            </div>
+                            <div class="about-plugins">
+                                <h3 class="about-plugins-title" data-i18n="aboutPlugins">Plugins instalados</h3>
+                                <div class="about-plugins-list" id="about-plugins-list">
+                                    <div class="empty-state-small" data-i18n="aboutNoPlugins">No hay plugins instalados.</div>
+                                </div>
+                            </div>
+                            <div class="updates-actions">
+                                <button type="button" class="btn-file-action" id="about-copy-diagnostics-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+                                    <span data-i18n="aboutCopyDiagnostics">Copiar información de diagnóstico</span>
+                                </button>
+                            </div>
+                        </div>
                         <div class="settings-card card-collapsible" data-settings-module="updates">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
@@ -3653,6 +3705,35 @@
         </div>
     </div>
 
+    <!-- Laser/CNC dashboard card: file picker for Encuadrar/Iniciar (por host, no depende del laser "activo") -->
+    <div id="dev-laser-file-modal" class="modal">
+        <div class="modal-backdrop" id="dev-laser-file-modal-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="dev-laser-file-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <h2 data-i18n="devPickFileTitle">Elegir archivo</h2>
+            <p data-i18n="laserSdSelectFile">Selecciona un archivo de tu biblioteca</p>
+            <select id="dev-laser-file-modal-select" class="settings-select"></select>
+            <div class="laser-start-confirm-actions">
+                <div class="laser-start-confirm-row">
+                    <button type="button" class="btn-file-action btn-file-action-danger" id="dev-laser-file-modal-cancel-btn">
+                        <span data-i18n="cancelAction">Cancelar</span>
+                    </button>
+                    <button type="button" class="btn-file-action btn-file-action-decision" id="dev-laser-file-modal-frame-btn">
+                        <span data-i18n="devFrame">Encuadrar</span>
+                    </button>
+                    <button type="button" class="btn-file-action" id="dev-laser-file-modal-start-btn">
+                        <span data-i18n="devStart">Iniciar</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Send to Printer Modal -->
     <div id="printer-send-modal" class="modal">
         <div class="modal-backdrop" id="printer-send-backdrop"></div>
@@ -4780,11 +4861,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=38"></script>
-    <script src="/static/js/translations-pt-BR.js?v=4"></script>
-    <script src="/static/js/translations-fr.js?v=4"></script>
-    <script src="/static/js/translations-de.js?v=4"></script>
-    <script src="/static/js/app.js?v=249"></script>
+    <script src="/static/js/translations.js?v=44"></script>
+    <script src="/static/js/translations-pt-BR.js?v=5"></script>
+    <script src="/static/js/translations-fr.js?v=5"></script>
+    <script src="/static/js/translations-de.js?v=5"></script>
+    <script src="/static/js/app.js?v=271"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import platform
 import subprocess
 import time
 from typing import Optional
@@ -276,6 +277,45 @@ async def get_version_endpoint(user: dict = Depends(require_auth)):
         "ahead": ahead,
         "behind": behind,
         "pending_commits": pending_commits,
+    }
+
+
+def _os_description() -> str:
+    """Distribución + versión legible (ej. "Debian GNU/Linux 13"), no solo
+    `platform.system()` ("Linux" a secas no ayuda a diagnosticar nada). Usa
+    /etc/os-release (estándar en Linux moderno) y cae a system+release si
+    no está disponible (otro SO, o un os-release atípico)."""
+    try:
+        info = platform.freedesktop_os_release()
+        name = info.get("NAME")
+        version = info.get("VERSION_ID") or info.get("VERSION")
+        if name:
+            return f"{name} {version}".strip() if version else name
+    except (OSError, AttributeError):
+        pass
+    return f"{platform.system()} {platform.release()}".strip()
+
+
+@router.get("/api/system/diagnostics")
+async def get_diagnostics_endpoint(user: dict = Depends(require_auth)):
+    """Info de "Acerca de NOPAL": versión, commit/rama de git (si el
+    checkout es un repo git; si no, "unavailable" -- NOPAL puede correr
+    desde un .zip descargado, sin .git), sistema operativo, arquitectura y
+    versión de Python. El idioma activo NO va acá: es un dato 100% del
+    navegador (currentLanguage en translations.js), no algo que el
+    servidor pueda saber.
+
+    Mismo _run_git que /api/system/version (git ausente o "no es un repo
+    git" ya caen limpio a None ahí, no hace falta duplicar el chequeo)."""
+    commit = _run_git(["rev-parse", "--short", "HEAD"])
+    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    return {
+        "app_version": get_app_version(),
+        "commit": commit,  # None si no hay git -- el frontend decide cómo mostrarlo
+        "branch": branch,
+        "os": _os_description(),
+        "architecture": platform.machine(),
+        "python_version": platform.python_version(),
     }
 
 

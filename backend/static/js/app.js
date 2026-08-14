@@ -3015,6 +3015,34 @@ async function handleActivePrintAction(action, port) {
     }
 }
 
+// Espejo de handleActivePrintAction pero para GRBL: el trabajo activo se
+// identifica por host (no hay "puerto"), y pausar/reanudar/cancelar son los
+// mismos tres verbos sobre /api/laser/job/*.
+async function handleLaserQuickAction(action, host) {
+    if (action === 'pause') {
+        const formData = new FormData();
+        formData.append('host', host);
+        await fetch('/api/laser/job/pause', { method: 'POST', body: formData });
+        refreshDashboardLaserCard();
+        return;
+    }
+    if (action === 'resume') {
+        const formData = new FormData();
+        formData.append('host', host);
+        await fetch('/api/laser/job/resume', { method: 'POST', body: formData });
+        refreshDashboardLaserCard();
+        return;
+    }
+    if (action === 'cancel') {
+        const confirmed = await appConfirm(t('laserCancelConfirm'), t('laserCancel'), 'danger');
+        if (!confirmed) return;
+        const formData = new FormData();
+        formData.append('host', host);
+        await fetch('/api/laser/job/cancel', { method: 'POST', body: formData });
+        refreshDashboardLaserCard();
+    }
+}
+
 async function loadModels() {
     try {
         const response = await fetch('/api/models');
@@ -3342,6 +3370,16 @@ async function applyMaterialPreheat(material) {
     }));
     document.getElementById('material-preheat-modal')?.classList.remove('active');
     showToast(`${material.name}: cama ${material.heater_bed}°C · boquilla ${material.extruder}°C`);
+    // El objetivo ya se mandó, pero la ficha del dashboard solo se repinta en
+    // su siguiente ciclo de sondeo (5s, y pausado si la pestaña está en
+    // segundo plano) -- sin este refresco inmediato, el "no se actualiza" se
+    // sentía como que el precalentado no hizo nada. pause/resume/cancel ya
+    // siguen este mismo patrón (ver handleActivePrintAction).
+    if (target.type === 'marlin') {
+        loadDashboardStandalonePrinters();
+    } else {
+        loadPrinters();
+    }
 }
 
 async function openMaterialPreheatModal(target) {
@@ -3463,6 +3501,10 @@ function renderTemperaturesCard(data, port) {
             temperatureCardThemeMode = 'cool';
             heaterSensors.forEach(sensor => setTemperatureTarget(port, sensor.key, 0));
             setTimeout(() => loadPrinterTemperatures(port), 400);
+            // Mismo motivo que en applyMaterialPreheat: el target ya se
+            // mandó, pero la ficha del dashboard solo lo refleja en su
+            // siguiente sondeo de 5s si nadie la avisa antes.
+            loadPrinters();
         });
     }
 
@@ -3988,7 +4030,9 @@ function renderDashboardPanel(data) {
 let dashboardPanelLoading = false;
 
 async function loadDashboardPanel() {
-    if (dashboardPanelLoading || document.hidden) return;
+    // Ver el comentario en loadPrinters(): mismo motivo para sacar
+    // document.hidden de esta condición.
+    if (dashboardPanelLoading) return;
     dashboardPanelLoading = true;
     try {
         const response = await fetch('/api/dashboard/summary');
@@ -5784,7 +5828,15 @@ function renderInitialDeviceLoaders() {
 }
 
 async function loadPrinters() {
-    if (printersLoading || document.hidden) return;
+    // document.hidden se sacó de esta condición: en un uso real por RDP
+    // (ver AGENTS.md) esa API del navegador no siempre refleja si alguien
+    // está mirando la pantalla de verdad, y una pestaña que el navegador
+    // cree "oculta" para siempre significa una ficha que nunca se
+    // actualiza -- confirmado con un hueco de 20 minutos sin una sola
+    // llamada a /api/printers/status en los logs del servidor, justo
+    // después de mandar un comando. El costo de sondear cada 5s en una
+    // LAN local es insignificante comparado con el de una ficha muerta.
+    if (printersLoading) return;
     printersLoading = true;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -5793,6 +5845,10 @@ async function loadPrinters() {
         if (!response.ok) throw new Error('No se pudo cargar el estado de impresoras');
         const data = await response.json();
         allPrinters = data.printers || [];
+        // El material cambia cuando alguien cambia el carrete, no cada 5 s:
+        // se pide junto con las impresoras y se cachea (ver refreshDeviceSpools).
+        if (!Object.keys(deviceSpoolsByPort).length) refreshDeviceSpools();
+        if (!deviceCameraKeys.size) refreshDeviceCameras();
         dashboardPrintersLoaded = true;
         dashboardPrintersLoadError = false;
         renderPrinters(allPrinters);
@@ -5844,7 +5900,9 @@ async function refreshDashboardMarlinStatuses(printers) {
 }
 
 async function loadDashboardStandalonePrinters({ skipMarlinStatusRefresh = false } = {}) {
-    if (dashboardStandalonePrintersLoading || document.hidden) return;
+    // Ver el comentario en loadPrinters(): mismo motivo para sacar
+    // document.hidden de esta condición.
+    if (dashboardStandalonePrintersLoading) return;
     dashboardStandalonePrintersLoading = true;
     try {
         const requests = [
@@ -5981,9 +6039,17 @@ const LASER_STATE_IMAGES = {
     offline: '/static/img/Laser_ready.png',
 };
 
-function laserIllustrationImg(visualState) {
-    return `<img src="${LASER_STATE_IMAGES[visualState]}" alt="" loading="lazy">`;
-}
+// La ficha de la CNC usaba esta misma tabla y terminaba con el dibujo del
+// láser -- son máquinas distintas. Solo hay dos ilustraciones propias de
+// CNC en el repo (encendida/apagada, sin variantes por estado), así que se
+// usan esas dos en vez de inventar variantes que no existen.
+const CNC_STATE_IMAGES = {
+    printing: '/static/img/cncready2.png',
+    paused: '/static/img/cncready2.png',
+    error: '/static/img/cncready2.png',
+    idle: '/static/img/cncready2.png',
+    offline: '/static/img/cncoff.png',
+};
 
 function getLaserVisualState(status) {
     if (!status || !status.connected) return 'offline';
@@ -6015,59 +6081,6 @@ function laserDashboardSortPriority(status) {
     return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
 }
 
-function laserDashboardCardHtml(entry) {
-    const { host, status, kind } = entry;
-    const visualState = getLaserVisualState(status);
-    const isOnline = visualState !== 'offline';
-    const statusText = isOnline ? t('online') : t('offline');
-    const stateLabel = isOnline ? (status.state || t('idle')) : t('laserOffline');
-    const position = isOnline ? `X${status.x.toFixed(1)} Y${status.y.toFixed(1)} Z${status.z.toFixed(1)}` : '—';
-    // Marlin no reporta feed/velocidad realtime (feed/speed llegan null).
-    const feedSpeed = isOnline && status.feed != null && status.speed != null ? `${status.feed} / ${status.speed}` : '—';
-    const hostLabel = laserHostLabel(host);
-    const typeLabel = kind === 'cnc' ? t('cnc') : t('laser');
-    const typeClass = kind === 'cnc' ? 'printer-card-type-cnc' : 'printer-card-type-laser';
-
-    return `
-        <div class="printer-card ${typeClass} laser-dashboard-card ${isOnline ? 'online' : 'offline'} ${visualState}" data-laser-host="${escapeHtml(host)}">
-            ${deviceStateThermalWave(visualState, host)}
-            <div class="printer-card-top">
-                <div>
-                    <h3 class="printer-name">${hostLabel ? escapeHtml(hostLabel) : typeLabel}</h3>
-                    ${hostLabel ? `<p class="printer-name-sub">${typeLabel}</p>` : ''}
-                </div>
-                <div class="printer-quick-actions">
-                    <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
-                    </div>
-                </div>
-            </div>
-
-            <div class="printer-status-line ${visualState}">
-                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
-            </div>
-
-            <div class="printer-illustration printer-illustration-${visualState}">
-                ${laserIllustrationImg(visualState)}
-            </div>
-
-            ${visualState === 'printing' || visualState === 'paused' ? `
-                <div class="printer-temps">
-                    <div class="temp-item">
-                        <div class="temp-label">${t('laserPosition')}</div>
-                        <div class="temp-value laser-dashboard-metric">${position}</div>
-                    </div>
-                    <div class="temp-item">
-                        <div class="temp-label">${t('laserFeedSpeed')}</div>
-                        <div class="temp-value laser-dashboard-metric">${feedSpeed}</div>
-                    </div>
-                </div>
-            ` : ''}
-            <div class="printer-card-camera" data-cam-container="${kind === 'cnc' ? 'cnc' : 'laser'}:${escapeHtml(host)}"></div>
-        </div>
-    `;
-}
-
 function bindMarlinTemperatureActions(root) {
     root.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
         card.querySelectorAll('[data-marlin-temp-action]').forEach(button => {
@@ -6091,13 +6104,35 @@ function bindMarlinTemperatureActions(root) {
 }
 
 let dashboardLaserEntries = [];
+// Trabajos activos de TODOS los láser/CNC, por host -- una sola llamada
+// (/api/laser/jobs/active) en vez de una por máquina para saber el archivo y
+// el progreso de la que esté cortando.
+let dashboardLaserJobsByHost = {};
+
+// Reintenta las dos cargas que alimentan las columnas de dispositivos. Se
+// disparan las dos aunque solo una haya fallado: son baratas, y acertar cuál
+// falló no vale el riesgo de dejar la otra colgada.
+function reintentarCargaDeDispositivos() {
+    loadPrinters();
+    refreshDashboardLaserCard();
+}
 
 async function refreshDashboardLaserCard() {
-    if (document.hidden) return;
+    // Ver el comentario en loadPrinters(): mismo motivo para sacar
+    // document.hidden de esta condición.
     try {
-        const registryResponse = await fetch('/api/laser/registry');
+        const [registryResponse, jobsResponse] = await Promise.all([
+            fetch('/api/laser/registry'),
+            fetch('/api/laser/jobs/active').catch(() => null),
+        ]);
         const registryData = await registryResponse.json();
         const lasers = registryData.lasers || [];
+        try {
+            const jobsData = jobsResponse ? await jobsResponse.json() : { jobs: [] };
+            dashboardLaserJobsByHost = Object.fromEntries((jobsData.jobs || []).map(j => [j.host, j]));
+        } catch (_) {
+            dashboardLaserJobsByHost = {}; // sin trabajos activos: la ficha se queda sin progreso, no sin ficha
+        }
         dashboardLaserEntries = await Promise.all(lasers.map(async laser => {
             try {
                 const response = await fetch(`/api/laser/status?host=${encodeURIComponent(laser.host)}`);
@@ -6385,17 +6420,21 @@ function printerCardSectionOrder(sectionKey) {
 function renderPrinterCardCustomizer() {
     const list = document.getElementById('printer-card-customizer-list');
     if (!list) return;
-    const layout = getPrinterCardLayout();
+    // Las tres secciones de la ficha nueva. La insignia salió de la lista
+    // porque dejó de ser una pieza suelta -- vive dentro del bloque del
+    // nombre -- y la cabecera tampoco se mueve: quién es la máquina se lee
+    // primero, y las acciones quedan abajo, al alcance del pulgar.
+    const layout = getDeviceCardLayout();
     list.innerHTML = layout.map(key => `
         <div class="module-customizer-row printer-card-customizer-row" data-printer-card-section="${key}">
             <span class="module-customizer-row-handle" title="${escapeHtml(t('printerCardOrganizerDragHint'))}">${PRINTER_MODULE_DRAG_ICON}</span>
-            <span class="module-customizer-row-label">${escapeHtml(t(PRINTER_CARD_SECTION_LABEL_KEYS[key]))}</span>
+            <span class="module-customizer-row-label">${escapeHtml(t(DEVICE_CARD_SECTION_LABEL_KEYS[key]))}</span>
         </div>
     `).join('');
 
     initModuleCustomizerDrag(list, () => {
         const rows = Array.from(list.querySelectorAll(':scope > .printer-card-customizer-row'));
-        savePrinterCardLayout(rows.map(row => row.dataset.printerCardSection));
+        saveDeviceCardLayout(rows.map(row => row.dataset.printerCardSection));
         renderPrinters(allPrinters);
     });
 }
@@ -6413,6 +6452,10 @@ printerCardCustomizerBtn?.addEventListener('click', openPrinterCardCustomizer);
 document.getElementById('printer-card-customizer-modal-close')?.addEventListener('click', closePrinterCardCustomizer);
 document.getElementById('printer-card-customizer-modal-backdrop')?.addEventListener('click', closePrinterCardCustomizer);
 document.getElementById('printer-card-customizer-reset-btn')?.addEventListener('click', () => {
+    // Se limpian los dos registros: el de la ficha nueva y el de las marcas
+    // que todavía no migran. Restablecer a medias dejaría media mitad del
+    // panel con el orden viejo y sería peor que no restablecer.
+    localStorage.removeItem(DEVICE_CARD_LAYOUT_KEY);
     localStorage.removeItem(PRINTER_CARD_LAYOUT_KEY);
     renderPrinterCardCustomizer();
     renderPrinters(allPrinters);
@@ -6512,7 +6555,8 @@ async function fetchMachineLedEnabledStates() {
 }
 
 function machineLedCardIdentity(card) {
-    const name = card.querySelector('.printer-name')?.textContent?.trim() || 'Máquina';
+    const name = (card.querySelector('.printer-name') || card.querySelector('.dev-card-name'))
+        ?.textContent?.trim() || 'Máquina';
     if (card.dataset.port) return { type: 'klipper', id: card.dataset.port, name };
     if (card.dataset.marlinDevice) return { type: 'marlin', id: card.dataset.marlinDevice, name };
     if (card.dataset.elegooId) return { type: 'elegoo', id: card.dataset.elegooId, name };
@@ -6532,6 +6576,8 @@ function machineLedCardState(card) {
     // por la clase printer-card-cool que ya usa el tema visual de la
     // tarjeta mientras la temperatura sigue bajando.
     if (card.classList.contains('printer-card-cool')) return 'cooling';
+    // La ficha nueva lleva el estado en un atributo, no repartido en clases.
+    if (card.dataset.state) return card.dataset.state;
     return ['heating', 'printing', 'paused', 'completed', 'error', 'offline', 'idle']
         .find(state => card.classList.contains(state)) || (card.classList.contains('offline') ? 'offline' : 'idle');
 }
@@ -6663,9 +6709,10 @@ function machineLedIndicatorHtml(runs) {
 }
 
 function ensureMachineLedIndicator(card, key) {
-    const header = card.querySelector('.printer-card-top');
+    const header = card.querySelector('.printer-card-top') || card.querySelector('.dev-card-head');
     if (!header) return;
-    const actions = header.querySelector('.printer-quick-actions') || header;
+    const actions = header.querySelector('.printer-quick-actions')
+        || header.querySelector('.dev-card-head-right') || header;
     const existing = actions.querySelector('.machine-led-indicator');
     const runs = machineLedRenderCache.get(key);
     const html = runs ? machineLedIndicatorHtml(runs) : '';
@@ -6687,11 +6734,12 @@ function machineLedButtonHtml(machine) {
 // reconstruye por innerHTML en cada ciclo de polling y, mientras la
 // promesa seguía pendiente, quedaba sin botón unos cuantos frames.
 function ensureMachineLedButton(card, machine) {
-    const header = card.querySelector('.printer-card-top');
+    const header = card.querySelector('.printer-card-top') || card.querySelector('.dev-card-head');
     if (!header) return null;
     let button = header.querySelector('.machine-led-settings-btn');
     if (button) return button;
-    const actions = header.querySelector('.printer-quick-actions') || header;
+    const actions = header.querySelector('.printer-quick-actions')
+        || header.querySelector('.dev-card-head-right') || header;
     actions.insertAdjacentHTML('afterbegin', machineLedButtonHtml(machine));
     button = header.querySelector('.machine-led-settings-btn');
     button.addEventListener('click', event => {
@@ -6702,7 +6750,9 @@ function ensureMachineLedButton(card, machine) {
 }
 
 function decorateMachineCardsWithLedSettings(root) {
-    const entries = Array.from(root.querySelectorAll('.printer-card'))
+    // Las dos clases mientras dure la migración de fichas: '.dev-card' es
+    // la nueva y '.printer-card' las marcas que todavía no migran.
+    const entries = Array.from(root.querySelectorAll('.printer-card, .dev-card'))
         .map(card => ({ card, machine: machineLedCardIdentity(card) }))
         .filter(entry => entry.machine);
     if (!entries.length) return;
@@ -7215,11 +7265,16 @@ function setCameraCardVisible(deviceKey, visible) {
 // verdad una cámara vinculada, así que se crea desde mountCameraCardsIn una
 // vez que ya sabe la respuesta, nunca de entrada en el HTML estático.
 function ensureCameraToggleButton(card, deviceKey) {
-    const header = card.querySelector('.printer-card-top');
+    // Las dos cabeceras mientras dure la migración: la ficha nueva no tiene
+    // '.printer-card-top', y sin esto la impresora migrada se quedaba sin el
+    // botón de mostrar/ocultar cámara -- el mismo tropiezo que con el de
+    // alertas LED.
+    const header = card.querySelector('.printer-card-top') || card.querySelector('.dev-card-head');
     if (!header) return;
     let button = header.querySelector('.printer-card-camera-toggle');
     if (!button) {
-        const actions = header.querySelector('.printer-quick-actions') || header;
+        const actions = header.querySelector('.printer-quick-actions')
+            || header.querySelector('.dev-card-head-right') || header;
         actions.insertAdjacentHTML('afterbegin', `
             <button type="button" class="printer-card-camera-toggle" data-cam-toggle-key="${escapeHtml(deviceKey)}" title="${escapeHtml(t('cameraToggleTitle'))}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -7269,10 +7324,14 @@ async function mountCameraCardsIn(root) {
     containers.forEach(container => {
         const [deviceType, deviceId] = (container.dataset.camContainer || '').split(':');
         if (!deviceType || !deviceId) return;
-        const card = container.closest('.printer-card');
+        // Las dos clases: sin '.dev-card' esto devolvía nulo en la ficha
+        // nueva, el interruptor del plugin nunca se inyectaba y el botón de
+        // cámara no tenía a quién llamar -- por eso el visor no se ocultaba.
+        const card = container.closest('.printer-card, .dev-card');
         const camera = cameras.find(c => c.purpose === 'timelapse' && c.bound_device
             && c.bound_device.type === deviceType && String(c.bound_device.id) === String(deviceId));
         if (!camera) {
+            card?.classList.remove('has-live-camera');
             card?.querySelector('.printer-card-camera-toggle')?.remove();
             if (container.childElementCount > 0) {
                 window.NopalCameraCard.unmount(container);
@@ -7282,10 +7341,598 @@ async function mountCameraCardsIn(root) {
         }
         const deviceKey = `${deviceType}:${deviceId}`;
         if (card) ensureCameraToggleButton(card, deviceKey);
-        if (!isCameraCardVisible(deviceKey)) return;
+        // Con la cámara visible, ella pasa a ser la imagen principal de la
+        // ficha y el render de la máquina se encoge a icono junto al
+        // título: dos ilustraciones grandes compitiendo hacían la ficha el
+        // doble de alta y ninguna de las dos se leía mejor por eso.
+        const mostrandoCamara = isCameraCardVisible(deviceKey);
+        card?.classList.toggle('has-live-camera', mostrandoCamara);
+        if (!mostrandoCamara) return;
         if (container.childElementCount > 0) return;
+        // mount() desmonta antes de montar, así que no puede acumular
+        // instancias sobre el mismo contenedor.
         window.NopalCameraCard.mount(container, { deviceType, deviceId, compact: true });
     });
+}
+
+
+
+// Material cargado por impresora, resuelto de una pasada por el plugin de
+// materiales. Se cachea porque cambia cuando alguien cambia el carrete, no
+// cada 5 segundos como el resto de la telemetría.
+let deviceSpoolsByPort = {};
+
+// Máquinas que tienen una cámara asignada, por clave "tipo:id". Sin esto la
+// ficha no puede saber si ofrecer el botón del visor: ofrecerlo cuando no
+// hay cámara -- o cuando el plugin ni está instalado -- es un botón que solo
+// sirve para que alguien lo presione y no pase nada.
+let deviceCameraKeys = new Set();
+
+async function refreshDeviceCameras() {
+    try {
+        const respuesta = await fetch('/api/cameras');
+        if (!respuesta.ok) { deviceCameraKeys = new Set(); return; }
+        const camaras = (await respuesta.json()).cameras || [];
+        deviceCameraKeys = new Set(camaras
+            .filter(c => c.purpose === 'timelapse' && c.bound_device)
+            .map(c => `${c.bound_device.type}:${c.bound_device.id}`));
+    } catch (_) {
+        // Plugin ausente o sin responder: ninguna máquina tiene visor.
+        deviceCameraKeys = new Set();
+    }
+}
+
+async function refreshDeviceSpools() {
+    try {
+        const respuesta = await fetch('/api/spoolman/printers/active-spools?resolve=true');
+        if (!respuesta.ok) return;                       // plugin ausente: la ficha va sin material
+        deviceSpoolsByPort = (await respuesta.json()).links || {};
+    } catch (_) { /* sin materiales: la ficha se queda sin ese dato, no sin ficha */ }
+}
+
+function deviceTiempoCorto(minutos) {
+    if (!Number.isFinite(minutos) || minutos <= 0) return null;
+    const h = Math.floor(minutos / 60);
+    const m = Math.round(minutos % 60);
+    return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+// Estado real de una impresora Klipper -> el vocabulario común de la ficha.
+function klipperDeviceState(printer, isHeating) {
+    const estado = (printer.state || '').toLowerCase();
+    const enLinea = printer.status === 'online';
+    if (!enLinea) return 'offline';
+    if (estado === 'printing') return 'printing';
+    if (estado === 'paused') return 'paused';
+    if (['error', 'shutdown', 'disconnected'].includes(estado)) return 'error';
+    if (isHeating) return 'heating';
+    return 'idle';
+}
+
+// El visor de cámara es un interruptor, no una acción: solo aparece si esa
+// máquina tiene cámara asignada, y su palomita dice si el visor está
+// encendido.
+function accionCamara(clave) {
+    // Con cámara asignada es un interruptor del visor y lleva palomita de
+    // estado. Sin cámara sigue estando, pero lleva al panel del plugin para
+    // asignar una: es la diferencia entre "apagado" y "todavía no hay".
+    if (clave && deviceCameraKeys.has(clave)) {
+        return [{ key: 'camera', label: t('devCamera'), icon: 'camera', check: isCameraCardVisible(clave) }];
+    }
+    return [{ key: 'camera-setup', label: t('devCamera'), icon: 'camera' }];
+}
+
+function klipperDeviceModel(printer, datos) {
+    const { extruderTemp, bedTemp, isHeating, printerName } = datos;
+    const state = klipperDeviceState(printer, isHeating);
+    const claveCamara = `klipper:${printerName}`;
+    const job = printer.job || {};
+    const enTrabajo = deviceIsBusy(state);
+    const spool = deviceSpoolsByPort[String(printer.port)];
+
+    const etiquetas = {
+        offline: t('offline'), printing: t('printing'), paused: t('paused'),
+        error: t('devStateError'), heating: t('heating'), idle: t('devStateReady'),
+    };
+
+    // Solo se ofrece lo que se puede hacer en ese estado: un INICIAR
+    // mientras imprime, o un PAUSAR con la máquina parada, son botones que
+    // solo sirven para que alguien los presione y no pase nada.
+    let actions;
+    if (state === 'printing') {
+        actions = [
+            { key: 'pause', label: t('devPause'), icon: 'pause', tone: 'warn' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'paused') {
+        actions = [
+            { key: 'resume', label: t('devResume'), icon: 'play', tone: 'ok' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'offline' || state === 'error') {
+        actions = [{ key: 'details', label: t('devDetails'), icon: 'details' }];
+    } else {
+        actions = [
+            { key: 'file', label: t('devLoadFile'), icon: 'file' },
+            { key: 'home', label: t('devHome'), icon: 'home' },
+            { key: 'preheat', label: t('devPreheat'), icon: 'heat' },
+            ...accionCamara(claveCamara),
+        ];
+    }
+
+    // Las temperaturas van con icono y número grande siempre que la máquina
+    // esté conectada, no solo mientras trabaja: son el dato que se busca de
+    // un vistazo y en reposo quedaban como dos renglones de texto chico.
+    const metrics = state !== 'offline' ? [
+        { icon: 'nozzle', label: t('devNozzle'), value: Number.isFinite(extruderTemp) ? `${extruderTemp} °C` : null },
+        { icon: 'bed', label: t('devBed'), value: Number.isFinite(bedTemp) ? `${bedTemp} °C` : null },
+    ] : [];
+
+    const info = [];
+    // Solo se muestra lo que existe: una impresión sin capas informadas no
+    // debe pintar "Capa 0 / 0" como si fuera un dato.
+    if (enTrabajo && Number.isFinite(job.current_layer) && Number.isFinite(job.total_layer)) {
+        info.push({ label: t('devLayer'), value: `${job.current_layer} / ${job.total_layer}` });
+    }
+    // Material: fila propia (no un dev-field genérico) porque lleva el
+    // carrete del color real del filamento -- diámetro/color/peso vienen
+    // resueltos por Spoolman (/api/spoolman/printers/active-spools), nunca
+    // inventados si el plugin no responde.
+    const material = spool && spool.label ? {
+        label: spool.label,
+        colorHex: spool.color_hex || null,
+        // Un filamento multicolor (coextruido/longitudinal) no trae
+        // color_hex -- Spoolman guarda sus colores por separado.
+        multiColorHexes: Array.isArray(spool.multi_color_hexes) && spool.multi_color_hexes.length
+            ? spool.multi_color_hexes : null,
+        diameter: Number.isFinite(spool.diameter) ? spool.diameter : null,
+        remainingWeight: Number.isFinite(spool.remaining_weight) ? spool.remaining_weight : null,
+    } : null;
+
+    return {
+        name: printerName,
+        typeLabel: t('printerType3D'),
+        state,
+        stateLabel: etiquetas[state] || state,
+        online: printer.status === 'online',
+        art: PRINTER_STATE_IMAGES[state === 'offline' || state === 'error' ? 'error' : (state === 'heating' ? 'heating' : (enTrabajo ? 'printing' : 'idle'))],
+        job: enTrabajo ? {
+            filename: job.filename || '',
+            progress: Number.isFinite(job.progress) ? job.progress : null,
+            remainingLabel: deviceTiempoCorto(job.estimated_remaining != null ? job.estimated_remaining / 60 : null),
+        } : null,
+        jobLabel: t('devFile'),
+        metrics,
+        info,
+        material,
+        actions,
+        cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
+        // Las olas térmicas: el color y la velocidad salen de la temperatura
+        // real de cama y boquilla, no del estado. Es lo que hace que la
+        // ficha se sienta viva sin tener que leer un número.
+        waves: printerThermalWaves(
+            Number.isFinite(bedTemp) ? bedTemp : null,
+            Number.isFinite(extruderTemp) ? extruderTemp : null,
+            datos.bedTarget ?? 0,
+            datos.extruderTarget ?? 0,
+            state,
+            state === 'offline',
+            printer.port,
+        ),
+        dataAttr: `data-port="${escapeHtml(String(printer.port))}"`,
+    };
+}
+
+// Trabajo activo de este host, si lo hay -- viene de una sola consulta para
+// TODOS los láser/CNC (/api/laser/jobs/active), no una por máquina: barato
+// de llamar seguido, que es como se refresca el panel.
+function laserActiveJobFor(host, jobsByHost) {
+    return jobsByHost?.[host] || null;
+}
+
+// Estado real de un láser/CNC (GRBL) -> el vocabulario común de la ficha.
+function laserDeviceState(status) {
+    return getLaserVisualState(status); // offline | idle | printing | paused | error
+}
+
+function laserDeviceModel(entry, jobsByHost) {
+    const { host, status, kind } = entry;
+    const state = laserDeviceState(status);
+    const enLinea = state !== 'offline';
+    const enTrabajo = deviceIsBusy(state);
+    const esCnc = kind === 'cnc';
+    const nombre = laserHostLabel(host) || (esCnc ? t('cnc') : t('laser'));
+    const job = laserActiveJobFor(host, jobsByHost);
+    const claveCamara = `${esCnc ? 'cnc' : 'laser'}:${host}`;
+
+    const etiquetas = {
+        offline: t('offline'), printing: t('printing'), paused: t('paused'),
+        error: t('devStateError'), idle: t('devStateReady'),
+    };
+
+    // Solo lo que se puede hacer en ese estado. Igual que con Klipper: un
+    // INICIAR mientras corta, o un PAUSAR con la máquina parada, son
+    // botones que solo sirven para presionarlos y que no pase nada.
+    let actions;
+    if (state === 'printing') {
+        actions = [
+            { key: 'pause', label: t('devPause'), icon: 'pause', tone: 'warn' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'paused') {
+        actions = [
+            { key: 'resume', label: t('devResume'), icon: 'play', tone: 'ok' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'offline' || state === 'error') {
+        actions = [{ key: 'details', label: t('devDetails'), icon: 'details' }];
+    } else {
+        // Encuadrar abre el mismo selector de archivo que Iniciar -- GRBL no
+        // tiene un "archivo ya cargado" como Klipper/Marlin, así que ambas
+        // acciones empiezan preguntando cuál.
+        actions = [
+            { key: 'home', label: t('devHome'), icon: 'home' },
+            { key: 'frame', label: t('devFrame'), icon: 'frame' },
+            ...accionCamara(claveCamara),
+            { key: 'file', label: t('devStart'), icon: 'play', tone: 'ok' },
+        ];
+    }
+
+    const metrics = enTrabajo ? [
+        { icon: 'feed', label: t('devFeed'), value: Number.isFinite(status.feed) ? `${Math.round(status.feed)} mm/m` : null },
+        esCnc
+            ? { icon: 'rpm', label: t('devRpm'), value: Number.isFinite(status.speed) ? `${Math.round(status.speed)} rpm` : null }
+            : { icon: 'power', label: t('devPower'), value: Number.isFinite(status.speed) ? `S${Math.round(status.speed)}` : null },
+    ] : [];
+
+    const info = [];
+    if (enLinea && status.x != null && status.y != null && status.z != null) {
+        info.push({
+            label: t('devPosition'),
+            value: `X${Number(status.x).toFixed(1)} Y${Number(status.y).toFixed(1)} Z${Number(status.z).toFixed(1)}`,
+        });
+    }
+
+    // total en 0/ausente: GRBL no siempre expone cuántas líneas tiene el
+    // trabajo (un stream externo por Bluetooth, por ejemplo) -- sin ese
+    // dato no hay progreso que mostrar, y mostrar 0% sería inventarlo.
+    const progreso = job && job.total > 0 ? Math.round((job.current / job.total) * 100) : null;
+
+    return {
+        name: nombre,
+        typeLabel: esCnc ? t('cnc') : t('laser'),
+        state,
+        stateLabel: etiquetas[state] || state,
+        online: enLinea,
+        art: (esCnc ? CNC_STATE_IMAGES : LASER_STATE_IMAGES)[state] || (esCnc ? CNC_STATE_IMAGES : LASER_STATE_IMAGES).idle,
+        job: enTrabajo ? {
+            // GRBL no da tiempo estimado (solo Klipper/Marlin lo calculan a
+            // partir del perfil de aceleración) -- no se inventa uno.
+            filename: job?.filename || '',
+            progress: progreso,
+            remainingLabel: null,
+        } : null,
+        jobLabel: t('devJob'),
+        metrics,
+        info,
+        actions,
+        cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
+        waves: deviceStateThermalWave(state, host),
+        dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}"`,
+    };
+}
+
+
+// Secciones que SÍ tiene sentido reordenar en la ficha nueva. Son tres, no
+// las cuatro de la ficha vieja: en la referencia la insignia vive dentro
+// del bloque del nombre y ya no es una pieza suelta, y la cabecera y las
+// acciones tienen un sitio fijo -- quién es la máquina se lee primero y lo
+// que se puede hacer con ella queda al alcance del pulgar, abajo.
+const DEVICE_CARD_SECTIONS_DEFAULT_ORDER = ['thumbnail', 'job', 'data'];
+const DEVICE_CARD_LAYOUT_KEY = 'deviceCardLayout';
+const DEVICE_CARD_SECTION_LABEL_KEYS = {
+    thumbnail: 'devSectionMachine',
+    job: 'devSectionJob',
+    data: 'devSectionData',
+};
+
+function getDeviceCardLayout() {
+    let guardado = [];
+    try {
+        guardado = JSON.parse(localStorage.getItem(DEVICE_CARD_LAYOUT_KEY) || '[]');
+    } catch (_) { guardado = []; }
+    const validas = Array.isArray(guardado)
+        ? guardado.filter(k => DEVICE_CARD_SECTIONS_DEFAULT_ORDER.includes(k)) : [];
+    // Las que falten se agregan al final: así, agregar una sección nueva en
+    // el futuro no deja la ficha sin ella para quien ya guardó un orden.
+    return [...validas, ...DEVICE_CARD_SECTIONS_DEFAULT_ORDER.filter(k => !validas.includes(k))];
+}
+
+function saveDeviceCardLayout(orden) {
+    localStorage.setItem(DEVICE_CARD_LAYOUT_KEY, JSON.stringify(orden));
+}
+
+function deviceCardSectionOrder(seccion) {
+    const i = getDeviceCardLayout().indexOf(seccion);
+    return i === -1 ? 0 : i;
+}
+
+// ── Fichas de dispositivo ─────────────────────────────────────────────────
+// Un solo constructor para todas las marcas. Antes había seis marcados
+// distintos (Klipper, Marlin, Elegoo, FlashForge, Bambu, láser/CNC) que se
+// fueron separando solos: por eso la ficha de Klipper se quedó sin cámara y
+// el apagado por estado quedó invertido en unas y no en otras.
+//
+// Cada marca solo tiene que traducir sus datos a un modelo común; el aspecto
+// y el comportamiento por estado viven acá, en un lugar.
+
+const DEVICE_ICONS = {
+    // Termómetro completo: columna, bulbo relleno y marcas de escala. El
+    // anterior era una silueta de boquilla que a tamaño chico se leía como
+    // un trazo suelto.
+    nozzle: '<path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4.5 4.5 0 1 0 4 0z"/><circle cx="12" cy="18.5" r="2" fill="currentColor" stroke="none"/><line x1="14" y1="8" x2="17" y2="8"/><line x1="14" y1="11" x2="16" y2="11"/>',
+    // Cama caliente: la placa, sus patas y el calor subiendo en ondas.
+    bed: '<path d="M3 16h18"/><path d="M5 16v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/><path d="M6 19v1"/><path d="M18 19v1"/><path d="M3 16v3h18v-3"/><path d="M8 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/><path d="M12 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/><path d="M16 9c0-1.2 1-1.8 1-3s-1-1.8-1-3"/>',
+    layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    // Carrete de filamento de perfil: dos pestañas (arriba/abajo), el eje que
+    // las une y las capas de filamento enrolladas entre ellas. Dos círculos
+    // concéntricos se leían como un blanco/diana, no como un carrete.
+    spool: '<ellipse cx="12" cy="5" rx="7" ry="2.5"/><ellipse cx="12" cy="19" rx="7" ry="2.5"/><path d="M5 5v14"/><path d="M19 5v14"/><path d="M8 8.5c1.6 1 6.4 1 8 0M8 12c1.6 1 6.4 1 8 0M8 15.5c1.6 1 6.4 1 8 0"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    wifi: '<path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+    pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
+    play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+    details: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+    home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+    move: '<polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    heat: '<path d="M12 2s4 5 4 9a4 4 0 0 1-8 0c0-4 4-9 4-9z"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.44.58.8.66H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    dots: '<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
+    // Cabezal sobre tres ejes: lo que importa comunicar es "dónde está",
+    // no una brújula genérica.
+    position: '<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2v5"/><path d="M12 17v5"/><path d="M2 12h5"/><path d="M17 12h5"/>',
+    feed: '<polyline points="5 12 3 12 3 20 21 20 21 12 19 12"/><path d="M8 12V4a4 4 0 0 1 8 0v8"/>',
+    // Rayo láser saliendo del cabezal: distinto del calor de la boquilla,
+    // que es un icono ya usado para otra cosa.
+    power: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    // Ventilador: giro (RPM) del husillo de la CNC, no potencia.
+    rpm: '<path d="M12 12a3 3 0 1 0 0-6c0 2 1 4 3 6z"/><path d="M12 12a3 3 0 1 0 0 6c0-2-1-4-3-6z"/><path d="M12 12a3 3 0 1 0 6 0c-2 0-4 1-6 3z"/><path d="M12 12a3 3 0 1 0-6 0c2 0 4-1 6-3z"/>',
+    // El rectángulo que recorre "Encuadrar": las cuatro esquinas del
+    // trabajo, no una lupa ni un marco genérico.
+    frame: '<path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/><path d="M21 17v3a1 1 0 0 1-1 1h-3"/><path d="M7 21H4a1 1 0 0 1-1-1v-3"/><rect x="7" y="7" width="10" height="10" rx="1"/>',
+};
+
+function deviceIcon(nombre, tamano = 15) {
+    const trazo = DEVICE_ICONS[nombre] || DEVICE_ICONS.settings;
+    return `<svg width="${tamano}" height="${tamano}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${trazo}</svg>`;
+}
+
+// Estado -> tono. Es la jerarquía de siempre de NOPAL: verde lo que va bien,
+// ámbar lo que espera, rojo lo que se detuvo mal, gris lo que no está.
+const DEVICE_STATE_TONE = {
+    offline: 'off', connecting: 'off',
+    idle: 'ok', ready: 'ok', working: 'ok', printing: 'ok',
+    engraving: 'ok', cutting: 'ok', milling: 'ok', completed: 'ok',
+    homing: 'warn', paused: 'warn', warning: 'warn', heating: 'warn',
+    error: 'danger', alarm: 'danger',
+};
+
+function deviceTone(estado) {
+    return DEVICE_STATE_TONE[estado] || 'off';
+}
+
+// Un estado "de trabajo" es el que hace desaparecer la imagen grande: la
+// ficha necesita ese espacio para el progreso, las temperaturas y el resto.
+const DEVICE_BUSY_STATES = ['printing', 'working', 'engraving', 'cutting', 'milling', 'paused'];
+
+function deviceIsBusy(estado) {
+    return DEVICE_BUSY_STATES.includes(estado);
+}
+
+function deviceCampo(etiqueta, valor) {
+    return `<div class="dev-field"><span class="dev-field-label">${escapeHtml(etiqueta)}</span>
+        <span class="dev-field-value">${escapeHtml(valor)}</span></div>`;
+}
+
+function deviceMetrica(icono, etiqueta, valor) {
+    // Sin dato va una raya, nunca un cero: un 0 °C leído como real
+    // es peor que admitir que no se sabe.
+    let texto = (valor === null || valor === undefined || valor === '') ? '—' : String(valor);
+    // La unidad se separa para poder pintarla más chica: "205 °C" con el
+    // 205 grande es lo que hace legible la temperatura de un vistazo.
+    const conUnidad = /^(-?[\d.]+)\s*(°C|rpm|mm\/m|%)$/.exec(texto);
+    texto = conUnidad
+        ? `${escapeHtml(conUnidad[1])}<small>${escapeHtml(conUnidad[2])}</small>`
+        : escapeHtml(texto);
+    return `<div class="dev-metric">
+        <span class="dev-metric-icon">${deviceIcon(icono, 28)}</span>
+        <span class="dev-metric-text">
+            <span class="dev-metric-label">${escapeHtml(etiqueta)}</span>
+            <span class="dev-metric-value">${texto}</span>
+        </span>
+    </div>`;
+}
+
+// Fila de material: propia y no un dev-field genérico porque necesita
+// mostrar el carrete del color real del filamento, separado del nombre por
+// un divisor -- un simple label/valor no tenía dónde meter el icono.
+function normalizeSpoolHex(hex) {
+    if (!hex) return null;
+    return hex.startsWith('#') ? hex : `#${hex}`;
+}
+
+// Carrete de perfil coloreado con el/los color(es) real(es) del filamento:
+// las capas enrolladas (las tres líneas onduladas) llevan cada color, la
+// pestaña/eje se queda neutro (es la estructura del carrete, no el
+// filamento). Con dos o más colores (coextruido/longitudinal en Spoolman,
+// sin color_hex único) las líneas alternan entre ellos -- así un filamento
+// bicolor real se ve bicolor, no de un solo tono inventado.
+function deviceMaterialSpoolIcon(colores) {
+    const paleta = colores && colores.length ? colores : null;
+    const trazo = i => paleta ? escapeHtml(paleta[i % paleta.length]) : 'var(--text-faint)';
+    // De costado (eje horizontal), como se ve un carrete real -- parado
+    // (eje vertical) se leía como un ícono de base de datos, no un carrete.
+    // Las tres capas van separadas en X (no apiladas y pegadas en Y como
+    // antes) para que no se fundan en un bloque sólido con un solo color.
+    return `<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <ellipse cx="5" cy="12" rx="2.5" ry="7" stroke="var(--text-faint)"/>
+        <ellipse cx="19" cy="12" rx="2.5" ry="7" stroke="var(--text-faint)"/>
+        <path d="M5 5h14" stroke="var(--text-faint)"/>
+        <path d="M5 19h14" stroke="var(--text-faint)"/>
+        <path d="M8.5 8c1 1.6 1 6.4 0 8" stroke="${trazo(0)}"/>
+        <path d="M12 8c1 1.6 1 6.4 0 8" stroke="${trazo(1)}"/>
+        <path d="M15.5 8c1 1.6 1 6.4 0 8" stroke="${trazo(2)}"/>
+    </svg>`;
+}
+
+function deviceMaterialCampo(material) {
+    const colores = material.multiColorHexes
+        ? material.multiColorHexes.map(normalizeSpoolHex).filter(Boolean)
+        : (normalizeSpoolHex(material.colorHex) ? [normalizeSpoolHex(material.colorHex)] : null);
+    // Mismo patrón que deviceMetrica: el número grande, la unidad chica al
+    // lado -- "1.75mm" leído de un vistazo, no un texto corrido chico.
+    const specs = [];
+    if (material.diameter != null) specs.push([`${material.diameter}`, 'mm']);
+    if (material.remainingWeight != null) {
+        specs.push(material.remainingWeight >= 1000
+            ? [(material.remainingWeight / 1000).toFixed(1), 'kg']
+            : [String(Math.round(material.remainingWeight)), 'g']);
+    }
+    const specsHtml = specs.length
+        ? `<span class="dev-material-specs">${specs.map(([n, u]) => `<span>${escapeHtml(n)}<small>${escapeHtml(u)}</small></span>`).join('')}</span>`
+        : '';
+    return `<div class="dev-field dev-field-material">
+        <span class="dev-field-label">${escapeHtml(t('devMaterial'))}</span>
+        <div class="dev-material-row">
+            <span class="dev-material-name" title="${escapeHtml(material.label)}">${escapeHtml(material.label)}</span>
+            <span class="dev-material-divider" aria-hidden="true"></span>
+            <span class="dev-material-icon">${deviceMaterialSpoolIcon(colores)}</span>
+            ${specsHtml}
+        </div>
+    </div>`;
+}
+
+function deviceAccionBtn(accion) {
+    const tono = accion.tone ? ` dev-action-${accion.tone}` : '';
+    const grande = accion.primary ? ' dev-action-primary' : '';
+    // Palomita de estado en la esquina, para los botones que son un
+    // interruptor y no una acción de una sola vez: dice si está encendido
+    // sin que haya que mirar el resto de la ficha.
+    const palomita = accion.check === undefined ? '' : `
+        <span class="dev-action-check${accion.check ? ' is-on' : ''}" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </span>`;
+    // El title va siempre: en modo lista la etiqueta se oculta y sin él el
+    // botón quedaría mudo.
+    const encendido = accion.check ? ' is-checked' : '';
+    return `<button type="button" class="dev-action${tono}${grande}${encendido}" data-dev-action="${escapeHtml(accion.key)}" title="${escapeHtml(accion.label)}" ${accion.check === undefined ? '' : `aria-pressed="${accion.check}"`}>
+        ${palomita}${deviceIcon(accion.icon, 17)}<span>${escapeHtml(accion.label)}</span>
+    </button>`;
+}
+
+function deviceProgreso(job) {
+    if (!job || !Number.isFinite(job.progress)) return '';
+    const pct = Math.max(0, Math.min(100, Math.round(job.progress)));
+    const restante = job.remainingLabel
+        ? `<div class="dev-progress-right">
+               <span class="dev-field-label">${escapeHtml(t('devRemaining'))}</span>
+               <span class="dev-progress-remaining">${escapeHtml(job.remainingLabel)}</span>
+           </div>` : '';
+    return `<div class="dev-progress">
+        <div class="dev-progress-head">
+            <div>
+                <span class="dev-field-label">${escapeHtml(t('devProgress'))}</span>
+                <span class="dev-progress-pct">${pct}%</span>
+            </div>
+            ${restante}
+        </div>
+        <div class="dev-progress-track"><div class="dev-progress-fill" style="width:${pct}%"></div></div>
+    </div>`;
+}
+
+function deviceCardHtml(d) {
+    const tono = deviceTone(d.state);
+    // La miniatura no depende solo de si trabaja: con una cámara en vivo la
+    // imagen que importa es la cámara, así que el render de la máquina se
+    // encoge y sube a la cabecera aunque la máquina esté en reposo.
+    const conCamara = Boolean(d.cameraSlot) && isCameraCardVisible(d.cameraSlot);
+    const modoMiniatura = deviceIsBusy(d.state) || conCamara;
+    const ocupado = modoMiniatura;
+    const conexion = d.online
+        ? `<span class="dev-conn is-online" title="${escapeHtml(t('online'))}">${deviceIcon('wifi', 15)}</span>`
+        : `<span class="dev-conn" title="${escapeHtml(t('offline'))}">${deviceIcon('wifi', 15)}</span>`;
+
+    // Trabajando: la máquina se encoge a icono en la esquina y el espacio se
+    // usa para el trabajo. En reposo, la máquina es la protagonista.
+    // Se emiten las dos formas de la imagen -- miniatura en la cabecera y
+    // protagonista en el cuerpo -- y el CSS enseña la que toca según la
+    // clase de la ficha. Antes había que reconstruir la ficha para
+    // cambiarlas, y eso repintaba la grilla entera: las cámaras de las otras
+    // máquinas se desmontaban y volvían a montar, dando ese parpadeo.
+    const arteMini = d.art
+        ? `<span class="dev-art is-thumb"><img src="${escapeHtml(d.art)}" alt="" loading="lazy"></span>` : '';
+    const arteGrande = d.art
+        ? `<span class="dev-art"><img src="${escapeHtml(d.art)}" alt="" loading="lazy"></span>` : '';
+
+    const seccion = clave => `style="order:${deviceCardSectionOrder(clave)}"`;
+    const cuerpo = [];
+    if (d.art) cuerpo.push(`<div class="dev-hero" ${seccion('thumbnail')}>${arteGrande}</div>`);
+
+    const trabajo = [];
+    if (d.job && d.job.filename) trabajo.push(deviceCampo(d.jobLabel || t('devJob'), d.job.filename));
+    const barra = deviceProgreso(d.job);
+    if (barra) trabajo.push(barra);
+    if (trabajo.length) cuerpo.push(`<div class="dev-section-job" ${seccion('job')}>${trabajo.join('')}</div>`);
+    if (d.cameraSlot) {
+        cuerpo.push(`<div class="printer-card-camera dev-camera" data-cam-container="${escapeHtml(d.cameraSlot)}" ${seccion('thumbnail')}></div>`);
+    }
+    // Métricas e información van en la MISMA caja, separadas por divisores,
+    // como en la referencia: dos recuadros sueltos partían la ficha en
+    // bloques que compiten en vez de leerse como un solo panel de datos.
+    const panel = [];
+    if (d.metrics && d.metrics.length) {
+        panel.push(`<div class="dev-metrics">${d.metrics.map(m => deviceMetrica(m.icon, m.label, m.value)).join('')}</div>`);
+    }
+    if ((d.info && d.info.length) || d.material) {
+        const camposInfo = (d.info || []).map(i => deviceCampo(i.label, i.value));
+        if (d.material) camposInfo.unshift(deviceMaterialCampo(d.material));
+        panel.push(`<div class="dev-info">${camposInfo.join('')}</div>`);
+    }
+    if (panel.length) cuerpo.push(`<div class="dev-panel" ${seccion('data')}>${panel.join('')}</div>`);
+
+    // Orden fijo: la cabecera arriba y las acciones al final, pase lo que
+    // pase con el resto.
+    const acciones = (d.actions || []).length
+        ? `<div class="dev-actions" style="order:90">${d.actions.map(deviceAccionBtn).join('')}</div>` : '';
+
+    return `
+    <article class="dev-card${modoMiniatura ? ' is-thumb-mode' : ''}" data-tone="${tono}" data-state="${escapeHtml(d.state)}" ${d.dataAttr || ''}>
+        ${d.waves || ''}
+        <div class="dev-card-head" style="order:-1">
+            ${arteMini}
+            <div class="dev-card-id">
+                <span class="dev-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
+                <span class="dev-card-type">${escapeHtml(d.typeLabel)}</span>
+                <span class="dev-badge">${escapeHtml(d.stateLabel)}</span>
+            </div>
+            <div class="dev-card-head-right">
+                ${conexion}
+            </div>
+        </div>
+        ${cuerpo.filter(Boolean).join('')}
+        ${acciones}
+    </article>`;
 }
 
 function renderPrinters(printersInput) {
@@ -7358,71 +8005,19 @@ function renderPrinters(printersInput) {
         const thumbRightClass = getPrinterCardLayout().indexOf('thumbnail') === PRINTER_CARD_SECTIONS_DEFAULT_ORDER.length - 1
             ? ' printer-card-thumb-right' : '';
 
-        const html = `
-            <div class="printer-card printer-card-type-3d ${normalizedStatus} ${displayState}${themeModeClass}${thumbRightClass}" data-port="${printer.port}" data-heat-progress="${heatProgress ?? ''}">
-                ${printerThermalWaves(
-                    typeof bedTemp === 'number' ? bedTemp : null,
-                    typeof extruderTemp === 'number' ? extruderTemp : null,
-                    bedTarget,
-                    extruderTarget,
-                    displayState,
-                    !isOnline,
-                    printer.port
-                )}
-                <div class="printer-card-top" data-printer-card-section="header" style="order:${printerCardSectionOrder('header')}">
-                    <div>
-                        <h3 class="printer-name">${escapeHtml(printerName)}</h3>
-                        <p class="printer-name-sub">${t('printerType3D')}</p>
-                    </div>
-                    <div class="printer-quick-actions">
-                        ${visualState === 'idle' ? `
-                            <button type="button" class="printer-quick-action-btn" data-quick-action="cool" data-port="${printer.port}" title="${t('tempCool')}">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
-                            </button>
-                            <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent" data-quick-action="preheat" data-port="${printer.port}" title="${t('tempPreset')}">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z"/><path d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z"/></svg>
-                            </button>
-                        ` : ''}
-                        <div class="printer-status-icon ${normalizedStatus}" title="${statusText}">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
+        // Ficha nueva: un solo constructor para todas las marcas (ver
+        // deviceCardHtml). Se le pasa el mismo cálculo de siempre --
+        // temperaturas, si está calentando, el nombre resuelto -- traducido
+        // al modelo común.
+        const html = deviceCardHtml(klipperDeviceModel(printer, {
+            extruderTemp: typeof extruderTemp === 'number' ? extruderTemp : null,
+            bedTemp: typeof bedTemp === 'number' ? bedTemp : null,
+            bedTarget,
+            extruderTarget,
+            isHeating,
+            printerName,
+        }));
 
-                <div class="printer-status-line ${displayState}" data-printer-card-section="badge" style="order:${printerCardSectionOrder('badge')}">
-                    <span class="printer-status-dot ${displayState}"></span>${displayStateText}
-                </div>
-
-                <div class="printer-illustration printer-illustration-${displayState}" data-printer-card-section="thumbnail" style="order:${printerCardSectionOrder('thumbnail')}">
-                    ${printerIllustrationImg(displayState)}
-                </div>
-
-                ${visualState === 'printing' || visualState === 'paused' || visualState === 'idle' ? `
-                    <div class="printer-temps" data-printer-card-section="temps" style="order:${printerCardSectionOrder('temps')}">
-                        <div class="temp-item">
-                            <div class="temp-label">${t('bedTemp')}</div>
-                            <div class="temp-value" style="color:${heatColor(bedPercent)}">${bedTemp}<span class="temp-unit">°C</span></div>
-                        </div>
-                        <div class="temp-item">
-                            <div class="temp-label">${t('extruderTemp')}</div>
-                            <div class="temp-value" style="color:${heatColor(extruderPercent)}">${extruderTemp}<span class="temp-unit">°C</span></div>
-                        </div>
-                    </div>
-                ` : ''}
-
-                ${visualState === 'printing' || visualState === 'paused' ? `
-                    <div class="printer-progress" style="order:99">
-                        <div class="printer-progress-labels">
-                            <span>${jobProgress}% ${t('printed')}</span>
-                            <span>${jobRemainingMinutes != null ? formatEstimatedTime(jobRemainingMinutes) : '—'}</span>
-                        </div>
-                        <div class="temp-progress"><div class="temp-progress-fill" style="width: ${jobProgress}%"></div></div>
-                    </div>
-                ` : ''}
-            </div>
-        `;
 
         return { isOnline, sortPriority: getPrinterSortPriority(printer), html };
     });
@@ -7433,7 +8028,7 @@ function renderPrinters(printersInput) {
         return {
             isOnline,
             sortPriority: laserDashboardSortPriority(entry.status),
-            html: laserDashboardCardHtml(entry),
+            html: deviceCardHtml(laserDeviceModel(entry, dashboardLaserJobsByHost)),
         };
     });
 
@@ -7442,7 +8037,7 @@ function renderPrinters(printersInput) {
         return {
             isOnline,
             sortPriority: laserDashboardSortPriority(entry.status),
-            html: laserDashboardCardHtml(entry),
+            html: deviceCardHtml(laserDeviceModel(entry, dashboardLaserJobsByHost)),
         };
     });
 
@@ -7453,7 +8048,25 @@ function renderPrinters(printersInput) {
             return null;
         }
         if (hasLoadError) {
-            grid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
+            // Antes decía "Error cargando modelos" -- una clave prestada de la
+            // biblioteca de modelos, en una columna de máquinas. Mandaba a
+            // buscar el problema donde no estaba. Y no ofrecía salida: si el
+            // auto-refresco está apagado, esa columna se quedaba muerta hasta
+            // que alguien recargara la página, sin ninguna pista de que eso
+            // era lo que hacía falta.
+            grid.innerHTML = `
+                <div class="empty-state device-load-error">
+                    <span>${escapeHtml(t('deviceLoadError'))}</span>
+                    <button type="button" class="btn-file-action" data-device-retry>
+                        ${escapeHtml(t('deviceLoadRetry'))}
+                    </button>
+                </div>`;
+            grid.querySelector('[data-device-retry]')?.addEventListener('click', event => {
+                const boton = event.currentTarget;
+                boton.disabled = true;
+                boton.textContent = t('deviceLoadRetrying');
+                reintentarCargaDeDispositivos();
+            });
             return null;
         }
         let filtered = showOffline ? entries : entries.filter(entry => entry.isOnline);
@@ -7494,14 +8107,65 @@ function renderPrinters(printersInput) {
     // mixto. Pedido explícito del usuario sobre una captura de ambos modos.
     if (groupMode === 'mixed') mountCameraCardsIn(columnsRoot);
 
-    columnsRoot.querySelectorAll('.printer-card[data-port]').forEach(card => {
+    // openPrinterModal recibe el OBJETO de la impresora, no el puerto: con
+    // un número el panel abría vacío, sin dar error.
+    const abrirPanelDeImpresora = puerto => {
+        const impresora = allPrinters.find(p => String(p.port) === String(puerto));
+        if (impresora) openPrinterModal(impresora);
+    };
+
+    columnsRoot.querySelectorAll('.dev-card[data-port]').forEach(card => {
         if (boundPrinterCards.has(card)) return;
         boundPrinterCards.add(card);
-        card.addEventListener('click', () => {
-            const port = Number(card.dataset.port);
-            const printer = allPrinters.find(p => p.port === port);
-            if (printer) openPrinterModal(printer);
+        const port = Number(card.dataset.port);
+
+        card.querySelectorAll('[data-dev-action]').forEach(btn => {
+            btn.addEventListener('click', async event => {
+                // La ficha entera abre el panel de la impresora; un botón no
+                // debe hacer las dos cosas.
+                event.stopPropagation();
+                const accion = btn.dataset.devAction;
+                if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
+                    await handleActivePrintAction(accion, port);
+                    return;
+                }
+                if (accion === 'camera-setup') {
+                    // El botón de cámara sin cámara asignada lleva al
+                    // plugin: es donde se asigna una, y sin visor que
+                    // alternar no hay nada más útil que hacer.
+                    switchSection('camera-viewer');
+                    return;
+                }
+                if (accion === 'camera') {
+                    // Se delega en el interruptor que el plugin de cámaras
+                    // ya inyecta en la cabecera, en vez de repetir su
+                    // lógica: tener dos implementaciones del mismo botón es
+                    // lo que hacía aparecer la cámara dos veces.
+                    card.querySelector('.printer-card-camera-toggle')?.click();
+                    // Se actualiza esta ficha en el sitio. Repintar la
+                    // grilla entera desmontaba y volvía a montar TODAS las
+                    // cámaras, incluida la del láser de al lado: ese era el
+                    // parpadeo.
+                    const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
+                    const visible = clave ? isCameraCardVisible(clave) : false;
+                    card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
+                    btn.classList.toggle('is-checked', visible);
+                    btn.setAttribute('aria-pressed', String(visible));
+                    btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
+                    return;
+                }
+                if (accion === 'preheat') {
+                    const impresora = allPrinters.find(p => String(p.port) === String(port)) || {};
+                    openMaterialPreheatModal({ type: 'klipper', id: port, name: impresora.name || `Klipper ${port}` });
+                    return;
+                }
+                // Cargar archivo, home, detalles y el menú abren el panel
+                // completo de la impresora, que es donde viven de verdad.
+                abrirPanelDeImpresora(port);
+            });
         });
+
+        card.addEventListener('click', () => abrirPanelDeImpresora(port));
     });
 
     columnsRoot.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
@@ -7536,20 +8200,65 @@ function renderPrinters(printersInput) {
         });
     });
 
-    columnsRoot.querySelectorAll('.printer-card[data-laser-host]').forEach(card => {
+    // Ir a la sección completa (Láser o CNC) primero fija ese host como el
+    // "activo" -- es lo mismo que hacía la ficha vieja al hacer clic.
+    const irASeccionDeLaser = async (host, kind) => {
+        try {
+            const formData = new FormData();
+            formData.append('host', host);
+            await fetch('/api/laser/host', { method: 'POST', body: formData });
+        } catch (error) {
+            console.error(error);
+        }
+        switchSection(kind === 'cnc' ? 'cnc' : 'laser');
+    };
+
+    columnsRoot.querySelectorAll('.dev-card[data-laser-host]').forEach(card => {
         if (boundLaserCards.has(card)) return;
         boundLaserCards.add(card);
-        card.addEventListener('click', async () => {
-            const host = card.dataset.laserHost;
-            try {
-                const formData = new FormData();
-                formData.append('host', host);
-                await fetch('/api/laser/host', { method: 'POST', body: formData });
-            } catch (error) {
-                console.error(error);
-            }
-            switchSection(card.classList.contains('printer-card-type-cnc') ? 'cnc' : 'laser');
+        const host = card.dataset.laserHost;
+        const kind = card.dataset.laserKind;
+
+        card.querySelectorAll('[data-dev-action]').forEach(btn => {
+            btn.addEventListener('click', async event => {
+                event.stopPropagation();
+                const accion = btn.dataset.devAction;
+                if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
+                    await handleLaserQuickAction(accion, host);
+                    return;
+                }
+                if (accion === 'camera-setup') {
+                    switchSection('camera-viewer');
+                    return;
+                }
+                if (accion === 'camera') {
+                    card.querySelector('.printer-card-camera-toggle')?.click();
+                    const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
+                    const visible = clave ? isCameraCardVisible(clave) : false;
+                    card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
+                    btn.classList.toggle('is-checked', visible);
+                    btn.setAttribute('aria-pressed', String(visible));
+                    btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
+                    return;
+                }
+                if (accion === 'home') {
+                    if (isLaserHomeConfirmEnabled()) {
+                        if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
+                    }
+                    await sendLaserHome(host);
+                    return;
+                }
+                if (accion === 'frame' || accion === 'file') {
+                    openDevLaserFileModal(host, kind);
+                    return;
+                }
+                // Detalles (y cualquier otra acción sin manejo propio) lleva
+                // a la sección completa, que es donde vive el resto.
+                await irASeccionDeLaser(host, kind);
+            });
         });
+
+        card.addEventListener('click', () => irASeccionDeLaser(host, kind));
     });
 
     columnsRoot.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
@@ -12108,6 +12817,94 @@ function confirmLaserJobStart(gcodeText, options = {}) {
     });
 }
 
+// Selector de archivo para "Encuadrar"/"Iniciar" desde la ficha del
+// dashboard -- a diferencia de confirmLaserJobStart (pensado para el láser
+// "activo" de la sección Láser/CNC), este apunta siempre al host de la
+// ficha que lo abrió, sin importar cuál esté activo en ese momento.
+let devLaserFileModalTarget = null; // { host, kind }
+
+async function openDevLaserFileModal(host, kind) {
+    devLaserFileModalTarget = { host, kind };
+    const modal = document.getElementById('dev-laser-file-modal');
+    const selectEl = document.getElementById('dev-laser-file-modal-select');
+    if (!modal || !selectEl) return;
+
+    selectEl.innerHTML = `<option value="">${t('laserSdLoading')}</option>`;
+    modal.classList.add('active');
+
+    try {
+        const response = await fetch('/api/models');
+        const models = await response.json();
+        const files = models.filter(m => m.id.startsWith('gcode/'));
+        selectEl.innerHTML = files.length
+            ? files.map(f => `<option value="${escapeHtml(stripSectionPrefix(f.id, 'gcode'))}">${escapeHtml(f.name)}</option>`).join('')
+            : `<option value="">${t('noFilesFound')}</option>`;
+    } catch (error) {
+        console.error(error);
+        selectEl.innerHTML = `<option value="">${t('laserSdError')}</option>`;
+    }
+}
+
+function closeDevLaserFileModal() {
+    document.getElementById('dev-laser-file-modal')?.classList.remove('active');
+    devLaserFileModalTarget = null;
+}
+
+document.getElementById('dev-laser-file-modal-close')?.addEventListener('click', closeDevLaserFileModal);
+document.getElementById('dev-laser-file-modal-backdrop')?.addEventListener('click', closeDevLaserFileModal);
+document.getElementById('dev-laser-file-modal-cancel-btn')?.addEventListener('click', closeDevLaserFileModal);
+
+document.getElementById('dev-laser-file-modal-start-btn')?.addEventListener('click', async (event) => {
+    if (!devLaserFileModalTarget) return;
+    const path = document.getElementById('dev-laser-file-modal-select')?.value;
+    if (!path) return;
+    const { host } = devLaserFileModalTarget;
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('path', path);
+        formData.append('host', host);
+        const response = await fetch('/api/laser/job/start', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || t('laserSdError'));
+        }
+        closeDevLaserFileModal();
+        refreshDashboardLaserCard();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('laserSdError'), '', 'danger');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+document.getElementById('dev-laser-file-modal-frame-btn')?.addEventListener('click', async (event) => {
+    if (!devLaserFileModalTarget) return;
+    const path = document.getElementById('dev-laser-file-modal-select')?.value;
+    if (!path) return;
+    const { host } = devLaserFileModalTarget;
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('path', path);
+        formData.append('host', host);
+        const response = await fetch('/api/laser/job/frame', { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || t('laserFrameError'));
+        if (data.warning) appAlert(data.warning, '', 'warning');
+        closeDevLaserFileModal();
+        refreshDashboardLaserCard();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('laserFrameError'), '', 'danger');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
 let laserJogStep = 10;
 const LASER_JOG_FEED = 1500;
 // GRBL reporta y acepta la potencia del spindle/láser en su escala nativa S0-S1000
@@ -15656,7 +16453,11 @@ function renderMarlinTemperaturesCard(data, device) {
     });
     const heaterKeys = sensors.map(sensor => sensor.key);
     document.getElementById('marlin-temp-cool-btn')?.addEventListener('click', async () => {
-        try { await Promise.all(heaterKeys.map(heater => setMarlinHeaterTarget(device, heater, 0))); refreshMarlinModalTemperatures(); }
+        try {
+            await Promise.all(heaterKeys.map(heater => setMarlinHeaterTarget(device, heater, 0)));
+            refreshMarlinModalTemperatures();
+            loadDashboardStandalonePrinters();
+        }
         catch (error) { showToast(error.message, 'error'); }
     });
     document.getElementById('marlin-temp-preset-btn')?.addEventListener('click', () => {
@@ -16200,6 +17001,14 @@ function switchSection(sectionName) {
     if (topbarMeta) topbarMeta.hidden = !isDashboard;
     if (topbarClock) topbarClock.hidden = !isDashboard;
 
+    // El material cargado por impresora (deviceSpoolsByPort) se cachea para
+    // no volver a resolverlo en cada sondeo de 5s -- pero eso significa que
+    // si alguien cambia la asignación de carrete desde el plugin de
+    // materiales y vuelve al dashboard, la ficha seguía mostrando el carrete
+    // viejo hasta un refresh de página completo. Se refresca aquí, al volver
+    // a entrar a la sección, en vez de agregarlo al sondeo de 5s.
+    if (sectionName === 'dashboard') refreshDeviceSpools().then(() => renderPrinters(allPrinters));
+
     // Handle models section
     if (sectionName === 'models') {
         loadModelsFolder(currentModelsPath);
@@ -16237,6 +17046,7 @@ function switchSection(sectionName) {
         updateGamepadConsoleForSection();
     }
     if (sectionName === 'settings') {
+        loadAboutInfo();
         loadUpdatesStatus();
         refreshUsbPorts();
         loadRegistryDevices();
@@ -16283,6 +17093,9 @@ function switchSection(sectionName) {
         stopBambuPrintersPolling();
     }
     maybeStartTour(sectionName);
+    // Sin costo si la IA está apagada: la cortinilla queda oculta por
+    // [data-ai-only] y esto solo actualiza un <div> que nadie ve.
+    aiRenderCapabilityStrip(sectionName);
 }
 
 async function loadHelpVersion() {
@@ -17609,6 +18422,107 @@ function loadSettingsPanel() {
 
     setActiveThemeCard(savedTheme);
 }
+
+// Se cachea lo último cargado para que el botón de copiar no tenga que
+// volver a pedir nada -- ya se pidió al entrar a Configuración
+// (loadAboutInfo), y copiar debe ser instantáneo.
+let aboutDiagnosticsData = null;
+
+async function loadAboutInfo() {
+    const versionEl = document.getElementById('about-version');
+    if (!versionEl) return;
+    const commitEl = document.getElementById('about-commit');
+    const branchEl = document.getElementById('about-branch');
+    const osEl = document.getElementById('about-os');
+    const archEl = document.getElementById('about-arch');
+    const pythonEl = document.getElementById('about-python');
+    const languageEl = document.getElementById('about-language');
+    const pluginsListEl = document.getElementById('about-plugins-list');
+
+    // Nombre legible del idioma activo: se reusa el mismo texto que ya
+    // muestra el selector de idioma de la topbar (Español/English/...) en
+    // vez de mantener un segundo mapeo aparte.
+    const langLabel = document.querySelector(`.lang-switch-btn[data-lang="${currentLanguage}"]`)?.textContent || currentLanguage;
+    if (languageEl) languageEl.textContent = langLabel;
+
+    try {
+        const [diagResponse, pluginsResponse] = await Promise.all([
+            fetch('/api/system/diagnostics'),
+            fetch('/api/plugins'),
+        ]);
+        const diag = diagResponse.ok ? await diagResponse.json() : null;
+        const pluginsData = pluginsResponse.ok ? await pluginsResponse.json() : { plugins: [] };
+        const installedPlugins = (pluginsData.plugins || []).filter(plugin => plugin.installed);
+
+        if (diag) {
+            versionEl.textContent = diag.app_version || '—';
+            // "unavailable" en vez de "—": NOPAL puede correr sin .git (un
+            // .zip descargado), y ese caso se distingue de "no se pudo leer
+            // por ahora" en vez de verse igual.
+            if (commitEl) commitEl.textContent = diag.commit || t('aboutUnavailable');
+            if (branchEl) branchEl.textContent = diag.branch || t('aboutUnavailable');
+            if (osEl) osEl.textContent = diag.os || '—';
+            if (archEl) archEl.textContent = diag.architecture || '—';
+            if (pythonEl) pythonEl.textContent = diag.python_version || '—';
+        }
+
+        if (pluginsListEl) {
+            pluginsListEl.innerHTML = installedPlugins.length
+                ? installedPlugins.map(plugin => `
+                    <div class="about-plugin-row">
+                        <span class="about-plugin-name">${escapeHtml(plugin.name || plugin.id)}</span>
+                        <span class="about-plugin-version">${escapeHtml(plugin.version || '—')}</span>
+                    </div>`).join('')
+                : `<div class="empty-state-small">${escapeHtml(t('aboutNoPlugins'))}</div>`;
+        }
+
+        aboutDiagnosticsData = { diag, installedPlugins, langLabel };
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+// Texto exacto que copia el botón "Copiar información de diagnóstico" --
+// formato de bloque de texto plano (no JSON) pensado para pegarse directo
+// en un reporte de soporte o un issue de GitHub.
+function buildDiagnosticsText() {
+    const data = aboutDiagnosticsData;
+    const diag = data?.diag;
+    const lines = [
+        'NOPAL Diagnostic Information',
+        `NOPAL: ${diag?.app_version || 'unknown'}`,
+        `Commit: ${diag?.commit || 'unavailable'}`,
+        `Branch: ${diag?.branch || 'unavailable'}`,
+        `OS: ${diag?.os || 'unknown'}`,
+        `Architecture: ${diag?.architecture || 'unknown'}`,
+        `Python: ${diag?.python_version || 'unknown'}`,
+        `Language: ${data?.langLabel || currentLanguage}`,
+        '',
+        'Installed plugins:',
+    ];
+    const plugins = data?.installedPlugins || [];
+    if (plugins.length) {
+        plugins.forEach(plugin => lines.push(`- ${plugin.name || plugin.id}: ${plugin.version || 'unknown'}`));
+    } else {
+        lines.push('- (none)');
+    }
+    return lines.join('\n');
+}
+
+document.getElementById('about-copy-diagnostics-btn')?.addEventListener('click', async () => {
+    // Si Configuración nunca se visitó en esta sesión, aboutDiagnosticsData
+    // sigue null -- se carga antes de copiar en vez de copiar un bloque a
+    // medias.
+    if (!aboutDiagnosticsData) await loadAboutInfo();
+    const text = buildDiagnosticsText();
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast(t('aboutDiagnosticsCopied'));
+    } catch (error) {
+        console.error(error);
+        showToast(t('aboutDiagnosticsCopyFailed'), 'error');
+    }
+});
 
 async function loadUpdatesStatus() {
     const versionEl = document.getElementById('updates-version');
@@ -19307,7 +20221,76 @@ function aiUpdateSettingsDimming(enabled) {
     document.getElementById('ai-settings-body')?.classList.toggle('is-off', !enabled);
 }
 
+// ── Cortinilla de IA: comandos según la sección ────────────────────────────
+// Cada entrada tiene que apoyarse en una herramienta real de la capa de IA
+// (ver backend/services/ai_tools.py / ai_actions.py) -- nunca se sugiere algo
+// que la IA no pueda contestar de verdad. Las secciones sin lista propia
+// caen en AI_DEFAULT_COMMANDS.
+const AI_SECTION_COMMANDS = {
+    dashboard: ['aiCmdWorkshopStatus', 'aiCmdAvailableMachines', 'aiCmdRecentErrors', 'aiCmdActiveJobs'],
+    models: ['aiCmdLibraryPrinter', 'aiCmdQueueFile'],
+    gcode: ['aiCmdLibraryLaser', 'aiCmdLibraryCnc', 'aiCmdQueueFile'],
+    queue: ['aiCmdPrintQueue', 'aiCmdActiveJobs'],
+    laser: ['aiCmdGrblStatus', 'aiCmdJobProgress', 'aiCmdRecentErrors'],
+    cnc: ['aiCmdGrblStatus', 'aiCmdJobProgress', 'aiCmdRecentErrors'],
+    marlin: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    elegoo: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    flashforge: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    bambu: ['aiCmdMachineStatus', 'aiCmdTemperatures'],
+    console: ['aiCmdRecentErrors', 'aiCmdRecentEvents'],
+    plugins: ['aiCmdInstalledPlugins'],
+    'camera-viewer': ['aiCmdCameras'],
+    'matriz-led': ['aiCmdMatrixAnnouncements', 'aiCmdMatrixRules'],
+    spoolman: ['aiCmdMaterial'],
+    'arduino-accessories': ['aiCmdAccessories', 'aiCmdScenes'],
+};
+const AI_DEFAULT_COMMANDS = ['aiCmdWorkshopStatus', 'aiCmdAvailableMachines', 'aiCmdRecentErrors'];
+
+function aiCapabilityChipHtml(texto) {
+    return `<button type="button" class="ai-capability" data-ai-cap-question="${escapeHtml(texto)}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/></svg>
+        <span>${escapeHtml(texto)}</span>
+    </button>`;
+}
+
+function aiRenderCapabilityStrip(sectionName) {
+    const track = document.getElementById('ai-capability-track');
+    if (!track) return;
+    const section = sectionName
+        || document.querySelector('.view-section.active')?.id?.replace(/-section$/, '')
+        || 'dashboard';
+    const claves = AI_SECTION_COMMANDS[section] || AI_DEFAULT_COMMANDS;
+    const chips = claves.map(clave => aiCapabilityChipHtml(t(clave))).join('');
+    // El contenido se duplica: la animación desliza la cinta hasta -50% (ver
+    // .ai-capability-track en style.css), que es exactamente donde empieza
+    // esta segunda copia idéntica -- el salto de vuelta a 0% cae sobre
+    // contenido igual y no se nota, así el desfile no se corta nunca.
+    track.innerHTML = chips + chips;
+}
+
+// Delegado en el contenedor, que sobrevive a cada re-render (solo su
+// innerHTML cambia): no hace falta re-atar el clic cada vez que la cinta
+// se vuelve a pintar.
+document.getElementById('ai-capability-track')?.addEventListener('click', event => {
+    const boton = event.target.closest('[data-ai-cap-question]');
+    if (!boton) return;
+    const pregunta = boton.dataset.aiCapQuestion;
+    if (!pregunta) return;
+    switchSection('ai');
+    const input = document.getElementById('ai-question');
+    if (input) input.value = pregunta;
+    askAi();
+});
+
+// La primera llamada ocurre al cargar la página, no porque nadie haya
+// tocado el interruptor. Distinguirlas es lo que permite respetar el tema
+// que el usuario dejó elegido: antes, cada recarga con la IA encendida
+// volvía a forzar el tema 'ai' y se comía la elección (por ejemplo el tema
+// NOPAL con fondo de IA). El tema solo se cambia en una transición real.
+let aiChromeInicializado = false;
+
 function aiApplyModeChrome(enabled) {
+    aiRenderCapabilityStrip();
     aiUpdateSettingsDimming(enabled);
     const wasActive = document.body.getAttribute('data-ai-active') === 'true';
     // La pestaña de IA desaparece al apagar la capa; si era la visible hay
@@ -19316,6 +20299,13 @@ function aiApplyModeChrome(enabled) {
         aiSwitchPanelTab('jobs');
     }
     document.body.setAttribute('data-ai-active', enabled ? 'true' : 'false');
+
+    if (!aiChromeInicializado) {
+        // Carga de página: se pinta el resto del ambiente (píldora, marca,
+        // pestaña) pero el tema lo manda quien lo guardó.
+        aiChromeInicializado = true;
+        return;
+    }
     if (enabled === wasActive) return;  // sin transición, no se toca el tema
 
     // Al encender la IA el ambiente completo cambia al tema 'ai', pero se
