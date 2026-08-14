@@ -114,6 +114,13 @@ def test_el_nivel_rapido_recorta_el_catalogo_de_herramientas():
     "¿Qué hay en la biblioteca?",
     "¿Cuánto filamento queda?",
     "¿Qué temperatura tiene ET4?",
+    # Encontrado en carne propia: "carrete" (la palabra real que usa la
+    # gente, y toda la interfaz de NOPAL) no estaba en NON_CORE_HINTS --
+    # solo "spool"/"material". La pregunta caía al catálogo compacto, sin
+    # get_material_status, y el modelo chico (nivel rápido) inventaba un
+    # spool_id de la nada en vez de consultarlo primero.
+    "cambia el carrete de nopal-i3 a verde",
+    "¿qué bobinas tengo disponibles?",
 ])
 def test_una_consulta_simple_sobre_plugins_conserva_el_catalogo_completo(pregunta):
     """El catálogo compacto son seis herramientas y no incluye escenas,
