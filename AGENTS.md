@@ -27,9 +27,11 @@ que lo cambie. Un AGENTS.md desactualizado es peor que no tenerlo.
   renderizado, simulación en Node, captura), nunca solo "ya debería
   funcionar".
 - **No subas nada a GitHub sin que lo pida explícitamente.** Commits locales
-  sí, `git push` no. Ahora mismo hay decenas de commits sin subir en el core
-  y varios más repartidos en dos plugins (ver tabla abajo) — es deliberado,
-  no un olvido.
+  sí, `git push` no, salvo que el usuario lo pida con esas palabras ("sube",
+  "guarda y sube") — en esta sesión pasó exactamente una vez, después de
+  varias tandas de commits locales, y ahí sí se subió core + el plugin de
+  Spoolman. Que ya se haya subido una vez no es autorización permanente:
+  vuelve a preguntar (o a esperar la palabra) la próxima vez.
 - El servidor de producción real corre en `/home/jcjc/nopal` (fuera de
   cualquier worktree). Reiniciarlo es `sudo systemctl restart nopal.service`
   — el agente no tiene sudo interactivo, así que **quien lee esto tiene que
@@ -236,6 +238,197 @@ captura.
   extender `spool_link_service.py` primero (está documentado en su propio
   docstring que es una limitación conocida, "por ahora").
 
+## Material / Spoolman: la ficha, Moonraker y la IA
+
+Cadena de trabajo larga, con varias vueltas de ida y vuelta con el usuario
+(capturas anotadas de la ficha Y de Mainsail/moonraker.conf). Toca tres
+repos a la vez: núcleo (`app.js`, `klipper_service.py`, `ai_*.py`), el
+plugin `plugins/spoolman/`, y de lectura el propio Moonraker instalado en
+esta máquina (`/home/jcjc/moonraker/`, código fuente real, no solo docs).
+
+### La fila de Material en la ficha (`deviceMaterialCampo`, `app.js`)
+
+Pasó por tres formas antes de quedar bien, cada una corregida con una
+captura del usuario:
+1. Un `deviceCampo()` genérico de una sola línea de texto — sin ícono, sin
+   color real.
+2. Un ícono de dos círculos concéntricos (`DEVICE_ICONS.spool`, todavía
+   vive ahí pero **ya no se usa** para esto) — el usuario lo vio y dijo que
+   se leía como "disco de almacenamiento", no como carrete.
+3. La forma actual: `deviceMaterialSpoolIcon(colores)`, un carrete de
+   **perfil, de costado** (eje horizontal: pestañas izquierda/derecha,
+   nunca arriba/abajo — eso es lo que se leía como ícono de base de datos),
+   con las tres capas enrolladas coloreadas del color real del filamento.
+
+**Multicolor real, no inventado**: un filamento coextruido/longitudinal en
+Spoolman no tiene `color_hex` (queda `None`) — el color vive en
+`multi_color_hexes` ("hex1,hex2", separado por comas) +
+`multi_color_direction`. Confirmado contra la API real de Spoolman (no
+contra su documentación) con un filamento del usuario de verdad (VER/AMA,
+id 9). `plugins/spoolman/backend/router.py` resuelve ambos campos; el
+ícono alterna colores entre las tres capas si hay más de uno.
+
+Diámetro y peso restante van con el mismo patrón que Boquilla/Cama
+(`deviceMetrica`): número grande + unidad chica, no texto corrido.
+
+### Dos bugs reales que no eran de Spoolman
+
+1. **`applyMaterialPreheat`/`temp-cool-btn` nunca refrescaban la ficha del
+   dashboard** — mandaban el target de temperatura de verdad (confirmado
+   en los logs del servicio) pero solo refrescaban el panel de la
+   impresora abierto, nunca `loadPrinters()`. "Mandé a calentar y la ficha
+   no cambia" era este bug, no percepción del usuario.
+2. **El bug de fondo, más grave**: cuatro funciones que alimentan las
+   fichas del dashboard (`loadPrinters`, `loadDashboardStandalonePrinters`,
+   `refreshDashboardLaserCard`, `loadDashboardPanel`) tenían
+   `if (... || document.hidden) return;`. El usuario usa NOPAL por RDP (ver
+   `nopal-lan-topology` en la memoria del usuario) y la Page Visibility API
+   del navegador no es confiable ahí — confirmado con un hueco de **20
+   minutos** sin una sola llamada a `/api/printers/status` en los logs del
+   servicio, justo después de un comando. Se quitó el chequeo de las
+   cuatro; el único `document.hidden` que queda es el de notificaciones de
+   escritorio (ese sí depende genuinamente del foco de la pestaña). Si en
+   algún momento se agrega OTRO polling nuevo al dashboard, no le pongas
+   `document.hidden` sin pensarlo dos veces.
+
+### Sincronización con Moonraker (el hallazgo más grande de esta tanda)
+
+El usuario mostró una captura de **Mainsail** (no NOPAL) con su propio
+selector "Cambiar carrete" — bien poblado, con datos reales de Spoolman —
+diciendo "seguimiento inactivo". La confusión ("¿por qué NOPAL no hace
+esto si Mainsail sí?") tenía una causa real:
+
+- Vincular un carrete en NOPAL (`spool_link_service.set_link`) **nunca
+  hizo nada más que guardar una etiqueta** para la ficha. No resta gramos
+  de Spoolman.
+- Quien de verdad descuenta gramos reales mientras imprime es el propio
+  **componente `[spoolman]` de Moonraker** (`moonraker.conf`, fuera de
+  NOPAL por completo) — el mismo selector que usa Mainsail.
+- Confirmado leyendo el código fuente real de Moonraker instalado en esta
+  máquina (`/home/jcjc/moonraker/moonraker/components/spoolman.py`): el
+  endpoint es `POST /server/spoolman/spool_id` con `{"spool_id": int}` —
+  **y mandar `{"spool_id": null}` para limpiarlo tira un 400** (Moonraker
+  intenta convertir el valor igual aunque sea `null`; hay que mandar el
+  body vacío `{}` para que caiga en su propio default). Esto se descubrió
+  a mano, probando contra el Moonraker real de esta máquina.
+- Se agregó `MoonrakerClient.set_spoolman_active_spool(spool_id)` en
+  `backend/services/klipper_service.py` (núcleo), y se llama desde las TRES
+  formas de asignar un carrete: `set_active_spool_endpoint`/
+  `clear_active_spool_endpoint` del plugin, y la acción de IA
+  `assign_spool`. Es best-effort: si Moonraker no tiene `[spoolman]`
+  configurado, el vínculo de NOPAL se guarda igual
+  (`moonraker_synced: false` en la respuesta).
+- Nuevo endpoint `GET /api/spoolman/moonraker-check`: por cada impresora
+  con un carrete vinculado, revisa si `"spoolman"` aparece en
+  `/server/info` de su Moonraker. Si no, el plugin (pestañas Resumen y
+  Consumo) muestra un aviso con el nombre real de la impresora — en los 5
+  idiomas que este plugin mantiene a mano en `spoolman.js` (es/en/de/fr/
+  pt-BR, sin script de generación como el núcleo).
+
+**Incidente real durante esta tanda, para que no se repita**: probando el
+endpoint de sincronización, un test de `plugins/spoolman/tests/
+test_active_spool.py` (puerto 7125, que en esta máquina de desarrollo
+resulta ser un Moonraker **real**) cambió el spool activo de la impresora
+de verdad como efecto secundario de correr `pytest`. Se detectó
+(`curl localhost:7125/server/spoolman/status` antes/después de la
+sospecha), se restauró el estado a mano, y se agregó un fixture
+`autouse=True` en `plugins/spoolman/tests/conftest.py`
+(`no_real_moonraker_calls`) que monkeypatchea
+`MoonrakerClient.set_spoolman_active_spool` a un no-op por default en TODA
+la suite. **Cualquier test nuevo que ejercite código con un `port` que
+podría coincidir con un puerto real de esta máquina (7125 es Moonraker de
+verdad) necesita este tipo de aislamiento** — no asumas que un "puerto de
+prueba" es inofensivo solo porque es un número inventado.
+
+### La acción de IA `assign_spool` y el bug de enrutamiento
+
+Se agregó `assign_spool(machine_id, spool_id)` en `ai_actions.py`
+(`risk="low"` porque no manda G-code ni mueve nada físico, `role="admin"`
+copiado del endpoint del panel). El usuario probó "cambia el carrete de
+nopal-i3 a verde" y la IA respondió que no tenía acceso — **sin siquiera
+intentar la herramienta**. Diagnosticado probando en vivo contra la API
+real de Groq (no adivinando):
+
+1. `ai_router.classify()` mandó la pregunta al nivel `fast`
+   (`llama-3.1-8b-instant`) con el catálogo compacto — `NON_CORE_HINTS`
+   tenía "spool"/"material" pero no **"carrete"**, la palabra que la gente
+   (y toda la interfaz de NOPAL) usa de verdad.
+2. Sin catálogo completo, `get_material_status` no estaba disponible: el
+   modelo no podía buscar el id real del carrete.
+3. Groq (`llama-3.1-8b-instant`), probado en vivo con el catálogo
+   **completo**, igual llamó a `assign_spool` **adivinando**
+   `spool_id: "green"` (string) en vez de un id real — Groq rechazó la
+   llamada con 400 (`tool_use_failed`, tipo inválido).
+4. Ese 400, con `tools` presente en el pedido, hace que
+   `ai_provider.py` asuma `ToolsUnsupportedError` y caiga a **modo
+   "context"** — que apaga TODAS las herramientas y acciones para el
+   resto de esa respuesta, no solo la llamada que falló. De ahí la traza
+   observada (`get_workshop_status, get_machines, get_recent_errors`, que
+   son literalmente `CONTEXT_MODE_TOOLS` en `ai_agent.py`).
+
+Arreglado en dos pasos, ambos verificados en vivo contra Groq antes de dar
+por bueno el arreglo (no solo con un test):
+- Se agregó "carrete"/"carretes"/"bobina"/"bobinas" a `NON_CORE_HINTS`.
+- **Eso no bastaba**: probado con el catálogo completo, `llama-3.1-8b-instant`
+  a veces sigue sin consultar `get_material_status` primero. Se agregó
+  `MATERIAL_HINTS` con su propia regla en `classify()` que manda estas
+  preguntas directo al nivel `medium` (`gpt-oss-20b`), igual que ya pasa
+  con diagnósticos (`reasoning`) y comparaciones (`medium`) — probado en
+  vivo que `gpt-oss-20b` sí consulta primero de forma consistente.
+
+**Metodología a copiar para el próximo "la IA no hace X"**: no confíes en
+la traza que muestra la UI ni en la config de `ai_config.json` sola. Arma
+un script chico (`ai_tools.get_tools_schema(perfil) + ai_actions.
+get_actions_schema(rol)`, un `requests.post` directo al `base_url` +
+`api_key` reales del proveedor configurado) y prueba la pregunta real
+contra el modelo real que de verdad se usaría (`ai_router.classify()` te
+dice cuál). Adivinar la causa desde el código sin probar contra el
+proveedor real llevó a una hipótesis equivocada más de una vez en esta
+sesión antes de encontrar la real.
+
+**Cuidado al mostrar `ai_config.json`**: trae la API key en texto plano
+(`api_key` dentro de cada entrada de `providers`). Si necesitas leerlo
+para depurar, evita volcarlo completo a una respuesta visible para el
+usuario — ya pasó una vez en esta sesión y quedó expuesta en el historial
+de la conversación. Si vuelve a pasar, avísale al usuario que considere
+rotar la key.
+
+## Otros arreglos de UI sobre la ficha (esta continuación)
+
+- **Botón de "más opciones" (los tres puntos verticales) quitado** de la
+  cabecera de la ficha — no hacía nada que "cámara sin asignar" no
+  hiciera ya. Ojo: esto es *distinto* del ícono ☰ real del topbar
+  (`#mobile-nav-toggle-btn`, "Menú" móvil) que el usuario señaló por
+  separado — ver el bug de CSS abajo.
+- **Bug real de cascada CSS**: `.topbar-icon-btn` (sin especial, una sola
+  clase) fijaba `display:inline-flex` más abajo en `style.css` que el
+  `display:none` de `.mobile-nav-toggle-btn` (misma especificidad, gana el
+  que aparece después) — el botón de menú móvil quedaba visible en
+  escritorio siempre. Arreglado con un selector compuesto
+  (`.topbar-icon-btn.mobile-nav-toggle-btn`, mayor especificidad) en las
+  dos reglas (la de ocultar y la del `@media` que lo muestra en mobile).
+  Si algo más en `.topbar-icon-btn` empieza a comportarse raro en
+  desktop/mobile, sospecha de este mismo patrón de cascada.
+- **Las olas térmicas se salían de la ficha**: `.dev-card` nunca heredó el
+  `overflow: hidden` que sí tenía `.printer-card` (el sistema viejo). Las
+  ondas se dibujan a propósito un 8% más anchas que la ficha
+  (`renderThermalLayer`) confiando en que el contenedor las recorte contra
+  las esquinas redondeadas. Arreglado agregando `overflow: hidden;
+  isolation: isolate;` a `.dev-card`.
+- **Bisel animado por categoría**: cada columna del dashboard
+  (`#printers-grid`/`#lasers-grid`/`#cnc-grid`) fija `--dev-category` con
+  el mismo color que su encabezado (verde/morado/naranja), y el borde de
+  `.dev-card` pulsa entre una versión tenue y una viva de ese color
+  (`@keyframes devCardCategoryPulse`). Se apaga en fichas offline y
+  respeta `prefers-reduced-motion`. No aplica en modo mixto (una sola
+  grilla para todo tipo de máquina): no hay un atributo de "tipo" uniforme
+  en la ficha para colorear ahí sin una columna que lo indique.
+- **CNC ya no comparte imagen con láser**: existían `cncready2.png`/
+  `cncoff.png` sin usar en `static/img/` desde hacía tiempo — se agregó
+  `CNC_STATE_IMAGES` y `laserDeviceModel` elige el mapa según `kind`. CNC
+  no tiene variantes por estado (solo encendida/apagada); no se inventó
+  arte que no existe.
+
 ## Trabajo reciente en el plugin de cámaras (`plugins/camera-viewer`)
 
 Repo aparte, se clona en `plugins/camera-viewer/` (gitignored en el core).
@@ -309,9 +502,15 @@ cd /home/jcjc/nopal/plugins/camera-viewer && git log --oneline @{u}..HEAD | wc -
 cd /home/jcjc/nopal/plugins/spoolman && git log --oneline @{u}..HEAD | wc -l
 ```
 
+Al cierre de esta continuación (2026-08-13), el usuario pidió explícitamente
+subir: se hizo `git push` de core (`dev-main` → `origin/desarrollador`) y del
+plugin de Spoolman (`master` → `origin/master`). `camera-viewer` **no** se
+tocó esta vez — sigue con lo que ya tuviera pendiente de antes, revisa el
+comando de arriba antes de asumir que está al día.
+
 **No subir ninguno con `git push` sin que el usuario lo pida
-explícitamente** — es una instrucción reiterada varias veces en esta
-sesión, no un descuido.
+explícitamente cada vez** — que se haya subido una vez no es luz verde
+permanente para las siguientes tandas de commits.
 
 ## Cosas que NO hay que reinventar
 
