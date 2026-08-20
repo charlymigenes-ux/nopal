@@ -412,7 +412,7 @@ function installModernModelsLibraryMarkup() {
                         <div class="gcode-view-switch"><button id="view-grid-full" type="button" data-view="grid" title="Vista de cuadrícula"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button><button id="view-list-full" class="active" type="button" data-view="list" title="Vista de lista"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button></div>
                     </div>
                     <div class="gcode-browser-layout">
-                        <aside class="gcode-inner-sidebar"><section><div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="models-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-favorites-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◷ <span data-i18n="libraryRecent">Recientes</span></strong><button id="models-recents-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-recents-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◇ <span data-i18n="libraryFormats">Formatos</span></strong></div><div id="models-tags-list" class="gcode-sidebar-list"></div></section></aside>
+                        <aside class="gcode-inner-sidebar"><section class="gcode-folder-tree-wrap" id="models-folder-tree-wrap" hidden><div class="gcode-sidebar-heading"><strong data-i18n="libraryFolders">Carpetas</strong></div><div id="models-folder-tree" class="gcode-folder-tree"></div></section><section><div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="models-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-favorites-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◷ <span data-i18n="libraryRecent">Recientes</span></strong><button id="models-recents-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div><div id="models-recents-list" class="gcode-sidebar-list"></div></section><section><div class="gcode-sidebar-heading"><strong>◇ <span data-i18n="libraryFormats">Formatos</span></strong></div><div id="models-tags-list" class="gcode-sidebar-list"></div></section></aside>
                         <div class="gcode-browser-content" data-bg-label="IMPRESIÓN 3D"><div id="models-folder-strip" class="gcode-folder-strip"></div><div class="bulk-actions-bar" id="models-bulk-bar" hidden><span id="models-bulk-count">0</span><button type="button" class="btn-file-action" id="models-bulk-move-btn">Mover</button><button type="button" class="btn-file-action btn-file-action-danger" id="models-bulk-delete-btn">Eliminar</button><button type="button" class="bulk-actions-clear-btn" id="models-bulk-clear-btn">Cancelar selección</button></div><div id="models-full" class="models-table-wrapper gcode-modern-table models-modern-table"></div><footer class="gcode-pagination" id="models-pagination"></footer></div>
                     </div>
                 </section>
@@ -2095,6 +2095,11 @@ async function loadLaserHistory() {
 
 let currentGcodePath = '';
 let currentGcodeData = { folders: [], files: [] };
+// Árbol de carpetas de la barra izquierda (ver renderLibraryFolderTree) --
+// caché por path ya cargado, para no volver a pedir /api/browse cada vez
+// que se repinta el árbol (pasa en cada navegación, no solo al expandir).
+const gcodeTreeCache = {};
+const modelsTreeCache = {};
 let gcodeSearchQuery = '';
 let gcodeSortMode = localStorage.getItem('nopalGcodeSort') || 'name-asc';
 let gcodeFilterMode = 'all';
@@ -2350,14 +2355,119 @@ function renderGcodeBreadcrumb() {
     if (disk) disk.textContent = t('libraryCounts').replace('{folders}', currentGcodeData.folders.length).replace('{files}', currentGcodeData.files.length);
 }
 
+// Árbol de carpetas de la barra izquierda -- reemplaza a la fila horizontal
+// de tarjetas (renderGcodeFolderStrip/renderModelsFolderStrip) en cuanto se
+// entra a una carpeta. Compartido entre G-code y Modelos 3D (misma lógica
+// de expandir/colapsar/caché, solo cambia `type` y el callback de
+// navegación) -- reusa /api/browse, que ya devuelve `has_subfolders` por
+// carpeta para saber si hace falta dibujar la flechita de expandir.
+//
+// Arranca en la raíz real (path '') y auto-expande la cadena de ancestros
+// hasta currentPath para que el usuario siempre vea "dónde está"; el resto
+// del árbol se expande bajo demanda al hacer clic en la flechita. `cache`
+// (gcodeTreeCache/modelsTreeCache) guarda, por path, el listado de
+// subcarpetas ya pedido -- evita repetir la llamada en cada repintado (se
+// repinta en cada navegación, no solo al expandir un nodo).
+async function renderLibraryFolderTree({ type, currentPath, wrapEl, treeEl, cache, onNavigate }) {
+    if (!wrapEl || !treeEl) return;
+    wrapEl.hidden = false;
+
+    async function fetchLevel(path) {
+        if (cache[path]) return cache[path];
+        try {
+            const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&type=${type}`);
+            const data = response.ok ? await response.json() : { folders: [] };
+            cache[path] = data.folders || [];
+        } catch (error) {
+            console.error(error);
+            cache[path] = [];
+        }
+        return cache[path];
+    }
+
+    // Cadena de ancestros de currentPath, ej. "a/b/c" -> ["", "a", "a/b", "a/b/c"].
+    const parts = currentPath.split('/').filter(Boolean);
+    const ancestorPaths = [''];
+    parts.forEach((_part, index) => ancestorPaths.push(parts.slice(0, index + 1).join('/')));
+    for (const ancestorPath of ancestorPaths) {
+        await fetchLevel(ancestorPath);
+    }
+
+    // Qué nodos están expandidos: la cadena de ancestros SIEMPRE (para que
+    // la carpeta activa quede visible) más lo que el usuario haya
+    // expandido a mano -- se guarda como propiedad del propio elemento del
+    // árbol para sobrevivir a los repintados mientras no se recargue la
+    // página (misma idea que un estado de componente, sin framework).
+    if (!treeEl._expandedPaths) treeEl._expandedPaths = new Set();
+    const expanded = treeEl._expandedPaths;
+    ancestorPaths.forEach(path => expanded.add(path));
+
+    // La indentación por profundidad y la línea guía vertical son puramente
+    // CSS (ver .gcode-tree-children en style.css) -- cada nivel de anidado
+    // real en el DOM ya dibuja su propio escalón, sin tener que calcular
+    // padding a mano en JS por profundidad.
+    function renderLevel(path) {
+        const children = cache[path] || [];
+        return children.map(folder => {
+            const isActive = folder.path === currentPath;
+            const isExpanded = expanded.has(folder.path);
+            const showCaret = folder.has_subfolders !== false;
+            const childrenHtml = isExpanded && cache[folder.path]
+                ? `<div class="gcode-tree-children">${renderLevel(folder.path)}</div>`
+                : '';
+            // Carpeta "abierta" (ícono con la tapa levantada) mientras está
+            // expandida o es la activa -- mismo lenguaje visual que un
+            // explorador de archivos real.
+            const folderIconPath = (isExpanded || isActive)
+                ? 'M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v1H8.5a2 2 0 0 0-1.9 1.37L4 18Z'
+                : 'M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z';
+            return `
+                <div class="gcode-tree-node">
+                    <div class="gcode-tree-item${isActive ? ' active' : ''}" data-tree-path="${escapeHtml(folder.path)}">
+                        ${showCaret
+                            ? `<button type="button" class="gcode-tree-caret${isExpanded ? ' expanded' : ''}" data-tree-toggle="${escapeHtml(folder.path)}" title="${t('libraryExpandFolder')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>`
+                            : '<span class="gcode-tree-caret-spacer"></span>'}
+                        <svg class="gcode-tree-folder-icon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${folderIconPath}"/></svg>
+                        <span class="gcode-tree-name">${escapeHtml(folder.name)}</span>
+                        <span class="gcode-tree-count">${Number(folder.file_count || 0).toLocaleString()}</span>
+                    </div>
+                    ${childrenHtml}
+                </div>`;
+        }).join('');
+    }
+
+    treeEl.innerHTML = renderLevel('', 0);
+
+    treeEl.querySelectorAll('[data-tree-path]').forEach(row => {
+        row.addEventListener('click', event => {
+            if (event.target.closest('[data-tree-toggle]')) return;
+            onNavigate(row.dataset.treePath);
+        });
+    });
+    treeEl.querySelectorAll('[data-tree-toggle]').forEach(caret => {
+        caret.addEventListener('click', async event => {
+            event.stopPropagation();
+            const path = caret.dataset.treeToggle;
+            if (expanded.has(path)) {
+                expanded.delete(path);
+                renderLibraryFolderTree({ type, currentPath, wrapEl, treeEl, cache, onNavigate });
+            } else {
+                expanded.add(path);
+                await fetchLevel(path);
+                renderLibraryFolderTree({ type, currentPath, wrapEl, treeEl, cache, onNavigate });
+            }
+        });
+    });
+}
+
 function renderGcodeFolderStrip(folders) {
     const strip = document.getElementById('gcode-folder-strip');
     if (!strip) return;
     strip.hidden = folders.length === 0;
     strip.innerHTML = folders.map(folder => `
-        <button type="button" class="gcode-folder-card" data-folder-path="${escapeHtml(folder.path)}">
-            <svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg>
-            <span><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span>
+        <button type="button" class="gcode-folder-card" data-folder-path="${escapeHtml(folder.path)}" title="${escapeHtml(folder.name)}">
+            <span class="gcode-folder-card-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg></span>
+            <span class="gcode-folder-card-body"><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span>
             <span class="gcode-folder-menu" aria-hidden="true">›</span>
         </button>
     `).join('');
@@ -2464,7 +2574,24 @@ function renderGcodeTable(filterQuery = gcodeSearchQuery) {
     if (!gcodeTable) return;
     gcodeSearchQuery = filterQuery || '';
     const folderQuery = gcodeSearchQuery.toLowerCase();
-    renderGcodeFolderStrip(currentGcodeData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    // En la raíz se ve la fila horizontal de siempre; adentro de cualquier
+    // carpeta se cambia al árbol de la barra izquierda (ver
+    // renderLibraryFolderTree) -- mejor para navegar entre muchas
+    // subcarpetas que la fila horizontal sola.
+    if (currentGcodePath) {
+        document.getElementById('gcode-folder-strip')?.setAttribute('hidden', '');
+        renderLibraryFolderTree({
+            type: 'gcode',
+            currentPath: currentGcodePath,
+            wrapEl: document.getElementById('gcode-folder-tree-wrap'),
+            treeEl: document.getElementById('gcode-folder-tree'),
+            cache: gcodeTreeCache,
+            onNavigate: loadGcodeFolder,
+        });
+    } else {
+        document.getElementById('gcode-folder-tree-wrap')?.setAttribute('hidden', '');
+        renderGcodeFolderStrip(currentGcodeData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    }
     renderGcodeSidebar();
     renderGcodeBreadcrumb();
     const files = getFilteredGcodeFiles();
@@ -4004,18 +4131,36 @@ function renderPanelAlerts(data) {
         </div>`;
 }
 
+// Las tres fichas mini solo se muestran cuando hay un dato real que
+// mostrar -- a diferencia del resto del panel (que siempre está visible
+// con un estado de "sin datos"), estas dependen de que el usuario haya
+// configurado algo aparte (un sensor DHT11 como ambiente del taller,
+// potencias en Cotizador, o NOPAL Intelligence activada) y no tiene
+// sentido ocupar espacio con una ficha que nunca va a tener nada.
 function renderPanelMiniCards(data) {
-    const ambientValue = document.getElementById('panel-ambient-value');
-    if (ambientValue) ambientValue.textContent = data.ambient != null ? `${data.ambient}°C` : t('panelNoSensor');
-
-    const powerValue = document.getElementById('panel-power-value');
-    if (powerValue) {
-        const power = data.power || {};
-        powerValue.textContent = power.active_watts != null ? `~${power.active_watts} W (${t('panelEstimated')})` : '—';
+    const ambientCard = document.getElementById('panel-ambient-card');
+    if (ambientCard) {
+        ambientCard.hidden = data.ambient == null;
+        if (data.ambient != null) {
+            document.getElementById('panel-ambient-value').textContent = `${data.ambient}°C`;
+        }
     }
 
-    const maintenanceValue = document.getElementById('panel-maintenance-value');
-    if (maintenanceValue) maintenanceValue.textContent = data.maintenance != null ? data.maintenance : t('panelNoData');
+    const powerCard = document.getElementById('panel-power-card');
+    if (powerCard) {
+        powerCard.hidden = data.power == null;
+        if (data.power != null) {
+            document.getElementById('panel-power-value').textContent = `~${data.power.active_watts} W (${t('panelEstimated')})`;
+        }
+    }
+
+    const maintenanceCard = document.getElementById('panel-maintenance-card');
+    if (maintenanceCard) {
+        maintenanceCard.hidden = data.maintenance == null;
+        if (data.maintenance != null) {
+            document.getElementById('panel-maintenance-value').textContent = data.maintenance;
+        }
+    }
 }
 
 function renderDashboardPanel(data) {
@@ -5849,7 +5994,12 @@ async function loadPrinters() {
         // El material cambia cuando alguien cambia el carrete, no cada 5 s:
         // se pide junto con las impresoras y se cachea (ver refreshDeviceSpools).
         if (!Object.keys(deviceSpoolsByPort).length) refreshDeviceSpools();
-        if (!deviceCameraKeys.size) refreshDeviceCameras();
+        // A diferencia de deviceSpoolsByPort (el material sí cambia poco):
+        // "solo si está vacío" dejaba una cámara recién vinculada sin
+        // aparecer nunca en el dashboard hasta un F5 -- una vez que
+        // deviceCameraKeys tenía AL MENOS una entrada, esa condición nunca
+        // volvía a ser cierta y las vinculaciones nuevas quedaban invisibles.
+        refreshDeviceCameras();
         dashboardPrintersLoaded = true;
         dashboardPrintersLoadError = false;
         renderPrinters(allPrinters);
@@ -7712,6 +7862,9 @@ const DEVICE_ICONS = {
     // El rectángulo que recorre "Encuadrar": las cuatro esquinas del
     // trabajo, no una lupa ni un marco genérico.
     frame: '<path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/><path d="M21 17v3a1 1 0 0 1-1 1h-3"/><path d="M7 21H4a1 1 0 0 1-1-1v-3"/><rect x="7" y="7" width="10" height="10" rx="1"/>',
+    // Flechas hacia las esquinas: "abrir/ampliar", el mismo trazo que ya usa
+    // preview-expand-btn en la biblioteca, para que el gesto se lea igual.
+    expand: '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>',
 };
 
 function deviceIcon(nombre, tamano = 15) {
@@ -7888,7 +8041,13 @@ function deviceCardHtml(d) {
 
     const seccion = clave => `style="order:${deviceCardSectionOrder(clave)}"`;
     const cuerpo = [];
-    if (d.art) cuerpo.push(`<div class="dev-hero" ${seccion('thumbnail')}>${arteGrande}</div>`);
+    // Botón "abrir panel": solo tiene sentido sobre la imagen grande (vista
+    // de cuadrícula/imagen) -- en modo lista la miniatura de 40px no tiene
+    // espacio y la fila entera ya es igual de clicable. data-dev-action sin
+    // caso propio en el binding de clic cae al mismo abrir-panel/ir-a-sección
+    // que ya usa "Detalles", así que no hace falta cablear nada nuevo.
+    const botonAbrirPanel = `<button type="button" class="dev-hero-open-btn" data-dev-action="open-panel" title="${escapeHtml(t('devOpenPanel'))}" aria-label="${escapeHtml(t('devOpenPanel'))}">${deviceIcon('expand', 15)}</button>`;
+    if (d.art) cuerpo.push(`<div class="dev-hero" ${seccion('thumbnail')}>${arteGrande}${botonAbrirPanel}</div>`);
 
     const trabajo = [];
     if (d.job && d.job.filename) trabajo.push(deviceCampo(d.jobLabel || t('devJob'), d.job.filename));
@@ -9811,7 +9970,16 @@ function renderRegistryDevices(machines, chips = new Map()) {
 document.getElementById('registry-devices-refresh-btn')?.addEventListener('click', loadRegistryDevices);
 document.getElementById('usb-ports-refresh-btn')?.addEventListener('click', refreshUsbPorts);
 
-// ── Accesorios IoT (extractor/ventilador/bomba/compresor) ──
+// ── Acciones rápidas (escenas de accesorios, ver arduino-accessories plugin) ──
+//
+// El dock fijo del dashboard mostraba y controlaba accesorios individuales
+// (relés/ventiladores/etc, encender/apagar uno por uno). Se reemplazó por
+// la lista de escenas ya configuradas en el plugin (POST .../scenes/{id}/run
+// dispara varias acciones de una vez) -- acá solo se ejecutan, no se
+// controla ningún accesorio suelto. Encender/apagar accesorios individuales
+// se mudó a Ajustes > Accesorios (ver renderSettingsAccessoriesList más
+// abajo), que antes solo tenía el alta y el descubrimiento USB de placas
+// pero ninguna lista de lo ya registrado.
 
 const ACCESSORY_KIND_ICONS = {
     extractor: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2"/><path d="M12.59 19.41A2 2 0 1 0 14 16H2"/><path d="M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/></svg>',
@@ -9836,59 +10004,76 @@ const accessoryDriverSwitch = createOptionSwitch('accessory-driver-switch', valu
     if (value === 'arduino') updateAccessoryArduinoConfigUI();
 });
 
+// "Escenas activas" (macros de 2+ acciones) y "Acciones rápidas" (escenas
+// de una sola acción, un atajo de un clic) son la misma entidad de backend
+// (accessory_scenes.py no distingue tipos) separadas solo por cuántas
+// acciones tiene cada una -- sin esto habría que inventar un campo nuevo
+// en el backend para algo que ya se puede derivar de scene.actions.length.
 async function loadAccessories() {
-    const container = document.getElementById('accessories-list');
-    if (!container) return;
+    const activeContainer = document.getElementById('dashboard-scenes-list');
+    const quickContainer = document.getElementById('dashboard-quickactions-list');
+    if (!activeContainer && !quickContainer) return;
     try {
-        const response = await fetch('/api/accessories/status');
+        const response = await fetch('/api/accessories/scenes');
         const data = await response.json();
-        renderAccessories(data.accessories || []);
+        const scenes = data.scenes || [];
+        const countOf = scene => (Array.isArray(scene.actions) ? scene.actions.length : 0);
+        renderAccessories(activeContainer, scenes.filter(scene => countOf(scene) > 1));
+        renderAccessories(quickContainer, scenes.filter(scene => countOf(scene) === 1));
     } catch (error) {
         console.error(error);
     }
 }
 
+// Ícono "rayo" -- mismo trazo que ICON_ZAP en el plugin arduino-accessories
+// (frontend/arduino-accessories.js), para que las fichas de acciones
+// rápidas se vean igual acá y adentro del plugin.
+const ACCESSORY_SCENE_ICON_PATH = '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/>';
+const accessorySceneIcon = size => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${ACCESSORY_SCENE_ICON_PATH}</svg>`;
+
 const ACCESSORY_ADD_TILE_HTML = `
-    <button type="button" class="accessory-add-tile" title="Agregar accesorio">
+    <button type="button" class="accessory-add-tile" title="${escapeHtml(t('dashboardCreateSceneTitle'))}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>`;
 
-const ACCESSORY_GRID_COLUMNS = 3;
+const ACCESSORY_GRID_COLUMNS = 2;
 const ACCESSORY_GRID_DEFAULT_ROWS = 2;
 
-function renderAccessories(accessories) {
-    const container = document.getElementById('accessories-list');
+function renderAccessories(container, scenes) {
     if (!container) return;
-    // Grilla fija de 3x2 (6 fichas) -- si sobran espacios se rellenan con
-    // fichas de "agregar" (todas hacen lo mismo, cualquiera abre el alta);
-    // si hay más de 6 accesorios no se recorta ni se hace scroll, se
-    // agregan filas y el contenedor se achica (.accessories-list-dense)
-    // para que el alto total del dock no cambie.
+    // Grilla fija de 2x2 (4 fichas, cada sección ahora ocupa la mitad del
+    // dock) -- si sobran espacios se rellenan con fichas de "agregar" (abren
+    // el editor de escena acá mismo, ver openSceneModal); si hay más de 4
+    // no se recorta ni se hace scroll, se agregan filas y el contenedor se
+    // achica (.accessories-list-dense) para que el alto total del dock no
+    // cambie.
     const defaultSlots = ACCESSORY_GRID_COLUMNS * ACCESSORY_GRID_DEFAULT_ROWS;
-    const dense = accessories.length > defaultSlots;
-    const rows = dense ? Math.ceil(accessories.length / ACCESSORY_GRID_COLUMNS) : ACCESSORY_GRID_DEFAULT_ROWS;
+    const dense = scenes.length > defaultSlots;
+    const rows = dense ? Math.ceil(scenes.length / ACCESSORY_GRID_COLUMNS) : ACCESSORY_GRID_DEFAULT_ROWS;
     container.classList.toggle('accessories-list-dense', dense);
     container.style.setProperty('--accessory-rows', rows);
-    const emptySlots = dense ? 0 : defaultSlots - accessories.length;
+    const emptySlots = dense ? 0 : defaultSlots - scenes.length;
 
-    container.innerHTML = accessories.map(acc => {
-        const statusClass = acc.on === true ? 'on' : acc.on === false ? 'off' : 'unknown';
-        const statusLabel = acc.on === true ? t('accessoryOn') : acc.on === false ? t('accessoryOff') : t('accessoryUnknown');
-        const driverLabelKey = ACCESSORY_DRIVER_LABEL_KEYS[acc.driver];
-        const driverLabel = driverLabelKey ? t(driverLabelKey) : (acc.driver || t('accessoryDriverRelay'));
+    container.innerHTML = scenes.map(scene => {
+        const actionCount = Array.isArray(scene.actions) ? scene.actions.length : 0;
+        // Doble/múltiple: qué estado quedó activo la última vez que se
+        // corrió (persistido en el propio scene, ver accessory_scenes.py)
+        // -- en modo normal no hay "estado", siempre hace lo mismo.
+        const stateBadge = scene.mode && scene.mode !== 'normal' && scene.current_state_name
+            ? `<span class="accessory-item-state-badge">${escapeHtml(scene.current_state_name)}</span>`
+            : '';
         return `
         <div class="accessory-item">
-            <span class="accessory-item-icon">${ACCESSORY_KIND_ICONS[acc.kind] || ACCESSORY_KIND_ICONS.other}</span>
+            <span class="accessory-item-icon">${accessorySceneIcon(18)}</span>
             <div class="accessory-item-info">
-                <span class="accessory-item-name">${escapeHtml(acc.name)}</span>
-                <span class="accessory-item-meta">${escapeHtml(driverLabel)}</span>
+                <span class="accessory-item-name">${escapeHtml(scene.name)}${stateBadge}</span>
+                <span class="accessory-item-meta">${t('dashboardSceneActionsCount').replace('{count}', actionCount)}</span>
             </div>
             <div class="accessory-item-actions">
-                <span class="device-status-pill ${statusClass}">${statusLabel}</span>
-                <button type="button" class="accessory-power-btn ${acc.on ? 'is-on' : ''}" data-id="${escapeHtml(acc.id)}" data-on="${acc.on ? 'true' : 'false'}" title="${acc.on ? t('accessoryTurnOff') : t('accessoryTurnOn')}">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                <button type="button" class="accessory-power-btn" data-id="${escapeHtml(scene.id)}" data-name="${escapeHtml(scene.name)}" title="${t('dashboardRunSceneTitle')}">
+                    ${accessorySceneIcon(15)}
                 </button>
-                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger accessory-remove-btn" data-id="${escapeHtml(acc.id)}" title="${t('accessoryRemove')}">
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger accessory-remove-btn" data-id="${escapeHtml(scene.id)}" data-name="${escapeHtml(scene.name)}" title="${t('dashboardDeleteSceneTitle')}">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
@@ -9897,8 +10082,218 @@ function renderAccessories(accessories) {
     }).join('') + ACCESSORY_ADD_TILE_HTML.repeat(emptySlots);
 
     container.querySelectorAll('.accessory-add-tile').forEach(btn => {
-        btn.addEventListener('click', () => openAccessoryModal());
+        btn.addEventListener('click', () => openSceneModal());
     });
+
+    container.querySelectorAll('.accessory-power-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            btn.disabled = true;
+            try {
+                const response = await fetch(`/api/accessories/scenes/${encodeURIComponent(id)}/run`, { method: 'POST' });
+                if (!response.ok) throw new Error('scene run failed');
+                showToast(t('dashboardSceneRan').replace('{name}', btn.dataset.name || ''));
+            } catch (error) {
+                console.error(error);
+                showToast(t('dashboardSceneRunError'), 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    });
+
+    container.querySelectorAll('.accessory-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            const name = btn.dataset.name || '';
+            if (!(await appConfirm(t('dashboardDeleteSceneConfirm').replace('{name}', name), t('dashboardDeleteSceneTitle'), 'danger'))) return;
+            try {
+                await fetch(`/api/accessories/scenes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            } catch (error) {
+                console.error(error);
+            } finally {
+                loadAccessories();
+            }
+        });
+    });
+}
+
+// ── Crear escena (macro de accesorios) desde el dock del dashboard ──
+//
+// Mismo formulario y mismo shape de datos que el editor de escenas del
+// plugin arduino-accessories (frontend/arduino-accessories.js::
+// openSceneEditor/sceneActionRowHtml) -- reimplementado acá para que "+ "
+// en el dock no tenga que mandar a otra sección solo para crear una
+// escena de una acción. Solo alta (no edición/no borrado -- eso ya lo
+// cubren los botones × de cada ficha y, para más detalle, el propio
+// plugin).
+let sceneModalAccessories = [];
+
+function sceneModalActionRowHtml(action) {
+    const hasColor = Array.isArray(action?.color);
+    const type = hasColor ? 'color' : (action?.on === false ? 'off' : 'on');
+    const colorHex = hasColor ? sceneRgbToHex(action.color) : '#22c55e';
+    return `<div class="scene-action-row" data-scene-action-row>
+        <select data-scene-action-accessory>${sceneModalAccessories.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === action?.accessory_id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select>
+        <select data-scene-action-type>
+            <option value="on" ${type === 'on' ? 'selected' : ''}>${t('turnOnOption')}</option>
+            <option value="off" ${type === 'off' ? 'selected' : ''}>${t('turnOffOption')}</option>
+            <option value="color" ${type === 'color' ? 'selected' : ''}>${t('setColorOption')}</option>
+        </select>
+        <input type="color" data-scene-action-color value="${colorHex}" ${type === 'color' ? '' : 'hidden'}>
+        <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" data-scene-action-remove title="${t('removeActionTitle')}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>`;
+}
+
+function sceneRgbToHex(rgb) {
+    if (!Array.isArray(rgb) || rgb.length !== 3) return '#22c55e';
+    return `#${rgb.map(channel => Math.max(0, Math.min(255, Number(channel) || 0)).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function sceneHexToRgb(hex) {
+    const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+    if (!match) return [0, 0, 0];
+    return [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)];
+}
+
+function wireSceneActionRow(row) {
+    row.querySelector('[data-scene-action-type]').addEventListener('change', () => {
+        row.querySelector('[data-scene-action-color]').hidden = row.querySelector('[data-scene-action-type]').value !== 'color';
+    });
+    row.querySelector('[data-scene-action-remove]').addEventListener('click', () => {
+        const list = document.getElementById('scene-actions-list');
+        if (list.querySelectorAll('[data-scene-action-row]').length <= 1) {
+            showToast(t('sceneNeedsAction'), 'error');
+            return;
+        }
+        row.remove();
+    });
+}
+
+async function openSceneModal() {
+    try {
+        const response = await fetch('/api/accessories/status');
+        const data = await response.json();
+        sceneModalAccessories = data.accessories || [];
+    } catch (error) {
+        console.error(error);
+        sceneModalAccessories = [];
+    }
+    if (!sceneModalAccessories.length) {
+        showToast(t('needAccessoryForScene'), 'error');
+        return;
+    }
+    document.getElementById('scene-name-input').value = '';
+    const list = document.getElementById('scene-actions-list');
+    list.innerHTML = sceneModalActionRowHtml({ accessory_id: sceneModalAccessories[0].id, on: true });
+    list.querySelectorAll('[data-scene-action-row]').forEach(wireSceneActionRow);
+    document.getElementById('scene-modal')?.classList.add('active');
+}
+
+function closeSceneModal() {
+    document.getElementById('scene-modal')?.classList.remove('active');
+}
+
+document.getElementById('scene-modal-close')?.addEventListener('click', closeSceneModal);
+document.getElementById('scene-modal-backdrop')?.addEventListener('click', closeSceneModal);
+document.getElementById('scene-cancel-btn')?.addEventListener('click', closeSceneModal);
+
+document.getElementById('scene-add-action-btn')?.addEventListener('click', () => {
+    const list = document.getElementById('scene-actions-list');
+    list.insertAdjacentHTML('beforeend', sceneModalActionRowHtml({ accessory_id: sceneModalAccessories[0]?.id, on: true }));
+    wireSceneActionRow(list.lastElementChild);
+});
+
+document.getElementById('scene-save-btn')?.addEventListener('click', async () => {
+    const name = document.getElementById('scene-name-input').value.trim();
+    if (!name) return;
+    const rows = [...document.getElementById('scene-actions-list').querySelectorAll('[data-scene-action-row]')];
+    const actions = rows.map(row => {
+        const accessoryId = row.querySelector('[data-scene-action-accessory]').value;
+        const type = row.querySelector('[data-scene-action-type]').value;
+        if (type === 'color') return { accessory_id: accessoryId, color: sceneHexToRgb(row.querySelector('[data-scene-action-color]').value) };
+        return { accessory_id: accessoryId, on: type === 'on' };
+    });
+    const button = document.getElementById('scene-save-btn');
+    button.disabled = true;
+    try {
+        const response = await fetch('/api/accessories/scenes', {
+            method: 'POST',
+            body: new URLSearchParams({ name, actions: JSON.stringify(actions) }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || t('errCouldNotSaveScene'));
+        }
+        closeSceneModal();
+        showToast(t('sceneCreated'));
+        loadAccessories();
+    } catch (error) {
+        console.error(error);
+        showToast(error.message || t('errCouldNotSaveScene'), 'error');
+    } finally {
+        button.disabled = false;
+    }
+});
+
+// ── Ajustes > Accesorios: lista de accesorios individuales ya registrados ──
+//
+// Esta tarjeta solo tenía el botón "Agregar accesorio" y el descubrimiento
+// de placas Arduino por USB (que además solo encuentra placas conectadas
+// por cable -- una placa WiFi como la que arma sus propias escenas en el
+// plugin arduino-accessories nunca va a aparecer ahí, es un buscador USB
+// nada más). No había forma de VER lo ya registrado ni de encenderlo/
+// apagarlo/quitarlo -- eso vivía únicamente en el dock del dashboard, que
+// ahora lista escenas (ver renderAccessories arriba). Mismos endpoints de
+// siempre (/api/accessories/status, /power, /remove), fila simple en vez
+// de grilla de fichas -- mismo patrón visual que "Dispositivos emparejados"
+// y "Placas Arduino/ESP32" en esta misma página (.usb-port-item).
+async function loadSettingsAccessoriesList() {
+    const container = document.getElementById('settings-accessories-list');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/accessories/status');
+        const data = await response.json();
+        renderSettingsAccessoriesList(data.accessories || []);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+function renderSettingsAccessoriesList(accessories) {
+    const container = document.getElementById('settings-accessories-list');
+    if (!container) return;
+    if (!accessories.length) {
+        container.innerHTML = `<div class="empty-state-small">${t('accessoriesEmpty')}</div>`;
+        return;
+    }
+    container.innerHTML = accessories.map(acc => {
+        const statusClass = acc.on === true ? 'on' : acc.on === false ? 'off' : 'unknown';
+        const statusLabel = acc.on === true ? t('accessoryOn') : acc.on === false ? t('accessoryOff') : t('accessoryUnknown');
+        const driverLabelKey = ACCESSORY_DRIVER_LABEL_KEYS[acc.driver];
+        const driverLabel = driverLabelKey ? t(driverLabelKey) : (acc.driver || t('accessoryDriverRelay'));
+        return `
+        <div class="usb-port-item">
+            <div class="usb-port-item-info usb-port-item-info-with-icon">
+                <span class="accessory-item-icon">${ACCESSORY_KIND_ICONS[acc.kind] || ACCESSORY_KIND_ICONS.other}</span>
+                <span class="usb-port-item-info-text">
+                    <strong>${escapeHtml(acc.name)}</strong>
+                    <span>${escapeHtml(driverLabel)} · <span class="device-status-pill ${statusClass}">${statusLabel}</span></span>
+                </span>
+            </div>
+            <div class="accessory-item-actions">
+                <button type="button" class="accessory-power-btn ${acc.on ? 'is-on' : ''}" data-id="${escapeHtml(acc.id)}" data-on="${acc.on ? 'true' : 'false'}" title="${acc.on ? t('accessoryTurnOff') : t('accessoryTurnOn')}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                </button>
+                <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger" data-id="${escapeHtml(acc.id)}" data-settings-accessory-remove title="${t('accessoryRemove')}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        `;
+    }).join('');
 
     container.querySelectorAll('.accessory-power-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -9919,12 +10314,12 @@ function renderAccessories(accessories) {
             } catch (error) {
                 console.error(error);
             } finally {
-                loadAccessories();
+                loadSettingsAccessoriesList();
             }
         });
     });
 
-    container.querySelectorAll('.accessory-remove-btn').forEach(btn => {
+    container.querySelectorAll('[data-settings-accessory-remove]').forEach(btn => {
         btn.addEventListener('click', async () => {
             const id = btn.dataset.id;
             if (!(await appConfirm(t('accessoryRemoveConfirm'), t('accessoryRemove'), 'danger'))) return;
@@ -9935,7 +10330,7 @@ function renderAccessories(accessories) {
             } catch (error) {
                 console.error(error);
             } finally {
-                loadAccessories();
+                loadSettingsAccessoriesList();
             }
         });
     });
@@ -10165,7 +10560,7 @@ document.getElementById('accessory-save-btn')?.addEventListener('click', async (
             return;
         }
         closeAccessoryModal();
-        loadAccessories();
+        loadSettingsAccessoriesList();
     } catch (error) {
         console.error(error);
         showToast(t('accessorySaveError'));
@@ -12217,46 +12612,127 @@ function closeAllSdRowMenus() {
 
 document.addEventListener('click', closeAllSdRowMenus);
 
+let sdViewMode = localStorage.getItem('laserSdViewMode') === 'grid' ? 'grid' : 'list';
+let sdSearchQuery = '';
+let sdTypeFilter = 'all';
+let sdSortMode = 'name-asc';
+
+function sdIsDir(entry) {
+    return entry.size === '-1' || entry.size === -1;
+}
+
+function sdFileExtension(name) {
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+
+// Texto secundario bajo el nombre (ver referencia visual) -- la extensión
+// real del archivo, NUNCA una cantidad de capas: eso requeriría parsear el
+// contenido de cada G-code de la SD, que no se hace en ningún lado (ni acá
+// ni en el resto de NOPAL para archivos remotos).
+function sdFileMetaLabel(entry) {
+    if (sdIsDir(entry)) return t('laserSdFolderLabel');
+    const ext = sdFileExtension(entry.name);
+    return ext ? t('laserSdFileTypeLabel').replace('{ext}', ext.toUpperCase()) : t('laserSdFileGeneric');
+}
+
+function updateSdTypeFilterOptions(entries) {
+    const select = document.getElementById('laser-sd-type-filter');
+    if (!select) return;
+    const exts = [...new Set(entries.filter(e => !sdIsDir(e)).map(e => sdFileExtension(e.name)).filter(Boolean))].sort();
+    const current = select.value || 'all';
+    select.innerHTML = `<option value="all">${escapeHtml(t('laserSdAllTypes'))}</option>` +
+        exts.map(ext => `<option value="${escapeHtml(ext)}">.${escapeHtml(ext)}</option>`).join('');
+    select.value = exts.includes(current) ? current : 'all';
+}
+
+function updateSdCapacityBar(data, visibleCount) {
+    const countEl = document.getElementById('laser-sd-file-count');
+    const usedEl = document.getElementById('laser-sd-space');
+    const fillEl = document.getElementById('laser-sd-capacity-fill');
+    const pctEl = document.getElementById('laser-sd-capacity-pct');
+    if (countEl) countEl.textContent = t('laserSdFileCount').replace('{count}', visibleCount);
+    if (usedEl) usedEl.textContent = data.total ? t('laserSdUsedOf').replace('{used}', data.used || '—').replace('{total}', data.total) : '';
+    const pct = parseFloat(data.occupation);
+    if (fillEl) fillEl.style.width = Number.isFinite(pct) ? `${Math.min(100, Math.max(0, pct))}%` : '0%';
+    if (pctEl) pctEl.textContent = Number.isFinite(pct) ? t('laserSdPercentUsed').replace('{pct}', pct) : '';
+}
+
 function renderSdList(data) {
+    updateSdTypeFilterOptions(data.files || []);
+    applySdListFilters();
+}
+
+// Búsqueda/tipo/orden son 100% sobre lo ya cargado (sdCurrentEntries) --
+// cambiar un filtro nunca vuelve a pedirle la lista a la placa.
+function applySdListFilters() {
+    const entries = sdCurrentEntries.files || [];
+    const query = sdSearchQuery.trim().toLowerCase();
+    const filtered = entries.filter(entry => {
+        if (sdTypeFilter !== 'all') {
+            if (sdIsDir(entry)) return false;
+            if (sdFileExtension(entry.name) !== sdTypeFilter) return false;
+        }
+        if (query && !entry.name.toLowerCase().includes(query)) return false;
+        return true;
+    }).sort((a, b) => {
+        const aDir = sdIsDir(a);
+        const bDir = sdIsDir(b);
+        if (aDir !== bDir) return aDir ? -1 : 1; // carpetas siempre primero
+        if (sdSortMode === 'name-desc') return b.name.localeCompare(a.name);
+        if (sdSortMode === 'size-desc') return (Number(b.size) || 0) - (Number(a.size) || 0);
+        return a.name.localeCompare(b.name);
+    });
+    renderSdRows(filtered);
+    updateSdCapacityBar(sdCurrentEntries, filtered.length);
+}
+
+function renderSdRows(entries) {
     const listEl = document.getElementById('laser-sd-list');
-    const spaceEl = document.getElementById('laser-sd-space');
     if (!listEl) return;
-
-    if (spaceEl) {
-        spaceEl.textContent = data.total ? `${data.used || '—'} / ${data.total}` : '';
-    }
-
-    const entries = data.files || [];
+    listEl.classList.toggle('laser-sd-list-grid', sdViewMode === 'grid');
     if (!entries.length) {
         listEl.innerHTML = `<div class="empty-state-small">${t('laserSdEmpty')}</div>`;
         return;
     }
 
     listEl.innerHTML = entries.map(entry => {
-        const isDir = entry.size === '-1' || entry.size === -1;
-        const deleteBtnHtml = `
-            <button type="button" class="laser-sd-row-menu-item laser-sd-row-menu-item-danger laser-sd-delete-btn">${escapeHtml(t('delete'))}</button>
-        `;
+        const isDir = sdIsDir(entry);
+        const sizeLabel = isDir ? '' : formatSize(Number(entry.size) || 0);
         return `
             <div class="laser-sd-row" data-name="${escapeHtml(entry.name)}" data-dir="${isDir ? '1' : '0'}">
-                ${isDir ? sdFolderIcon() : sdFileIcon()}
-                <span class="laser-sd-row-name">${escapeHtml(entry.name)}</span>
-                ${!isDir ? `<span class="laser-sd-row-size">${escapeHtml(entry.size)}</span>` : ''}
-                ${isDir ? `
-                    <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger laser-sd-delete-btn" title="${escapeHtml(t('delete'))}">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                ` : `
-                    <div class="laser-sd-row-menu-wrap">
-                        <button type="button" class="theme-option-icon-btn laser-sd-more-btn" title="${escapeHtml(t('laserSdMenuMore'))}">
-                            ${sdMoreIcon()}
-                        </button>
-                        <div class="laser-sd-row-menu" hidden>
-                            <button type="button" class="laser-sd-row-menu-item laser-sd-print-btn">${escapeHtml(t('laserSdPrint'))}</button>
-                            ${deleteBtnHtml}
-                        </div>
+                <div class="laser-sd-row-name-col">
+                    ${isDir ? sdFolderIcon() : sdFileIcon()}
+                    <div class="laser-sd-row-name-text">
+                        <span class="laser-sd-row-name">${escapeHtml(entry.name)}</span>
+                        <span class="laser-sd-row-meta">${escapeHtml(sdFileMetaLabel(entry))}</span>
                     </div>
-                `}
+                </div>
+                <span class="laser-sd-row-size">${escapeHtml(sizeLabel)}</span>
+                <span class="laser-sd-row-modified">—</span>
+                <div class="laser-sd-row-actions">
+                    ${isDir ? `
+                        <div class="laser-sd-row-menu-wrap">
+                            <button type="button" class="theme-option-icon-btn laser-sd-more-btn" title="${escapeHtml(t('laserSdMenuMore'))}">${sdMoreIcon()}</button>
+                            <div class="laser-sd-row-menu" hidden>
+                                <button type="button" class="laser-sd-row-menu-item laser-sd-row-menu-item-danger laser-sd-delete-btn">${escapeHtml(t('delete'))}</button>
+                            </div>
+                        </div>
+                    ` : `
+                        <button type="button" class="theme-option-icon-btn laser-sd-play-btn" title="${escapeHtml(t('laserSdPrint'))}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        </button>
+                        <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger laser-sd-delete-btn" title="${escapeHtml(t('delete'))}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                        <div class="laser-sd-row-menu-wrap">
+                            <button type="button" class="theme-option-icon-btn laser-sd-more-btn" title="${escapeHtml(t('laserSdMenuMore'))}">${sdMoreIcon()}</button>
+                            <div class="laser-sd-row-menu" hidden>
+                                <button type="button" class="laser-sd-row-menu-item laser-sd-copypath-btn">${escapeHtml(t('laserSdCopyPath'))}</button>
+                            </div>
+                        </div>
+                    `}
+                </div>
             </div>
         `;
     }).join('');
@@ -12269,23 +12745,26 @@ function renderSdList(data) {
                 loadSdFolder(`${sdCurrentPath}${name}/`);
             });
         } else {
-            const moreBtn = row.querySelector('.laser-sd-more-btn');
-            const menu = row.querySelector('.laser-sd-row-menu');
-            if (moreBtn && menu) {
-                moreBtn.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    const wasHidden = menu.hidden;
-                    closeAllSdRowMenus();
-                    menu.hidden = !wasHidden;
-                });
-            }
-            const printBtn = row.querySelector('.laser-sd-print-btn');
-            if (printBtn) {
-                printBtn.addEventListener('click', () => {
-                    if (menu) menu.hidden = true;
-                    startSdFilePrint(name);
-                });
-            }
+            row.querySelector('.laser-sd-play-btn')?.addEventListener('click', () => startSdFilePrint(name));
+            row.querySelector('.laser-sd-copypath-btn')?.addEventListener('click', async () => {
+                closeAllSdRowMenus();
+                try {
+                    await navigator.clipboard.writeText(`${sdCurrentPath}${name}`);
+                    showToast(t('laserSdPathCopied'));
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+        }
+        const moreBtn = row.querySelector('.laser-sd-more-btn');
+        const menu = row.querySelector('.laser-sd-row-menu');
+        if (moreBtn && menu) {
+            moreBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const wasHidden = menu.hidden;
+                closeAllSdRowMenus();
+                menu.hidden = !wasHidden;
+            });
         }
         row.querySelector('.laser-sd-delete-btn').addEventListener('click', async (event) => {
             event.stopPropagation();
@@ -12392,26 +12871,6 @@ async function loadSdFolder(path) {
     }
 }
 
-async function loadSdLibraryOptions() {
-    const selectEl = document.getElementById('laser-sd-library-select');
-    if (!selectEl) return;
-    try {
-        const response = await fetch('/api/models');
-        const models = await response.json();
-        const gcodeFiles = models.filter(m => m.id.startsWith('gcode/'));
-        if (!gcodeFiles.length) {
-            selectEl.innerHTML = `<option value="">${t('noFilesFound')}</option>`;
-            return;
-        }
-        selectEl.innerHTML = `<option value="">${t('laserSdSelectFile')}</option>` + gcodeFiles.map(file => {
-            const relPath = stripSectionPrefix(file.id, 'gcode');
-            return `<option value="${escapeHtml(relPath)}">${escapeHtml(file.name)}</option>`;
-        }).join('');
-    } catch (error) {
-        console.error(error);
-    }
-}
-
 const laserHubTabs = createOptionSwitch('laser-hub-tabs', tab => {
     document.querySelectorAll('.laser-hub-panel').forEach(panel => {
         panel.hidden = panel.dataset.hubPanel !== tab;
@@ -12436,12 +12895,16 @@ function setLaserMemoryTabAvailable(available) {
 async function checkSdAvailability() {
     const sdCard = document.getElementById('laser-sd-card');
     if (!sdCard) return;
+    // "Formatear SD" borra TODO sin vuelta atrás -- solo admin lo ve (el
+    // backend también lo exige, ver require_role("admin") en
+    // laser_sd_format_endpoint, esto no es la única traba).
+    const formatBtn = document.getElementById('laser-sd-format-btn');
+    if (formatBtn) formatBtn.hidden = currentAuthUser?.role !== 'admin';
     try {
         const response = await fetch('/api/laser/sd/available');
         const data = await response.json();
         setLaserMemoryTabAvailable(!!data.available);
         if (data.available) {
-            loadSdLibraryOptions();
             loadSdFolder('/');
         }
     } catch (error) {
@@ -12453,9 +12916,103 @@ async function checkSdAvailability() {
 const laserSdReloadBtn = document.getElementById('laser-sd-reload-btn');
 if (laserSdReloadBtn) laserSdReloadBtn.addEventListener('click', () => loadSdFolder(sdCurrentPath));
 
+// ── Buscador / tipo / orden / vista -- todo client-side sobre sdCurrentEntries ──
+const laserSdSearchInput = document.getElementById('laser-sd-search-input');
+const laserSdSearchClearBtn = document.getElementById('laser-sd-search-clear-btn');
+function updateSdSearchClearVisibility() {
+    if (laserSdSearchClearBtn) laserSdSearchClearBtn.hidden = !laserSdSearchInput?.value;
+}
+if (laserSdSearchInput) {
+    laserSdSearchInput.addEventListener('input', () => {
+        sdSearchQuery = laserSdSearchInput.value;
+        updateSdSearchClearVisibility();
+        applySdListFilters();
+    });
+}
+if (laserSdSearchClearBtn) {
+    laserSdSearchClearBtn.addEventListener('click', () => {
+        if (!laserSdSearchInput) return;
+        laserSdSearchInput.value = '';
+        sdSearchQuery = '';
+        updateSdSearchClearVisibility();
+        applySdListFilters();
+        laserSdSearchInput.focus();
+    });
+}
+const laserSdTypeFilter = document.getElementById('laser-sd-type-filter');
+if (laserSdTypeFilter) {
+    laserSdTypeFilter.addEventListener('change', () => {
+        sdTypeFilter = laserSdTypeFilter.value;
+        applySdListFilters();
+    });
+}
+const laserSdSortSelect = document.getElementById('laser-sd-sort-select');
+if (laserSdSortSelect) {
+    laserSdSortSelect.addEventListener('change', () => {
+        sdSortMode = laserSdSortSelect.value;
+        applySdListFilters();
+    });
+}
+function setSdViewMode(mode) {
+    sdViewMode = mode;
+    localStorage.setItem('laserSdViewMode', mode);
+    document.getElementById('laser-sd-view-grid-btn')?.classList.toggle('active', mode === 'grid');
+    document.getElementById('laser-sd-view-list-btn')?.classList.toggle('active', mode === 'list');
+    applySdListFilters();
+}
+document.getElementById('laser-sd-view-grid-btn')?.addEventListener('click', () => setSdViewMode('grid'));
+document.getElementById('laser-sd-view-list-btn')?.addEventListener('click', () => setSdViewMode('list'));
+setSdViewMode(sdViewMode);
+
+// ── "..." (más opciones): Nueva carpeta + Enviar desde biblioteca, sin
+// lugar fijo en la fila de acciones principal (mismo mecanismo de
+// mostrar/ocultar que ya usan los menús por fila, ver closeAllSdRowMenus) ──
+const laserSdMoreBtn = document.getElementById('laser-sd-more-btn');
+const laserSdMoreMenu = document.getElementById('laser-sd-more-menu');
+if (laserSdMoreBtn && laserSdMoreMenu) {
+    laserSdMoreBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const wasHidden = laserSdMoreMenu.hidden;
+        closeAllSdRowMenus();
+        laserSdMoreMenu.hidden = !wasHidden;
+    });
+    laserSdMoreMenu.addEventListener('click', (event) => event.stopPropagation());
+}
+
+// ── Formatear SD: borra todo, sin vuelta atrás -- doble confirmación real
+// (una advertencia + escribir una palabra), no un solo click ──
+const laserSdFormatBtn = document.getElementById('laser-sd-format-btn');
+if (laserSdFormatBtn) {
+    laserSdFormatBtn.addEventListener('click', async () => {
+        laserSdMoreMenu.hidden = true;
+        if (!(await appConfirm(t('laserSdFormatConfirm1'), t('laserSdFormatBtn'), 'danger'))) return;
+        const typed = prompt(t('laserSdFormatConfirm2'));
+        if (typed !== t('laserSdFormatConfirmWord')) {
+            if (typed !== null) appAlert(t('laserSdFormatConfirmMismatch'), '', 'danger');
+            return;
+        }
+        laserSdFormatBtn.disabled = true;
+        try {
+            const response = await fetch('/api/laser/sd/format', { method: 'POST' });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || t('laserSdError'));
+            }
+            showToast(t('laserSdFormatDone'));
+            loadSdFolder('/');
+        } catch (error) {
+            console.error(error);
+            appAlert(error.message || t('laserSdError'), '', 'danger');
+        } finally {
+            laserSdFormatBtn.disabled = false;
+        }
+    });
+}
+
 const laserSdNewFolderBtn = document.getElementById('laser-sd-newfolder-btn');
 if (laserSdNewFolderBtn) {
     laserSdNewFolderBtn.addEventListener('click', async () => {
+        laserSdMoreMenu.hidden = true;
         const name = prompt(t('laserSdNewFolderPrompt'));
         if (!name || !name.trim()) return;
         try {
@@ -12475,9 +13032,49 @@ if (laserSdNewFolderBtn) {
     });
 }
 
+// ── Progreso REAL de subida a la SD (ver GET /api/laser/sd/upload-progress
+// y el comentario de sd_upload_file_tracked en laser_service.py) -- mismo
+// mecanismo para "Importar archivos" y el popup "Enviar desde biblioteca":
+// la subida arranca en segundo plano en el backend (responde con un
+// upload_id de inmediato), y esto sondea el tramo lento de verdad
+// (NOPAL->placa) hasta que termina. onUpdate(percent) en cada sondeo,
+// onDone(error) una sola vez al final (error=null si salió bien). ──
+function pollSdUploadProgress(uploadId, onUpdate, onDone) {
+    const interval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/laser/sd/upload-progress/${encodeURIComponent(uploadId)}`);
+            if (!response.ok) {
+                clearInterval(interval);
+                onDone(new Error(t('laserSdError')));
+                return;
+            }
+            const progress = await response.json();
+            onUpdate(progress.total ? Math.round((progress.sent / progress.total) * 100) : 0);
+            if (progress.status === 'uploading') return;
+            clearInterval(interval);
+            fetch(`/api/laser/sd/upload-progress/${encodeURIComponent(uploadId)}/clear`, { method: 'POST' }).catch(() => {});
+            onDone(progress.status === 'done' ? null : new Error(progress.error || t('laserSdError')));
+        } catch (error) {
+            clearInterval(interval);
+            onDone(error);
+        }
+    }, 400);
+}
+
+// Resalta brevemente la fila recién subida en la lista (ver "la
+// confirmación de subida es que el popup se cierra y queda seleccionado en
+// la lista" -- pedido explícito del usuario).
+function highlightSdRecentFile(name) {
+    const row = document.querySelector(`#laser-sd-list .laser-sd-row[data-name="${CSS.escape(name)}"]`);
+    if (!row) return;
+    row.classList.add('is-recent');
+    row.scrollIntoView({ block: 'nearest' });
+    setTimeout(() => row.classList.remove('is-recent'), 2500);
+}
+
 const laserSdUploadInput = document.getElementById('laser-sd-upload-input');
 if (laserSdUploadInput) {
-    laserSdUploadInput.addEventListener('change', () => {
+    laserSdUploadInput.addEventListener('change', async () => {
         const file = laserSdUploadInput.files?.[0];
         laserSdUploadInput.value = '';
         if (!file) return;
@@ -12489,68 +13086,152 @@ if (laserSdUploadInput) {
         if (progressFill) progressFill.style.width = '0%';
         if (progressLabel) progressLabel.textContent = '0%';
 
-        const formData = new FormData();
-        formData.append('path', sdCurrentPath);
-        formData.append('file', file);
-
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/laser/sd/upload');
-
-        xhr.upload.addEventListener('progress', event => {
-            if (!event.lengthComputable) return;
-            const percent = Math.round((event.loaded / event.total) * 100);
-            if (progressFill) progressFill.style.width = `${percent}%`;
-            if (progressLabel) progressLabel.textContent = `${percent}%`;
-        });
-
-        xhr.addEventListener('load', () => {
-            if (progressWrap) progressWrap.hidden = true;
-            if (xhr.status >= 200 && xhr.status < 300) {
-                showToast(t('laserSdUploadSuccess'));
-                loadSdFolder(sdCurrentPath);
-            } else {
-                let message = t('laserSdError');
-                try {
-                    message = JSON.parse(xhr.responseText).detail || message;
-                } catch (error) {
-                    // respuesta no era JSON, se usa el mensaje genérico
-                }
-                appAlert(message, '', 'danger');
-            }
-        });
-
-        xhr.addEventListener('error', () => {
-            if (progressWrap) progressWrap.hidden = true;
-            appAlert(t('laserSdError'), '', 'danger');
-        });
-
-        xhr.send(formData);
-    });
-}
-
-const laserSdSendLibraryBtn = document.getElementById('laser-sd-send-library-btn');
-if (laserSdSendLibraryBtn) {
-    laserSdSendLibraryBtn.addEventListener('click', async () => {
-        const selectEl = document.getElementById('laser-sd-library-select');
-        const gcodePath = selectEl?.value;
-        if (!gcodePath) return;
         try {
             const formData = new FormData();
-            formData.append('gcode_path', gcodePath);
-            formData.append('sd_path', sdCurrentPath);
-            const response = await fetch('/api/laser/sd/upload-from-library', { method: 'POST', body: formData });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.detail || t('laserSdError'));
-            }
-            showToast(t('laserSdSendSuccess'));
-            loadSdFolder(sdCurrentPath);
+            formData.append('path', sdCurrentPath);
+            formData.append('file', file);
+            const response = await fetch('/api/laser/sd/upload', { method: 'POST', body: formData });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || t('laserSdError'));
+
+            pollSdUploadProgress(data.upload_id, percent => {
+                if (progressFill) progressFill.style.width = `${percent}%`;
+                if (progressLabel) progressLabel.textContent = `${percent}%`;
+            }, async error => {
+                if (progressWrap) progressWrap.hidden = true;
+                if (error) {
+                    appAlert(error.message || t('laserSdError'), '', 'danger');
+                    return;
+                }
+                showToast(t('laserSdUploadSuccess'));
+                await loadSdFolder(sdCurrentPath);
+                highlightSdRecentFile(file.name);
+            });
         } catch (error) {
+            if (progressWrap) progressWrap.hidden = true;
             console.error(error);
             appAlert(error.message || t('laserSdError'), '', 'danger');
         }
     });
 }
+
+// ── "Enviar desde biblioteca": popup con selección múltiple (ver
+// #laser-sd-library-modal en index.html) -- reemplaza el <select> + botón
+// que antes vivía apretado dentro del menú "...". Sube de a uno, no en
+// paralelo (mismo criterio de no saturar la placa que ya usa el resto de
+// NOPAL), progreso real de cada archivo visible dentro del propio popup. ──
+let sdLibraryFiles = [];
+let sdLibraryUploading = false;
+
+async function loadSdLibraryFiles() {
+    try {
+        const response = await fetch('/api/models');
+        const models = await response.json();
+        sdLibraryFiles = models.filter(m => m.id.startsWith('gcode/'));
+    } catch (error) {
+        console.error(error);
+        sdLibraryFiles = [];
+    }
+}
+
+function updateSdLibrarySendEnabled() {
+    const anyChecked = !!document.querySelector('#laser-sd-library-list input[type="checkbox"]:checked');
+    const sendBtn = document.getElementById('laser-sd-library-send-btn');
+    if (sendBtn) sendBtn.disabled = !anyChecked;
+}
+
+function renderSdLibraryList() {
+    const listEl = document.getElementById('laser-sd-library-list');
+    if (!listEl) return;
+    if (!sdLibraryFiles.length) {
+        listEl.innerHTML = `<div class="empty-state-small">${t('noFilesFound')}</div>`;
+        return;
+    }
+    listEl.innerHTML = sdLibraryFiles.map(file => `
+        <label class="laser-sd-library-row">
+            <input type="checkbox" data-library-path="${escapeHtml(stripSectionPrefix(file.id, 'gcode'))}" data-library-name="${escapeHtml(file.name)}">
+            ${sdFileIcon()}
+            <span class="laser-sd-library-row-name">${escapeHtml(file.name)}</span>
+        </label>
+    `).join('');
+    listEl.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.addEventListener('change', updateSdLibrarySendEnabled));
+}
+
+async function openSdLibraryModal() {
+    if (laserSdMoreMenu) laserSdMoreMenu.hidden = true;
+    await loadSdLibraryFiles();
+    renderSdLibraryList();
+    updateSdLibrarySendEnabled();
+    const progressWrap = document.getElementById('laser-sd-library-progress');
+    if (progressWrap) progressWrap.hidden = true;
+    document.getElementById('laser-sd-library-modal')?.classList.add('active');
+}
+
+function closeSdLibraryModal() {
+    if (sdLibraryUploading) return;
+    document.getElementById('laser-sd-library-modal')?.classList.remove('active');
+}
+
+document.getElementById('laser-sd-open-library-btn')?.addEventListener('click', openSdLibraryModal);
+document.getElementById('laser-sd-library-modal-close')?.addEventListener('click', closeSdLibraryModal);
+document.getElementById('laser-sd-library-modal-backdrop')?.addEventListener('click', closeSdLibraryModal);
+document.getElementById('laser-sd-library-cancel-btn')?.addEventListener('click', closeSdLibraryModal);
+
+document.getElementById('laser-sd-library-send-btn')?.addEventListener('click', async () => {
+    const checked = [...document.querySelectorAll('#laser-sd-library-list input[type="checkbox"]:checked')];
+    if (!checked.length) return;
+
+    const sendBtn = document.getElementById('laser-sd-library-send-btn');
+    const cancelBtn = document.getElementById('laser-sd-library-cancel-btn');
+    const progressWrap = document.getElementById('laser-sd-library-progress');
+    const progressLabel = document.getElementById('laser-sd-library-progress-label');
+    const progressFill = document.getElementById('laser-sd-library-progress-fill');
+    const progressPct = document.getElementById('laser-sd-library-progress-pct');
+
+    sdLibraryUploading = true;
+    sendBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
+    if (progressWrap) progressWrap.hidden = false;
+
+    let lastName = null;
+    let hadError = false;
+    for (let i = 0; i < checked.length; i++) {
+        const name = checked[i].dataset.libraryName;
+        if (progressLabel) progressLabel.textContent = t('laserSdLibraryProgressOf').replace('{name}', name).replace('{i}', i + 1).replace('{n}', checked.length);
+        if (progressFill) progressFill.style.width = '0%';
+        if (progressPct) progressPct.textContent = '0%';
+        try {
+            const formData = new FormData();
+            formData.append('gcode_path', checked[i].dataset.libraryPath);
+            formData.append('sd_path', sdCurrentPath);
+            const response = await fetch('/api/laser/sd/upload-from-library', { method: 'POST', body: formData });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || t('laserSdError'));
+            await new Promise(resolve => {
+                pollSdUploadProgress(data.upload_id, percent => {
+                    if (progressFill) progressFill.style.width = `${percent}%`;
+                    if (progressPct) progressPct.textContent = `${percent}%`;
+                }, error => {
+                    if (error) { hadError = true; appAlert(`${name}: ${error.message || t('laserSdError')}`, '', 'danger'); }
+                    else { lastName = name; }
+                    resolve();
+                });
+            });
+        } catch (error) {
+            hadError = true;
+            appAlert(`${name}: ${error.message || t('laserSdError')}`, '', 'danger');
+        }
+    }
+
+    sdLibraryUploading = false;
+    sendBtn.disabled = false;
+    if (cancelBtn) cancelBtn.disabled = false;
+    if (progressWrap) progressWrap.hidden = true;
+    if (!hadError) showToast(t('laserSdSendSuccess'));
+    closeSdLibraryModal();
+    await loadSdFolder(sdCurrentPath);
+    if (lastName) highlightSdRecentFile(lastName);
+});
 
 async function loadLaserSection() {
     await loadLaserHostSelector();
@@ -12599,7 +13280,15 @@ async function sendLaserRawCommand(command, host) {
         formData.append('command', command);
         if (host) formData.append('host', host);
         const response = await fetch('/api/laser/command', { method: 'POST', body: formData });
-        if (!response.ok) throw new Error('No se pudo enviar el comando');
+        if (!response.ok) {
+            // El backend manda 409 con un detail claro cuando hay un grabado
+            // en curso en ese láser (ver JOB_ACTIVE_MESSAGE en api/laser.py)
+            // -- antes esto se tragaba en silencio y el usuario solo veía el
+            // botón "sin hacer nada".
+            const data = await response.json().catch(() => ({}));
+            appAlert(data.detail || 'No se pudo enviar el comando', '', 'warning');
+            return false;
+        }
         return true;
     } catch (error) {
         console.error(error);
@@ -12660,7 +13349,12 @@ async function sendLaserJog(axis, distance, feed, host) {
         formData.append('feed', feed);
         if (host) formData.append('host', host);
         const response = await fetch('/api/laser/jog', { method: 'POST', body: formData });
-        return response.ok;
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            appAlert(data.detail || 'No se pudo mover el eje', '', 'warning');
+            return false;
+        }
+        return true;
     } catch (error) {
         console.error(error);
         return false;
@@ -17903,7 +18597,7 @@ function renderModelsFolderStrip(folders) {
     const strip = document.getElementById('models-folder-strip');
     if (!strip) return;
     strip.hidden = !folders.length;
-    strip.innerHTML = folders.map(folder => `<button type="button" class="gcode-folder-card" data-model-folder="${escapeHtml(folder.path)}"><svg width="29" height="29" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg><span><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span><span class="gcode-folder-menu">›</span></button>`).join('');
+    strip.innerHTML = folders.map(folder => `<button type="button" class="gcode-folder-card" data-model-folder="${escapeHtml(folder.path)}" title="${escapeHtml(folder.name)}"><span class="gcode-folder-card-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-9l-2-2Z"/></svg></span><span class="gcode-folder-card-body"><strong>${escapeHtml(folder.name)}</strong><small>${t('libraryItems').replace('{count}', Number(folder.file_count || 0).toLocaleString())}</small></span><span class="gcode-folder-menu">›</span></button>`).join('');
     strip.querySelectorAll('[data-model-folder]').forEach(button => button.addEventListener('click', () => loadModelsFolder(button.dataset.modelFolder)));
 }
 
@@ -17980,7 +18674,22 @@ function renderModelsFullPage(filterQuery = modelsSearchQuery) {
     if (!container) return;
     modelsSearchQuery = filterQuery || '';
     const folderQuery = modelsSearchQuery.toLowerCase();
-    renderModelsFolderStrip(currentModelsData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    // Mismo criterio que en G-code (ver renderGcodeTable): raíz = fila
+    // horizontal, adentro de una carpeta = árbol en la barra izquierda.
+    if (currentModelsPath) {
+        document.getElementById('models-folder-strip')?.setAttribute('hidden', '');
+        renderLibraryFolderTree({
+            type: 'model',
+            currentPath: currentModelsPath,
+            wrapEl: document.getElementById('models-folder-tree-wrap'),
+            treeEl: document.getElementById('models-folder-tree'),
+            cache: modelsTreeCache,
+            onNavigate: loadModelsFolder,
+        });
+    } else {
+        document.getElementById('models-folder-tree-wrap')?.setAttribute('hidden', '');
+        renderModelsFolderStrip(currentModelsData.folders.filter(folder => !folderQuery || folder.name.toLowerCase().includes(folderQuery)));
+    }
     renderModelsSidebar();
     renderModelsBreadcrumb();
     const files = getFilteredModelsFiles();
@@ -19349,6 +20058,7 @@ updatePanelClock();
 refreshDashboardLaserCard();
 refreshUsbPorts();
 loadAccessories();
+loadSettingsAccessoriesList();
 loadAccessoryArduinoDiscoverList();
 loadDashboardMatrixPreview();
 refreshDeviceNavVisibility();

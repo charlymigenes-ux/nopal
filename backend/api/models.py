@@ -208,6 +208,10 @@ async def browse_folder(path: str = "", type: str = "model", user: dict = Depend
                 "name": entry,
                 "path": rel_entry,
                 "file_count": _count_files_recursive(entry_path, extensions),
+                # Usado por el árbol de carpetas del frontend para decidir si
+                # dibuja la flechita de expandir -- sin esto, expandir una
+                # carpeta sin subcarpetas propias no mostraba nada.
+                "has_subfolders": any(e.is_dir() for e in os.scandir(entry_path)),
             })
         else:
             extension = os.path.splitext(entry)[1].lower()

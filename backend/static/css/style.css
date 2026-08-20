@@ -8425,12 +8425,18 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     margin: 0 0 6px;
 }
 
-.laser-sd-toolbar {
+/* ── Memoria (SD) del hub del láser -- réplica visual de la referencia del
+   usuario, construida sobre tokens y clases ya existentes en NOPAL
+   (.card-header-std/.card-collapsible ya genéricos, .gcode-library-search/
+   .gcode-select-control/.gcode-toolbar-action/.gcode-primary-action/
+   .gcode-view-switch ya definidos para la barra de la biblioteca de G-code
+   -- misma apariencia, sin duplicar reglas). Ver renderSdRows/
+   applySdListFilters en app.js. ── */
+
+.laser-sd-body {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 14px;
 }
 
 .laser-sd-breadcrumb {
@@ -8438,35 +8444,80 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     flex-wrap: wrap;
     align-items: center;
     gap: 2px;
-    flex: 1;
     min-width: 0;
 }
 
-.laser-sd-actions-bar {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+.laser-sd-breadcrumb .breadcrumb-segment {
+    min-height: 26px;
+    padding: 0 10px;
+    font-size: 0.68rem;
 }
 
-.laser-sd-toolbar-actions {
+.laser-sd-search-row {
     display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.laser-sd-search {
+    flex: 1;
+    min-width: 180px;
+}
+
+.laser-sd-type-control select,
+.laser-sd-sort-control select {
+    max-width: 130px;
+}
+
+.laser-sd-actions-row {
+    display: flex;
+    align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .laser-sd-upload-label {
     cursor: pointer;
 }
 
-.laser-sd-from-library {
+.laser-sd-more-wrap {
+    margin-left: auto;
+}
+
+.laser-sd-more-menu-library {
     display: flex;
-    gap: 10px;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.laser-sd-more-menu-library .settings-select {
     width: 100%;
 }
 
-.laser-sd-from-library .settings-select {
-    flex: 1;
+.laser-sd-columns-head,
+.laser-sd-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 90px 150px 150px;
+    align-items: center;
+    gap: 12px;
+}
+
+.laser-sd-columns-head {
+    padding: 0 12px;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.laser-sd-col-size,
+.laser-sd-col-modified {
+    text-align: left;
 }
 
 .laser-sd-list {
@@ -8479,12 +8530,23 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 }
 
 .laser-sd-row {
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid transparent;
+    border-radius: 10px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.laser-sd-row:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(var(--accent-rgb), 0.25);
+}
+
+.laser-sd-row-name-col {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
+    min-width: 0;
 }
 
 .laser-sd-row-icon {
@@ -8492,11 +8554,17 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     flex-shrink: 0;
 }
 
-.laser-sd-row-name {
-    flex: 1;
+.laser-sd-row-name-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     min-width: 0;
+}
+
+.laser-sd-row-name {
     color: var(--text);
     font-size: 0.85rem;
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -8507,11 +8575,29 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     color: #22c55e;
 }
 
-.laser-sd-row-size {
+.laser-sd-row-meta {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.laser-sd-row-size,
+.laser-sd-row-modified {
     flex-shrink: 0;
     font-size: 0.75rem;
     color: var(--text-muted);
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.laser-sd-row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.laser-sd-preview-btn.is-disabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 .laser-sd-row-menu-wrap {
@@ -8526,7 +8612,7 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     z-index: 5;
     display: flex;
     flex-direction: column;
-    min-width: 130px;
+    min-width: 150px;
     padding: 4px;
     background: #1f2937;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -8553,6 +8639,192 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 
 .laser-sd-row-menu-item-danger {
     color: #f87171;
+}
+
+/* Formatear SD -- ámbar, no rojo: no es "cancelar/eliminar algo puntual",
+   es una acción de sistema poco frecuente que además no está confirmada
+   contra el firmware (ver laserSdFormatConfirm1). */
+.laser-sd-row-menu-item-amber {
+    color: #f59e0b;
+}
+
+.laser-sd-more-menu-divider {
+    height: 1px;
+    margin: 4px 2px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Buscador: "×" para limpiar (ver laser-sd-search-clear-btn en app.js). */
+.laser-sd-search-clear-btn {
+    display: none;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.laser-sd-search-clear-btn:not([hidden]) {
+    display: inline-flex;
+}
+
+.laser-sd-search-clear-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--text);
+}
+
+/* Fila recién subida (ver highlightSdRecentFile en app.js) -- confirmación
+   visual de "esto es lo que se acaba de mandar", pedido explícito del
+   usuario para el flujo de "Enviar desde biblioteca". */
+.laser-sd-row.is-recent {
+    border-color: rgba(34, 197, 94, 0.6);
+    background: rgba(34, 197, 94, 0.12);
+    transition: background 1.8s ease, border-color 1.8s ease;
+}
+
+/* Popup "Enviar desde biblioteca" (ver #laser-sd-library-modal en index.html). */
+.laser-sd-library-modal-content {
+    width: min(460px, 92vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.laser-sd-library-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    margin: 4px 0 10px;
+}
+
+.laser-sd-library-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.laser-sd-library-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.laser-sd-library-row input[type="checkbox"] {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: #22c55e;
+    cursor: pointer;
+}
+
+.laser-sd-library-row-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    color: var(--text);
+}
+
+.laser-sd-library-progress {
+    margin-bottom: 12px;
+}
+
+.laser-sd-library-progress-label {
+    margin-bottom: 6px;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Vista cuadrícula: mismos datos, tarjetas en vez de filas -- se pierde el
+   header de columnas (no aplica a una grilla) y tamaño/modificado pasan a
+   texto chico dentro de la tarjeta en vez de columnas propias. */
+.laser-sd-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    max-height: 480px;
+}
+
+.laser-sd-list-grid .laser-sd-row {
+    grid-template-columns: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 10px;
+    text-align: center;
+}
+
+.laser-sd-list-grid .laser-sd-row-name-col {
+    flex-direction: column;
+    gap: 6px;
+}
+
+.laser-sd-list-grid .laser-sd-row-icon {
+    width: 30px;
+    height: 30px;
+}
+
+.laser-sd-list-grid .laser-sd-row-name {
+    white-space: normal;
+    text-align: center;
+}
+
+.laser-sd-list-grid .laser-sd-row-size,
+.laser-sd-list-grid .laser-sd-row-modified {
+    font-size: 0.66rem;
+}
+
+.laser-sd-list-grid .laser-sd-row-actions {
+    justify-content: center;
+}
+
+.laser-sd-capacity-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.laser-sd-capacity-count,
+.laser-sd-capacity-used,
+.laser-sd-capacity-pct {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.laser-sd-capacity-track {
+    flex: 1;
+    min-width: 60px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.laser-sd-capacity-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: #22c55e;
+    transition: width 0.2s ease;
 }
 
 .laser-settings-field {
@@ -11751,6 +12023,98 @@ body.light .sidebar-order-select {
 .gcode-sidebar-icon { color: var(--accent); }
 .gcode-sidebar-empty { display: block; padding: 7px; color: var(--text-muted); font-size: 0.66rem; }
 
+/* ── Árbol de carpetas (barra izquierda, solo fuera de la raíz) ──
+   El nombre nunca se trunca -- hace wrap a varias líneas en vez de
+   cortarse con ellipsis, a diferencia de la fila horizontal
+   (.gcode-folder-card strong, más arriba) que sí lo hace porque ahí el
+   ancho de cada tarjeta es fijo y angosto. La indentación por profundidad
+   es puramente estructural (cada .gcode-tree-children ya está anidado
+   dentro del nodo padre en el DOM real, ver renderLibraryFolderTree en
+   app.js) con una línea guía vertical, look de explorador de archivos. ── */
+.gcode-folder-tree { display: grid; gap: 2px; }
+.gcode-tree-node { display: grid; gap: 2px; }
+.gcode-tree-children {
+    display: grid;
+    gap: 2px;
+    margin-left: 9px;
+    padding-left: 11px;
+    border-left: 1px solid rgba(148, 163, 184, 0.16);
+    animation: gcodeTreeReveal 160ms ease;
+}
+@keyframes gcodeTreeReveal {
+    from { opacity: 0; transform: translateY(-2px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.gcode-tree-item {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 7px 8px 7px 5px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+}
+.gcode-tree-item:hover { background: rgba(var(--accent-rgb), 0.09); }
+.gcode-tree-item.active {
+    background: rgba(var(--accent-rgb), 0.15);
+}
+.gcode-tree-item.active::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.6);
+}
+.gcode-tree-item.active .gcode-tree-name { color: var(--accent); font-weight: 600; }
+.gcode-tree-caret,
+.gcode-tree-caret-spacer {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+}
+.gcode-tree-caret {
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.gcode-tree-caret:hover { background: rgba(var(--accent-rgb), 0.16); color: var(--text); }
+.gcode-tree-caret svg { transition: transform 160ms ease; }
+.gcode-tree-caret.expanded svg { transform: rotate(-180deg); }
+.gcode-tree-folder-icon { flex-shrink: 0; margin-top: 1px; color: var(--text-muted); transition: color 120ms ease; }
+.gcode-tree-item:hover .gcode-tree-folder-icon,
+.gcode-tree-item.active .gcode-tree-folder-icon { color: var(--accent); }
+.gcode-tree-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.gcode-tree-item:hover .gcode-tree-name { color: var(--text); }
+.gcode-tree-count {
+    flex-shrink: 0;
+    margin-top: 1px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    font-variant-numeric: tabular-nums;
+}
+.gcode-tree-item.active .gcode-tree-count { background: rgba(var(--accent-rgb), 0.2); color: var(--accent); }
+
 .gcode-browser-content { min-width: 0; padding: 12px 14px 10px; position: relative; z-index: 0; overflow: hidden; }
 .gcode-browser-content::before {
     content: attr(data-bg-label);
@@ -11767,13 +12131,60 @@ body.light .sidebar-order-select {
     pointer-events: none;
     user-select: none;
 }
-.gcode-folder-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(145px, 1fr); gap: 9px; margin-bottom: 12px; overflow-x: auto; scrollbar-width: thin; }
-.gcode-folder-card { min-width: 145px; height: 66px; display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid rgba(var(--accent-rgb), 0.2); border-radius: 10px; background: rgba(var(--accent-rgb), 0.045); color: var(--text); cursor: pointer; text-align: left; }
-.gcode-folder-card:hover { border-color: rgba(var(--accent-rgb), 0.64); background: rgba(var(--accent-rgb), 0.1); }
-.gcode-folder-card svg { color: var(--accent); }
-.gcode-folder-card strong { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 0.75rem; white-space: nowrap; }
-.gcode-folder-card small { color: var(--text-muted); font-size: 0.62rem; }
-.gcode-folder-menu { border: 0; background: transparent; color: var(--text-muted); }
+.gcode-folder-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(172px, 1fr); gap: 11px; margin-bottom: 14px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: thin; }
+.gcode-folder-card {
+    min-width: 172px;
+    height: 78px;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 11px;
+    padding: 12px 13px;
+    border: 1px solid rgba(var(--accent-rgb), 0.16);
+    border-radius: 14px;
+    background: linear-gradient(155deg, rgba(var(--accent-rgb), 0.07), rgba(var(--accent-rgb), 0.02));
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 140ms ease, background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+.gcode-folder-card:hover {
+    border-color: rgba(var(--accent-rgb), 0.55);
+    background: linear-gradient(155deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.04));
+    transform: translateY(-2px);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+}
+/* El ícono va en una placa propia con fondo suave -- antes era un SVG
+   suelto flotando sobre el fondo de la tarjeta, se veía plano. */
+.gcode-folder-card-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(var(--accent-rgb), 0.14);
+    color: var(--accent);
+}
+/* El wrapper del nombre+contador NECESITA min-width:0 -- sin esto, un grid
+   item no se achica más allá del ancho de su contenido (default
+   min-width:auto de CSS Grid), así que el ellipsis de abajo nunca llegaba a
+   activarse y el texto largo se salía de la tarjeta, encimándose con la
+   siguiente ("Biblioteca de tipografías" tapando a "CATOLICOS"). */
+.gcode-folder-card-body { min-width: 0; }
+.gcode-folder-card strong { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; font-weight: 650; white-space: nowrap; }
+.gcode-folder-card small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.65rem; }
+.gcode-folder-menu {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--text-muted);
+    transition: background 140ms ease, color 140ms ease;
+}
+.gcode-folder-card:hover .gcode-folder-menu { background: rgba(var(--accent-rgb), 0.22); color: var(--accent); }
 
 .gcode-modern-table { min-height: 430px; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 11px; overflow: hidden; }
 .gcode-modern-table .models-table { width: 100%; border-collapse: collapse; }
@@ -11792,7 +12203,12 @@ body.light .sidebar-order-select {
 
 .gcode-modern-table.is-grid { border: 0; overflow: visible; }
 .gcode-modern-table.is-grid .models-table thead { display: none; }
-.gcode-modern-table.is-grid .models-table,
+/* Antes .models-table Y su tbody eran grid container al mismo tiempo: con
+   el thead oculto, el tbody quedaba como único item del grid de la tabla
+   externa y se confinaba a una sola celda (~190px) -- heredando ese ancho
+   angosto a su propio grid interno de tarjetas, que colapsaba a una sola
+   columna hacia abajo. Solo el tbody debe ser el grid container real. */
+.gcode-modern-table.is-grid .models-table { display: block; }
 .gcode-modern-table.is-grid .models-table tbody { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .gcode-modern-table.is-grid .models-table tr { position: relative; min-width: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: auto; gap: 5px 8px; padding: 10px; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 11px; background: color-mix(in srgb, var(--card-bg) 24%, transparent); }
 .gcode-modern-table.is-grid .models-table td { height: auto; min-width: 0; padding: 0; border: 0; }
@@ -12045,7 +12461,24 @@ body.light .sidebar-order-select {
     color: #f59e0b;
 }
 
-/* ── Accesorios IoT (dashboard) ── */
+/* Ajustes > Accesorios: encendido/apagado/desconocido de un accesorio
+   individual (ver renderSettingsAccessoriesList en app.js). */
+.device-status-pill.on {
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+}
+
+.device-status-pill.off {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-muted);
+}
+
+.device-status-pill.unknown {
+    background: rgba(245, 158, 11, 0.14);
+    color: #f59e0b;
+}
+
+/* ── Acciones rápidas (dock del dashboard, ver renderAccessories en app.js) ── */
 
 /* Grilla fija de 3 columnas x 2 filas (6 fichas visibles) -- si hay menos
    de 6 accesorios, los espacios que faltan se rellenan con fichas vacías
@@ -12055,7 +12488,7 @@ body.light .sidebar-order-select {
    que las fichas se achican para seguir entrando todas sin scroll. */
 .accessories-list {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     grid-template-rows: repeat(var(--accessory-rows, 2), 1fr);
     height: 106px;
     gap: 8px;
@@ -12137,6 +12570,17 @@ body.light .sidebar-order-select {
     font-size: 0.8rem;
 }
 
+/* Estado activo de una escena doble/múltiple (ver renderAccessories). */
+.accessory-item-state-badge {
+    margin-left: 5px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+    font-size: 0.6rem;
+    font-weight: 700;
+}
+
 .accessory-item-meta {
     font-size: 0.65rem;
     color: var(--text-muted);
@@ -12166,21 +12610,6 @@ body.light .sidebar-order-select {
 .accessory-add-tile:hover {
     border-color: var(--accent);
     color: var(--accent);
-}
-
-.device-status-pill.on {
-    background: rgba(34, 197, 94, 0.16);
-    color: #22c55e;
-}
-
-.device-status-pill.off {
-    background: rgba(148, 163, 184, 0.12);
-    color: var(--text-muted);
-}
-
-.device-status-pill.unknown {
-    background: rgba(245, 158, 11, 0.14);
-    color: #f59e0b;
 }
 
 .accessory-power-btn {
@@ -12255,6 +12684,21 @@ body.light .sidebar-order-select {
 }
 
 .usb-port-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+/* Ajustes > Accesorios: mismo .usb-port-item-info de siempre, pero con el
+   ícono de tipo (extractor/ventilador/etc) a la izquierda del nombre. */
+.usb-port-item-info-with-icon {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.usb-port-item-info-text {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -12787,6 +13231,58 @@ body.light .sidebar-order-select {
 
 .usb-classify-name-actions .btn-file-action {
     justify-content: center;
+}
+
+/* Modal "Nueva escena" del dock del dashboard (ver #scene-modal en
+   index.html / openSceneModal en app.js). */
+.scene-modal-eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #22c55e;
+    margin-bottom: 2px;
+}
+
+.scene-actions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.scene-action-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.scene-action-row select {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    background: rgba(var(--accent-rgb), 0.05);
+    color: var(--text);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.scene-action-row input[type="color"] {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    padding: 2px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    background: transparent;
+    cursor: pointer;
+}
+
+.scene-action-row .theme-option-icon-btn {
+    flex-shrink: 0;
 }
 
 .usb-classify-scan-status {
@@ -13627,8 +14123,15 @@ main {
     flex: 1;
     min-width: 0;
     display: flex;
+    flex-direction: row;
+    gap: 17px;
+}
+
+.dashboard-dock-section {
+    flex: 1;
+    min-width: 0;
+    display: flex;
     flex-direction: column;
-    gap: 11px;
 }
 
 .dashboard-dock-section .section-title {
@@ -16887,6 +17390,14 @@ body[data-ai-active="true"] .nav-item[data-section="ai"]:hover { filter: brightn
    nada la acompañe", y eso incluye no compartir sitio con este dock. */
 body[data-ai-active="true"] .dashboard-fixed-stack { bottom: 78px; }
 
+/* La cortinilla es fixed/fuera del flujo -- no empuja contenido, así que
+   cualquier sección cuyo scroll llegue hasta el fondo real de la ventana
+   (ej. la vista mosaico de la biblioteca con muchas filas) termina con sus
+   últimas tarjetas tapadas por la píldora. Mismos 78px que ya se usan para
+   correr .dashboard-fixed-stack -- reserva ese mismo espacio en el scroll
+   principal para que el contenido pare antes de llegar a la cortinilla. */
+body[data-ai-active="true"] .content { padding-bottom: 78px; }
+
 .ai-capability-strip {
     pointer-events: auto;
     position: relative;
@@ -17371,7 +17882,10 @@ body.ai .dashboard-dock-section .section-title h2 {
     font-size: 1.15rem;
     font-weight: 700;
     line-height: 1.2;
-    color: var(--text-strong);
+    /* Sin columna que fije --dev-category (modo mixto, marcas sin migrar)
+       cae al texto fuerte de siempre -- ver la nota de devCardCategoryPulse
+       más abajo sobre por qué esa variable solo existe en modo grupo. */
+    color: var(--dev-category, var(--text-strong));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -17383,11 +17897,44 @@ body.ai .dashboard-dock-section .section-title h2 {
 .dev-conn.is-online { color: var(--status-ok); }
 
 /* Imagen de la máquina: protagonista en reposo, miniatura al trabajar. */
-.dev-hero { display: flex; justify-content: center; padding: 2px 0; }
+.dev-hero { position: relative; display: flex; justify-content: center; padding: 2px 0; }
 .dev-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .dev-hero .dev-art { width: 100%; max-width: 200px; height: 140px; }
 .dev-art.is-thumb { width: 62px; height: 62px; flex-shrink: 0; }
 .dev-card[data-tone="off"] .dev-art img { filter: grayscale(1); opacity: .5; }
+
+/* Botón "abrir panel" sobre la imagen grande: la ficha entera ya abre el
+   panel al hacer clic, esto es solo la señal visual de que ese gesto existe
+   -- apagado hasta el hover para no competir con la máquina como
+   protagonista. Solo tiene sentido en vista de imagen/cuadrícula: en modo
+   lista la miniatura de 40px no tiene espacio (ver más abajo). */
+.dev-hero-open-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--card-bg) 75%, transparent);
+    color: var(--text-soft);
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.dev-card:hover .dev-hero-open-btn,
+.dev-hero-open-btn:focus-visible {
+    opacity: 1;
+}
+.dev-hero-open-btn:hover {
+    color: var(--dev-category, var(--text-strong));
+    border-color: var(--dev-category, var(--accent-fill));
+    box-shadow: 0 0 10px 1px color-mix(in srgb, var(--dev-category, var(--accent-fill)) 55%, transparent);
+}
 
 /* Insignia de estado */
 .dev-badge {
@@ -17555,7 +18102,13 @@ body.ai .dashboard-dock-section .section-title h2 {
     transition: border-color .15s ease, color .15s ease, background .15s ease;
 }
 .dev-action svg { width: 21px; height: 21px; }
-.dev-action:hover { border-color: var(--accent-fill); color: var(--text-strong); }
+/* El resplandor usa el mismo --dev-category del bisel de la ficha: sin
+   columna que lo fije (modo mixto) cae al acento de siempre. */
+.dev-action:hover {
+    border-color: var(--dev-category, var(--accent-fill));
+    color: var(--dev-category, var(--text-strong));
+    box-shadow: 0 0 8px 1px color-mix(in srgb, var(--dev-category, var(--accent-fill)) 45%, transparent);
+}
 /* Las acciones con consecuencia se tiñen del color de su consecuencia. */
 .dev-action-ok {
     color: var(--status-ok);
@@ -17582,7 +18135,11 @@ body.ai .dashboard-dock-section .section-title h2 {
     background: var(--status-ok);
     border-color: var(--status-ok);
 }
-.dev-action-primary:hover { color: #fff; filter: brightness(1.06); }
+.dev-action-primary:hover {
+    color: #fff;
+    filter: brightness(1.06);
+    box-shadow: 0 0 10px 1px color-mix(in srgb, var(--dev-category, var(--status-ok)) 55%, transparent);
+}
 
 .dev-camera { border-radius: 14px; overflow: hidden; }
 
@@ -17608,8 +18165,9 @@ body.ai .dashboard-dock-section .section-title h2 {
     border-radius: var(--radius-sm);
 }
 .dev-card-head-right .machine-led-settings-btn:hover {
-    color: var(--text-strong);
+    color: var(--dev-category, var(--text-strong));
     background: var(--surface-sunken);
+    box-shadow: 0 0 8px 1px color-mix(in srgb, var(--dev-category, var(--accent-fill)) 45%, transparent);
 }
 .dev-card-head-right .machine-led-settings-btn.is-enabled { color: var(--status-ok); }
 
@@ -17631,6 +18189,9 @@ body.ai .dashboard-dock-section .section-title h2 {
 .printers-grid.list-view .dev-hero { padding: 0; }
 .printers-grid.list-view .dev-hero .dev-art,
 .printers-grid.list-view .dev-art.is-thumb { width: 40px; height: 40px; max-width: 40px; }
+/* Sin espacio para el botón "abrir panel" a 40px, y la fila entera ya es
+   igual de clicable en esta vista. */
+.printers-grid.list-view .dev-hero-open-btn { display: none; }
 
 /* Identidad en una línea: nombre, tipo e insignia uno al lado del otro. */
 .printers-grid.list-view .dev-card-head { flex: 1; min-width: 190px; align-items: center; }
@@ -17714,6 +18275,14 @@ body.ai .dashboard-dock-section .section-title h2 {
     height: 26px;
     flex: 0 0 26px;
     border-radius: 8px;
+}
+/* Mismo resplandor por categoría que el resto de botones de la ficha --
+   sobreescribe el acento fijo del plugin de cámaras solo dentro de la
+   cabecera de la ficha, sin tocar su uso en la sección Cámaras. */
+.dev-card-head-right .printer-card-camera-toggle:hover,
+.dev-card-head-right .printer-card-camera-toggle.is-enabled:hover {
+    border-color: var(--dev-category, var(--accent));
+    box-shadow: 0 0 8px 1px color-mix(in srgb, var(--dev-category, var(--accent)) 45%, transparent);
 }
 
 /* Palomita de estado en la esquina de los botones que son interruptor.

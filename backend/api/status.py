@@ -75,6 +75,18 @@ def _run_git(args, timeout: int = 6) -> Optional[str]:
         return None
 
 
+def _remote_branch_name(local_branch: str) -> str:
+    """Nombre de la rama remota a la que le hace push/pull `local_branch`.
+    Normalmente es el mismo nombre, pero un checkout puede tener una rama
+    local que trackea una remota con otro nombre (`branch.<x>.merge` en la
+    config de git) -- usar el nombre local a secas ahí hace que git fetch
+    busque una rama remota que no existe."""
+    upstream = _run_git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    if upstream and "/" in upstream:
+        return upstream.split("/", 1)[1]
+    return local_branch
+
+
 def _collect_active_machine_jobs() -> list[str]:
     """Devuelve trabajos que hacen inseguro actualizar o reiniciar NOPAL.
 
@@ -249,15 +261,16 @@ async def get_version_endpoint(user: dict = Depends(require_auth)):
     local_sha = _run_git(["rev-parse", "--short", "HEAD"])
     commit_date = _run_git(["log", "-1", "--format=%cI"])
     branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"]) or "main"
+    remote_branch = _remote_branch_name(branch)
 
     status_value = "unknown"
     ahead = 0
     behind = 0
     pending_commits = []
 
-    fetched = _run_git(["fetch", "--quiet", "origin", branch]) is not None
+    fetched = _run_git(["fetch", "--quiet", "origin", remote_branch]) is not None
     if fetched:
-        counts = _run_git(["rev-list", "--left-right", "--count", f"HEAD...origin/{branch}"])
+        counts = _run_git(["rev-list", "--left-right", "--count", f"HEAD...origin/{remote_branch}"])
         if counts:
             parts = counts.split()
             if len(parts) == 2:
@@ -265,7 +278,7 @@ async def get_version_endpoint(user: dict = Depends(require_auth)):
         status_value = "update_available" if behind > 0 else "up_to_date"
 
         if behind > 0:
-            log_output = _run_git(["log", "--oneline", f"HEAD..origin/{branch}"]) or ""
+            log_output = _run_git(["log", "--oneline", f"HEAD..origin/{remote_branch}"]) or ""
             pending_commits = [line for line in log_output.splitlines() if line.strip()]
 
     return {
@@ -336,6 +349,7 @@ async def update_app_endpoint(
         )
 
     branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"]) or "main"
+    remote_branch = _remote_branch_name(branch)
 
     # Datos, cargas y respaldos locales suelen ser directorios no rastreados y
     # no deben impedir una actualización. Sí bloqueamos cualquier modificación
@@ -351,8 +365,8 @@ async def update_app_endpoint(
     if before_sha is None:
         raise HTTPException(status_code=500, detail="No se pudo leer el estado de git")
 
-    _run_git(["fetch", "--quiet", "origin", branch])
-    pull_output = _run_git(["pull", "--ff-only", "origin", branch])
+    _run_git(["fetch", "--quiet", "origin", remote_branch])
+    pull_output = _run_git(["pull", "--ff-only", "origin", remote_branch])
     if pull_output is None:
         raise HTTPException(
             status_code=502,

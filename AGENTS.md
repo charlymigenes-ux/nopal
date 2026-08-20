@@ -428,6 +428,21 @@ rotar la key.
   `CNC_STATE_IMAGES` y `laserDeviceModel` elige el mapa según `kind`. CNC
   no tiene variantes por estado (solo encendida/apagada); no se inventó
   arte que no existe.
+- **El color de categoría (`--dev-category`) ya no es solo el bisel**: ahora
+  también tiñe `.dev-card-name` (nombre de la máquina) y el resplandor de
+  `:hover` de los botones de la ficha (`.dev-action`, `.dev-action-primary`,
+  el botón de escenas LED, el interruptor de cámara y el nuevo botón "abrir
+  panel"), todos con `var(--dev-category, <color de siempre>)` — el mismo
+  patrón del bisel, así que en modo mixto o en marcas sin migrar cae solo al
+  color neutro de siempre sin ningún `if` extra. Se agregó un botón nuevo,
+  `.dev-hero-open-btn` (esquina superior derecha de `.dev-hero`, icono
+  `expand` en `DEVICE_ICONS`), que hace explícito el gesto de "la ficha
+  entera abre el panel" — visible solo en vista de imagen/cuadrícula
+  (oculto en `.list-view`, sin espacio a 40px y la fila ya es igual de
+  clicable). Usa `data-dev-action="open-panel"`, un valor sin `case` propio
+  en el binding de clic de Klipper/láser-CNC — cae al mismo fallback que ya
+  usaba "Detalles" (`abrirPanelDeImpresora`/`irASeccionDeLaser`), sin
+  cablear nada nuevo en JS.
 
 ## Trabajo reciente en el plugin de cámaras (`plugins/camera-viewer`)
 

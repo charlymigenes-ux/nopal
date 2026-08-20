@@ -5,6 +5,10 @@ python-multipart==0.0.20
 aiofiles==25.1.0
 pillow==11.3.0
 requests==2.32.5
+# Progreso real de subida a la SD del láser (backend/services/laser_service.py
+# ::sd_upload_file_tracked) -- MultipartEncoderMonitor da un callback de
+# bytes-enviados sobre un requests.post normal, sin reescribir el cliente HTTP.
+requests-toolbelt==1.0.0
 websockets==15.0.1
 pyserial==3.5
 itsdangerous==2.2.0
