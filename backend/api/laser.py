@@ -1,5 +1,6 @@
 import asyncio
 import os
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -20,6 +21,7 @@ from backend.services.laser_service import (
     resume_job,
     cancel_job,
     send_raw_command,
+    job_active,
     ensure_listener,
     get_console_buffer,
     send_console_command,
@@ -44,6 +46,10 @@ from backend.services.laser_service import (
     sd_create_folder,
     sd_delete_entry,
     sd_upload_file,
+    sd_upload_file_tracked,
+    get_sd_upload_progress,
+    clear_sd_upload_progress,
+    sd_format_card,
     start_sd_job,
     has_sd_card,
     get_laser_history,
@@ -218,10 +224,19 @@ async def laser_info_endpoint(host: Optional[str] = None, user: dict = Depends(r
     return info
 
 
+# Mensaje uniforme para jog/consola/$$ mientras hay un trabajo propio corriendo
+# en ese láser -- ver el docstring de job_active() en laser_service.py: dejar
+# pasar cualquiera de estos de por medio desincroniza la cuenta de bytes del
+# buffer RX de GRBL y corta/aborta el grabado en curso.
+JOB_ACTIVE_MESSAGE = "Hay un grabado en curso en este láser -- esperá a que termine o cancelalo antes de mandar otro comando."
+
+
 @router.post("/api/laser/command")
 async def laser_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Envía un comando GRBL suelto (jog, $H, $X, etc.)."""
     target = host or get_active_host()
+    if job_active(target):
+        raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
     await ensure_listener_ready(target)
     success = send_raw_command(target, command)
     if not success:
@@ -241,6 +256,8 @@ async def laser_jog_endpoint(
     de Marlin) se arma en el backend según el firmware registrado para ese
     host, para que el frontend no tenga que saber qué protocolo habla la placa."""
     target = host or get_active_host()
+    if job_active(target):
+        raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
     if not await jog(target, axis, distance, feed):
         raise HTTPException(status_code=502, detail="No se pudo mover el eje")
     return {"success": True}
@@ -366,7 +383,10 @@ async def laser_console_endpoint(host: Optional[str] = None, count: int = 100, u
 @router.post("/api/laser/console")
 async def laser_console_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Envía un comando desde la consola del láser."""
-    success = await send_console_command(host or get_active_host(), command)
+    target = host or get_active_host()
+    if job_active(target):
+        raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
+    success = await send_console_command(target, command)
     if not success:
         raise HTTPException(status_code=502, detail="No se pudo enviar el comando")
     return {"success": True}
@@ -382,7 +402,10 @@ async def laser_settings_endpoint(host: Optional[str] = None, user: dict = Depen
 @router.post("/api/laser/settings")
 async def laser_settings_update_endpoint(key: str = Form(...), value: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Actualiza un parámetro $$ individual."""
-    result = await set_grbl_setting(host or get_active_host(), key, value)
+    target = host or get_active_host()
+    if job_active(target):
+        raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
+    result = await set_grbl_setting(target, key, value)
     if not result.get("success"):
         raise HTTPException(status_code=502, detail=result.get("message", "No se pudo actualizar el parámetro"))
     return {"success": True}
@@ -523,6 +546,20 @@ async def laser_sd_delete_endpoint(
     return {"success": True}
 
 
+@router.post("/api/laser/sd/format")
+async def laser_sd_format_endpoint(host: Optional[str] = Form(None), user: dict = Depends(require_role("admin"))):
+    """Formatea la tarjeta SD -- borra TODO su contenido, sin vuelta atrás.
+    Admin-only server-side (no solo oculto en el frontend). Ver el
+    comentario de sd_format_card: la acción de ESP3D usada acá no está
+    confirmada contra hardware real."""
+    target = host or get_active_host()
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(None, sd_format_card, target)
+    if not success:
+        raise HTTPException(status_code=502, detail="No se pudo formatear la tarjeta SD")
+    return {"success": True}
+
+
 @router.post("/api/laser/sd/upload")
 async def laser_sd_upload_endpoint(
     path: str = Form(""),
@@ -530,14 +567,22 @@ async def laser_sd_upload_endpoint(
     file: UploadFile = File(...),
     user: dict = Depends(require_auth),
 ):
-    """Sube un archivo (desde tu computadora) directo a la tarjeta SD de la placa."""
+    """Sube un archivo (desde tu computadora) directo a la tarjeta SD de la
+    placa. No espera a que termine: el tramo lento de verdad es NOPAL->placa
+    por WiFi, así que arranca en segundo plano y devuelve un upload_id para
+    sondear con GET /api/laser/sd/upload-progress/{upload_id} -- si este
+    endpoint esperara el resultado completo (como antes), el navegador no
+    tendría forma de mostrar progreso real de ESE tramo."""
     target = host or get_active_host()
     contents = await file.read()
+    upload_id = uuid.uuid4().hex
     loop = asyncio.get_event_loop()
-    success = await loop.run_in_executor(None, sd_upload_file, target, path, file.filename, contents)
-    if not success:
-        raise HTTPException(status_code=502, detail="No se pudo subir el archivo a la SD")
-    return {"success": True}
+    # run_in_executor ya devuelve un Future que arranca a correr en el hilo
+    # del executor de inmediato -- NO se envuelve en asyncio.create_task
+    # (eso espera una corrutina, no un Future) ni se await-ea (justo lo que
+    # queremos evitar: que este endpoint se quede esperando el tramo lento).
+    loop.run_in_executor(None, sd_upload_file_tracked, target, path, file.filename, contents, upload_id)
+    return {"upload_id": upload_id}
 
 
 @router.post("/api/laser/sd/upload-from-library")
@@ -547,7 +592,9 @@ async def laser_sd_upload_from_library_endpoint(
     host: Optional[str] = Form(None),
     user: dict = Depends(require_auth),
 ):
-    """Envía un archivo ya subido a la biblioteca de G-code de NOPAL directo a la SD de la placa."""
+    """Envía un archivo ya subido a la biblioteca de G-code de NOPAL directo
+    a la SD de la placa -- mismo criterio de segundo plano + upload_id que
+    laser_sd_upload_endpoint (ver ahí el motivo)."""
     file_path = safe_section_path("gcode", gcode_path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado en la biblioteca")
@@ -557,8 +604,27 @@ async def laser_sd_upload_from_library_endpoint(
 
     filename = os.path.basename(gcode_path)
     target = host or get_active_host()
+    upload_id = uuid.uuid4().hex
     loop = asyncio.get_event_loop()
-    success = await loop.run_in_executor(None, sd_upload_file, target, sd_path, filename, contents)
-    if not success:
-        raise HTTPException(status_code=502, detail="No se pudo subir el archivo a la SD")
+    loop.run_in_executor(None, sd_upload_file_tracked, target, sd_path, filename, contents, upload_id)
+    return {"upload_id": upload_id}
+
+
+@router.get("/api/laser/sd/upload-progress/{upload_id}")
+async def laser_sd_upload_progress_endpoint(upload_id: str, user: dict = Depends(require_auth)):
+    """Estado real de una subida en curso (ver sd_upload_file_tracked).
+    Cuando status ya es "done"/"error" el frontend deja de sondear y llama
+    a esto una última vez con clear=true para liberar el diccionario en
+    memoria -- si nunca lo hace (se cerró la pestaña, por ejemplo) queda
+    ahí sin crecer sin límite porque cada id es un hex de 32 caracteres
+    único, no hay reuso que lo pise."""
+    progress = get_sd_upload_progress(upload_id)
+    if progress is None:
+        raise HTTPException(status_code=404, detail="upload_id no encontrado")
+    return progress
+
+
+@router.post("/api/laser/sd/upload-progress/{upload_id}/clear")
+async def laser_sd_upload_progress_clear_endpoint(upload_id: str, user: dict = Depends(require_auth)):
+    clear_sd_upload_progress(upload_id)
     return {"success": True}

@@ -74,7 +74,13 @@
 // ============================================================================
 
 #define FW_VERSION "1.3"
-#define DEVICE_ROLE "accessory-sim800l"
+// "role" tiene que ser el literal "accessory" a secas -- es lo que
+// accessory_service.py exige (por WiFi y por USB) para reconocer una
+// placa NOPAL; con un sufijo la placa contestaba bien pero el backend la
+// reportaba como "no encontrada" en silencio. La variante de hardware va
+// en DEVICE_BOARD, campo aparte (mismo patrón que nopal_accessory.ino).
+#define DEVICE_ROLE "accessory"
+#define DEVICE_BOARD "sim800l_generic"
 
 const bool RELAY_ACTIVE_LOW = true;
 
@@ -682,6 +688,10 @@ String buildStatusJson() {
   json += "{";
   json += "\"role\":\"";
   json += DEVICE_ROLE;
+  json += "\",";
+
+  json += "\"board\":\"";
+  json += DEVICE_BOARD;
   json += "\",";
 
   json += "\"firmware\":\"";

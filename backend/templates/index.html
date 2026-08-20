@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=327">
+    <link rel="stylesheet" href="/static/css/style.css?v=328">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -418,9 +418,15 @@
                             <div class="dashboard-dock-main">
                                 <div class="dashboard-dock-section">
                                     <div class="section-title">
-                                        <h2 data-i18n="accessoriesTitle">Accesorios</h2>
+                                        <h2 data-i18n="activeScenesTitle">Escenas activas</h2>
                                     </div>
-                                    <div id="accessories-list" class="accessories-list"></div>
+                                    <div id="dashboard-scenes-list" class="accessories-list"></div>
+                                </div>
+                                <div class="dashboard-dock-section">
+                                    <div class="section-title">
+                                        <h2 data-i18n="accessoriesTitle">Acciones rápidas</h2>
+                                    </div>
+                                    <div id="dashboard-quickactions-list" class="accessories-list"></div>
                                 </div>
                             </div>
                             <div class="dashboard-dock-matrix" id="dashboard-dock-matrix" hidden>
@@ -664,6 +670,10 @@
 
                             <div class="gcode-browser-layout">
                                 <aside class="gcode-inner-sidebar">
+                                    <section class="gcode-folder-tree-wrap" id="gcode-folder-tree-wrap" hidden>
+                                        <div class="gcode-sidebar-heading"><strong data-i18n="libraryFolders">Carpetas</strong></div>
+                                        <div id="gcode-folder-tree" class="gcode-folder-tree"></div>
+                                    </section>
                                     <section>
                                         <div class="gcode-sidebar-heading"><strong>★ <span data-i18n="libraryFavorites">Favoritos</span></strong><button id="gcode-favorites-all" type="button" data-i18n="libraryViewAll">Ver todos</button></div>
                                         <div id="gcode-favorites-list" class="gcode-sidebar-list"></div>
@@ -917,38 +927,93 @@
                             </div>
                         </div>
 
-                        <div class="laser-hub-panel" id="laser-sd-card" data-hub-panel="memory" hidden>
-                            <div class="laser-sd-toolbar">
-                                <div class="laser-sd-breadcrumb" id="laser-sd-breadcrumb"></div>
-                                <span class="card-header-std-note" id="laser-sd-space"></span>
+                        <div class="laser-hub-panel card-collapsible" id="laser-sd-card" data-hub-panel="memory" hidden>
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="laserSdTitle">MEMORIA SD</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/desplegar">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
                             </div>
 
-                            <div class="laser-sd-list" id="laser-sd-list"></div>
+                            <div class="laser-sd-body">
+                                <div class="laser-sd-breadcrumb" id="laser-sd-breadcrumb"></div>
 
-                            <div class="laser-sd-actions-bar">
-                                <div class="laser-sd-toolbar-actions">
-                                    <button type="button" class="btn-icon-dark" id="laser-sd-newfolder-btn" title="Nueva carpeta">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-                                    </button>
-                                    <button type="button" class="btn-icon-dark" id="laser-sd-reload-btn" title="Recargar">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                                    </button>
-                                    <label class="btn-icon-dark laser-sd-upload-label" title="Subir archivo">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                <div class="laser-sd-search-row">
+                                    <label class="gcode-library-search laser-sd-search">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.7" y2="16.7"/></svg>
+                                        <input type="search" id="laser-sd-search-input" data-i18n-placeholder="laserSdSearchPlaceholder" placeholder="Buscar archivo...">
+                                        <button type="button" class="laser-sd-search-clear-btn" id="laser-sd-search-clear-btn" title="Limpiar búsqueda" hidden>
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                        </button>
+                                    </label>
+                                    <label class="gcode-select-control laser-sd-type-control">
+                                        <select id="laser-sd-type-filter">
+                                            <option value="all" data-i18n="laserSdAllTypes">Todos los tipos</option>
+                                        </select>
+                                    </label>
+                                    <label class="gcode-select-control laser-sd-sort-control">
+                                        <select id="laser-sd-sort-select">
+                                            <option value="name-asc" data-i18n="laserSdSortNameAsc">Nombre A-Z</option>
+                                            <option value="name-desc" data-i18n="laserSdSortNameDesc">Nombre Z-A</option>
+                                            <option value="size-desc" data-i18n="laserSdSortSizeDesc">Tamaño</option>
+                                        </select>
+                                    </label>
+                                    <div class="gcode-view-switch">
+                                        <button type="button" id="laser-sd-view-grid-btn" data-view="grid" title="Vista de cuadrícula">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                                        </button>
+                                        <button type="button" id="laser-sd-view-list-btn" class="active" data-view="list" title="Vista de lista">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="laser-sd-actions-row">
+                                    <label class="gcode-primary-action laser-sd-upload-label" title="Importar archivos">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        <span data-i18n="laserSdImportBtn">Importar archivos</span>
                                         <input type="file" id="laser-sd-upload-input" hidden>
                                     </label>
-                                </div>
-                                <div class="laser-sd-from-library">
-                                    <select id="laser-sd-library-select" class="settings-select"></select>
-                                    <button type="button" class="btn-file-action btn-file-action-accent" id="laser-sd-send-library-btn">
-                                        <span data-i18n="laserSdSendFromLibrary">Enviar a la SD</span>
+                                    <button type="button" class="gcode-toolbar-action laser-sd-labeled-action" id="laser-sd-reload-btn">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                        <span data-i18n="laserSdSyncBtn">Sincronizar</span>
                                     </button>
+                                    <div class="laser-sd-row-menu-wrap laser-sd-more-wrap">
+                                        <button type="button" class="gcode-toolbar-action laser-sd-more-action-btn" id="laser-sd-more-btn" title="Más opciones">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+                                        </button>
+                                        <div class="laser-sd-row-menu laser-sd-more-menu" id="laser-sd-more-menu" hidden>
+                                            <button type="button" class="laser-sd-row-menu-item" id="laser-sd-newfolder-btn" data-i18n="laserSdNewFolderBtn">Nueva carpeta</button>
+                                            <button type="button" class="laser-sd-row-menu-item" id="laser-sd-open-library-btn" data-i18n="laserSdOpenLibraryBtn">Enviar desde biblioteca</button>
+                                            <div class="laser-sd-more-menu-divider"></div>
+                                            <button type="button" class="laser-sd-row-menu-item laser-sd-row-menu-item-amber" id="laser-sd-format-btn" hidden data-i18n="laserSdFormatBtn">Formatear SD</button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="upload-progress-track laser-sd-upload-progress" id="laser-sd-upload-progress" hidden>
-                                <div class="upload-progress-fill" id="laser-sd-upload-progress-fill" style="width:0%"></div>
-                                <span class="upload-progress-label" id="laser-sd-upload-progress-label">0%</span>
+                                <div class="upload-progress-track laser-sd-upload-progress" id="laser-sd-upload-progress" hidden>
+                                    <div class="upload-progress-fill" id="laser-sd-upload-progress-fill" style="width:0%"></div>
+                                    <span class="upload-progress-label" id="laser-sd-upload-progress-label">0%</span>
+                                </div>
+
+                                <div class="laser-sd-columns-head">
+                                    <span class="laser-sd-col-name" data-i18n="laserSdColName">Nombre</span>
+                                    <span class="laser-sd-col-size" data-i18n="laserSdColSize">Tamaño</span>
+                                    <span class="laser-sd-col-modified" data-i18n="laserSdColModified">Modificado</span>
+                                    <span class="laser-sd-col-actions"></span>
+                                </div>
+
+                                <div class="laser-sd-list" id="laser-sd-list"></div>
+
+                                <div class="laser-sd-capacity-bar">
+                                    <span class="laser-sd-capacity-count" id="laser-sd-file-count"></span>
+                                    <span class="laser-sd-capacity-used" id="laser-sd-space"></span>
+                                    <div class="laser-sd-capacity-track"><div class="laser-sd-capacity-fill" id="laser-sd-capacity-fill" style="width:0%"></div></div>
+                                    <span class="laser-sd-capacity-pct" id="laser-sd-capacity-pct"></span>
+                                </div>
                             </div>
                         </div>
 
@@ -2706,11 +2771,12 @@
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                                 </button>
                             </div>
-                            <p data-i18n="accessoriesSettingsBody">Conecta extractores, ventiladores, bombas o compresores controlados por relé HTTP o Home Assistant, y enciéndelos o apágalos desde el panel principal.</p>
+                            <p data-i18n="accessoriesSettingsBody">Conecta extractores, ventiladores, bombas o compresores controlados por relé HTTP, Home Assistant o un accesorio Arduino/ESP32, y enciéndelos o apágalos desde aquí.</p>
                             <button type="button" class="btn-file-action" id="accessory-add-btn-settings">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                 <span data-i18n="accessoryAddTitle">Agregar accesorio</span>
                             </button>
+                            <div id="settings-accessories-list" class="usb-ports-list"></div>
                             <div class="devices-subcard">
                                 <div class="devices-subcard-header">
                                     <span class="card-header-std-icon">
@@ -4329,6 +4395,76 @@
         </div>
     </div>
 
+    <!-- "Enviar desde biblioteca" (Memoria SD del láser) -- antes era un
+         <select> + botón apretado dentro del menú "..."; ahora es un popup
+         con la lista real de la biblioteca de G-code, selección múltiple
+         (checkbox), y el progreso REAL de cada subida se ve acá mismo (ver
+         pollSdUploadProgress en app.js) -- se suben de a uno, no en
+         paralelo, para no saturar la placa. -->
+    <div id="laser-sd-library-modal" class="modal">
+        <div class="modal-backdrop" id="laser-sd-library-modal-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content laser-sd-library-modal-content">
+            <button class="modal-close" id="laser-sd-library-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 data-i18n="laserSdLibraryModalTitle">Enviar desde biblioteca</h2>
+            <p class="laser-card-subtitle" data-i18n="laserSdLibraryModalHint">Elegí uno o varios archivos ya subidos a la biblioteca del láser.</p>
+            <div class="laser-sd-library-list" id="laser-sd-library-list"></div>
+            <div class="laser-sd-library-progress" id="laser-sd-library-progress" hidden>
+                <div class="laser-sd-library-progress-label" id="laser-sd-library-progress-label"></div>
+                <div class="upload-progress-track">
+                    <div class="upload-progress-fill" id="laser-sd-library-progress-fill" style="width:0%"></div>
+                    <span class="upload-progress-label" id="laser-sd-library-progress-pct">0%</span>
+                </div>
+            </div>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action btn-file-action-danger" id="laser-sd-library-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+                <button type="button" class="btn-file-action" id="laser-sd-library-send-btn" disabled>
+                    <span data-i18n="laserSdSendFromLibrary">Enviar desde biblioteca</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crear/editar escena (macro de accesorios) desde el dock del
+         dashboard -- mismo formulario que ya existe dentro del plugin
+         arduino-accessories (nombre + filas de acción dinámicas), para que
+         "+ " en Escenas activas/Acciones rápidas no tenga que mandar a otra
+         sección a crear la escena. -->
+    <div id="scene-modal" class="modal">
+        <div class="modal-backdrop" id="scene-modal-backdrop"></div>
+        <div class="modal-content app-confirm-modal-content">
+            <button class="modal-close" id="scene-modal-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="modal-icon modal-icon-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+            </div>
+            <small class="scene-modal-eyebrow" data-i18n="workshopMacroEyebrow">MACRO DEL TALLER</small>
+            <h2 data-i18n="newSceneTitle">Nueva escena</h2>
+            <p class="laser-card-subtitle" data-i18n="sceneEditorHint">Aplica varias acciones sobre tus relés y luces con un solo botón.</p>
+            <div class="usb-classify-name-field">
+                <label for="scene-name-input" data-i18n="accessoryNameLabel">Nombre</label>
+                <input type="text" id="scene-name-input" autocomplete="off" maxlength="60" placeholder="Ej. Taller ON">
+            </div>
+            <div id="scene-actions-list" class="scene-actions-list"></div>
+            <button type="button" class="btn-file-action" id="scene-add-action-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span data-i18n="addActionBtn">Agregar acción</span>
+            </button>
+            <div class="usb-classify-name-actions">
+                <button type="button" class="btn-file-action btn-file-action-danger" id="scene-cancel-btn">
+                    <span data-i18n="cancelAction">Cancelar</span>
+                </button>
+                <button type="button" class="btn-file-action" id="scene-save-btn">
+                    <span data-i18n="createSceneBtn">Crear escena</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Asistente guiado CNC: 4 pasos dentro de un mismo modal, mismo
          mecanismo de pasos-dentro-de-un-modal que #usb-classify-modal. -->
     <div id="cnc-wizard-modal" class="modal">
@@ -4861,11 +4997,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=44"></script>
+    <script src="/static/js/translations.js?v=45"></script>
     <script src="/static/js/translations-pt-BR.js?v=5"></script>
     <script src="/static/js/translations-fr.js?v=5"></script>
     <script src="/static/js/translations-de.js?v=5"></script>
-    <script src="/static/js/app.js?v=273"></script>
+    <script src="/static/js/app.js?v=274"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

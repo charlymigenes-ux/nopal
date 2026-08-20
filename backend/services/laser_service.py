@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 import websockets
+from requests_toolbelt.multipart.encoder import MultipartEncoder, MultipartEncoderMonitor
 
 from backend.services import marlin_driver
 
@@ -632,10 +633,34 @@ def _send_serial_command(host: str, command: str) -> bool:
         return False
 
 
-def send_raw_command(host: str, command: str) -> bool:
+def job_active(host: str) -> bool:
+    """True si hay un trabajo propio (stream o SD) corriendo/pausado en ese
+    host -- usado por send_raw_command para no dejar que jog/consola/$$ se
+    cuelen en medio del streaming de un trabajo y desincronicen la cuenta de
+    bytes libres del buffer RX real de GRBL (ver _run_job): si un comando
+    ajeno recibe su propio "ok" mientras el trabajo está en curso, ese "ok"
+    se contabiliza por error como si perteneciera al trabajo, el buffer real
+    de GRBL (128 bytes) termina desbordado sin que NOPAL se entere, y el
+    grabado se corta/aborta a los pocos segundos -- confirmado con Sculpfun
+    por USB. Los endpoints de jog/consola/$$ usan esto para devolver un
+    error claro en vez de dejar que send_raw_command falle en silencio."""
+    job = _jobs.get(host)
+    return bool(job and job.state in ("running", "paused"))
+
+
+def send_raw_command(host: str, command: str, *, allow_during_job: bool = False) -> bool:
     """Envía un comando GRBL. Por red vía HTTP (ESP3D no responde el resultado en
     el cuerpo, la respuesta real llega por websocket); por USB, escribiendo
-    directo al puerto serie."""
+    directo al puerto serie.
+
+    Mientras hay un trabajo propio activo en ese host, se rechaza cualquier
+    comando "en cola" (todo lo que no sea uno de los bytes realtime de GRBL
+    en REALTIME_SERIAL_COMMANDS, que GRBL procesa aparte sin tocar su buffer
+    RX) que no venga del propio streaming del trabajo (allow_during_job=True)
+    -- ver el docstring de job_active()."""
+    if not allow_during_job and command not in REALTIME_SERIAL_COMMANDS and job_active(host):
+        logger.warning(f"[{host}] Comando bloqueado (hay un trabajo en curso): {command!r}")
+        return False
     if _is_usb_host(host):
         return _send_serial_command(host, command)
     try:
@@ -838,6 +863,27 @@ def sd_delete_entry(host: str, path: str, name: str, is_dir: bool) -> bool:
         return False
 
 
+def sd_format_card(host: str) -> bool:
+    """Formatea (borra TODO) la tarjeta SD -- mismo patrón HTTP que
+    sd_delete_entry/sd_create_folder (`action=` sobre /upload), pero a
+    diferencia de esos dos, NUNCA se probó contra hardware real: no hay
+    forma de verificar sin arriesgar los datos de una SD real, así que
+    `action=format` es la mejor suposición según el protocolo ESP3D, no un
+    comando confirmado. Si esta placa no lo soporta, ESP3D debería
+    responder con error y ese mensaje crudo es lo que ve el usuario (ver
+    laser_sd_format_endpoint) -- no se simula éxito."""
+    try:
+        response = requests.get(
+            f"http://{host}/upload",
+            params={"action": "format"},
+            timeout=SD_HTTP_TIMEOUT,
+        )
+        return response.ok
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] Operación SD (formatear) falló: {e}")
+        return False
+
+
 def sd_upload_file(host: str, path: str, filename: str, file_bytes: bytes) -> bool:
     norm_path = _normalize_sd_path(path)
     full_name = f"{norm_path}{filename}"
@@ -853,6 +899,82 @@ def sd_upload_file(host: str, path: str, filename: str, file_bytes: bytes) -> bo
     except requests.exceptions.RequestException as e:
         logger.warning(f"[{host}] Operación SD (subir {filename}) falló: {e}")
         return False
+
+
+# ── Progreso real de subida a la SD ──
+#
+# sd_upload_file (arriba) sube todo de un tirón y el que lo llama se queda
+# esperando sin saber cuánto lleva -- suficiente para un archivo chico, pero
+# esta placa tiene archivos reales de hasta ~30 MB y el tramo NOPAL->placa
+# por WiFi es lento de verdad (a diferencia del tramo navegador->NOPAL, que
+# el propio navegador ya mide y siempre es case casi instantáneo en LAN).
+# Este diccionario en memoria (no hace falta persistirlo, una subida no
+# sobrevive a un reinicio del proceso) es lo que sondea
+# GET /api/laser/sd/upload-progress/{upload_id} mientras la subida real
+# corre en un hilo aparte (ver laser_sd_upload_endpoint/
+# laser_sd_upload_from_library_endpoint, que la lanzan sin esperarla).
+_sd_upload_progress: Dict[str, Dict[str, Any]] = {}
+_sd_upload_progress_lock = threading.Lock()
+
+
+def sd_upload_file_tracked(host: str, path: str, filename: str, file_bytes: bytes, upload_id: str) -> None:
+    """Igual que sd_upload_file, pero reporta bytes-enviados real (no
+    simulado) vía MultipartEncoderMonitor -- pensada para correr en un hilo
+    de executor, nunca se espera directamente desde el endpoint que la
+    dispara (por eso no devuelve nada, el resultado se lee de
+    get_sd_upload_progress)."""
+    norm_path = _normalize_sd_path(path)
+    full_name = f"{norm_path}{filename}"
+    size_field = f"{full_name}S"
+    total = len(file_bytes)
+    with _sd_upload_progress_lock:
+        _sd_upload_progress[upload_id] = {"sent": 0, "total": total, "status": "uploading", "error": None}
+
+    def _on_progress(monitor: MultipartEncoderMonitor) -> None:
+        with _sd_upload_progress_lock:
+            entry = _sd_upload_progress.get(upload_id)
+            if entry is not None:
+                entry["sent"] = monitor.bytes_read
+
+    try:
+        encoder = MultipartEncoder(fields={
+            "path": norm_path,
+            size_field: str(total),
+            "myfile[]": (full_name, file_bytes),
+        })
+        monitor = MultipartEncoderMonitor(encoder, _on_progress)
+        # Los archivos reales en esta placa llegan a ~30 MB y suben lento
+        # por WiFi -- 120s (el timeout de sd_upload_file) se queda corto.
+        response = requests.post(
+            f"http://{host}/upload",
+            data=monitor,
+            headers={"Content-Type": monitor.content_type},
+            timeout=600,
+        )
+        with _sd_upload_progress_lock:
+            entry = _sd_upload_progress.get(upload_id)
+            if entry is not None:
+                entry["status"] = "done" if response.ok else "error"
+                if not response.ok:
+                    entry["error"] = f"HTTP {response.status_code}"
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] Operación SD (subir {filename}, trackeada) falló: {e}")
+        with _sd_upload_progress_lock:
+            entry = _sd_upload_progress.get(upload_id)
+            if entry is not None:
+                entry["status"] = "error"
+                entry["error"] = str(e)
+
+
+def get_sd_upload_progress(upload_id: str) -> Optional[Dict[str, Any]]:
+    with _sd_upload_progress_lock:
+        entry = _sd_upload_progress.get(upload_id)
+        return dict(entry) if entry is not None else None
+
+
+def clear_sd_upload_progress(upload_id: str) -> None:
+    with _sd_upload_progress_lock:
+        _sd_upload_progress.pop(upload_id, None)
 
 
 # ── Conexión (websocket o serie) única y compartida por host ──
@@ -1381,7 +1503,7 @@ async def _run_job(job: LaserJob):
                 needed = len(next_line) + 1  # +1 por el salto de línea
                 if pending_lengths and buffer_used + needed > GRBL_RX_BUFFER_SIZE:
                     break
-                sent = await loop.run_in_executor(None, send_raw_command, job.host, next_line)
+                sent = await loop.run_in_executor(None, lambda line=next_line: send_raw_command(job.host, line, allow_during_job=True))
                 if not sent:
                     job.state = "error"
                     job.error_message = f"No se pudo enviar la línea {job.current + 1}"
@@ -1438,7 +1560,7 @@ async def _run_sd_job(job: LaserJob):
     para correr desde SD, por eso la placa lo ignoraba sin error."""
     sd_filename = job.filename
     sent = await asyncio.get_event_loop().run_in_executor(
-        None, send_raw_command, job.host, f"$SD/Run={sd_filename}"
+        None, lambda: send_raw_command(job.host, f"$SD/Run={sd_filename}", allow_during_job=True)
     )
     if not sent:
         job.state = "error"
