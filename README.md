@@ -5,6 +5,8 @@
 [![Status](https://img.shields.io/badge/status-active%20development-e6b422)](./CHANGELOG.md)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-39D62E)](requirements.txt)
 
+[![Try NOPAL Live](https://img.shields.io/badge/%F0%9F%8C%B5_Try_NOPAL_Live-39D62E?style=for-the-badge)](https://charlymigenes-ux.github.io/nopal-demo/)
+
 <table>
   <tr>
     <td><img width="630" alt="NOPAL dashboard" src="docs/images/dashboard.png" /></td>
@@ -35,6 +37,7 @@
 * [Features](#features)
 * [Architecture](#architecture)
 * [Requirements](#requirements)
+* [Live Demo](#live-demo)
 * [Installation](#installation)
 * [Configuration](#configuration)
 * [Usage](#usage)
@@ -177,6 +180,16 @@ NOPAL is a lightweight self-hosted web application, no external database require
 * A **Spoolman** server on the network, for the Materials plugin.
 
 Nothing above is required to run NOPAL — the model library and UI work on their own; each integration and plugin only activates what it can find.
+
+---
+
+## Live Demo
+
+**[Try NOPAL in your browser →](https://charlymigenes-ux.github.io/nopal-demo/)**
+
+The real dashboard running on simulated data. No hardware, no install, nothing to sign up for: two 3D printers, a laser and a CNC that update by themselves, cameras, plugins, the model library and the AI assistant. Pause a print and it pauses.
+
+Nothing shown is real hardware, and reloading the page restores everything, so feel free to break things.
 
 ---
 
@@ -338,7 +351,7 @@ Potential future areas for NOPAL include:
 
 NOPAL is free and open source, and stays that way. If it saves you time in your workshop, you can support its development:
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/nopal)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=fff)](https://ko-fi.com/nopal_dash)
 [![Donate with PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=fff)](https://www.paypal.com/donate/?hosted_button_id=WFK56JHFAR8TL)
 
 Contributions go toward hardware for compatibility testing — the boards and machines NOPAL can't support yet because nobody has one to test against. You can also help without spending anything by [registering hardware you already own](https://charlymigenes-ux.github.io/nopal/colabora/).
