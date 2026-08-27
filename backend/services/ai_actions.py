@@ -116,6 +116,67 @@ async def set_accessory_power(accessory_id: str, on: bool) -> Dict[str, Any]:
     return {"ok": True, "accessory_id": accessory_id, "on": bool(on)}
 
 
+async def create_scene(name: str, actions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Crea una escena de accesorios nueva a partir de los que ya existen.
+
+    `actions` usa el mismo formato que el editor del panel: cada entrada
+    lleva un `accessory_id` y luego `on` (bool) para un relé, o `color`
+    ([r,g,b]) para iluminación.
+    """
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    escenas = get_loaded_plugin_module("arduino-accessories", "services.accessory_scenes")
+    accesorios_mod = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if escenas is None or accesorios_mod is None:
+        raise ActionError("El plugin de Automatización de Taller no está instalado")
+
+    crear = getattr(escenas, "create_scene", None)
+    if crear is None:
+        raise ActionError("Esta versión del plugin no permite crear escenas desde la IA")
+
+    nombre = str(name or "").strip()
+    if not nombre:
+        raise ActionError("La escena necesita un nombre")
+    if not actions:
+        raise ActionError("La escena necesita al menos una acción")
+
+    # Se validan los accessory_id contra los reales ANTES de crear: el
+    # modelo puede alucinar un id, y una escena guardada apuntando a un
+    # accesorio inexistente falla recién al ejecutarse, lejos de acá.
+    registrados = {a.get("id"): a for a in accesorios_mod.get_accessories()}
+    for accion in actions:
+        accessory_id = accion.get("accessory_id")
+        if accessory_id not in registrados:
+            conocidos = ", ".join(
+                f"{a.get('name')} ({a.get('id')})" for a in registrados.values()
+            ) or "ninguno"
+            raise ActionError(
+                f"No existe el accesorio '{accessory_id}'. Los registrados son: {conocidos}"
+            )
+        if "on" not in accion and "color" not in accion:
+            raise ActionError(
+                f"La acción sobre '{registrados[accessory_id].get('name')}' necesita 'on' o 'color'"
+            )
+
+    resultado = crear(nombre, "normal", list(actions))
+    if inspect.isawaitable(resultado):
+        resultado = await resultado
+
+    detalle = []
+    for accion in actions:
+        etiqueta = registrados[accion["accessory_id"]].get("name")
+        if "color" in accion:
+            detalle.append(f"{etiqueta} en color {tuple(accion['color'])}")
+        else:
+            detalle.append(f"{etiqueta} {'encendido' if accion.get('on') else 'apagado'}")
+
+    return {
+        "ok": True,
+        "scene": resultado,
+        "summary": f"Escena «{nombre}» creada con {len(actions)} acción(es): " + "; ".join(detalle),
+    }
+
+
 async def activate_scene(scene_id: str) -> Dict[str, Any]:
     """Activa una escena de accesorios ya guardada."""
     from backend.services.plugin_loader_service import get_loaded_plugin_module
@@ -410,6 +471,43 @@ ACTIONS: Dict[str, Action] = {
             },
             risk="low",
             role="any",
+        ),
+        Action(
+            "create_scene",
+            "Crea una escena de ACCESORIOS nueva (por ejemplo 'Ciclo de ventilación' o 'Modo "
+            "noche') combinando relés y luces del taller. Consulta antes los accesorios "
+            "disponibles para usar sus id reales; no inventes ninguno.",
+            create_scene,
+            {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Nombre visible de la escena."},
+                    "actions": {
+                        "type": "array",
+                        "description": (
+                            "Acciones de la escena. Cada una lleva accessory_id y luego 'on' "
+                            "(booleano) para un relé, o 'color' ([r,g,b]) para iluminación."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "accessory_id": {"type": "string"},
+                                "on": {"type": "boolean"},
+                                "color": {
+                                    "type": "array",
+                                    "items": {"type": "integer"},
+                                    "minItems": 3,
+                                    "maxItems": 3,
+                                },
+                            },
+                            "required": ["accessory_id"],
+                        },
+                    },
+                },
+                "required": ["name", "actions"],
+            },
+            risk="confirm",
+            role="admin",
         ),
         Action(
             "send_matrix_announcement",

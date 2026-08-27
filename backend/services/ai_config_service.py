@@ -73,6 +73,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "tier_models": {},
     "api_key": "",
     "timeout_s": 60,
+    # 512 alcanza para las respuestas de reporte que pide NOPAL. Ojo con
+    # los modelos de razonamiento (Gemini "thinking", DeepSeek-R1, QwQ): su
+    # borrador interno gasta de este mismo presupuesto, así que con 512 la
+    # respuesta final llega truncada a media frase. Con esos conviene subirlo
+    # a 2048+ desde Ajustes. El borrador en sí no se muestra -- lo filtra
+    # ai_provider.strip_reasoning().
     "max_tokens": 512,
     # Bajo a propósito: acá se quiere que el modelo reporte datos del
     # taller, no que redacte con creatividad.
@@ -146,6 +152,18 @@ PROVIDER_PRESETS = [
         "cloud": True,
         "api_key_required": True,
         "note": "Vía su capa de compatibilidad con OpenAI. Requiere cuenta de pago.",
+    },
+    {
+        "id": "google",
+        "name": "Google AI Studio (Gemini)",
+        # Capa de compatibilidad con OpenAI de Google: misma idea que el
+        # preset de Anthropic, no es un proveedor aparte en código. La ruta
+        # no termina en /v1 como el resto -- de ahí el nombre distinto en el
+        # mensaje de error de OpenAICompatibleProvider, que asume ese sufijo.
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "cloud": True,
+        "api_key_required": True,
+        "note": "La clave se saca gratis en aistudio.google.com/apikey. Tiene nivel sin costo con límites por minuto.",
     },
     {
         "id": "groq",
