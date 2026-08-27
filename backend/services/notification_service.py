@@ -3,7 +3,12 @@ import time
 from typing import Any, Dict, List
 
 from backend.services.klipper_service import get_all_printers_status
-from backend.services.laser_service import get_laser_jobs_with_errors, get_registered_lasers_status
+from backend.services.laser_service import (
+    get_active_job_hosts,
+    get_laser_jobs_with_errors,
+    get_registered_lasers_status,
+)
+from backend.services import tunascreen_service
 from backend.services.plugin_loader_service import get_loaded_plugin_module
 from backend.utils import is_git_update_available
 
@@ -43,6 +48,56 @@ async def _get_accessories_status() -> List[Dict[str, Any]]:
     return await module.get_accessories_status()
 
 
+def _get_extraction_off(accessories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Accesorios de extracción confirmados APAGADOS.
+
+    Se descarta a propósito el estado None (placa que no contesta): "no sé"
+    no es "apagado", y tratarlo como tal dispararía una alerta de seguridad
+    falsa cada vez que la placa tenga un hipo de red. Ese caso ya tiene su
+    propio aviso, más suave, en el recorrido de accesorios de abajo."""
+    module = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if module is None:
+        return []
+    return [a for a in module.get_extraction_accessories(accessories) if a.get("on") is False]
+
+
+async def _get_machine_alarms() -> List[Dict[str, Any]]:
+    """Láseres y CNC trabados. GRBL los reporta en Alarm/Door -- finales de
+    carrera disparados, puerta abierta -- y en ese estado la máquina SÍ
+    responde, así que el chequeo de "desconectado" de más abajo no los ve.
+    Sin esto una CNC en alarma contaba como 0 errores: el badge en blanco, el
+    panel diciendo "Todo en orden" y NOPAL Intelligence respondiendo lo mismo,
+    con una máquina parada que necesita atención física.
+
+    Se lee del snapshot normalizado de tunascreen_service -- el mismo que ya
+    alimenta las fichas del panel y que cachea 2.5 s -- para no volver a
+    sondear cada placa en cada consulta del badge, que es frecuente.
+
+    Solo láser y CNC: las impresoras ya tienen su propio chequeo de job
+    "paused"/"error" en get_notifications, y contarlas acá las duplicaría.
+    """
+    try:
+        machines = await tunascreen_service.list_machines()
+    except Exception:
+        # Un fallo agregando alertas no debe tumbar el resto de avisos.
+        return []
+    items: List[Dict[str, Any]] = []
+    for machine in machines:
+        if machine.get("type") not in ("laser", "cnc"):
+            continue
+        if str((machine.get("status") or {}).get("state") or "").lower() != "error":
+            continue
+        label = machine.get("name") or machine.get("id") or "Dispositivo"
+        items.append({
+            "id": f"machine-alarm:{machine.get('id')}",
+            "severity": "error",
+            "source": "laser",
+            "section": "cnc" if machine.get("type") == "cnc" else "laser",
+            "message": f"{label} en alarma",
+        })
+    return items
+
+
 async def get_notifications() -> Dict[str, Any]:
     """Agrega señales que ya existen en otros servicios (nada de tracking
     nuevo, sin concepto de leído/no-leído) — el conteo es "cuántos problemas
@@ -79,6 +134,8 @@ async def get_notifications() -> Dict[str, Any]:
             section = "cnc" if laser.get("kind") == "cnc" else "laser"
             items.append({"id": f"laser:{laser.get('host')}", "severity": "error", "source": "laser", "section": section, "message": f"{label} desconectado"})
 
+    items.extend(await _get_machine_alarms())
+
     for job in get_laser_jobs_with_errors():
         section = laser_kind_by_host.get(job["host"], "laser")
         items.append({"id": f"laser-job:{job['host']}", "severity": "error", "source": "laser", "section": section, "message": f"Trabajo en {job['host']} con error"})
@@ -87,6 +144,23 @@ async def get_notifications() -> Dict[str, Any]:
         if accessory.get("on") is None:
             label = accessory.get("name", "Accesorio")
             items.append({"id": f"accessory:{label}", "severity": "warning", "source": "accessory", "section": "dashboard", "message": f"{label} no responde"})
+
+    # Láser trabajando sin extracción: es el aviso más serio de la lista, por
+    # eso "error" y no "warning". get_active_job_hosts() solo mira _jobs en
+    # memoria (cero E/S), pero por eso mismo NO ve trabajos externos -- uno
+    # mandado desde LightBurn o desde la SD de la máquina no aparece acá.
+    extraction_off = _get_extraction_off(accessories)
+    if extraction_off:
+        apagados = ", ".join(a.get("name") or "Extractor" for a in extraction_off)
+        for job in get_active_job_hosts():
+            host = job.get("host")
+            items.append({
+                "id": f"laser-sin-extraccion:{host}",
+                "severity": "error",
+                "source": "laser",
+                "section": laser_kind_by_host.get(host, "laser"),
+                "message": f"Trabajo en curso en {host} con {apagados} apagado",
+            })
 
     if update_available:
         items.append({"id": "update", "severity": "info", "source": "update", "section": "settings", "message": "Actualización disponible"})
