@@ -501,9 +501,63 @@ async def get_plugins() -> Dict[str, Any]:
     return {"count": len(plugins), "plugins": plugins}
 
 
+async def get_arduino_boards() -> Dict[str, Any]:
+    """Placas Arduino/ESP32/ESP8266 registradas en el taller.
+
+    Es el hardware, no lo que controla: modelo, dirección (IP o puerto
+    USB), versión de firmware y si responde ahora mismo. Los relés y luces
+    que cuelgan de estas placas son otra cosa -- eso es get_accessories.
+
+    `online: false` significa que la placa no contestó al consultarla, no
+    que esté desconfigurada.
+    """
+    pinmap = get_loaded_plugin_module("arduino-accessories", "services.board_pinmap_service")
+    servicio = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if pinmap is None or servicio is None:
+        return _unavailable("El plugin de Automatización de Taller no está instalado o no está cargado")
+
+    try:
+        registradas = pinmap.list_boards()
+        telemetria = await servicio.get_configured_boards_telemetry(registradas)
+    except Exception as exc:
+        logger.warning(f"No se pudieron consultar las placas para la capa de IA: {exc}")
+        return _unavailable("No se pudo consultar el estado de las placas")
+
+    # get_configured_boards_telemetry() no devuelve el modelo, la IP ni el
+    # firmware en el nivel superior: eso vive dentro de "telemetry", que es
+    # lo que la placa contestó recién. Arriba solo quedan id, name,
+    # catalog_id, transport y online.
+    por_id = {b.get("id"): b for b in registradas}
+
+    placas = []
+    for board in telemetria or []:
+        telemetry = board.get("telemetry") or {}
+        # La dirección se toma del registro y no solo de la telemetría: una
+        # placa que no contestó tiene telemetry vacía, pero su IP o puerto
+        # configurado se sabe igual y es justo el dato que hace falta para
+        # ir a ver por qué no responde.
+        registrada = por_id.get(board.get("id")) or {}
+        placas.append({
+            "id": board.get("id"),
+            "name": board.get("name"),
+            # El modelo que la placa declara de sí misma le gana al del
+            # catálogo, que es lo que el usuario eligió al darla de alta y
+            # puede haber quedado desactualizado.
+            "model": telemetry.get("board") or board.get("catalog_id"),
+            "address": telemetry.get("ip") or registrada.get("ip") or registrada.get("device"),
+            "firmware": telemetry.get("firmware"),
+            "online": bool(board.get("online")),
+        })
+
+    return {"count": len(placas), "boards": placas}
+
+
 async def get_accessories() -> Dict[str, Any]:
-    """Accesorios del taller: relés, tiras LED, ventiladores, sensores y
-    placas Arduino/ESP32 registradas, con su estado de encendido.
+    """Accesorios del taller: relés, tiras LED, ventiladores y sensores,
+    con su estado de encendido y CON LA PLACA QUE LOS CONTROLA
+    (`board_name` y `board_id`), así que esta sola herramienta alcanza para
+    responder qué accesorios cuelgan de cada placa. Para los datos de la
+    placa en sí (modelo, firmware, si responde) está get_arduino_boards.
 
     Viene del plugin de Automatización de Taller. `on: null` significa que el
     accesorio no respondió, no que esté apagado — la distinción importa para
@@ -518,16 +572,54 @@ async def get_accessories() -> Dict[str, Any]:
         logger.warning(f"No se pudo consultar los accesorios para la capa de IA: {exc}")
         return _unavailable("No se pudo consultar el estado de los accesorios")
 
+    # Cada accesorio guarda en su config la IP (o el puerto USB) de la placa
+    # que lo controla: eso es lo que los vincula. Se resuelve contra el
+    # registro de placas para poder devolver además su nombre, que es como
+    # el usuario las llama ("ESP32 (16 ARO)"), no una IP suelta. Sin esto la
+    # IA ve dos listas sueltas y no puede responder qué cuelga de cada placa.
+    pinmap = get_loaded_plugin_module("arduino-accessories", "services.board_pinmap_service")
+    placas_por_direccion: Dict[str, Dict[str, Any]] = {}
+    if pinmap is not None:
+        try:
+            for placa in pinmap.list_boards():
+                for direccion in (placa.get("ip"), placa.get("device")):
+                    if direccion:
+                        placas_por_direccion[direccion] = placa
+        except Exception as exc:
+            # Que falle el registro de placas no debe tumbar el listado de
+            # accesorios: se pierde el vínculo, no el dato principal.
+            logger.warning(f"No se pudo resolver la placa de cada accesorio: {exc}")
+
+    def _vinculo(accesorio: Dict[str, Any]) -> Dict[str, Any]:
+        # Solo se toman los campos de ubicación. El resto de config queda
+        # afuera a propósito: lleva ota_username y ota_password (redactada,
+        # pero igual no tiene por qué llegar al modelo).
+        config = accesorio.get("config") or {}
+        direccion = config.get("ip") or config.get("device")
+        placa = placas_por_direccion.get(direccion) or {}
+        return {
+            "address": direccion,
+            "board_id": placa.get("id"),
+            "board_name": placa.get("name"),
+        }
+
     return {
         "count": len(accesorios),
         "accessories": [
             {
                 "id": a.get("id"),
                 "name": a.get("name"),
+                # Relé, tira LED, ventilador... sin esto la IA no puede
+                # distinguir "prender la luz" de "prender el extractor".
+                "kind": a.get("kind"),
                 "driver": a.get("driver"),
                 "on": a.get("on"),
                 "responding": a.get("on") is not None,
-                "led_color": a.get("led_color"),
+                # led_color vive dentro de "config", no en el nivel
+                # superior: leerlo de arriba daba siempre None y la IA
+                # nunca supo de qué color estaba una tira.
+                "led_color": (a.get("config") or {}).get("led_color"),
+                **_vinculo(a),
             }
             for a in accesorios
         ],
@@ -944,10 +1036,17 @@ TOOLS: Dict[str, Tool] = {
             core=True,
         ),
         Tool(
+            "get_arduino_boards",
+            "Placas Arduino/ESP32/ESP8266 del taller: modelo, IP o puerto, firmware y si "
+            "responden. Es el hardware; para los relés y luces que controlan, usa get_accessories.",
+            get_arduino_boards,
+        ),
+        Tool(
             "get_accessories",
-            "Accesorios del taller: relés, tiras LED, ventiladores, sensores y placas Arduino/ESP32, "
-            "con su estado de encendido. Si 'responding' es false, el accesorio no contestó — no está "
-            "apagado, está incomunicado.",
+            "Accesorios del taller: relés, tiras LED, ventiladores y sensores, con su estado de "
+            "encendido y con la placa que controla a cada uno (board_name/board_id) — úsala para "
+            "responder qué accesorios tiene cada placa. Si 'responding' es false, el accesorio no "
+            "contestó — no está apagado, está incomunicado.",
             get_accessories,
         ),
         Tool(
