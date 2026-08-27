@@ -20370,6 +20370,7 @@ let aiPresets = [];
 let aiDataSent = [];
 let aiConfigCache = null;
 let aiBusy = false;
+        aiSyncOrb();
 let aiConversationId = null;
 
 // Una acción de riesgo NO se ejecutó: el backend la dejó esperando. Se pinta
@@ -21142,6 +21143,58 @@ function aiMachineCard(machine) {
         </article>`;
 }
 
+// --- Nucleo IA: contexto del taller y estado visual de la esfera ----------
+// El contexto sale de /api/dashboard/summary, el MISMO agregado que ya usa el
+// panel de control: no hay endpoint nuevo ni tracking nuevo. Los campos que
+// ese resumen devuelve null (power, ambient cuando no hay potencia en
+// Cotizador ni placa elegida como sensor) NO se pintan -- misma regla que el
+// resto de la app: antes ocultar la ficha que mostrar un numero vacio.
+async function aiUpdateContext() {
+    const elDev = document.getElementById('ai-context-devices');
+    const elJobs = document.getElementById('ai-context-jobs');
+    const elAll = document.getElementById('ai-context-overall');
+    if (!elDev && !elJobs && !elAll) return;
+    try {
+        const d = await aiFetchJson('/api/dashboard/summary');
+        const devs = d.devices || {};
+        let on = 0, total = 0;
+        Object.keys(devs).forEach(k => {
+            on += (devs[k] || {}).online || 0;
+            total += (devs[k] || {}).total || 0;
+        });
+        if (elDev) elDev.textContent = total ? `${on}/${total} ${t('aiContextOnline')}` : '—';
+        if (elJobs) elJobs.textContent = String((d.jobs || {}).total_active ?? 0);
+        if (elAll) {
+            const a = d.alerts || {};
+            if ((a.error || 0) > 0) { elAll.textContent = `${a.error} ${t('aiContextErrors')}`; elAll.dataset.tone = 'error'; }
+            else if ((a.warning || 0) > 0) { elAll.textContent = `${a.warning} ${t('aiContextWarnings')}`; elAll.dataset.tone = 'warn'; }
+            else { elAll.textContent = t('aiContextAllGood'); elAll.dataset.tone = 'ok'; }
+        }
+    } catch (_) {
+        // Silencioso a proposito: el contexto es un adorno informativo, no
+        // vale romper el panel entero si el resumen falla.
+    }
+}
+
+// La esfera NO reacciona a audio (no hay captura de voz en el proyecto):
+// refleja lo unico que se sabe de verdad -- si la IA esta trabajando y si ya
+// hay conversacion. "listening" queda para cuando exista microfono.
+function aiSyncOrb(estado) {
+    const orb = document.getElementById('ai-orb');
+    const core = document.getElementById('ai-core');
+    const txt = document.querySelector('#ai-orb-status .ai-orb-status-text');
+    if (!orb) return;
+    const pensando = estado === 'thinking' || (estado === undefined && aiBusy);
+    orb.dataset.state = pensando ? 'thinking' : 'idle';
+    if (txt) txt.textContent = pensando ? t('aiOrbThinking') : t('aiOrbReady');
+    if (core) {
+        // Compacta en cuanto el usuario escribe algo: el saludo automatico de
+        // aiResetThread() no cuenta como conversacion.
+        const thread = document.getElementById('ai-thread');
+        core.classList.toggle('is-compact', !!(thread && thread.querySelector('.ai-msg-user')));
+    }
+}
+
 async function aiLoadMachines() {
     const container = document.getElementById('ai-machines');
     if (!container) return;
@@ -21151,6 +21204,7 @@ async function aiLoadMachines() {
         container.innerHTML = machines.length
             ? machines.map(aiMachineCard).join('')
             : `<p class="ai-empty">${escapeHtml(t('aiNoMachines'))}</p>`;
+        aiUpdateContext();
     } catch (error) {
         container.innerHTML = `<p class="ai-empty">${escapeHtml(error.message)}</p>`;
     }
@@ -21190,14 +21244,19 @@ function aiAppendMessage(role, text, meta = null) {
         (meta ? `<div class="ai-msg-meta">${escapeHtml(meta)}</div>` : '');
     thread.appendChild(bubble);
     thread.scrollTop = thread.scrollHeight;
+    aiSyncOrb();
     return bubble;
 }
 
 function aiRenderSuggestions() {
     const container = document.getElementById('ai-suggestions');
     if (!container) return;
-    container.innerHTML = aiSuggestedQuestions()
+    // Marquesina: el contenido se duplica y la cinta se desliza hasta -50%,
+    // donde arranca la segunda copia -- el salto de vuelta a 0% es invisible y
+    // el desfile no se corta. Mismo truco que .ai-capability-track.
+    const botones = aiSuggestedQuestions()
         .map(q => `<button type="button" class="ai-suggestion">${escapeHtml(q)}</button>`).join('');
+    container.innerHTML = `<div class="ai-suggestions-track">${botones}${botones}</div>`;
     container.querySelectorAll('.ai-suggestion').forEach(button => {
         button.addEventListener('click', () => {
             const input = document.getElementById('ai-question');
@@ -21216,6 +21275,7 @@ function aiResetThread() {
     if (thread) thread.innerHTML = '';
     aiAppendMessage('assistant', t('aiGreeting'));
     aiRenderSuggestions();
+    aiSyncOrb();
 }
 
 async function askAi() {
@@ -21227,6 +21287,7 @@ async function askAi() {
     if (!question) return;
 
     aiBusy = true;
+    aiSyncOrb('thinking');
     if (input) input.value = '';
     const sendBtn = document.getElementById('ai-send-btn');
     if (sendBtn) sendBtn.disabled = true;
@@ -21264,6 +21325,7 @@ async function askAi() {
         aiStartCooldown(error.retryAfter);
     } finally {
         aiBusy = false;
+        aiSyncOrb();
         if (sendBtn) sendBtn.disabled = aiCooldownRemaining() > 0;
     }
 }

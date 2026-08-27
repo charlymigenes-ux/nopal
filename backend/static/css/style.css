@@ -18321,3 +18321,870 @@ body.ai .dashboard-dock-section .section-title h2 {
    siempre: la capa en el nivel 0 y todo lo demás por encima. */
 .dev-card > .printer-thermal-layer { z-index: 0; }
 .dev-card > *:not(.printer-thermal-layer) { position: relative; z-index: 1; }
+
+/* ==========================================================================
+   NOPAL Intelligence — núcleo IA y composición del panel
+   ==========================================================================
+   El panel deja de ser "chat + lateral" y pasa a orbitar un núcleo central.
+   Todo usa los tokens del tema (--accent-*, --surface-*, --text-*) en vez de
+   hex fijos, para que siga siendo legible en los 6 temas y no solo en oscuro.
+
+   El movimiento es ambiental, no telemetría: NO hay captura de audio detrás
+   (no existe getUserMedia en el proyecto), así que el ecualizador comunica
+   "la IA está viva", nunca un nivel real de micrófono. Si algún día se
+   agrega voz, .ai-orb-eq es el gancho.
+   ========================================================================== */
+
+.ai-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 232px) minmax(0, 1fr) minmax(0, 336px);
+    gap: 16px;
+    align-items: stretch;
+    min-height: 0;
+}
+
+.ai-stage-side {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.ai-context-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 2px; }
+.ai-context-row { display: flex; flex-direction: column; gap: 3px; }
+.ai-context-label {
+    font-size: 10px; font-weight: 600; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--text-faint);
+}
+.ai-context-value { font-size: 14px; font-weight: 600; color: var(--text-strong); }
+.ai-context-accent { color: var(--accent-ink); }
+
+.ai-quick-card { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* Las sugerencias ya existían como fila suelta bajo el chat; acá viven dentro
+   de una tarjeta y se apilan, que es lo que las hace leerse como accesos
+   sugeridos por la IA y no como una barra de botones. */
+.ai-quick-card .ai-suggestions {
+    display: flex; flex-direction: column; gap: 7px;
+    padding: 4px 2px 2px; margin: 0; overflow-y: auto; min-height: 0;
+}
+.ai-quick-card .ai-suggestion { width: 100%; text-align: left; }
+
+/* --- núcleo ------------------------------------------------------------- */
+
+.ai-core {
+    display: flex; flex-direction: column; align-items: stretch;
+    gap: 12px; min-width: 0; min-height: 0;
+}
+
+.ai-orb-zone {
+    display: flex; align-items: center; justify-content: center; gap: 20px;
+    padding: 4px 0 2px;
+    transition: height .45s cubic-bezier(.4, 0, .2, 1), opacity .3s ease;
+}
+
+.ai-orb-eq { display: flex; align-items: center; gap: 3px; height: 92px; }
+.ai-orb-eq i {
+    width: 3px; height: var(--h); border-radius: 2px;
+    background: var(--accent-fill); transform-origin: center;
+    animation: ai-orb-eq 1.05s ease-in-out infinite; animation-delay: var(--d);
+}
+.ai-orb-eq i:nth-child(odd) { opacity: .72; }
+@keyframes ai-orb-eq { 0%, 100% { transform: scaleY(.22); } 50% { transform: scaleY(1); } }
+
+.ai-orb {
+    position: relative; flex: 0 0 auto;
+    width: 300px; height: 300px;
+    color: var(--accent-ink);
+    transition: width .45s cubic-bezier(.4, 0, .2, 1), height .45s cubic-bezier(.4, 0, .2, 1);
+}
+
+.ai-orb-ripple {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid currentColor; opacity: 0;
+    animation: ai-orb-ripple 3.6s ease-out infinite;
+}
+.ai-orb-ripple:nth-of-type(2) { animation-delay: 1.2s; }
+.ai-orb-ripple:nth-of-type(3) { animation-delay: 2.4s; }
+@keyframes ai-orb-ripple {
+    0%   { transform: scale(.82); opacity: .5; }
+    100% { transform: scale(1.34); opacity: 0; }
+}
+
+.ai-orb-ring-dashed {
+    position: absolute; inset: -14px; border-radius: 50%;
+    border: 1.5px dashed color-mix(in srgb, currentColor 30%, transparent);
+    animation: ai-orb-spin 26s linear infinite;
+}
+.ai-orb-ring-arc {
+    position: absolute; inset: 6px; border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: color-mix(in srgb, currentColor 75%, transparent);
+    border-bottom-color: color-mix(in srgb, currentColor 32%, transparent);
+    animation: ai-orb-spin 11s linear infinite reverse;
+}
+.ai-orb-ring-inner {
+    position: absolute; inset: 20px; border-radius: 50%;
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+}
+@keyframes ai-orb-spin { to { transform: rotate(360deg); } }
+
+.ai-orb-particle {
+    position: absolute; width: 3px; height: 3px; border-radius: 50%;
+    background: currentColor; box-shadow: 0 0 7px currentColor; opacity: 0;
+    animation: ai-orb-drift 4.6s linear infinite; animation-delay: var(--d);
+}
+@keyframes ai-orb-drift {
+    0%   { transform: translate(0, 0); opacity: 0; }
+    15%  { opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)); opacity: 0; }
+}
+
+.ai-orb-body {
+    position: absolute; inset: 30px; border-radius: 50%; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+    /* La retícula de puntos es el "LED": un radial-gradient repetido cada 11px.
+       Va primero para quedar por encima de los degradados de fondo. */
+    background:
+        radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent-ink) 12%, transparent) 0 1.1px, transparent 1.6px) 0 0 / 11px 11px,
+        radial-gradient(circle at 38% 30%, color-mix(in srgb, var(--accent-ink) 30%, transparent), transparent 58%),
+        radial-gradient(circle at 50% 62%, color-mix(in srgb, var(--accent-fill) 26%, transparent), transparent 66%),
+        radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent-fill) 14%, var(--surface-base)) 0%, var(--surface-base) 70%);
+    border: 1px solid color-mix(in srgb, var(--accent-ink) 55%, transparent);
+    box-shadow:
+        0 0 60px color-mix(in srgb, var(--accent-fill) 30%, transparent),
+        0 0 130px color-mix(in srgb, var(--accent-fill) 14%, transparent),
+        inset 0 0 62px color-mix(in srgb, var(--accent-fill) 20%, transparent);
+    animation: ai-orb-breathe 4.2s ease-in-out infinite;
+}
+@keyframes ai-orb-breathe {
+    0%, 100% { transform: scale(1);    opacity: .9; }
+    50%      { transform: scale(1.04); opacity: 1; }
+}
+
+.ai-orb-scan {
+    position: absolute; left: 0; right: 0; height: 56px;
+    background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent-ink) 16%, transparent), transparent);
+    animation: ai-orb-scan 5.2s ease-in-out infinite;
+}
+@keyframes ai-orb-scan {
+    0%       { transform: translateY(-140px); opacity: 0; }
+    20%, 80% { opacity: .5; }
+    100%     { transform: translateY(140px);  opacity: 0; }
+}
+
+.ai-orb-mark { width: 34px; height: 34px; filter: drop-shadow(0 0 8px currentColor); }
+.ai-orb-eyes { display: flex; gap: 36px; align-items: flex-end; }
+.ai-orb-eyes svg,
+.ai-orb-mouth {
+    color: color-mix(in srgb, var(--accent-ink) 88%, white);
+    filter: drop-shadow(0 0 9px currentColor);
+}
+.ai-orb-eyes svg { width: 52px; height: 29px; transform-origin: center bottom; animation: ai-orb-blink 6.4s ease-in-out infinite; }
+.ai-orb-mouth { width: 74px; height: 34px; }
+@keyframes ai-orb-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    96%           { transform: scaleY(.12); }
+}
+
+/* Puntos de "pensando": ocultos salvo en el estado thinking. */
+.ai-orb-think { display: none; gap: 7px; }
+.ai-orb-think i {
+    width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+    animation: ai-orb-think 1.2s ease-in-out infinite;
+}
+.ai-orb-think i:nth-child(2) { animation-delay: .18s; }
+.ai-orb-think i:nth-child(3) { animation-delay: .36s; }
+@keyframes ai-orb-think { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
+
+/* --- estados ------------------------------------------------------------ */
+
+/* Escuchando/respondiendo: más brillo y ecualizador al máximo. */
+.ai-orb[data-state="listening"] .ai-orb-body { animation-duration: 2.6s; }
+
+/* Procesando: los ojos pasan a línea, aparece el pensadero y el arco acelera.
+   Se mantiene el color de acento del tema; no se fuerza violeta como en el
+   concepto, para no salirse de la paleta cuando el tema no es el oscuro. */
+.ai-orb[data-state="thinking"] .ai-orb-eyes,
+.ai-orb[data-state="thinking"] .ai-orb-mouth { display: none; }
+.ai-orb[data-state="thinking"] .ai-orb-think { display: flex; }
+.ai-orb[data-state="thinking"] .ai-orb-ring-arc { animation-duration: 1.4s; }
+.ai-orb[data-state="thinking"] .ai-orb-ripple { animation-duration: 2s; }
+
+/* Reposo profundo: sin ecualizador y respiración lenta. */
+.ai-orb[data-state="idle"] ~ .ai-orb-eq i,
+.ai-orb-zone:has(.ai-orb[data-state="idle"]) .ai-orb-eq i { animation-duration: 2.6s; opacity: .45; }
+
+/* Conversación en curso: el núcleo cede el espacio al hilo. */
+.ai-core.is-compact .ai-orb { width: 132px; height: 132px; }
+.ai-core.is-compact .ai-orb-body { inset: 14px; gap: 4px; }
+.ai-core.is-compact .ai-orb-mark { width: 0; height: 0; }
+.ai-core.is-compact .ai-orb-eyes { gap: 16px; }
+.ai-core.is-compact .ai-orb-eyes svg { width: 24px; height: 14px; }
+.ai-core.is-compact .ai-orb-mouth { width: 34px; height: 16px; }
+.ai-core.is-compact .ai-orb-eq { height: 44px; }
+.ai-core.is-compact .ai-orb-ripple { display: none; }
+
+/* --- barra de estado ---------------------------------------------------- */
+
+.ai-orb-statusbar { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.ai-orb-status {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 8px 20px; border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--accent-ink) 50%, transparent);
+    background: color-mix(in srgb, var(--accent-fill) 11%, transparent);
+    font-size: 13px; font-weight: 600; color: var(--text-strong);
+}
+.ai-orb-status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent-ink); box-shadow: 0 0 10px var(--accent-ink);
+}
+.ai-orb-new { flex: 0 0 auto; }
+
+/* --- hilo --------------------------------------------------------------- */
+
+/* Vacío el hilo no debe reservar altura: el núcleo es la pantalla de reposo. */
+.ai-core .ai-thread { flex: 1; min-height: 0; }
+.ai-core .ai-thread:empty { flex: 0 0 0; min-height: 0; padding: 0; border: 0; }
+
+@media (max-width: 1280px) {
+    .ai-stage { grid-template-columns: minmax(0, 1fr); }
+    .ai-stage-side { flex-direction: row; flex-wrap: wrap; }
+    .ai-stage-side > .ai-card { flex: 1 1 260px; }
+    .ai-orb { width: 220px; height: 220px; }
+}
+
+/* Respeta a quien pide menos movimiento: el núcleo se queda quieto pero
+   sigue leyéndose igual, porque el estado lo comunica el texto, no la
+   animación. */
+@media (prefers-reduced-motion: reduce) {
+    .ai-orb-ripple, .ai-orb-particle, .ai-orb-scan,
+    .ai-orb-ring-dashed, .ai-orb-ring-arc,
+    .ai-orb-body, .ai-orb-eyes svg, .ai-orb-eq i, .ai-orb-think i {
+        animation: none;
+    }
+    .ai-orb-ripple, .ai-orb-particle, .ai-orb-scan { opacity: 0; }
+}
+
+/* Estado general del contexto, con los mismos colores de severidad que ya
+   usa el resto del panel (eventos, notificaciones). */
+.ai-context-value[data-tone="ok"]    { color: var(--status-ok); }
+.ai-context-value[data-tone="warn"]  { color: var(--status-warn); }
+.ai-context-value[data-tone="error"] { color: var(--status-danger); }
+
+/* .ai-layout conservaba su rejilla vieja ("machines machines" / "main side")
+   y .ai-stage, al no tener area asignada, caia en una sola celda estrecha
+   arrastrando adentro el nucleo y el lateral. Ahora el reparto en tres
+   columnas lo hace .ai-stage, asi que la plantilla de arriba se colapsa a una
+   sola columna. Va al final del archivo a proposito: gana por orden de
+   fuente sobre la definicion original y sobre su media query de 1023px. */
+.ai-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "machines" "stage";
+}
+.ai-stage { grid-area: stage; }
+
+/* .ai-orb-body: legibilidad sobre wallpaper.
+   Con un tema de fondo fotografico se transparentaba el taller DENTRO de la
+   esfera y la cara perdia contraste. En vez de forzar un color opaco (que
+   romperia los temas claros), se difumina lo que quede detras: sigue
+   leyendose como vidrio/holograma pero la cara siempre gana. */
+.ai-orb-body {
+    backdrop-filter: blur(9px) saturate(.55) brightness(.55);
+    -webkit-backdrop-filter: blur(9px) saturate(.55) brightness(.55);
+}
+
+/* La pastilla de estado se partia en tres renglones cuando la columna quedo
+   estrecha; el texto es corto y debe leerse de un golpe. */
+.ai-orb-status { white-space: nowrap; }
+.ai-orb-statusbar { flex-wrap: wrap; }
+
+/* .ai-side seguia con "grid-area: side" de la rejilla vieja de .ai-layout.
+   Dentro de .ai-stage ese nombre NO existe, asi que el navegador lo trataba
+   como area implicita y sacaba la columna entera fuera del grid explicito:
+   Conversaciones aparecia flotando al pie y Eventos ni se veia. Se devuelve a
+   colocacion automatica para que ocupe la tercera columna. Mismo motivo para
+   .ai-main, por si queda algun resto. */
+.ai-stage > .ai-side,
+.ai-stage > .ai-main { grid-area: auto; }
+
+.ai-stage > .ai-side {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    min-height: 0;
+}
+/* Las dos tarjetas del lateral se reparten el alto y cada lista scrollea
+   dentro; sin esto Eventos empujaba la columna y desbordaba la pantalla. */
+.ai-stage > .ai-side > .ai-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.ai-stage > .ai-side > .ai-card:last-child { flex: 1; }
+.ai-stage > .ai-side .ai-history-list,
+.ai-stage > .ai-side .ai-events { overflow-y: auto; min-height: 0; }
+
+/* ==========================================================================
+   Panel IA: contencion de altura y separacion nucleo / conversacion
+   ==========================================================================
+   .view-section trae overflow:auto, asi que la seccion ENTERA scrolleaba como
+   un bloque y el contenido se salia del cuadro. Se corta ese scroll y se
+   arma una cadena de alturas (cada eslabon con min-height:0, que es lo que
+   permite encoger a un hijo de flex/grid) para que el scroll ocurra DENTRO
+   del hilo y de las listas del lateral, no en la pagina.
+   ========================================================================== */
+
+#ai-section { overflow: hidden; }
+
+#ai-section .ai-layout {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+}
+
+.ai-stage { min-height: 0; }
+.ai-stage > * { min-height: 0; }
+
+/* --- columna izquierda: cada ficha a su contenido ----------------------- */
+
+/* Acciones rapidas se estiraba a todo el alto dejando un hueco muerto
+   debajo de los botones. Ahora ambas fichas miden lo que miden y la columna
+   se alinea arriba. */
+.ai-stage-side { justify-content: flex-start; }
+.ai-stage-side > .ai-card { flex: 0 0 auto; }
+.ai-quick-card { flex: 0 0 auto; }
+.ai-quick-card .ai-suggestions { overflow: visible; }
+
+/* --- nucleo: dos paneles, personaje y conversacion ---------------------- */
+
+.ai-core { min-height: 0; gap: 14px; }
+
+/* Panel del personaje: alto propio, no cede espacio al hilo. */
+.ai-core-top {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 18px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+/* Panel de conversacion: toma el resto y scrollea por dentro. El composer
+   queda pegado abajo porque solo el hilo crece. */
+.ai-core-chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+.ai-core-chat .ai-thread {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+.ai-core-chat .ai-composer { flex: 0 0 auto; }
+.ai-core-chat .ai-disclaimer { flex: 0 0 auto; margin: 0; }
+
+/* En reposo el hilo solo tiene el saludo: el personaje se queda con el
+   protagonismo y la esfera va a tamano completo. Con conversacion en curso
+   .is-compact ya la encoge (ver bloque del nucleo mas arriba). */
+.ai-core:not(.is-compact) .ai-core-top { flex: 1 1 auto; }
+
+/* ==========================================================================
+   Panel IA v2: el personaje va DE FONDO y las fichas flotan encima
+   ==========================================================================
+   Los recuadros que marcaba el usuario eran areas, no contenedores: aca se
+   quitan los fondos de .ai-core-top / .ai-core-chat y la esfera pasa a ser
+   una capa de fondo centrada en todo el escenario, con las fichas por
+   encima. Este bloque va al final del archivo y sobreescribe a proposito lo
+   que definio la version anterior.
+   ========================================================================== */
+
+.ai-stage { position: relative; }
+
+/* Capa de fondo: centrada en el escenario y fuera del flujo, para que la
+   esfera no le robe altura a nada. pointer-events:none deja que el clic
+   pase a lo que este debajo (el hilo, los botones). */
+.ai-orb-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+/* La columna derecha (Conversaciones/Eventos) no debe quedar detras de la
+   esfera: el fondo se limita al ancho de las dos primeras columnas. */
+.ai-orb-bg { right: 350px; }
+
+.ai-stage > .ai-stage-side,
+.ai-stage > .ai-core,
+.ai-stage > .ai-side { position: relative; z-index: 1; }
+
+/* Sin cajas: los dos paneles del centro son solo zonas. */
+.ai-core-top,
+.ai-core-chat {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+}
+.ai-core-top { flex: 0 0 auto; }
+.ai-core:not(.is-compact) .ai-core-top { flex: 0 0 auto; }
+
+/* El hilo queda transparente para que se vea el personaje detras cuando
+   solo esta el saludo. */
+.ai-core-chat .ai-thread { background: none; border: 0; }
+
+/* --- fichas flotantes ---------------------------------------------------- */
+
+/* Vidrio sobre el personaje: sin esto las fichas se pierden encima de la
+   esfera iluminada. */
+.ai-stage-side > .ai-card,
+.ai-stage > .ai-side > .ai-card {
+    background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: var(--radius-lg);
+}
+
+/* --- pildoras de acciones rapidas ---------------------------------------- */
+
+/* Fila horizontal justo encima del campo de texto, como en la referencia.
+   Es el MISMO #ai-suggestions que ya poblaba aiRenderSuggestions(): solo
+   cambio de sitio y de forma, sin JS nuevo. */
+.ai-core-chat .ai-suggestions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+    flex: 0 0 auto;
+}
+.ai-core-chat .ai-suggestion {
+    width: auto;
+    text-align: center;
+    padding: 7px 15px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+/* --- consola de chat ------------------------------------------------------ */
+
+/* Barra grande y redondeada con el boton de enviar circular al extremo,
+   como la consola de la referencia. NO lleva boton de microfono: no hay
+   captura de voz en el proyecto (ver nota del nucleo mas arriba). */
+.ai-core-chat .ai-composer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    background: none;
+    border: 0;
+}
+.ai-core-chat .ai-question-input {
+    flex: 1;
+    min-width: 0;
+    height: 52px;
+    padding: 0 22px;
+    border-radius: 999px;
+    font-size: 14px;
+    background: color-mix(in srgb, var(--surface-sunken) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-ink) 34%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+.ai-core-chat .ai-question-input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent-ink) 70%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-fill) 16%, transparent);
+}
+.ai-core-chat .ai-send-btn {
+    flex: 0 0 auto;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, var(--accent-fill), var(--accent-fill-active));
+    color: var(--accent-on);
+    border: 0;
+    box-shadow: 0 3px 16px color-mix(in srgb, var(--accent-fill) 34%, transparent);
+}
+.ai-core-chat .ai-send-btn:disabled { opacity: .45; }
+
+.ai-core-chat .ai-disclaimer { text-align: center; font-size: 11px; }
+
+/* La barra de estado del personaje queda suelta sobre el fondo, centrada. */
+.ai-orb-statusbar { justify-content: center; }
+
+/* ==========================================================================
+   Panel IA v3: personaje en la columna derecha, chat en todo el centro
+   ==========================================================================
+   El personaje deja de ser capa de fondo (dejaba el chat apretado y sin
+   sitio). Pasa arriba de la columna derecha; el centro es solo conversacion.
+   Ultimo bloque del archivo: sobreescribe a proposito las versiones previas.
+   ========================================================================== */
+
+/* Dos columnas: contexto | conversacion, y la derecha con su propio ancho. */
+.ai-stage { grid-template-columns: minmax(0, 232px) minmax(0, 1fr) minmax(0, 352px); }
+
+/* Se anula la capa de fondo: ahora vive dentro de la ficha del personaje. */
+.ai-orb-bg {
+    position: static;
+    inset: auto;
+    right: auto;
+    z-index: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: auto;
+}
+
+.ai-persona {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 12px 16px;
+}
+.ai-persona .ai-orb-zone { gap: 10px; padding: 0; }
+.ai-persona .ai-orb { width: 190px; height: 190px; }
+.ai-persona .ai-orb-body { inset: 20px; gap: 5px; }
+.ai-persona .ai-orb-mark { width: 22px; height: 22px; }
+.ai-persona .ai-orb-eyes { gap: 22px; }
+.ai-persona .ai-orb-eyes svg { width: 34px; height: 19px; }
+.ai-persona .ai-orb-mouth { width: 46px; height: 21px; }
+.ai-persona .ai-orb-eq { height: 58px; }
+.ai-persona .ai-orb-statusbar { gap: 8px; }
+.ai-persona .ai-orb-status { padding: 6px 14px; font-size: 12px; }
+
+/* El nucleo ya no encoge la esfera: en la columna tiene tamano fijo. */
+.ai-core.is-compact .ai-orb,
+.ai-core:not(.is-compact) .ai-orb { width: auto; height: auto; }
+
+/* --- centro: solo conversacion ------------------------------------------ */
+
+.ai-core { position: relative; z-index: 1; }
+.ai-core-chat { flex: 1; min-height: 0; }
+
+/* --- columna derecha: personaje, Conversaciones y Eventos --------------- */
+
+/* Conversaciones a su contenido (con tope) y Eventos ocupando lo que sobra
+   hasta el pie: es "hasta donde deben llegar" del marcado rosa. */
+.ai-stage > .ai-side > .ai-card:nth-of-type(2) { flex: 0 1 auto; max-height: 34%; }
+.ai-stage > .ai-side > .ai-card:last-child { flex: 1 1 auto; }
+
+/* ==========================================================================
+   Color por estado
+   ==========================================================================
+   Antes el cuerpo de la esfera pintaba con var(--accent-ink) fijo, asi que
+   cambiar de estado no cambiaba nada de color. Ahora TODO el nucleo pinta
+   con currentColor y basta con mover `color` en .ai-orb para que el gradiente,
+   el halo, los anillos y las particulas viren juntos.
+   ========================================================================== */
+
+.ai-orb { color: var(--accent-ink); transition: color .5s ease; }
+.ai-orb[data-state="thinking"]  { color: var(--nop-violet-400); }
+.ai-orb[data-state="listening"] { color: var(--nop-green-400); }
+
+.ai-orb-body {
+    background:
+        radial-gradient(circle at 50% 50%, color-mix(in srgb, currentColor 14%, transparent) 0 1.1px, transparent 1.6px) 0 0 / 11px 11px,
+        radial-gradient(circle at 38% 30%, color-mix(in srgb, currentColor 32%, transparent), transparent 58%),
+        radial-gradient(circle at 50% 62%, color-mix(in srgb, currentColor 26%, transparent), transparent 66%),
+        radial-gradient(circle at 50% 50%, color-mix(in srgb, currentColor 16%, var(--surface-base)) 0%, var(--surface-base) 72%);
+    border-color: color-mix(in srgb, currentColor 55%, transparent);
+    box-shadow:
+        0 0 46px color-mix(in srgb, currentColor 30%, transparent),
+        0 0 100px color-mix(in srgb, currentColor 14%, transparent),
+        inset 0 0 48px color-mix(in srgb, currentColor 20%, transparent);
+    transition: box-shadow .5s ease, border-color .5s ease;
+}
+.ai-orb-scan {
+    background: linear-gradient(180deg, transparent, color-mix(in srgb, currentColor 16%, transparent), transparent);
+}
+.ai-orb-eyes svg,
+.ai-orb-mouth,
+.ai-orb-think i { color: color-mix(in srgb, currentColor 82%, white); }
+
+/* El ecualizador vive fuera de .ai-orb, asi que se le pasa el estado desde
+   la zona: mismo vire, sin duplicar la regla en cada barra. */
+.ai-orb-zone:has(.ai-orb[data-state="thinking"]) .ai-orb-eq i { background: var(--nop-violet-400); }
+.ai-orb-zone:has(.ai-orb[data-state="thinking"]) .ai-orb-eq i:nth-child(odd) { opacity: .6; }
+
+/* La pastilla de estado acompana el vire. */
+.ai-orb[data-state="thinking"] ~ .ai-orb-statusbar .ai-orb-status,
+.ai-orb-zone:has(.ai-orb[data-state="thinking"]) ~ .ai-orb-statusbar .ai-orb-status,
+.ai-persona:has(.ai-orb[data-state="thinking"]) .ai-orb-status {
+    border-color: color-mix(in srgb, var(--nop-violet-400) 50%, transparent);
+    background: color-mix(in srgb, var(--nop-violet-500) 14%, transparent);
+}
+.ai-persona:has(.ai-orb[data-state="thinking"]) .ai-orb-status-dot {
+    background: var(--nop-violet-400);
+    box-shadow: 0 0 10px var(--nop-violet-400);
+}
+
+/* ==========================================================================
+   Panel IA v4: columna derecha de borde a borde
+   ==========================================================================
+   La seccion pasa a ser una rejilla de dos columnas. Todo lo que ya habia
+   (cabecera, fichas de maquina, escenario) vive en la izquierda; la columna
+   del personaje ocupa la derecha ENTERA, de arriba abajo, para que el
+   personaje quede en la esquina. Efecto secundario buscado: como la cabecera
+   se angosta, #ai-conn-pill (el indicador de modelo) cae solo junto al
+   titulo en vez de irse al borde de la pantalla.
+   ========================================================================== */
+
+#ai-section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 352px;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    column-gap: 16px;
+    align-items: stretch;
+    padding-right: 18px;
+}
+#ai-section > .section-header,
+#ai-section > .ai-disabled-notice { grid-column: 1; }
+#ai-section > .ai-layout { grid-column: 1; grid-row: 3; }
+#ai-section > .ai-side {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    min-height: 0;
+    padding: 18px 0;
+}
+
+/* Dos columnas en el escenario: el contexto y la conversacion. */
+.ai-stage { grid-template-columns: minmax(0, 232px) minmax(0, 1fr); }
+
+/* --- el chat llena su area, sin hueco al pie --------------------------- */
+
+/* Cada eslabon explicito: bastaba con que uno no estirara para que el
+   composer quedara flotando a media altura con vacio debajo. */
+.ai-stage { align-content: stretch; }
+.ai-core { height: 100%; }
+.ai-core-chat { flex: 1 1 auto; min-height: 0; }
+.ai-core-chat .ai-thread { flex: 1 1 auto; min-height: 0; }
+.ai-core-chat .ai-suggestions,
+.ai-core-chat .ai-composer,
+.ai-core-chat .ai-disclaimer { flex: 0 0 auto; }
+
+/* --- cintilla de capacidades entre las dos columnas -------------------- */
+
+/* La cintilla es global (vive fuera de la seccion) y se centra respecto de
+   toda la ventana, de modo que se metia bajo la columna derecha. Solo
+   mientras el panel IA esta a la vista se desplaza para quedar centrada en
+   la columna del chat. */
+body:has(#ai-section:not([style*="display: none"])) .ai-capability-strip {
+    transform: translateX(-184px);
+}
+
+/* --- columna derecha: reparto vertical --------------------------------- */
+
+#ai-rail { display: flex; flex-direction: column; gap: 14px; }
+#ai-rail > .ai-persona { flex: 0 0 auto; }
+#ai-rail > .ai-card:nth-of-type(2) { flex: 0 1 auto; max-height: 30%; }
+#ai-rail > .ai-card:last-child { flex: 1 1 auto; min-height: 0; }
+
+@media (max-width: 1280px) {
+    #ai-section {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }
+    #ai-section > .ai-side { grid-column: 1; grid-row: 4; }
+    body:has(#ai-section:not([style*="display: none"])) .ai-capability-strip { transform: none; }
+}
+
+/* La ficha del personaje no lleva fondo: la esfera se apoya directo sobre el
+   fondo del panel. Hay que anular tambien el vidrio que .ai-card recibe en la
+   columna derecha (bloque de fichas flotantes mas arriba), no solo el color. */
+#ai-rail > .ai-persona,
+.ai-persona {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* .ai-thread trae "max-height: 460px" del CSS original (L17122). Ese tope es
+   lo que dejaba el hueco muerto bajo el campo de texto: por muchos flex:1 que
+   se le pongan, al llegar a 460px deja de crecer y el sobrante cae abajo.
+   En el panel nuevo el hilo debe ocupar todo lo que le deje el contenedor. */
+.ai-core-chat .ai-thread { max-height: none; }
+
+/* ==========================================================================
+   Consola de chat: fidelidad a la referencia
+   ==========================================================================
+   Aca se sigue la imagen por encima del sistema de NOPAL, por peticion
+   explicita: radios de pildora completa, dos circulos de 64px y verde neon,
+   en vez de los --radius-* y los controles del resto de la app.
+   ========================================================================== */
+
+.ai-core-chat .ai-composer {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px;
+    border-radius: 999px;
+    background: rgba(6, 18, 12, .72);
+    border: 1px solid rgba(74, 222, 128, .38);
+    box-shadow: 0 0 34px rgba(34, 197, 94, .10), inset 0 0 30px rgba(34, 197, 94, .05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Microfono: circulo de contorno, hueco. Se pinta ACTIVO aunque este
+   disabled -- es un marcador de una funcion que llega despues, y atenuarlo
+   se leeria como "roto". El title avisa de que todavia no dicta. */
+.ai-core-chat .ai-mic-btn {
+    flex: 0 0 auto;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 26, 18, .85);
+    border: 2px solid rgba(74, 222, 128, .70);
+    color: #4ADE80;
+    box-shadow: 0 0 20px rgba(34, 197, 94, .22), inset 0 0 16px rgba(34, 197, 94, .12);
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+.ai-core-chat .ai-question-input {
+    flex: 1;
+    min-width: 0;
+    height: 64px;
+    padding: 0 26px;
+    border-radius: 999px;
+    font-size: 15px;
+    color: #E6F7EC;
+    background: rgba(8, 22, 15, .78);
+    border: 1px solid rgba(74, 222, 128, .34);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+.ai-core-chat .ai-question-input::placeholder { color: rgba(190, 214, 199, .62); }
+.ai-core-chat .ai-question-input:focus {
+    outline: none;
+    border-color: rgba(74, 222, 128, .75);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, .14);
+}
+
+/* Enviar: circulo lleno, el unico elemento macizo de la consola. */
+.ai-core-chat .ai-send-btn {
+    flex: 0 0 auto;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    color: #06280F;
+    background: linear-gradient(155deg, #34D77F, #14A34B);
+    box-shadow: 0 4px 20px rgba(34, 197, 94, .38);
+}
+.ai-core-chat .ai-send-btn svg { width: 24px; height: 24px; }
+.ai-core-chat .ai-send-btn:disabled { opacity: .5; }
+
+/* ==========================================================================
+   Pildoras en marquesina
+   ==========================================================================
+   aiRenderSuggestions() duplica el contenido dentro de .ai-suggestions-track;
+   la cinta se desliza hasta -50%, donde empieza la copia identica, asi que el
+   reinicio no se ve. Mismo mecanismo que .ai-capability-track.
+   ========================================================================== */
+
+.ai-core-chat .ai-suggestions {
+    display: block;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+    flex: 0 0 auto;
+    /* Los extremos se difuminan en vez de cortarse en seco: se nota que la
+       cinta sigue de largo hacia los dos lados. */
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.ai-suggestions-track {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: max-content;
+    padding: 0 5px;
+    animation: aiSuggestionsScroll 38s linear infinite;
+}
+.ai-core-chat .ai-suggestions:hover .ai-suggestions-track,
+.ai-core-chat .ai-suggestions:focus-within .ai-suggestions-track {
+    animation-play-state: paused;   /* para poder leerlas y hacer clic sin perseguirlas */
+}
+@keyframes aiSuggestionsScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+.ai-core-chat .ai-suggestion { flex-shrink: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-suggestions-track { animation: none; }
+}
+
+/* ==========================================================================
+   La cintilla de capacidades no se usa en esta seccion
+   ==========================================================================
+   Duplicaba justo lo que ya ofrecen las pildoras de aca arriba. Se oculta
+   solo mientras el panel IA esta a la vista; en el resto de secciones sigue.
+   ========================================================================== */
+
+body:has(#ai-section:not([style*="display: none"])) .ai-capability-dock { display: none; }
+
+/* ==========================================================================
+   Remates tras sacar la columna derecha del escenario
+   ========================================================================== */
+
+/* 1. La cintilla es fija, pero .content le reserva 78px de hueco al pie
+   (body[data-ai-active] .content). Ocultarla dejaba la reserva: una banda
+   muerta de lado a lado. Aca no se usa cintilla, asi que tampoco su hueco. */
+body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .content {
+    padding-bottom: 0;
+}
+
+/* 2. .ai-history-list y .ai-events traen max-height fijos del CSS original
+   (260px y 460px). Dentro de una ficha mas baja que ese tope, la lista no
+   encoge y se desborda por fuera de la tarjeta. Las reglas que las contenian
+   apuntaban a ".ai-stage > .ai-side" y dejaron de coincidir al mover el rail
+   fuera del escenario, asi que se re-apuntan a #ai-rail y se anula el tope:
+   la altura la manda la ficha, y la lista scrollea por dentro. */
+#ai-rail > .ai-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+#ai-rail .ai-history-list,
+#ai-rail .ai-events {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+}

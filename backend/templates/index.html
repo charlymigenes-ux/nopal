@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=328">
+    <link rel="stylesheet" href="/static/css/style.css?v=340">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -1842,21 +1842,46 @@
                 <div class="ai-layout" id="ai-layout" hidden>
                     <div class="ai-machines" id="ai-machines"></div>
 
-                    <div class="ai-main">
-                        <div class="ai-card ai-chat-card">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="aiAssistant">Asistente</h2>
-                                <button type="button" class="btn-file-action" id="ai-clear-btn">
-                                    <span data-i18n="aiNewConversation">Nueva conversación</span>
-                                </button>
+                    <div class="ai-stage">
+                        <div class="ai-stage-side">
+                            <div class="ai-card ai-context-card">
+                                <div class="card-header-std">
+                                    <span class="card-header-std-icon">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10 12 3l8 7"/><path d="M6 10v10h12V10"/></svg>
+                                    </span>
+                                    <h2 class="card-header-std-title" data-i18n="aiWorkshopContext">Contexto del taller</h2>
+                                </div>
+                                <div class="ai-context-body">
+                                    <div class="ai-context-row">
+                                        <span class="ai-context-label" data-i18n="aiContextDevices">Dispositivos</span>
+                                        <strong class="ai-context-value ai-context-accent" id="ai-context-devices">—</strong>
+                                    </div>
+                                    <div class="ai-context-row">
+                                        <span class="ai-context-label" data-i18n="aiContextJobs">Trabajos activos</span>
+                                        <strong class="ai-context-value" id="ai-context-jobs">—</strong>
+                                    </div>
+                                    <div class="ai-context-row">
+                                        <span class="ai-context-label" data-i18n="aiContextOverall">Estado general</span>
+                                        <strong class="ai-context-value" id="ai-context-overall">—</strong>
+                                    </div>
+                                    <!-- Consumo y ambiente NO van acá: /api/dashboard/summary
+                                         devuelve power=null y ambient=null mientras no haya
+                                         potencia en Cotizador ni placa elegida como sensor
+                                         ambiente. Se agregan cuando haya dato real. -->
+                                </div>
                             </div>
 
-                            <div class="ai-thread" id="ai-thread"></div>
+                        </div>
 
-                            <div class="ai-suggestions" id="ai-suggestions"></div>
+                        <div class="ai-core" id="ai-core">
+                            <!-- Núcleo IA. Todo el movimiento es CSS: no hay micrófono ni
+                                 análisis de audio detrás, así que el ecualizador es
+                                 ambiental (indica "la IA está viva"), no un nivel real de
+                                 entrada. Si algún día se agrega captura de voz, estas
+                                 barras son el lugar donde engancharla. -->
+
+                            <div class="ai-core-chat">
+                            <div class="ai-thread" id="ai-thread"></div>
 
                             <div class="ai-cooldown" id="ai-cooldown" hidden>
                                 <div class="ai-cooldown-dial">
@@ -1869,7 +1894,17 @@
                                 <span class="ai-cooldown-label" data-i18n="aiCooldownWait">Límite del proveedor alcanzado. Puedes volver a preguntar en:</span>
                             </div>
 
+                            <div class="ai-suggestions" id="ai-suggestions"></div>
                             <form class="ai-composer" id="ai-composer">
+                                <!-- Marcador de dictado. Va DESACTIVADO a proposito: hoy no hay
+                                     captura de voz en el proyecto (no existe getUserMedia ni
+                                     SpeechRecognition en todo el codigo). Se deja montado y con
+                                     su sitio definitivo para que implementarlo despues sea solo
+                                     quitar el disabled y colgarle el handler. -->
+                                <button type="button" class="ai-mic-btn" id="ai-mic-btn" disabled
+                                        data-i18n-title="aiMicSoon" title="Dictado por voz: proximamente">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+                                </button>
                                 <input type="text" id="ai-question" class="ai-question-input"
                                        data-i18n-placeholder="aiPlaceholder"
                                        placeholder="Escribe tu pregunta en lenguaje natural..." autocomplete="off">
@@ -1878,34 +1913,83 @@
                                 </button>
                             </form>
                             <p class="ai-disclaimer" data-i18n="aiDisclaimer">Las respuestas pueden contener imprecisiones. Verifica la información crítica.</p>
-                        </div>
-                    </div>
-
-                    <div class="ai-side">
-                        <div class="ai-card">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="aiHistory">Conversaciones</h2>
-                                <button type="button" class="btn-file-action" id="ai-history-clear-btn" data-i18n-title="aiClearHistory" title="Borrar todo el historial" hidden>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-                                </button>
                             </div>
-                            <div class="ai-history-list" id="ai-history-list"></div>
                         </div>
 
-                        <div class="ai-card">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="aiRecentEvents">Eventos recientes</h2>
-                            </div>
-                            <div class="ai-events" id="ai-events"></div>
-                        </div>
                     </div>
                 </div>
+                        <div class="ai-side" id="ai-rail">
+                            <div class="ai-card ai-persona">
+                            <div class="ai-orb-bg" aria-hidden="true">
+                                    <div class="ai-orb-zone" aria-hidden="true">
+                                        <div class="ai-orb-eq ai-orb-eq-left">
+                                            <i style="--h:26%;--d:-.15s"></i><i style="--h:48%;--d:-.62s"></i><i style="--h:80%;--d:-.34s"></i><i style="--h:58%;--d:-.88s"></i><i style="--h:100%;--d:-.05s"></i><i style="--h:66%;--d:-.47s"></i><i style="--h:38%;--d:-.75s"></i>
+                                        </div>
+        
+                                        <div class="ai-orb" id="ai-orb" data-state="idle">
+                                            <span class="ai-orb-ripple"></span>
+                                            <span class="ai-orb-ripple"></span>
+                                            <span class="ai-orb-ripple"></span>
+                                            <span class="ai-orb-ring-dashed"></span>
+                                            <span class="ai-orb-ring-arc"></span>
+                                            <span class="ai-orb-ring-inner"></span>
+                                            <span class="ai-orb-particle" style="--dx:52px;--dy:-64px;--d:-.4s;left:38%;top:70%"></span>
+                                            <span class="ai-orb-particle" style="--dx:-60px;--dy:-48px;--d:-1.9s;left:66%;top:74%"></span>
+                                            <span class="ai-orb-particle" style="--dx:44px;--dy:58px;--d:-3.1s;left:30%;top:26%"></span>
+                                            <span class="ai-orb-particle" style="--dx:-38px;--dy:62px;--d:-2.4s;left:72%;top:22%"></span>
+                                            <div class="ai-orb-body">
+                                                <span class="ai-orb-scan"></span>
+                                                <svg class="ai-orb-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V7"/><path d="M12 14.5H8.7A2.7 2.7 0 0 1 6 11.8V9.6"/><path d="M12 12.2h3.3A2.7 2.7 0 0 0 18 9.5V7.4"/><path d="M9.2 21h5.6"/></svg>
+                                                <div class="ai-orb-eyes">
+                                                    <svg viewBox="0 0 62 34" fill="none"><path d="M5 29 C5 9, 57 9, 57 29" stroke="currentColor" stroke-width="9" stroke-linecap="round"/></svg>
+                                                    <svg viewBox="0 0 62 34" fill="none"><path d="M5 29 C5 9, 57 9, 57 29" stroke="currentColor" stroke-width="9" stroke-linecap="round"/></svg>
+                                                </div>
+                                                <svg class="ai-orb-mouth" viewBox="0 0 86 40" fill="none"><path d="M8 10 C8 34, 78 34, 78 10" stroke="currentColor" stroke-width="9" stroke-linecap="round"/></svg>
+                                                <div class="ai-orb-think"><i></i><i></i><i></i></div>
+                                            </div>
+                                        </div>
+        
+                                        <div class="ai-orb-eq ai-orb-eq-right">
+                                            <i style="--h:40%;--d:-.70s"></i><i style="--h:70%;--d:-.28s"></i><i style="--h:100%;--d:-.58s"></i><i style="--h:54%;--d:-.12s"></i><i style="--h:82%;--d:-.83s"></i><i style="--h:44%;--d:-.40s"></i><i style="--h:24%;--d:-.95s"></i>
+                                        </div>
+                                    </div>
+                            </div>
+                                <div class="ai-core-top">
+    
+                                <div class="ai-orb-statusbar">
+                                    <span class="ai-orb-status" id="ai-orb-status">
+                                        <span class="ai-orb-status-dot"></span>
+                                        <span class="ai-orb-status-text" data-i18n="aiOrbReady">Lista para ayudarte</span>
+                                    </span>
+                                    <button type="button" class="btn-file-action ai-orb-new" id="ai-clear-btn">
+                                        <span data-i18n="aiNewConversation">Nueva conversación</span>
+                                    </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="ai-card">
+                                <div class="card-header-std">
+                                    <span class="card-header-std-icon">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    </span>
+                                    <h2 class="card-header-std-title" data-i18n="aiHistory">Conversaciones</h2>
+                                    <button type="button" class="btn-file-action" id="ai-history-clear-btn" data-i18n-title="aiClearHistory" title="Borrar todo el historial" hidden>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                                    </button>
+                                </div>
+                                <div class="ai-history-list" id="ai-history-list"></div>
+                            </div>
+
+                            <div class="ai-card">
+                                <div class="card-header-std">
+                                    <span class="card-header-std-icon">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                    </span>
+                                    <h2 class="card-header-std-title" data-i18n="aiRecentEvents">Eventos recientes</h2>
+                                </div>
+                                <div class="ai-events" id="ai-events"></div>
+                            </div>
+                        </div>
             </section>
 
             <section id="settings-section" class="view-section" style="display: none;">
@@ -4997,11 +5081,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=45"></script>
-    <script src="/static/js/translations-pt-BR.js?v=5"></script>
-    <script src="/static/js/translations-fr.js?v=5"></script>
-    <script src="/static/js/translations-de.js?v=5"></script>
-    <script src="/static/js/app.js?v=274"></script>
+    <script src="/static/js/translations.js?v=47"></script>
+    <script src="/static/js/translations-pt-BR.js?v=7"></script>
+    <script src="/static/js/translations-fr.js?v=7"></script>
+    <script src="/static/js/translations-de.js?v=7"></script>
+    <script src="/static/js/app.js?v=276"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
