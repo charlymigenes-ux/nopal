@@ -47,13 +47,11 @@ gcode_bounds_cache.json
 # como plantilla, secrets.h con los datos reales nunca se sube. Glob (no
 # ruta exacta) para cubrir también los secrets.h de cada subcarpeta de
 # sketch (NOPAL_ESP12E_BUZZER/, NOPAL_NodeMCU_V3_ESP8266/, etc.).
-firmware/nopal_accessory/**/secrets.h
-firmware/nopal_accessory/secrets.h
-
-# Binarios .bin subidos para flashear placas NOPAL — se suben desde el
-# panel, no se versionan (pueden pesar varios MB y son específicos de cada
-# instalación).
-firmware/nopal_accessory/builds/
+# El firmware .ino ya no vive en este repo: se consolidó en el repo del
+# plugin arduino-accessories (plugins/arduino-accessories/firmware/), que
+# de por sí está ignorado acá. Los secrets.h de cada placa y los binarios
+# .bin subidos desde el panel (hoy en data/accessories/firmware_builds/,
+# cubierto por la regla data/ de más abajo) se ignoran allá.
 
 # Estado de instancia (instalaciones de plugins, logs de actividad, etc.)
 # — no es código fuente, se genera en cada instalación.
