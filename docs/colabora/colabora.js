@@ -2,6 +2,98 @@
   "use strict";
 
   /* ==================================================
+     IDIOMA
+     Se decide con el atributo lang del <html>: la version en espanol
+     vive en /colabora/ y la inglesa en /colabora/en/. Ambas comparten
+     este mismo archivo; aqui solo cambia el TEXTO, nunca la logica.
+     ================================================== */
+  const LANG = (document.documentElement.lang || "es").toLowerCase().indexOf("en") === 0 ? "en" : "es";
+
+  const I18N = {
+    es: {
+      errStep2Type: "Selecciona el tipo de equipo para continuar.",
+      errStep2Brand: "Indica la marca del equipo para continuar.",
+      errStep2Model: "Indica el modelo o un nombre/descripci\u00f3n del equipo para continuar.",
+      confirmClear: "\u00bfBorrar todo el progreso del formulario?",
+      toastCleared: "Formulario borrado.",
+      toastDemo: "Modo demo: revisa la consola del navegador.",
+      toastSent: "\u00a1Registro enviado! Gracias por colaborar.",
+      demoNotice: "<b>MODO DEMO:</b> este formulario todav\u00eda no est\u00e1 conectado a ning\u00fan servidor. " +
+        "Tu registro <b>no fue enviado</b>. Se gener\u00f3 el objeto completo y puedes verlo abierto en la consola del navegador (F12).",
+      errorLabel: "Error",
+      errCompress: "No se pudo comprimir la imagen.",
+      errRead: "No se pudo leer la imagen.",
+      errUpload: "No se pudo subir la foto",
+      errSubmit: "No se pudo enviar el registro",
+      labels: {
+        equipmentType: {
+          impresora3d: "Impresora 3D", laser: "L\u00e1ser", cnc: "CNC / Router",
+          placa: "Placa electr\u00f3nica", "esp-arduino": "ESP32 / ESP8266 / Arduino",
+          accesorio: "Accesorio", otro: "Otro"
+        },
+        status: {
+          funciona: "\ud83d\udfe2 Funciona correctamente", parcial: "\ud83d\udfe1 Funciona parcialmente",
+          falla: "\ud83d\udd34 Tiene una falla", "no-enciende": "\u26ab No enciende",
+          reemplazada: "\ud83d\udd35 Fue reemplazada pero la conservo", "no-seguro": "\u2753 No estoy seguro"
+        },
+        problems: {
+          usb: "USB", drivers: "Drivers", motores: "Motores", temperaturas: "Temperaturas",
+          calentadores: "Calentadores", pantalla: "Pantalla", wifi: "Wi-Fi", ethernet: "Ethernet",
+          firmware: "Firmware", arranque: "Arranque", alimentacion: "Alimentaci\u00f3n",
+          comunicacion: "Comunicaci\u00f3n", sensores: "Sensores", conectores: "Conectores",
+          "da\u00f1o-fisico": "Da\u00f1o f\u00edsico", otro: "Otro"
+        },
+        participation: {
+          tester: "\ud83e\uddea Tester", fallas: "\u26a0\ufe0f Reporta falla", donar: "\u2764\ufe0f Donaci\u00f3n",
+          prestar: "\ud83e\udd1d Pr\u00e9stamo", vender: "\ud83c\udff7\ufe0f Venta", remoto: "\ud83d\udcbb Pruebas remotas",
+          tecnico: "\ud83d\udee0\ufe0f T\u00e9cnico", info: "\u2139\ufe0f Solo informaci\u00f3n"
+        }
+      }
+    },
+    en: {
+      errStep2Type: "Select the equipment type to continue.",
+      errStep2Brand: "Enter the equipment brand to continue.",
+      errStep2Model: "Enter the model or a custom name/description to continue.",
+      confirmClear: "Clear all form progress?",
+      toastCleared: "Form cleared.",
+      toastDemo: "Demo mode: check the browser console.",
+      toastSent: "Registration sent. Thanks for collaborating!",
+      demoNotice: "<b>DEMO MODE:</b> this form is not connected to a server yet. " +
+        "Your registration <b>was not sent</b>. The full object was generated and you can inspect it in the browser console (F12).",
+      errorLabel: "Error",
+      errCompress: "Could not compress the image.",
+      errRead: "Could not read the image.",
+      errUpload: "Could not upload the photo",
+      errSubmit: "Could not send the registration",
+      labels: {
+        equipmentType: {
+          impresora3d: "3D printer", laser: "Laser", cnc: "CNC / Router",
+          placa: "Control board", "esp-arduino": "ESP32 / ESP8266 / Arduino",
+          accesorio: "Accessory", otro: "Other"
+        },
+        status: {
+          funciona: "\ud83d\udfe2 Works correctly", parcial: "\ud83d\udfe1 Partially working",
+          falla: "\ud83d\udd34 Has a fault", "no-enciende": "\u26ab Won\u2019t power on",
+          reemplazada: "\ud83d\udd35 Replaced, but I still have it", "no-seguro": "\u2753 Not sure"
+        },
+        problems: {
+          usb: "USB", drivers: "Drivers", motores: "Motors", temperaturas: "Temperatures",
+          calentadores: "Heaters", pantalla: "Display", wifi: "Wi-Fi", ethernet: "Ethernet",
+          firmware: "Firmware", arranque: "Boot", alimentacion: "Power",
+          comunicacion: "Communication", sensores: "Sensors", conectores: "Connectors",
+          "da\u00f1o-fisico": "Physical damage", otro: "Other"
+        },
+        participation: {
+          tester: "\ud83e\uddea Tester", fallas: "\u26a0\ufe0f Reports a fault", donar: "\u2764\ufe0f Donation",
+          prestar: "\ud83e\udd1d Loan", vender: "\ud83c\udff7\ufe0f Sale", remoto: "\ud83d\udcbb Remote testing",
+          tecnico: "\ud83d\udee0\ufe0f Technical", info: "\u2139\ufe0f Info only"
+        }
+      }
+    }
+  };
+  const T = I18N[LANG];
+
+  /* ==================================================
      CONFIGURACIÓN DE ENVÍO
      GitHub Pages es estático: sin backend propio. El formulario
      inserta directo contra la API REST de Supabase (proyecto "NOPAL Colab")
@@ -36,10 +128,10 @@
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
         canvas.toBlob(blob => {
           URL.revokeObjectURL(url);
-          if (blob) resolve(blob); else reject(new Error("No se pudo comprimir la imagen."));
+          if (blob) resolve(blob); else reject(new Error(T.errCompress));
         }, "image/jpeg", quality);
       };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("No se pudo leer la imagen.")); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(T.errRead)); };
       img.src = url;
     });
   }
@@ -55,7 +147,7 @@
       },
       body: blob
     });
-    if (!res.ok) throw new Error("No se pudo subir la foto (" + res.status + ").");
+    if (!res.ok) throw new Error(T.errUpload + " (" + res.status + ").");
     return path;
   }
 
@@ -144,7 +236,7 @@
 
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error("No se pudo enviar el registro (" + res.status + ") " + detail);
+      throw new Error(T.errSubmit + " (" + res.status + ") " + detail);
     }
     return { demo: false };
   }
@@ -220,7 +312,7 @@
     applyStateToForm();
     goToStep(1);
     updateSummary();
-    showToast("Formulario borrado.");
+    showToast(T.toastCleared);
   }
 
   /* ==================================================
@@ -328,9 +420,9 @@
       const hasModelOrName = state.equipment.model.trim().length > 0 || state.equipment.customName.trim().length > 0;
       const ok = hasType && hasBrand && hasModelOrName;
       let msg = "";
-      if (!hasType) msg = "Selecciona el tipo de equipo para continuar.";
-      else if (!hasBrand) msg = "Indica la marca del equipo para continuar.";
-      else if (!hasModelOrName) msg = "Indica el modelo o un nombre/descripción del equipo para continuar.";
+      if (!hasType) msg = T.errStep2Type;
+      else if (!hasBrand) msg = T.errStep2Brand;
+      else if (!hasModelOrName) msg = T.errStep2Model;
       const errEl = document.getElementById("err-step2");
       if (errEl) errEl.textContent = msg;
       toggleError("err-step2", !ok);
@@ -412,36 +504,13 @@
   });
 
   document.getElementById("btn-clear").addEventListener("click", () => {
-    if (confirm("¿Borrar todo el progreso del formulario?")) clearLocal();
+    if (confirm(T.confirmClear)) clearLocal();
   });
 
   /* ==================================================
      RESUMEN EN VIVO
      ================================================== */
-  const LABELS = {
-    equipmentType: {
-      impresora3d: "Impresora 3D", laser: "Láser", cnc: "CNC / Router",
-      placa: "Placa electrónica", "esp-arduino": "ESP32 / ESP8266 / Arduino",
-      accesorio: "Accesorio", otro: "Otro"
-    },
-    status: {
-      funciona: "🟢 Funciona correctamente", parcial: "🟡 Funciona parcialmente",
-      falla: "🔴 Tiene una falla", "no-enciende": "⚫ No enciende",
-      reemplazada: "🔵 Fue reemplazada pero la conservo", "no-seguro": "❓ No estoy seguro"
-    },
-    problems: {
-      usb: "USB", drivers: "Drivers", motores: "Motores", temperaturas: "Temperaturas",
-      calentadores: "Calentadores", pantalla: "Pantalla", wifi: "Wi-Fi", ethernet: "Ethernet",
-      firmware: "Firmware", arranque: "Arranque", alimentacion: "Alimentación",
-      comunicacion: "Comunicación", sensores: "Sensores", conectores: "Conectores",
-      "daño-fisico": "Daño físico", otro: "Otro"
-    },
-    participation: {
-      tester: "🧪 Tester", fallas: "⚠️ Reporta falla", donar: "❤️ Donación",
-      prestar: "🤝 Préstamo", vender: "🏷️ Venta", remoto: "💻 Pruebas remotas",
-      tecnico: "🛠️ Técnico", info: "ℹ️ Solo información"
-    }
-  };
+  const LABELS = T.labels;
 
   function updateSummary() {
     const hasAny = state.collaborationTypes.length || state.equipment.type ||
@@ -564,16 +633,15 @@
       const result = await submitCollaboration(JSON.parse(JSON.stringify(state)), photos);
       if (result && result.demo) {
         notice.hidden = false;
-        notice.innerHTML = "<b>MODO DEMO:</b> este formulario todavía no está conectado a ningún servidor. " +
-          "Tu registro <b>no fue enviado</b>. Se generó el objeto completo y puedes verlo abierto en la consola del navegador (F12).";
-        showToast("Modo demo: revisa la consola del navegador.");
+        notice.innerHTML = T.demoNotice;
+        showToast(T.toastDemo);
       } else {
-        showToast("¡Registro enviado! Gracias por colaborar.");
+        showToast(T.toastSent);
         localStorage.removeItem(STORAGE_KEY);
       }
     } catch (err) {
       notice.hidden = false;
-      notice.innerHTML = "<b>Error:</b> " + err.message;
+      notice.innerHTML = "<b>" + T.errorLabel + ":</b> " + err.message;
     } finally {
       btnSubmit.disabled = false;
     }
