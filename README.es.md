@@ -5,6 +5,8 @@
 [![Estado](https://img.shields.io/badge/estado-en%20desarrollo%20activo-e6b422)](./CHANGELOG.md)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-39D62E)](requirements.txt)
 
+[![Probar NOPAL en vivo](https://img.shields.io/badge/%F0%9F%8C%B5_Probar_NOPAL_en_vivo-39D62E?style=for-the-badge)](https://charlymigenes-ux.github.io/nopal-demo/)
+
 <table>
   <tr>
     <td><img width="630" alt="Dashboard de NOPAL" src="docs/images/dashboard.png" /></td>
@@ -35,6 +37,7 @@
 * [Características](#características)
 * [Arquitectura](#arquitectura)
 * [Requisitos](#requisitos)
+* [Demo en vivo](#demo-en-vivo)
 * [Instalación](#instalación)
 * [Configuración](#configuración)
 * [Uso](#uso)
@@ -180,6 +183,16 @@ Nada de lo anterior es obligatorio para correr NOPAL — la biblioteca de modelo
 
 ---
 
+## Demo en vivo
+
+**[Prueba NOPAL en tu navegador →](https://charlymigenes-ux.github.io/nopal-demo/)**
+
+El panel real corriendo sobre datos simulados. Sin hardware, sin instalar nada y sin registrarse: dos impresoras 3D, un láser y una CNC que se mueven solos, cámaras, plugins, la biblioteca de modelos y el asistente de IA. Pausa una impresión y se pausa de verdad.
+
+Ningún dispositivo mostrado es hardware real, y al recargar la página se restaura todo, así que puedes destrozar lo que quieras.
+
+---
+
 ## Instalación
 
 Clona el repositorio y corre el instalador:
@@ -314,7 +327,7 @@ Posibles áreas futuras para NOPAL:
 
 NOPAL es libre y de código abierto, y así se queda. Si te ahorra tiempo en tu taller, puedes apoyar su desarrollo:
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/nopal)
+[![Apoyar en Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=fff)](https://ko-fi.com/nopal_dash)
 [![Donar con PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=fff)](https://www.paypal.com/donate/?hosted_button_id=WFK56JHFAR8TL)
 
 Lo que se recaude va a hardware para pruebas de compatibilidad — las placas y máquinas que NOPAL todavía no puede soportar porque nadie tiene una para probar. También puedes ayudar sin gastar nada [registrando el equipo que ya tienes](https://charlymigenes-ux.github.io/nopal/colabora/).

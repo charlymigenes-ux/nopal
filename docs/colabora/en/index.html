@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collaborate — NOPAL</title>
+<meta name="description" content="Register your 3D printer, laser, CNC or control board to help test and expand NOPAL hardware compatibility.">
+<link rel="alternate" hreflang="es" href="https://charlymigenes-ux.github.io/nopal/colabora/">
+<link rel="alternate" hreflang="en" href="https://charlymigenes-ux.github.io/nopal/colabora/en/">
+<link rel="alternate" hreflang="x-default" href="https://charlymigenes-ux.github.io/nopal/colabora/">
+<meta name="theme-color" content="#0a0d09">
+<link rel="icon" href="../../assets/img/logo.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../colabora.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="../../index.html"><span class="mark"><img src="../../assets/img/logo.jpg" alt="NOPAL"></span> NOPAL</a>
+    <div class="topbar-links">
+      <a href="../../index.html">&larr; Back to site</a>
+      <a href="../">ES</a>
+      <a class="cta" href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.5 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.46-1.2-1.11-1.52-1.11-1.52-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.73 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.42.2 2.47.1 2.73.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.5A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<div class="page wrap">
+
+  <!-- IZQUIERDA: identidad + navegación de pasos -->
+  <aside class="side-left">
+    <div class="side-brand">
+      <img src="../../assets/img/logo-vertical.png" alt="NOPAL">
+      <div class="side-brand-text">NOPAL</div>
+    </div>
+    <div>
+      <div class="eyebrow">NOPAL Community</div>
+      <h1 class="side-title">Collaboration<br>registry</h1>
+      <p class="side-lead">Your help lets NOPAL grow and gives real compatibility to more machines in workshops and the community.</p>
+    </div>
+
+    <nav class="steps-nav" id="steps-nav">
+      <button type="button" class="step-item" data-step="1">
+        <span class="step-circle">01</span>
+        <span class="step-info"><b>Collaboration</b><small>How do you want to help?</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="2">
+        <span class="step-circle">02</span>
+        <span class="step-info"><b>Equipment</b><small>What do you have?</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="3">
+        <span class="step-circle">03</span>
+        <span class="step-info"><b>Condition</b><small>Current state of the unit</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="4">
+        <span class="step-circle">04</span>
+        <span class="step-info"><b>Details</b><small>Technical information</small></span>
+      </button>
+      <button type="button" class="step-item" data-step="5">
+        <span class="step-circle">05</span>
+        <span class="step-info"><b>Contact</b><small>How we reach you</small></span>
+      </button>
+    </nav>
+
+    <div class="why-box">
+      <b><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-3.4 7-9V6l-7-3-7 3v6c0 5.6 7 9 7 9Z"/></svg>Why does this matter?</b>
+      <p>With your information we can test, improve and support more real hardware in NOPAL.</p>
+    </div>
+
+    <div class="side-footer-note">TOGETHER WE GROW NOPAL <svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-3.4 7-9V6l-7-3-7 3v6c0 5.6 7 9 7 9Z"/></svg></div>
+  </aside>
+
+  <!-- CENTRO: formulario -->
+  <main class="center-panel">
+    <form id="collab-form" novalidate>
+
+      <div class="mobile-summary-toggle" id="mobile-summary-toggle">
+        <span>View your collaboration summary</span>
+        <span id="mobile-summary-caret">&#9662;</span>
+      </div>
+
+      <div class="step-progress">
+        <div class="step-progress-label">Step <b id="mobile-step-current">1</b> of 5</div>
+        <div class="progress-track"><div class="progress-fill" id="mobile-progress-fill"></div></div>
+      </div>
+
+      <div class="panel-card">
+
+        <!-- PASO 1 -->
+        <section class="step-panel" data-step="1">
+          <h2>How would you like to collaborate?</h2>
+          <p class="step-lead">Pick one or more options that describe how you can help.</p>
+
+          <div class="card-grid" data-group="collaborationTypes">
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="tester">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6.5L4.8 19A2 2 0 0 0 6.5 22h11a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M7.5 15h9"/></svg></span>
+              <b>I want to be a tester</b>
+              <p>Test hardware with NOPAL and report the results.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="fallas">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 21 20H3L12 4.5Z"/><path d="M12 10.5v4"/><path d="M12 17.4v.2"/></svg></span>
+              <b>I have faulty equipment</b>
+              <p>I have a machine or board with a partial or total fault.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="donar">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#E05C6E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10Z"/></svg></span>
+              <b>I want to donate a board/machine</b>
+              <p>I can provide hardware to the project for testing.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="prestar">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1.5 1.5 0 0 0 2.1-2.1"/><path d="m13.1 14.9 2.8 2.8a1.5 1.5 0 0 0 2.1-2.1l-5-5"/><path d="M3 10.5 6.5 7h4l4 4"/><path d="M21 10.5 17.5 7h-3"/><path d="m8.5 13.5-2 2a1.5 1.5 0 0 0 2.1 2.1l2-2"/></svg></span>
+              <b>I can lend equipment for testing</b>
+              <p>I can temporarily lend a machine or board.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="vender">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13 21a1.9 1.9 0 0 1-2.7 0L3 13.7V4h9.7l7.9 7.9a1.9 1.9 0 0 1 0 1.5Z"/><path d="M8 8.2v.1"/></svg></span>
+              <b>I have hardware to sell</b>
+              <p>I have a machine or board that could be useful to the project.</p>
+            </label>
+            <label class="opt-card">
+              <input type="checkbox" name="collaborationTypes" value="remoto">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#5B9BD5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="1.6"/><path d="M2.5 19.5h19"/></svg></span>
+              <b>I can run tests remotely</b>
+              <p>I can run tests directly in my own workshop.</p>
+            </label>
+            <label class="opt-card wide">
+              <input type="checkbox" name="collaborationTypes" value="tecnico">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg></span>
+              <span>
+                <b>I want to contribute technically</b>
+                <p>I can help with electronics, programming, documentation, translation, diagnostics or testing.</p>
+              </span>
+            </label>
+            <label class="opt-card wide">
+              <input type="checkbox" name="collaborationTypes" value="info">
+              <span class="opt-check"></span>
+              <span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#5B9BD5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8.2v.2"/></svg></span>
+              <span>
+                <b>I just want to share information</b>
+                <p>I want to register information about my machine or board with no further commitment.</p>
+              </span>
+            </label>
+          </div>
+          <p class="field-error" id="err-step1" hidden>Select at least one option to continue.</p>
+        </section>
+
+        <!-- PASO 2 -->
+        <section class="step-panel" data-step="2" hidden>
+          <h2>What do you have?</h2>
+          <p class="step-lead">Tell us what kind of machine or board you want to register.</p>
+
+          <div class="card-grid cols-3" data-group="equipment.type" data-radio="true">
+            <label class="opt-card"><input type="radio" name="equipment.type" value="impresora3d"><span class="opt-check"></span><span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9V4h11v5"/><rect x="3.5" y="9" width="17" height="7" rx="1.6"/><path d="M7 14h10v6H7z"/></svg></span><b>3D printer</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="laser"><span class="opt-check"></span><span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 4.5 14H10l-1 7.5L19.5 10H14l-1-7.5Z"/></svg></span><b>Laser</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="cnc"><span class="opt-check"></span><span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#5B9BD5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></svg></span><b>CNC / Router</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="placa"><span class="opt-check"></span><span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="7.5" width="9" height="9" rx="1.4"/><path d="M10 3.5v4M14 3.5v4M10 16.5v4M14 16.5v4M3.5 10h4M3.5 14h4M16.5 10h4M16.5 14h4"/></svg></span><b>Control board</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="esp-arduino"><span class="opt-check"></span><span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.6"/><rect x="10" y="10" width="4" height="4" rx="0.8"/><path d="M9 3.5v3M15 3.5v3M9 17.5v3M15 17.5v3M3.5 9h3M3.5 15h3M17.5 9h3M17.5 15h3"/></svg></span><b>ESP32 / ESP8266 / Arduino</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="accesorio"><span class="opt-check"></span><span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#E05C6E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4.5a2 2 0 1 1 4 0V6h3a1.5 1.5 0 0 1 1.5 1.5v3h1.5a2 2 0 1 1 0 4H18v3a1.5 1.5 0 0 1-1.5 1.5h-3V17a2 2 0 1 0-4 0v2H6.5A1.5 1.5 0 0 1 5 17.5v-3H3.5a2 2 0 1 1 0-4H5v-3A1.5 1.5 0 0 1 6.5 6h3V4.5Z"/></svg></span><b>Accessory</b></label>
+            <label class="opt-card"><input type="radio" name="equipment.type" value="otro"><span class="opt-check"></span><span class="opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#9ba89c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .9-1 1.6v.4"/><path d="M12 16.8v.2"/></svg></span><b>Other</b></label>
+          </div>
+          <p class="field-error" id="err-step2" hidden>Select the equipment type to continue.</p>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="f-brand">Brand <span class="req">*</span></label>
+              <input type="text" id="f-brand" name="equipment.brand" placeholder="e.g. Creality, xTool, generic…">
+            </div>
+            <div class="field">
+              <label for="f-model">Model <span class="req">*</span></label>
+              <input type="text" id="f-model" name="equipment.model" placeholder="e.g. Ender 3 V2">
+            </div>
+            <div class="field full">
+              <label for="f-customname">Custom name or description <span class="req">*</span></label>
+              <input type="text" id="f-customname" name="equipment.customName" placeholder="Homemade 4x8 CNC router">
+              <p class="example">Fill in Model or Custom name (at least one of the two). Example of a custom name: "Homemade 4x8 CNC router" — use it if your machine has no commercial model.</p>
+            </div>
+            <div class="field">
+              <label for="f-boardmanufacturer">Board manufacturer</label>
+              <input type="text" id="f-boardmanufacturer" name="equipment.boardManufacturer" placeholder="e.g. MKS, BTT, Makerbase…">
+            </div>
+            <div class="field">
+              <label for="f-boardmodel">Board model</label>
+              <input type="text" id="f-boardmodel" name="equipment.boardModel" placeholder="e.g. MKS DLC32">
+            </div>
+            <div class="field">
+              <label for="f-quantity">How many similar units</label>
+              <input type="number" id="f-quantity" name="equipment.quantity" min="1" value="1">
+            </div>
+          </div>
+
+          <div class="id-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#5B9BD5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg>
+            <div>
+              <b>Don’t know the board model?</b><br>
+              Upload clear photos and we can try to identify it.
+            </div>
+          </div>
+
+          <div class="photo-grid">
+            <div>
+              <div class="dropzone" id="dz-equipment" tabindex="0">
+                <div class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="13.5" rx="2"/><circle cx="12" cy="13.2" r="3.6"/><path d="M8.5 6.5 10 4h4l1.5 2.5"/></svg></div>
+                <b>Photo of the machine</b>
+                <small>Drag an image here or click to choose</small>
+                <input type="file" id="dz-equipment-input" accept="image/*">
+              </div>
+              <div class="preview-list" id="dz-equipment-preview"></div>
+            </div>
+            <div>
+              <div class="dropzone" id="dz-board" tabindex="0">
+                <div class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="13.5" rx="2"/><circle cx="12" cy="13.2" r="3.6"/><path d="M8.5 6.5 10 4h4l1.5 2.5"/></svg></div>
+                <b>Photo of the board</b>
+                <small>Drag an image here or click to choose</small>
+                <input type="file" id="dz-board-input" accept="image/*">
+              </div>
+              <div class="preview-list" id="dz-board-preview"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PASO 3 -->
+        <section class="step-panel" data-step="3" hidden>
+          <h2>What condition is it in?</h2>
+          <p class="step-lead">Pick the option that best describes the machine or board.</p>
+
+          <div class="status-grid" data-group="condition.status" data-radio="true">
+            <label class="status-card"><input type="radio" name="condition.status" value="funciona"><span class="dot"><svg viewBox="0 0 24 24" fill="#58C45D" stroke="#58C45D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/></svg></span><b>Works correctly</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="parcial"><span class="dot"><svg viewBox="0 0 24 24" fill="#E8A33D" stroke="#E8A33D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/></svg></span><b>Partially working</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="falla"><span class="dot"><svg viewBox="0 0 24 24" fill="#E04B4B" stroke="#E04B4B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/></svg></span><b>Has a fault</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="no-enciende"><span class="dot"><svg viewBox="0 0 24 24" fill="#3a423b" stroke="#5a635b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/></svg></span><b>Won’t power on</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="reemplazada"><span class="dot"><svg viewBox="0 0 24 24" fill="#5B9BD5" stroke="#5B9BD5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/></svg></span><b>Replaced, but I still have it</b></label>
+            <label class="status-card"><input type="radio" name="condition.status" value="no-seguro"><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="#9ba89c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M9.8 10a2.3 2.3 0 1 1 3.1 2.1c-.5.3-.9.8-.9 1.4v.3"/><path d="M12 16.4v.2"/></svg></span><b>Not sure</b></label>
+          </div>
+          <p class="field-error" id="err-step3" hidden>Select the condition to continue.</p>
+
+          <div class="subblock" id="problems-block" hidden>
+            <label style="font-size:13px;font-weight:700;">What is failing?</label>
+            <div class="chip-group" data-group="condition.problems">
+              <label class="chip"><input type="checkbox" name="condition.problems" value="usb">USB</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="drivers">Drivers</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="motores">Motors</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="temperaturas">Temperatures</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="calentadores">Heaters</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="pantalla">Display</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="wifi">Wi-Fi</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="ethernet">Ethernet</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="firmware">Firmware</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="arranque">Boot</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="alimentacion">Power</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="comunicacion">Communication</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="sensores">Sensors</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="conectores">Connectors</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="daño-fisico">Physical damage</label>
+              <label class="chip"><input type="checkbox" name="condition.problems" value="otro">Other</label>
+            </div>
+          </div>
+
+          <div class="field full">
+            <label for="f-condition-description">Briefly describe the fault <span class="hint">optional</span></label>
+            <textarea id="f-condition-description" name="condition.description" placeholder="The machine runs, but the USB port stopped being detected. I replaced the board and still have the old one."></textarea>
+          </div>
+        </section>
+
+        <!-- PASO 4 -->
+        <section class="step-panel" data-step="4" hidden>
+          <h2>What can you make available?</h2>
+          <p class="step-lead">You can select several options.</p>
+
+          <div class="chip-group" data-group="availability.options">
+            <label class="chip"><input type="checkbox" name="availability.options" value="personal">I can run tests myself</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="prestar-equipo">I can lend the machine</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="prestar-placa">I can lend the board</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="donar">I can donate it</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="vender">I can sell it</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="enviar">I can ship it for diagnosis</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="remoto">I can help remotely</label>
+            <label class="chip"><input type="checkbox" name="availability.options" value="info">I just want to share information</label>
+          </div>
+          <p class="field-error" id="err-step4" hidden>Select at least one availability option.</p>
+
+          <div class="subblock" id="sell-block" hidden>
+            <div class="field-grid">
+              <div class="field">
+                <label for="f-price">Approximate price</label>
+                <input type="number" id="f-price" name="availability.askingPrice" min="0" placeholder="0">
+              </div>
+              <div class="field">
+                <label for="f-currency">Currency</label>
+                <select id="f-currency" name="availability.currency">
+                  <option value="">Select…</option>
+                  <option value="MXN">MXN</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="otra">Other</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label>Price negotiable</label>
+                <div class="radio-row" data-group="availability.negotiable" data-radio="true">
+                  <label class="radio-pill"><input type="radio" name="availability.negotiable" value="si">Yes</label>
+                  <label class="radio-pill"><input type="radio" name="availability.negotiable" value="no">No</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="subblock" id="shipping-block" hidden>
+            <label style="font-size:13px;font-weight:700;">Could you ship it?</label>
+            <div class="radio-row" data-group="availability.shipping" data-radio="true">
+              <label class="radio-pill"><input type="radio" name="availability.shipping" value="si">Yes</label>
+              <label class="radio-pill"><input type="radio" name="availability.shipping" value="no">No</label>
+              <label class="radio-pill"><input type="radio" name="availability.shipping" value="depende">Depends on the location</label>
+            </div>
+          </div>
+
+          <div class="subblock">
+            <span class="step-tag optional">Technical information — optional</span>
+            <div class="field-grid">
+              <div class="field">
+                <label for="f-firmware">Firmware</label>
+                <select id="f-firmware" name="technical.firmware">
+                  <option value="">Select…</option>
+                  <option value="klipper">Klipper</option>
+                  <option value="marlin">Marlin</option>
+                  <option value="grbl">GRBL</option>
+                  <option value="fluidnc">FluidNC</option>
+                  <option value="reprapfirmware">RepRapFirmware</option>
+                  <option value="propietario">Proprietary firmware</option>
+                  <option value="otro">Other</option>
+                  <option value="no-se">Not sure</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="f-os">Operating system</label>
+                <select id="f-os" name="technical.operatingSystem">
+                  <option value="">Select…</option>
+                  <option value="linux">Linux</option>
+                  <option value="windows">Windows</option>
+                  <option value="macos">macOS</option>
+                  <option value="android">Android</option>
+                  <option value="otro">Other</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label>Connectivity</label>
+                <div class="chip-group" data-group="technical.connections">
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="usb">USB</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="serial-uart">Serial / UART</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="wifi">Wi-Fi</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="ethernet">Ethernet</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="bluetooth">Bluetooth</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="can">CAN</label>
+                  <label class="chip"><input type="checkbox" name="technical.connections" value="otra">Other</label>
+                </div>
+              </div>
+              <div class="field full">
+                <label>Experience level</label>
+                <div class="radio-row" data-group="technical.experienceLevel" data-radio="true">
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="principiante">Beginner</label>
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="intermedio">Intermediate</label>
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="avanzado">Advanced</label>
+                  <label class="radio-pill"><input type="radio" name="technical.experienceLevel" value="tecnico">Technician / developer</label>
+                </div>
+              </div>
+              <div class="field full">
+                <label for="f-tech-notes">Additional technical notes</label>
+                <textarea id="f-tech-notes" name="technical.notes" placeholder="Configuration details, versions, modifications…"></textarea>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PASO 5 -->
+        <section class="step-panel" data-step="5" hidden>
+          <h2>Contact details</h2>
+          <p class="step-lead">Only what we need to reach you. We never ask for your full address.</p>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="f-name">Name or alias <span class="req">*</span></label>
+              <input type="text" id="f-name" name="contact.name" required>
+            </div>
+            <div class="field">
+              <label for="f-email">Email <span class="req">*</span></label>
+              <input type="email" id="f-email" name="contact.email" required>
+            </div>
+            <div class="field">
+              <label for="f-country">Country <span class="req">*</span></label>
+              <input type="text" id="f-country" name="location.country" required>
+            </div>
+            <div class="field">
+              <label for="f-state">State / province</label>
+              <input type="text" id="f-state" name="location.state">
+            </div>
+            <div class="field">
+              <label for="f-city">City</label>
+              <input type="text" id="f-city" name="location.city">
+            </div>
+          </div>
+          <p class="field-error" id="err-step5" hidden>Fill in name, email and country to continue.</p>
+
+          <div class="subblock">
+            <span class="step-tag optional">Optional contact</span>
+            <div class="field-grid">
+              <div class="field"><label for="f-facebook">Facebook</label><input type="text" id="f-facebook" name="contact.facebook"></div>
+              <div class="field"><label for="f-discord">Discord</label><input type="text" id="f-discord" name="contact.discord"></div>
+              <div class="field"><label for="f-github">GitHub</label><input type="text" id="f-github" name="contact.github"></div>
+              <div class="field"><label for="f-telegram">Telegram</label><input type="text" id="f-telegram" name="contact.telegram"></div>
+              <div class="field"><label for="f-whatsapp">WhatsApp</label><input type="tel" id="f-whatsapp" name="contact.whatsapp"></div>
+              <div class="field"><label for="f-other-contact">Other</label><input type="text" id="f-other-contact" name="contact.other"></div>
+            </div>
+          </div>
+
+          <label class="consent-row">
+            <input type="checkbox" id="f-consent" name="consent" required>
+            <span>I agree to be contacted by the NOPAL team about this collaboration.</span>
+          </label>
+          <p class="field-error" id="err-consent" hidden>You must accept in order to submit.</p>
+
+          <div id="demo-notice" class="warn-note" hidden></div>
+        </section>
+
+      </div>
+
+      <div class="form-actions">
+        <button type="button" id="btn-clear" class="btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="#9ba89c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M6.5 7 7.4 19a1.6 1.6 0 0 0 1.6 1.5h6a1.6 1.6 0 0 0 1.6-1.5L17.5 7"/></svg>Clear form</button>
+        <div class="nav-buttons">
+          <button type="button" id="btn-prev" class="btn-outline">&larr; Back</button>
+          <button type="button" id="btn-next" class="btn-primary">Next &rarr;</button>
+          <button type="submit" id="btn-submit" class="btn-primary" hidden>Submit registration</button>
+        </div>
+      </div>
+    </form>
+  </main>
+
+  <!-- DERECHA: resumen en vivo -->
+  <aside class="side-right" id="side-right">
+    <div class="summary-card">
+      <div class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 20v-1.6a3.6 3.6 0 0 0-3.6-3.6H7.1A3.6 3.6 0 0 0 3.5 18.4V20"/><circle cx="10" cy="7.6" r="3.6"/><path d="M20.5 20v-1.6a3.6 3.6 0 0 0-2.7-3.5"/><path d="M15.5 4.2a3.6 3.6 0 0 1 0 6.9"/></svg>Your collaboration</div>
+      <div class="summary-empty" id="summary-empty">
+        <div class="summary-icon"><svg viewBox="0 0 64 64" fill="none"><path d="M32 58V26" stroke="#58C45D" stroke-width="7" stroke-linecap="round"/><path d="M32 38c0-9 5-13 12-13 0 9-5 13-12 13Z" fill="#58C45D"/><path d="M32 44c0-9-5-14-13-14 0 9 5 14 13 14Z" fill="#429947"/><path d="M22 58h20" stroke="#33863a" stroke-width="5" stroke-linecap="round"/></svg></div>
+        <p>No equipment information yet.</p>
+        <p class="muted" style="font-size:12px;">As you go, a summary of your registration appears here.</p>
+      </div>
+      <dl class="summary-list" id="summary-list" hidden>
+        <div class="summary-row"><dt><svg viewBox="0 0 24 24" fill="none" stroke="#5B9BD5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/></svg>Equipment</dt><dd id="sum-equipment">—</dd></div>
+        <div class="summary-row"><dt><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="7.5" width="9" height="9" rx="1.4"/><path d="M10 3.5v4M14 3.5v4M10 16.5v4M14 16.5v4M3.5 10h4M3.5 14h4M16.5 10h4M16.5 14h4"/></svg>Board</dt><dd id="sum-board">—</dd></div>
+        <div class="summary-row"><dt><svg viewBox="0 0 24 24" fill="none" stroke="#E05C6E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10Z"/></svg>Condition</dt><dd id="sum-status">—</dd></div>
+        <div class="summary-row" id="sum-problems-row" hidden><dt><svg viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5 21 20H3L12 4.5Z"/><path d="M12 10.5v4"/><path d="M12 17.4v.2"/></svg>Faults</dt><dd id="sum-problems">—</dd></div>
+        <div class="summary-row"><dt><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg>Participation</dt><dd id="sum-participation">—</dd></div>
+        <div class="summary-row"><dt><svg viewBox="0 0 24 24" fill="none" stroke="#E05C6E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>Location</dt><dd id="sum-location">—</dd></div>
+      </dl>
+    </div>
+  </aside>
+
+</div>
+
+<section class="why-section wrap">
+  <div class="eyebrow">What will we use your information for?</div>
+  <h2>Every contribution makes NOPAL work with more hardware</h2>
+  <div class="why-grid">
+    <div class="why-item">
+      <div class="wicon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7.5 15 3.5-4 3 2.5L20 7"/></svg></div>
+      <h3>Real diagnostics</h3>
+      <p>We identify real faults across different machines.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon"><svg viewBox="0 0 24 24" fill="none" stroke="#E05C6E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4.5a2 2 0 1 1 4 0V6h3a1.5 1.5 0 0 1 1.5 1.5v3h1.5a2 2 0 1 1 0 4H18v3a1.5 1.5 0 0 1-1.5 1.5h-3V17a2 2 0 1 0-4 0v2H6.5A1.5 1.5 0 0 1 5 17.5v-3H3.5a2 2 0 1 1 0-4H5v-3A1.5 1.5 0 0 1 6.5 6h3V4.5Z"/></svg></div>
+      <h3>Compatibility</h3>
+      <p>We support more boards and machines.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon"><svg viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="m9.5 9 2.5 2.5L9.5 14"/><path d="M13.5 14h3"/></svg></div>
+      <h3>Development and testing</h3>
+      <p>We test new features in real environments.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon"><svg viewBox="0 0 24 24" fill="none" stroke="#5B9BD5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2.5 2.5 0 0 1 2 1 2.5 2.5 0 0 1 2-1h4.5A1.5 1.5 0 0 1 20 5.5V17a1.5 1.5 0 0 1-1.5 1.5H14a2 2 0 0 0-2 1.5 2 2 0 0 0-2-1.5H5.5A1.5 1.5 0 0 1 4 17V5.5Z"/><path d="M12 5v14.5"/></svg></div>
+      <h3>Documentation</h3>
+      <p>We write guides and fixes for the community.</p>
+    </div>
+    <div class="why-item">
+      <div class="wicon"><svg viewBox="0 0 24 24" fill="none" stroke="#84D089" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 20v-1.6a3.6 3.6 0 0 0-3.6-3.6H7.1A3.6 3.6 0 0 0 3.5 18.4V20"/><circle cx="10" cy="7.6" r="3.6"/><path d="M20.5 20v-1.6a3.6 3.6 0 0 0-2.7-3.5"/><path d="M15.5 4.2a3.6 3.6 0 0 1 0 6.9"/></svg></div>
+      <h3>A stronger community</h3>
+      <p>Together we grow the NOPAL ecosystem.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="flinks">
+      <a href="../../index.html">Home</a>
+      <a href="https://github.com/charlymigenes-ux/nopal" target="_blank" rel="noopener">GitHub</a>
+      <a href="../../manual/NOPAL_Manual_Usuario.pdf" target="_blank">Manual PDF</a>
+    </div>
+    <div>Questions? Reach out on any of our channels or in the community.</div>
+    <div class="privacy-note"><svg viewBox="0 0 24 24" fill="none" stroke="#9ba89c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></svg>Your information is protected and will only be used for collaboration with NOPAL.</div>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="../colabora.js"></script>
+</body>
+</html>
