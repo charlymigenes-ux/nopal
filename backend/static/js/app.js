@@ -8279,50 +8279,57 @@ function renderPrinters(printersInput) {
         boundPrinterCards.add(card);
         const port = Number(card.dataset.port);
 
-        card.querySelectorAll('[data-dev-action]').forEach(btn => {
-            btn.addEventListener('click', async event => {
-                // La ficha entera abre el panel de la impresora; un botón no
-                // debe hacer las dos cosas.
-                event.stopPropagation();
-                const accion = btn.dataset.devAction;
-                if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
-                    await handleActivePrintAction(accion, port);
-                    return;
-                }
-                if (accion === 'camera-setup') {
-                    // El botón de cámara sin cámara asignada lleva al
-                    // plugin: es donde se asigna una, y sin visor que
-                    // alternar no hay nada más útil que hacer.
-                    switchSection('camera-viewer');
-                    return;
-                }
-                if (accion === 'camera') {
-                    // Se delega en el interruptor que el plugin de cámaras
-                    // ya inyecta en la cabecera, en vez de repetir su
-                    // lógica: tener dos implementaciones del mismo botón es
-                    // lo que hacía aparecer la cámara dos veces.
-                    card.querySelector('.printer-card-camera-toggle')?.click();
-                    // Se actualiza esta ficha en el sitio. Repintar la
-                    // grilla entera desmontaba y volvía a montar TODAS las
-                    // cámaras, incluida la del láser de al lado: ese era el
-                    // parpadeo.
-                    const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
-                    const visible = clave ? isCameraCardVisible(clave) : false;
-                    card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
-                    btn.classList.toggle('is-checked', visible);
-                    btn.setAttribute('aria-pressed', String(visible));
-                    btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
-                    return;
-                }
-                if (accion === 'preheat') {
-                    const impresora = allPrinters.find(p => String(p.port) === String(port)) || {};
-                    openMaterialPreheatModal({ type: 'klipper', id: port, name: impresora.name || `Klipper ${port}` });
-                    return;
-                }
-                // Cargar archivo, home, detalles y el menú abren el panel
-                // completo de la impresora, que es donde viven de verdad.
-                abrirPanelDeImpresora(port);
-            });
+        // Delegación en la ficha, no un listener por botón. El interior de
+        // la ficha se reescribe cuando se monta el visor de cámara encima, y
+        // los botones recreados se quedaban sin listener mientras el WeakSet
+        // ya daba la ficha por enlazada: pausar, reanudar y cancelar dejaban
+        // de responder en cualquier máquina con cámara asignada. El listener
+        // vive en la ficha, que sí persiste.
+        card.addEventListener('click', async event => {
+            const btn = event.target.closest('[data-dev-action]');
+            if (!btn) return;
+            // La ficha entera abre el panel; un botón no debe hacer las dos
+            // cosas. Como ahora ambos listeners cuelgan del mismo nodo, hace
+            // falta detener también a los hermanos.
+            event.stopImmediatePropagation();
+            const accion = btn.dataset.devAction;
+            if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
+                await handleActivePrintAction(accion, port);
+                return;
+            }
+            if (accion === 'camera-setup') {
+                // El botón de cámara sin cámara asignada lleva al
+                // plugin: es donde se asigna una, y sin visor que
+                // alternar no hay nada más útil que hacer.
+                switchSection('camera-viewer');
+                return;
+            }
+            if (accion === 'camera') {
+                // Se delega en el interruptor que el plugin de cámaras
+                // ya inyecta en la cabecera, en vez de repetir su
+                // lógica: tener dos implementaciones del mismo botón es
+                // lo que hacía aparecer la cámara dos veces.
+                card.querySelector('.printer-card-camera-toggle')?.click();
+                // Se actualiza esta ficha en el sitio. Repintar la
+                // grilla entera desmontaba y volvía a montar TODAS las
+                // cámaras, incluida la del láser de al lado: ese era el
+                // parpadeo.
+                const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
+                const visible = clave ? isCameraCardVisible(clave) : false;
+                card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
+                btn.classList.toggle('is-checked', visible);
+                btn.setAttribute('aria-pressed', String(visible));
+                btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
+                return;
+            }
+            if (accion === 'preheat') {
+                const impresora = allPrinters.find(p => String(p.port) === String(port)) || {};
+                openMaterialPreheatModal({ type: 'klipper', id: port, name: impresora.name || `Klipper ${port}` });
+                return;
+            }
+            // Cargar archivo, home, detalles y el menú abren el panel
+            // completo de la impresora, que es donde viven de verdad.
+            abrirPanelDeImpresora(port);
         });
 
         card.addEventListener('click', () => abrirPanelDeImpresora(port));
@@ -8379,43 +8386,52 @@ function renderPrinters(printersInput) {
         const host = card.dataset.laserHost;
         const kind = card.dataset.laserKind;
 
-        card.querySelectorAll('[data-dev-action]').forEach(btn => {
-            btn.addEventListener('click', async event => {
-                event.stopPropagation();
-                const accion = btn.dataset.devAction;
-                if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
-                    await handleLaserQuickAction(accion, host);
-                    return;
+        // Delegación en la ficha, no un listener por botón. El interior de
+        // la ficha se reescribe cuando se monta el visor de cámara encima, y
+        // los botones recreados se quedaban sin listener mientras el WeakSet
+        // ya daba la ficha por enlazada: pausar, reanudar y cancelar dejaban
+        // de responder en cualquier máquina con cámara asignada. El listener
+        // vive en la ficha, que sí persiste.
+        card.addEventListener('click', async event => {
+            const btn = event.target.closest('[data-dev-action]');
+            if (!btn) return;
+            // La ficha entera abre el panel; un botón no debe hacer las dos
+            // cosas. Como ahora ambos listeners cuelgan del mismo nodo, hace
+            // falta detener también a los hermanos.
+            event.stopImmediatePropagation();
+            const accion = btn.dataset.devAction;
+            if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
+                await handleLaserQuickAction(accion, host);
+                return;
+            }
+            if (accion === 'camera-setup') {
+                switchSection('camera-viewer');
+                return;
+            }
+            if (accion === 'camera') {
+                card.querySelector('.printer-card-camera-toggle')?.click();
+                const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
+                const visible = clave ? isCameraCardVisible(clave) : false;
+                card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
+                btn.classList.toggle('is-checked', visible);
+                btn.setAttribute('aria-pressed', String(visible));
+                btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
+                return;
+            }
+            if (accion === 'home') {
+                if (isLaserHomeConfirmEnabled()) {
+                    if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
                 }
-                if (accion === 'camera-setup') {
-                    switchSection('camera-viewer');
-                    return;
-                }
-                if (accion === 'camera') {
-                    card.querySelector('.printer-card-camera-toggle')?.click();
-                    const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
-                    const visible = clave ? isCameraCardVisible(clave) : false;
-                    card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
-                    btn.classList.toggle('is-checked', visible);
-                    btn.setAttribute('aria-pressed', String(visible));
-                    btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
-                    return;
-                }
-                if (accion === 'home') {
-                    if (isLaserHomeConfirmEnabled()) {
-                        if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
-                    }
-                    await sendLaserHome(host);
-                    return;
-                }
-                if (accion === 'frame' || accion === 'file') {
-                    openDevLaserFileModal(host, kind);
-                    return;
-                }
-                // Detalles (y cualquier otra acción sin manejo propio) lleva
-                // a la sección completa, que es donde vive el resto.
-                await irASeccionDeLaser(host, kind);
-            });
+                await sendLaserHome(host);
+                return;
+            }
+            if (accion === 'frame' || accion === 'file') {
+                openDevLaserFileModal(host, kind);
+                return;
+            }
+            // Detalles (y cualquier otra acción sin manejo propio) lleva
+            // a la sección completa, que es donde vive el resto.
+            await irASeccionDeLaser(host, kind);
         });
 
         card.addEventListener('click', () => irASeccionDeLaser(host, kind));
@@ -19949,9 +19965,11 @@ if (viewGridPrintersBtn) {
 if (viewListPrintersBtn) {
     viewListPrintersBtn.addEventListener('click', () => updatePrintersViewMode('list'));
 }
-if (printersViewMode === 'list') {
-    updatePrintersViewMode('list');
-}
+// Se aplica siempre el modo guardado, no solo cuando es 'list'. Con 'grid'
+// guardado no se llamaba a nada: la rejilla salía bien (es el estado sin
+// clase) pero los botones seguían resaltando "lista", contradiciendo lo que
+// el usuario tenía delante.
+updatePrintersViewMode(printersViewMode);
 
 const viewGridMarlinBtn = document.getElementById('view-grid-marlin');
 const viewListMarlinBtn = document.getElementById('view-list-marlin');
