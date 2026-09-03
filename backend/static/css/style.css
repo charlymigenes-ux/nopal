@@ -19188,3 +19188,1130 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
     max-height: none;
     overflow-y: auto;
 }
+
+
+/* ================= Visor G-code 2D (pestaña del Editor G-Code) ============ */
+
+.gcode-editor-tabs .option-switch-btn { white-space: nowrap; }
+
+.gcode-editor-pane {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 10px;
+}
+
+#gcode-editor-pane-code { background: rgba(2, 6, 23, 0.72); }
+
+.gcode-viewer-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(2, 6, 23, 0.72);
+}
+
+.btn-viewer { padding: 6px 8px; }
+.btn-viewer.is-active {
+    border-color: rgba(34, 197, 94, 0.55);
+    background: rgba(34, 197, 94, 0.14);
+    color: #86efac;
+}
+
+.gcode-viewer-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.gcode-viewer-select {
+    width: auto;
+    min-width: 148px;
+    max-width: 200px;
+    padding: 4px 8px;
+    font-size: 0.72rem;
+}
+
+.gcode-viewer-coords {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.7rem;
+}
+
+.gcode-viewer-canvas {
+    position: relative;
+    flex: 1;
+    min-height: 320px;
+    background: rgba(2, 6, 23, 0.86);
+}
+
+.gcode-viewer-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 7px 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(2, 6, 23, 0.72);
+    color: var(--text-muted);
+    font-size: 0.7rem;
+}
+
+.gcode-viewer-stats b {
+    color: var(--text);
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-weight: 600;
+}
+
+/* lienzos del visor: se posicionan sobre su contenedor */
+.gv-root canvas { position: absolute; inset: 0; display: block; }
+.gv-fg { touch-action: none; cursor: default; }
+.gv-root[data-tool="pan"] .gv-fg { cursor: grab; }
+.gv-root[data-tool="zoom"] .gv-fg { cursor: zoom-in; }
+.gv-root[data-tool="measure"] .gv-fg { cursor: crosshair; }
+.gv-root[data-tool="origin"] .gv-fg { cursor: crosshair; }
+
+
+/* ======= Encabezado compacto de sección (mismo formato que los plugins) === */
+.section-header-compact {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 18px 20px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.86));
+}
+
+.shc-icon {
+    display: grid;
+    place-items: center;
+    width: 62px;
+    height: 62px;
+    flex-shrink: 0;
+    border-radius: 16px;
+    border: 1px solid rgba(103, 236, 88, 0.28);
+    background: #0c2415;
+    color: #67ec58;
+}
+
+.shc-copy { flex: 0 1 auto; min-width: 200px; }
+
+.shc-copy h1 {
+    margin: 0;
+    color: var(--text);
+    font-size: 1.35rem;
+}
+
+.shc-sub {
+    display: block;
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.shc-sub strong { color: #57e04b; font-weight: 650; }
+
+.shc-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+    padding: 8px 12px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    background: rgba(2, 6, 23, 0.55);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.shc-state .shc-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #64748b;
+}
+
+.shc-state.is-loaded {
+    border-color: #1f6e32;
+    background: #0c2817;
+    color: #57e04b;
+}
+
+.shc-state.is-loaded .shc-dot { background: #57e04b; box-shadow: 0 0 8px rgba(87, 224, 75, 0.6); }
+
+.shc-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-left: auto;
+}
+
+.btn-file-action-accent {
+    border-color: rgba(87, 224, 75, 0.4);
+    background: rgba(87, 224, 75, 0.12);
+    color: #86efac;
+}
+
+@media (max-width: 780px) {
+    .shc-state { margin-right: 0; }
+    .shc-actions { margin-left: 0; width: 100%; }
+}
+
+/* la barra de la ficha ahora lleva nombre de archivo + pestañas */
+.gcode-editor-tabs { margin: 0; align-self: center; }
+
+
+/* ---- encabezado: título mayor y contador debajo, junto al subtítulo ---- */
+.shc-copy { flex: 1 1 auto; }
+.shc-copy h1 { font-size: 1.75rem; letter-spacing: -0.01em; }
+
+.shc-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-top: 8px;
+}
+
+.shc-meta .shc-sub { margin-top: 0; }
+.shc-meta .shc-state { margin-right: 0; padding: 5px 10px; font-size: 0.74rem; }
+
+/* el verde que llevaba "NOPAL" pasa al nombre del archivo */
+#gcode-editor-filename {
+    color: #57e04b;
+    font-size: 1.02rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+/* ------------------- pestañas: verde el visor, morado el código --------- */
+.gcode-editor-tabs { gap: 6px; padding: 4px; }
+
+.gcode-editor-tabs .option-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    font-weight: 650;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.gcode-editor-tabs .option-switch-btn svg { opacity: 0.85; }
+
+.gcode-editor-tabs .option-switch-btn[data-value="view"] { color: #4bbf45; }
+.gcode-editor-tabs .option-switch-btn[data-value="view"]:hover { background: rgba(87, 224, 75, 0.1); }
+.gcode-editor-tabs .option-switch-btn[data-value="view"].active {
+    border-color: rgba(87, 224, 75, 0.55);
+    background: rgba(87, 224, 75, 0.16);
+    color: #86efac;
+    box-shadow: 0 0 14px rgba(87, 224, 75, 0.18);
+}
+
+.gcode-editor-tabs .option-switch-btn[data-value="code"] { color: #a97ce0; }
+.gcode-editor-tabs .option-switch-btn[data-value="code"]:hover { background: rgba(168, 85, 247, 0.12); }
+.gcode-editor-tabs .option-switch-btn[data-value="code"].active {
+    border-color: rgba(168, 85, 247, 0.6);
+    background: rgba(168, 85, 247, 0.18);
+    color: #e9d5ff;
+    box-shadow: 0 0 14px rgba(168, 85, 247, 0.2);
+}
+
+/* --------------------------- indicador de carga ------------------------- */
+.gcode-editor-pane { position: relative; }
+
+.gcode-viewer-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(2, 6, 23, 0.78);
+    backdrop-filter: blur(2px);
+}
+
+.gvl-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid rgba(87, 224, 75, 0.22);
+    border-top-color: #57e04b;
+    animation: gvl-spin 0.8s linear infinite;
+}
+
+@keyframes gvl-spin { to { transform: rotate(360deg); } }
+
+.gvl-text { color: var(--text-muted); font-size: 0.82rem; }
+
+.gvl-bar {
+    width: min(280px, 60%);
+    height: 4px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.18);
+}
+
+.gvl-bar i {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: #57e04b;
+    transition: width 0.12s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gvl-spinner { animation-duration: 2.4s; }
+    .gvl-bar i { transition: none; }
+}
+
+/* ---------------------------- biblioteca -------------------------------- */
+.gclib { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; }
+.gclib-backdrop { position: absolute; inset: 0; background: rgba(2, 6, 23, 0.72); }
+
+.gclib-dialog {
+    position: relative;
+    display: flex;
+    width: min(860px, 92vw);
+    height: min(76vh, 700px);
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+    box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6);
+}
+
+.gclib-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: none;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.gclib-title { flex: 1; min-width: 0; }
+.gclib-title h2 { margin: 0; font-size: 1rem; color: var(--text); }
+
+.gclib-crumbs {
+    display: block;
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
+.gclib-crumbs button {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: #57e04b;
+    font: inherit;
+    cursor: pointer;
+}
+
+.gclib-crumbs button:hover { text-decoration: underline; }
+
+.gclib-search {
+    width: 220px;
+    padding: 7px 10px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+    border-radius: 9px;
+    background: rgba(2, 6, 23, 0.6);
+    color: var(--text);
+    font-size: 0.78rem;
+}
+
+.gclib-close {
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.gclib-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; }
+
+.gclib-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: none;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.gclib-row:hover { border-color: rgba(87, 224, 75, 0.35); background: rgba(87, 224, 75, 0.07); }
+.gclib-row svg { flex: none; color: var(--text-muted); }
+.gclib-row.is-folder svg { color: #57e04b; }
+.gclib-row .gclib-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.84rem; }
+.gclib-row .gclib-meta { flex: none; color: var(--text-muted); font-size: 0.72rem; font-family: 'SFMono-Regular', Consolas, monospace; }
+.gclib-empty { padding: 30px; color: var(--text-muted); text-align: center; font-size: 0.84rem; }
+
+
+/* ============ Editor G-Code: aprovechar el alto de la ventana =========== */
+#gcode-editor-section .gcode-editor-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#gcode-editor-section .section-header-compact {
+    padding: 12px 18px;
+    margin-bottom: 10px;
+}
+
+#gcode-editor-section .shc-copy h1 { font-size: 1.55rem; }
+#gcode-editor-section .shc-icon { width: 52px; height: 52px; border-radius: 14px; }
+
+.gcode-editor-card {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 210px);
+    min-height: 540px;
+}
+
+.gcode-editor-toolbar { padding: 10px 16px; }
+.gcode-editor-file-meta { flex-direction: row; align-items: center; gap: 12px; }
+
+.gcode-editor-workspace { flex: 1; min-height: 0; }
+
+/* el textarea llena su panel (antes se quedaba a media altura) */
+#gcode-editor-pane-code { min-height: 0; }
+#gcode-editor-textarea { flex: 1; min-height: 0; height: 100%; }
+
+/* ------------------------------- visor --------------------------------- */
+.gv-shell { display: flex; flex: 1; min-height: 0; }
+
+.gv-rail {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 4px;
+    width: 72px;
+    padding: 8px 6px;
+    border-right: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(2, 6, 23, 0.72);
+}
+
+.gv-tool {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 9px 2px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    cursor: pointer;
+}
+
+.gv-tool:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.gv-tool.is-active {
+    border-color: rgba(87, 224, 75, 0.5);
+    background: rgba(87, 224, 75, 0.14);
+    color: #86efac;
+}
+
+.gv-main { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
+.gv-main .gcode-viewer-canvas { flex: 1; min-height: 160px; }
+
+/* ---------------------------- simulación -------------------------------- */
+.gv-sim {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: none;
+    padding: 7px 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(2, 6, 23, 0.72);
+}
+
+.gv-sim-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; flex: none; }
+.gv-sim-dot.is-running { background: #57e04b; box-shadow: 0 0 8px rgba(87, 224, 75, 0.7); }
+.gv-sim-time { color: var(--text-muted); font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.7rem; white-space: nowrap; }
+#gv-sim-range { flex: 1; min-width: 70px; accent-color: #57e04b; }
+
+/* ------------------------------ consola --------------------------------- */
+.gv-console {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    height: 132px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(2, 6, 23, 0.8);
+}
+
+.gv-console.collapsed { height: 30px; }
+.gv-console.collapsed .gv-console-body { display: none; }
+.gv-console.collapsed .gv-console-chev { transform: rotate(-90deg); }
+
+.gv-console-head { display: flex; align-items: center; gap: 9px; flex: none; padding: 5px 12px; }
+.gv-console-head h3 { margin: 0; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.4px; color: var(--text-muted); text-transform: uppercase; }
+.gv-console-chev { border: 0; background: none; color: var(--text-muted); cursor: pointer; padding: 0; width: 14px; }
+.gv-link { border: 0; background: none; color: var(--text-muted); font-size: 0.68rem; cursor: pointer; }
+.gv-link:hover { color: var(--text); }
+.gv-grow { flex: 1; }
+
+.gv-console-body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 12px 8px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.68rem; line-height: 1.65; }
+.gv-log { display: flex; gap: 8px; }
+.gv-log .gv-t { color: #475569; flex: none; }
+.gv-log.ok .gv-m { color: #a7f3d0; }
+.gv-log.info .gv-m { color: #cbd5e1; }
+.gv-log.warn .gv-m { color: #fde68a; }
+.gv-log.err .gv-m { color: #fca5a5; }
+
+/* --------------------------- columna lateral ---------------------------- */
+.gv-side {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(87, 224, 75, 0.5) transparent;
+}
+
+.gv-side::-webkit-scrollbar { width: 9px; }
+.gv-side::-webkit-scrollbar-track { background: transparent; }
+.gv-side::-webkit-scrollbar-thumb { background: rgba(87, 224, 75, 0.45); border: 2px solid transparent; border-radius: 20px; background-clip: content-box; }
+
+.gv-side > .gcode-analysis-card { flex: 0 0 auto; overflow: visible; }
+
+.gv-card {
+    flex: 0 0 auto;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.gv-card-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.gv-card-head h3 { margin: 0; font-size: 0.8rem; font-weight: 650; color: var(--text); }
+
+.gv-badge { padding: 2px 8px; border: 1px solid rgba(234, 179, 8, 0.45); border-radius: 20px; background: rgba(234, 179, 8, 0.14); color: #fbbf24; font-size: 0.62rem; }
+
+.gv-group { padding: 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.gv-group:last-child { border-bottom: 0; }
+.gv-group-title { margin-bottom: 6px; color: var(--text-muted); font-size: 0.62rem; letter-spacing: 0.5px; text-transform: uppercase; }
+
+.gv-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.gv-row > label { flex: none; color: var(--text-muted); font-size: 0.72rem; }
+.gv-row b { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.72rem; color: var(--text); }
+.gv-row.gv-col { flex-direction: column; align-items: stretch; gap: 4px; }
+.gv-row.gv-sub { padding-left: 8px; border-left: 2px solid rgba(255, 255, 255, 0.08); }
+.gv-inline { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 4px; color: var(--text-muted); font-size: 0.7rem; }
+.gv-inline input[type=number], .gv-row input[type=number] { width: 58px; padding: 3px 6px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; background: rgba(2, 6, 23, 0.6); color: var(--text); font: 0.7rem 'SFMono-Regular', Consolas, monospace; }
+.gv-card textarea { width: 100%; padding: 5px 7px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; background: rgba(2, 6, 23, 0.6); color: var(--text); font: 0.68rem 'SFMono-Regular', Consolas, monospace; resize: vertical; }
+
+.gv-chip { padding: 2px 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; background: rgba(255, 255, 255, 0.04); color: var(--text-muted); font-size: 0.64rem; cursor: pointer; }
+.gv-chip:hover { color: var(--text); background: rgba(255, 255, 255, 0.09); }
+
+.gv-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 9px 12px; }
+.gv-actions .btn-file-action { padding: 5px 10px; font-size: 0.72rem; }
+
+.gv-layers { max-height: 168px; overflow-y: auto; }
+.gv-layer { display: grid; grid-template-columns: 16px 1fr auto auto 22px; align-items: center; gap: 8px; padding: 5px 12px; font-size: 0.72rem; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.gv-layer:hover { background: rgba(255, 255, 255, 0.03); }
+.gv-layer .gv-swatch { width: 11px; height: 11px; border-radius: 3px; }
+.gv-layer .gv-lname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-layer .gv-lval { color: var(--text-muted); font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.68rem; }
+.gv-eye { border: 0; background: none; padding: 0; color: #475569; cursor: pointer; line-height: 0; }
+.gv-eye.is-on { color: #57e04b; }
+.gv-empty { padding: 14px; text-align: center; color: var(--text-muted); font-size: 0.74rem; }
+
+@media (max-width: 1100px) {
+    .gcode-editor-card { height: auto; min-height: 0; }
+    .gv-side { overflow: visible; }
+}
+
+
+/* la consola se agranda arrastrando su borde superior */
+.gv-console-grip {
+    position: relative;
+    height: 7px;
+    flex: none;
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.gv-console-grip::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 2px;
+    width: 40px;
+    height: 3px;
+    transform: translateX(-50%);
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.35);
+    transition: background 0.15s, width 0.15s;
+}
+
+.gv-console-grip:hover::after { background: #57e04b; width: 60px; }
+.gv-console.is-resizing .gv-console-grip::after { background: #57e04b; width: 60px; }
+.gv-console.is-resizing { user-select: none; }
+.gv-console.collapsed { height: 37px; }
+
+
+/* Capas y Edición viven a la izquierda, pegadas a la barra de herramientas */
+.gv-left {
+    display: flex;
+    flex: none;
+    width: 306px;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px;
+    border-right: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(2, 6, 23, 0.55);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(87, 224, 75, 0.5) transparent;
+}
+
+.gv-left::-webkit-scrollbar { width: 9px; }
+.gv-left::-webkit-scrollbar-track { background: transparent; }
+.gv-left::-webkit-scrollbar-thumb {
+    background: rgba(87, 224, 75, 0.45);
+    border: 2px solid transparent;
+    border-radius: 20px;
+    background-clip: content-box;
+}
+
+.gv-left > .gv-card { flex: 0 0 auto; }
+
+@media (max-width: 1400px) {
+    .gv-left { width: 262px; }
+}
+
+@media (max-width: 1100px) {
+    .gv-shell { flex-wrap: wrap; }
+    .gv-left { width: 100%; max-height: 320px; border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+}
+
+
+/* con dos columnas de fichas, el lienzo necesita recuperar ancho */
+.gcode-editor-workspace { grid-template-columns: minmax(0, 1fr) minmax(268px, 292px); }
+.gv-left { width: 288px; }
+@media (max-width: 1500px) { .gv-left { width: 258px; } }
+
+
+/* --------------- biblioteca: modos, recientes y miniaturas -------------- */
+.gclib-modes { display: flex; gap: 3px; flex: none; padding: 3px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9px; }
+
+.gclib-mode {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 26px;
+    border: 0;
+    border-radius: 7px;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.gclib-mode:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+.gclib-mode.is-active { background: rgba(87, 224, 75, 0.16); color: #86efac; }
+
+.gclib-recientes {
+    display: flex;
+    gap: 8px;
+    flex: none;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    overflow-x: auto;
+}
+
+.gclib-recientes .gclib-rec-titulo {
+    flex: none;
+    align-self: center;
+    width: 62px;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    line-height: 1.3;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.gclib-tile {
+    display: flex;
+    flex: none;
+    width: 108px;
+    flex-direction: column;
+    gap: 6px;
+    padding: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    background: rgba(2, 6, 23, 0.55);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+}
+
+.gclib-tile:hover { border-color: rgba(87, 224, 75, 0.5); background: rgba(87, 224, 75, 0.08); }
+
+.gclib-thumb {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 68px;
+    overflow: hidden;
+    border-radius: 7px;
+    background: rgba(2, 6, 23, 0.8);
+}
+
+.gclib-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.gclib-thumb svg { color: rgba(148, 163, 184, 0.5); }
+
+.gclib-tile .gclib-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.7rem; }
+.gclib-tile .gclib-meta { color: var(--text-muted); font-size: 0.64rem; font-family: 'SFMono-Regular', Consolas, monospace; }
+
+/* mosaico */
+.gclib-body.is-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; align-content: start; }
+.gclib-body.is-grid .gclib-tile { width: auto; }
+.gclib-body.is-grid .gclib-thumb { height: 96px; }
+.gclib-body.is-grid .gclib-empty { grid-column: 1 / -1; }
+
+.gclib-tile.is-folder .gclib-thumb { background: rgba(87, 224, 75, 0.08); }
+.gclib-tile.is-folder .gclib-thumb svg { color: #57e04b; }
+
+/* miniatura pequeña en el modo lista */
+.gclib-row .gclib-mini {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 26px;
+    flex: none;
+    overflow: hidden;
+    border-radius: 5px;
+    background: rgba(2, 6, 23, 0.75);
+}
+
+.gclib-row .gclib-mini img { width: 100%; height: 100%; object-fit: contain; }
+
+
+/* miniatura aún sin generar: hueco discreto en vez de icono roto */
+.gclib-img { width: 100%; height: 100%; object-fit: contain; }
+.gclib-img:not([src]) { opacity: 0; }
+.gclib-img.is-cargando { opacity: 0; }
+
+
+/* herramientas flotando sobre el lienzo, a la derecha */
+.gv-rail-flotante {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    z-index: 4;
+    width: auto;
+    transform: translateY(-50%);
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    background: rgba(2, 6, 23, 0.55);
+    backdrop-filter: blur(7px);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+}
+
+.gv-rail-flotante .gv-tool { width: 58px; padding: 7px 2px; }
+.gv-rail-flotante .gv-tool span { font-size: 0.58rem; }
+.gv-rail-flotante:hover { background: rgba(2, 6, 23, 0.78); }
+
+
+/* ======================================================================== */
+/* Panel del visor: Capas y Edición — rediseño                              */
+/* ======================================================================== */
+
+.gv-left { padding: 12px 10px; gap: 12px; }
+
+/* ------------------------------- tarjeta -------------------------------- */
+.gv-card {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, rgba(30, 41, 59, 0.55), rgba(15, 23, 42, 0.5));
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.gv-card-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 42px;
+    padding: 0 14px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.gv-card-head::before {
+    content: '';
+    width: 3px;
+    height: 15px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #57e04b, #2f9c46);
+}
+
+.gv-card-head h3 {
+    flex: 1;
+    margin: 0;
+    color: #e8eef6;
+    font-size: 0.82rem;
+    font-weight: 650;
+    letter-spacing: 0.1px;
+}
+
+.gv-badge {
+    padding: 3px 9px;
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    border-radius: 999px;
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+/* -------------------------------- grupos -------------------------------- */
+.gv-group { padding: 12px 14px 14px; border-bottom: 1px solid rgba(148, 163, 184, 0.09); }
+.gv-group:last-of-type { border-bottom: 0; }
+
+.gv-group-title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0 0 10px;
+    color: #7f8ea3;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+}
+
+.gv-group-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(148, 163, 184, 0.18), transparent);
+}
+
+/* --------------------------------- filas -------------------------------- */
+.gv-row {
+    display: grid;
+    grid-template-columns: minmax(64px, auto) 1fr;
+    align-items: center;
+    gap: 10px;
+    min-height: 34px;
+    padding: 0;
+}
+
+.gv-row > label {
+    color: #9fb0c3;
+    font-size: 0.73rem;
+    font-weight: 500;
+    line-height: 1.25;
+}
+
+.gv-row b {
+    justify-self: end;
+    color: #e8eef6;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+
+.gv-row.gv-col { grid-template-columns: 1fr; gap: 6px; align-items: stretch; padding: 6px 0; }
+.gv-row.gv-col > label { font-size: 0.68rem; }
+
+.gv-row.gv-sub {
+    margin-top: 4px;
+    padding: 8px 0 8px 10px;
+    border-left: 2px solid rgba(87, 224, 75, 0.35);
+}
+
+/* la fila entera es la casilla cuando no hay etiqueta aparte */
+.gv-row > .gcode-viewer-check:only-child { grid-column: 1 / -1; }
+
+.gv-inline {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;      /* antes partía el select y el número en 2 líneas */
+    gap: 6px;
+    min-width: 0;
+    color: #7f8ea3;
+    font-size: 0.7rem;
+}
+
+/* ------------------------------- controles ------------------------------ */
+.gv-card input[type="number"],
+.gv-card input[type="text"],
+.gv-card select,
+.gv-card textarea {
+    height: 30px;
+    padding: 0 9px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 8px;
+    background: rgba(2, 6, 23, 0.65);
+    color: #e8eef6;
+    font: 600 0.74rem/1 'SFMono-Regular', Consolas, monospace;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.gv-card input[type="number"] { width: 62px; text-align: right; }
+.gv-card input[type="number"]::-webkit-outer-spin-button,
+.gv-card input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.gv-card input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+.gv-card select {
+    min-width: 0;
+    padding-right: 24px;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%237f8ea3' stroke-width='1.6'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    cursor: pointer;
+}
+
+.gv-inline select { flex: 0 1 auto; max-width: 96px; }
+#gv-ed-pmode, #gv-ed-fmode { width: 68px; }
+#gv-ed-layer { width: 100%; max-width: none; }
+
+.gv-card textarea {
+    height: auto;
+    min-height: 52px;
+    padding: 8px 10px;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.gv-card input:focus,
+.gv-card select:focus,
+.gv-card textarea:focus {
+    outline: 0;
+    border-color: rgba(87, 224, 75, 0.55);
+    background: rgba(2, 6, 23, 0.85);
+    box-shadow: 0 0 0 3px rgba(87, 224, 75, 0.14);
+}
+
+.gv-card input[type="number"]:hover,
+.gv-card select:hover { border-color: rgba(148, 163, 184, 0.32); }
+
+/* ------------------------------- casillas ------------------------------- */
+.gv-card .gcode-viewer-check,
+.gv-actions .gcode-viewer-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #9fb0c3;
+    font-size: 0.72rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.gv-card input[type="checkbox"],
+.gv-actions input[type="checkbox"] {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex: none;
+    margin: 0;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    border-radius: 5px;
+    background: rgba(2, 6, 23, 0.7);
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.gv-card input[type="checkbox"]:hover,
+.gv-actions input[type="checkbox"]:hover { border-color: rgba(87, 224, 75, 0.6); }
+
+.gv-card input[type="checkbox"]:checked,
+.gv-actions input[type="checkbox"]:checked { border-color: #57e04b; background: #57e04b; }
+
+.gv-card input[type="checkbox"]:checked::after,
+.gv-actions input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 4.5px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid #05230d;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.gv-card input[type="checkbox"]:focus-visible,
+.gv-actions input[type="checkbox"]:focus-visible { box-shadow: 0 0 0 3px rgba(87, 224, 75, 0.2); }
+
+/* ------------------------- botones de rotación -------------------------- */
+.gv-chip {
+    height: 26px;
+    padding: 0 9px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 7px;
+    background: rgba(148, 163, 184, 0.07);
+    color: #9fb0c3;
+    font-size: 0.66rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.gv-chip:hover {
+    border-color: rgba(87, 224, 75, 0.45);
+    background: rgba(87, 224, 75, 0.14);
+    color: #b7f7ae;
+}
+
+.gv-chip:active { transform: translateY(1px); }
+
+/* -------------------------------- acciones ------------------------------ */
+.gv-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 12px 14px 14px;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.gv-actions > .gcode-viewer-check {
+    grid-column: 1 / -1;
+    margin-bottom: 2px;
+}
+
+.gv-actions .gv-grow { display: none; }
+
+.gv-actions .btn-file-action {
+    justify-content: center;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+#gv-ed-apply {
+    border-color: rgba(87, 224, 75, 0.5);
+    background: linear-gradient(180deg, rgba(87, 224, 75, 0.22), rgba(87, 224, 75, 0.12));
+    color: #b7f7ae;
+}
+
+#gv-ed-apply:hover { background: rgba(87, 224, 75, 0.28); }
+
+#gv-ed-save {
+    border-color: rgba(148, 163, 184, 0.28);
+    background: rgba(148, 163, 184, 0.08);
+    color: #dbe6f2;
+}
+
+#gv-ed-reset {
+    border-color: transparent;
+    background: transparent;
+    color: #8b9bb0;
+}
+
+#gv-ed-reset:hover { border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.1); color: #fca5a5; }
+
+/* --------------------------------- capas -------------------------------- */
+.gv-layers { max-height: 190px; padding: 6px; }
+
+.gv-layer {
+    /* 5 elementos: color, nombre, S, F y el ojo -- con 4 columnas el ojo se
+       caía a una segunda línea. */
+    grid-template-columns: 14px minmax(0, 1fr) auto auto 22px;
+    gap: 9px;
+    min-height: 34px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 9px;
+}
+
+.gv-layer:hover { background: rgba(148, 163, 184, 0.08); }
+
+.gv-layer .gv-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+.gv-layer .gv-lname { color: #dbe6f2; font-size: 0.74rem; font-weight: 550; }
+
+/* S y F juntos en una sola cápsula, en vez de dos columnas sueltas */
+.gv-layer .gv-lval {
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(2, 6, 23, 0.6);
+    color: #8b9bb0;
+    font-size: 0.64rem;
+}
+
+.gv-layer .gv-lval + .gv-lval { margin-left: 4px; }
+
+.gv-eye {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    color: #64748b;
+    transition: background 0.15s, color 0.15s;
+}
+
+.gv-eye:hover { background: rgba(148, 163, 184, 0.12); color: #cbd5e1; }
+.gv-eye.is-on { color: #57e04b; }
+
+.gv-empty { padding: 18px 12px; color: #7f8ea3; font-size: 0.73rem; }
+
+
+/* ------------------- ajustes para columna estrecha ---------------------- */
+/* La fila de Origen lleva una etiqueta larga: ocupa el ancho completo y se
+   apoya en el texto de la casilla, que ya dice lo que hace. */
+.gv-row:has(> label + .gcode-viewer-check) { grid-template-columns: minmax(0, 1fr); }
+.gv-row:has(#gv-ed-origin) > label,
+.gv-row:has(#gv-ed-frame) > label { display: none; }
+
+.gv-card .gcode-viewer-check { line-height: 1.25; }
+
+@media (max-width: 1520px) {
+    .gv-row { grid-template-columns: minmax(52px, auto) minmax(0, 1fr); gap: 8px; }
+    .gv-inline { gap: 5px; font-size: 0.66rem; }
+    .gv-card input[type="number"] { width: 54px; padding: 0 7px; }
+    #gv-ed-pmode, #gv-ed-fmode { width: 62px; }
+    .gv-chip { padding: 0 7px; }
+    .gv-actions { grid-template-columns: 1fr 1fr; }
+    #gv-ed-save { grid-column: 1 / -1; }
+}

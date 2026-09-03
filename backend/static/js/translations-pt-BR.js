@@ -356,7 +356,7 @@ window.NopalTranslations["pt-BR"] = {
   "pluginCatalog_material_library_description": "Perfis compartilhados de potência, velocidade e profundidade organizados por material.",
   "pluginCatalog_arduino_accessories_name": "Acessórios Arduino/ESP32",
   "pluginCatalog_arduino_accessories_description": "Relés de controle e tiras de LED conectadas à sua própria placa Arduino/ESP32, sem necessidade de plugues WiFi de terceiros.",
-  "gcodeEditorDescription": "Abra, edite e baixe arquivos G-Code diretamente no navegador.",
+  "gcodeEditorDescription": "Abra, edite e baixe arquivos G-Code.",
   "gcodeEditorNew": "Novo",
   "gcodeEditorOpen": "Aberta",
   "gcodeEditorDownload": "Download",

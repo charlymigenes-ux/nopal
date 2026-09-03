@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=340">
+    <link rel="stylesheet" href="/static/css/style.css?v=356">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -813,35 +813,213 @@
 
             <section id="gcode-editor-section" class="view-section" style="display: none;">
                 <main class="main-content gcode-editor-main">
-                    <section class="page-header">
-                        <h1 data-i18n="navGcodeEditor">Editor G-Code</h1>
-                        <p data-i18n="gcodeEditorDescription">Abre, modifica y descarga archivos G-Code directamente en el navegador.</p>
-                    </section>
+                    <header class="section-header-compact" id="gcode-editor-header">
+                        <div class="shc-icon">
+                            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                        </div>
+                        <div class="shc-copy">
+                            <h1 data-i18n="navGcodeEditor">Editor G-Code</h1>
+                            <div class="shc-meta">
+                                <span class="shc-sub"><span data-i18n="gcodeEditorDescription">Abre, modifica y descarga archivos G-Code.</span></span>
+                            </div>
+                        </div>
+                        <div class="shc-actions">
+                            <button type="button" class="btn-file-action" id="gcode-editor-new-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                                <span data-i18n="gcodeEditorNew">Nuevo</span>
+                            </button>
+                            <button type="button" class="btn-file-action" id="gcode-editor-library-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                                <span data-i18n="gcodeEditorLibrary">Biblioteca</span>
+                            </button>
+                            <button type="button" class="btn-file-action" id="gcode-editor-open-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                <span data-i18n="gcodeEditorOpen">Abrir</span>
+                            </button>
+                            <button type="button" class="btn-file-action btn-file-action-accent" id="gcode-editor-download-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                <span data-i18n="gcodeEditorDownload">Descargar</span>
+                            </button>
+                            <input type="file" id="gcode-editor-file-input" accept=".gcode,.gc,.gco,.nc,.tap,.cnc,text/plain" hidden>
+                        </div>
+                    </header>
                     <section class="gcode-editor-card">
                         <div class="gcode-editor-toolbar">
                             <div class="gcode-editor-file-meta">
                                 <strong id="gcode-editor-filename" data-i18n="gcodeEditorUntitled">Sin título.gcode</strong>
-                                <span id="gcode-editor-line-count">0 líneas</span>
+                                <span class="shc-state" id="gcode-editor-state">
+                                    <span class="shc-dot"></span>
+                                    <span id="gcode-editor-line-count">0 líneas</span>
+                                </span>
                             </div>
-                            <div class="gcode-editor-actions">
-                                <button type="button" class="btn-file-action" id="gcode-editor-new-btn">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                                    <span data-i18n="gcodeEditorNew">Nuevo</span>
+                            <div class="option-switch gcode-editor-tabs" id="gcode-editor-tabs">
+                                <button type="button" class="option-switch-btn active" data-value="view">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg>
+                                    <span data-i18n="gcodeTabView">Visor 2D</span>
                                 </button>
-                                <button type="button" class="btn-file-action" id="gcode-editor-open-btn">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                                    <span data-i18n="gcodeEditorOpen">Abrir</span>
+                                <button type="button" class="option-switch-btn" data-value="code">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                                    <span data-i18n="gcodeTabCode">Código</span>
                                 </button>
-                                <button type="button" class="btn-file-action" id="gcode-editor-download-btn">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                    <span data-i18n="gcodeEditorDownload">Descargar</span>
-                                </button>
-                                <input type="file" id="gcode-editor-file-input" accept=".gcode,.gc,.gco,.nc,.tap,.cnc,text/plain" hidden>
                             </div>
                         </div>
                         <div class="gcode-editor-workspace">
-                            <textarea id="gcode-editor-textarea" spellcheck="false" autocomplete="off" data-i18n-placeholder="gcodeEditorPlaceholder" placeholder="; Escribe o abre un archivo G-Code...&#10;G21&#10;G90"></textarea>
-                            <aside class="gcode-analysis-card" aria-live="polite">
+                            <div class="gcode-editor-pane" id="gcode-editor-pane-code" hidden>
+                                <textarea id="gcode-editor-textarea" spellcheck="false" autocomplete="off" data-i18n-placeholder="gcodeEditorPlaceholder" placeholder="; Escribe o abre un archivo G-Code...&#10;G21&#10;G90"></textarea>
+                            </div>
+                            <div class="gcode-editor-pane" id="gcode-editor-pane-view">
+                                <div class="gv-shell">
+                                    <div class="gv-left">
+    <section class="gv-card">
+                                        <header class="gv-card-head"><h3 data-i18n="gcodeLayers">Capas</h3></header>
+                                        <div class="gv-layers" id="gv-layers"><div class="gv-empty">Sin archivo</div></div>
+                                    </section>
+
+                                    <section class="gv-card" id="gv-edit-card">
+                                        <header class="gv-card-head">
+                                            <h3 data-i18n="gcodeEdit">Edición</h3>
+                                            <span class="gv-badge" id="gv-ed-badge" hidden data-i18n="gcodeEdited">modificado</span>
+                                        </header>
+
+                                        <div class="gv-group">
+                                            <div class="gv-group-title" data-i18n="gcodeGeometry">Geometría</div>
+                                            <div class="gv-row"><label data-i18n="gcodeMove">Mover</label>
+                                                <span class="gv-inline">X <input type="number" id="gv-ed-offx" value="0" step="0.5"> Y <input type="number" id="gv-ed-offy" value="0" step="0.5"> mm</span></div>
+                                            <div class="gv-row"><label data-i18n="gcodeScale">Escala</label>
+                                                <span class="gv-inline"><input type="number" id="gv-ed-scale" value="100" step="1" min="1"> %</span></div>
+                                            <div class="gv-row"><label data-i18n="gcodeRotate">Rotar</label>
+                                                <span class="gv-inline"><input type="number" id="gv-ed-rot" value="0" step="90"> °
+                                                    <button type="button" class="gv-chip" data-rot="90">90°</button>
+                                                    <button type="button" class="gv-chip" data-rot="180">180°</button>
+                                                    <button type="button" class="gv-chip" data-rot="270">270°</button></span></div>
+                                            <div class="gv-row"><label data-i18n="gcodeMirror">Espejo</label>
+                                                <span class="gv-inline">
+                                                    <label class="gcode-viewer-check"><input type="checkbox" id="gv-ed-mx"><span data-i18n="gcodeHorizontal">Horizontal</span></label>
+                                                    <label class="gcode-viewer-check"><input type="checkbox" id="gv-ed-my"><span data-i18n="gcodeVertical">Vertical</span></label></span></div>
+                                            <div class="gv-row"><label data-i18n="gcodeOrigin">Origen</label>
+                                                <label class="gcode-viewer-check"><input type="checkbox" id="gv-ed-origin"><span data-i18n="gcodeToOrigin">Llevar la pieza a 0,0</span></label></div>
+                                        </div>
+
+                                        <div class="gv-group">
+                                            <div class="gv-group-title" data-i18n="gcodePowerSpeed">Potencia y velocidad</div>
+                                            <div class="gv-row"><label data-i18n="gcodeApplyTo">Aplicar a</label>
+                                                <select id="gv-ed-layer" class="settings-select gcode-viewer-select"><option value="*" data-i18n="gcodeAllLayers">Todas las capas</option></select></div>
+                                            <div class="gv-row"><label>Potencia S</label>
+                                                <span class="gv-inline">
+                                                    <select id="gv-ed-pmode" class="settings-select gcode-viewer-select"><option value="mul">× %</option><option value="set" data-i18n="gcodeSet">fijar</option></select>
+                                                    <input type="number" id="gv-ed-pval" value="100" step="5"></span></div>
+                                            <div class="gv-row"><label>Velocidad F</label>
+                                                <span class="gv-inline">
+                                                    <select id="gv-ed-fmode" class="settings-select gcode-viewer-select"><option value="mul">× %</option><option value="set" data-i18n="gcodeSet">fijar</option></select>
+                                                    <input type="number" id="gv-ed-fval" value="100" step="5"></span></div>
+                                            <div class="gv-row"><label data-i18n="gcodePasses">Pasadas</label>
+                                                <span class="gv-inline"><input type="number" id="gv-ed-passes" value="1" min="1" max="20" step="1"> ×</span></div>
+                                        </div>
+
+                                        <div class="gv-group">
+                                            <div class="gv-group-title" data-i18n="gcodeInsert">Insertar</div>
+                                            <div class="gv-row"><label class="gcode-viewer-check"><input type="checkbox" id="gv-ed-frame"><span data-i18n="gcodePreFrame">Encuadre previo</span></label></div>
+                                            <div class="gv-row gv-sub" id="gv-frame-opts" hidden><label>Encuadre</label>
+                                                <span class="gv-inline">S <input type="number" id="gv-ed-fr-pow" value="5" step="1">
+                                                    F <input type="number" id="gv-ed-fr-feed" value="3000" step="100">
+                                                    <input type="number" id="gv-ed-fr-rep" value="1" min="1" max="9" title="repeticiones">×
+                                                    +<input type="number" id="gv-ed-fr-mg" value="0" step="0.5" title="margen mm">mm</span></div>
+                                            <div class="gv-row gv-col"><label data-i18n="gcodeHeaderCode">Cabecera G-code</label>
+                                                <textarea id="gv-ed-header" rows="2" placeholder="p. ej. M8"></textarea></div>
+                                            <div class="gv-row gv-col"><label data-i18n="gcodeFooterCode">Pie G-code</label>
+                                                <textarea id="gv-ed-footer" rows="2" placeholder="p. ej. M9"></textarea></div>
+                                        </div>
+
+                                        <div class="gv-actions">
+                                            <label class="gcode-viewer-check"><input type="checkbox" id="gv-ed-auto" checked><span data-i18n="gcodeAutoPreview">Vista previa automática</span></label>
+                                            <span class="gv-grow"></span>
+                                            <button type="button" class="btn-file-action btn-viewer" id="gv-ed-reset" data-i18n="gcodeDiscard">Descartar</button>
+                                            <button type="button" class="btn-file-action btn-viewer" id="gv-ed-apply" data-i18n="gcodeApply">Aplicar</button>
+                                            <button type="button" class="btn-file-action btn-file-action-accent" id="gv-ed-save" data-i18n="gcodeSaveGc">Guardar .gc</button>
+                                        </div>
+                                    </section>
+                                    </div>
+                                    <div class="gv-main">
+                                        <div class="gcode-viewer-bar">
+                                            <button type="button" class="btn-file-action btn-viewer" id="gcode-viewer-fit" title="Ajustar a pantalla">
+                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+                                                <span data-i18n="gcodeFit">Ajustar</span>
+                                            </button>
+                                            <label class="gcode-viewer-check"><input type="checkbox" id="gcode-viewer-travel" checked><span data-i18n="gcodeViewerTravels">Desplazamientos</span></label>
+                                            <span class="gcode-viewer-coords" id="gcode-viewer-coords"></span>
+                                        </div>
+                                        <div class="gcode-viewer-canvas" id="gcode-viewer-canvas">
+                                            <nav class="gv-rail gv-rail-flotante" id="gcode-viewer-rail">
+                                            <button type="button" class="gv-tool is-active" data-tool="select" title="Seleccionar">
+                                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 3l7 17 2.5-6.5L20 11 4 3z"/></svg>
+                                                <span>Seleccionar</span>
+                                            </button>
+                                            <button type="button" class="gv-tool" data-tool="pan" title="Mover">
+                                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
+                                                <span>Mover</span>
+                                            </button>
+                                            <button type="button" class="gv-tool" data-tool="zoom" title="Zoom">
+                                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                                                <span>Zoom</span>
+                                            </button>
+                                            <button type="button" class="gv-tool" data-tool="measure" title="Medir">
+                                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 15L15 3l6 6L9 21z"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2"/></svg>
+                                                <span>Medir</span>
+                                            </button>
+                                            <button type="button" class="gv-tool" data-tool="origin" title="Origen">
+                                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                                                <span>Origen</span>
+                                            </button>
+                                            <button type="button" class="gv-tool" data-toggle="frame" title="Encuadre">
+                                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-dasharray="4 3"><rect x="3" y="4" width="18" height="16" rx="1"/></svg>
+                                                <span>Encuadre</span>
+                                            </button>
+                                            </nav>
+                                        </div>
+                                        <div class="gcode-viewer-loading" id="gcode-viewer-loading" hidden>
+                                            <span class="gvl-spinner"></span>
+                                            <span class="gvl-text" id="gcode-viewer-loading-text">Leyendo archivo…</span>
+                                            <span class="gvl-bar"><i id="gcode-viewer-loading-bar"></i></span>
+                                        </div>
+                                        <div class="gv-sim">
+                                            <button type="button" class="btn-file-action btn-viewer" id="gv-sim-play" disabled>
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l14 8-14 8z"/></svg>
+                                                <span data-i18n="gcodeSimPlay">Simular</span>
+                                            </button>
+                                            <button type="button" class="btn-file-action btn-viewer" id="gv-sim-pause" disabled title="Pausar">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5v14M16 5v14"/></svg>
+                                            </button>
+                                            <button type="button" class="btn-file-action btn-viewer" id="gv-sim-stop" disabled title="Detener">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                                            </button>
+                                            <span class="gv-sim-dot" id="gv-sim-dot"></span>
+                                            <span class="gv-sim-time" id="gv-sim-time">00:00:00 / 00:00:00</span>
+                                            <input type="range" id="gv-sim-range" min="0" max="1000" value="1000" disabled>
+                                            <select id="gv-sim-speed" class="settings-select gcode-viewer-select">
+                                                <option value="1">x1</option>
+                                                <option value="10">x10</option>
+                                                <option value="100" selected>x100</option>
+                                                <option value="500">x500</option>
+                                            </select>
+                                        </div>
+                                        <div class="gcode-viewer-stats" id="gcode-viewer-stats"></div>
+                                        <div class="gv-console collapsed" id="gv-console">
+                                            <div class="gv-console-grip" id="gv-console-grip" title="Arrastra para cambiar el alto"></div>
+                                            <header class="gv-console-head">
+                                                <button type="button" class="gv-console-chev" id="gv-console-toggle">▾</button>
+                                                <h3 data-i18n="gcodeConsole">Consola</h3>
+                                                <span class="gv-grow"></span>
+                                                <button type="button" class="gv-link" id="gv-console-clear" data-i18n="gcodeConsoleClear">Limpiar</button>
+                                            </header>
+                                            <div class="gv-console-body" id="gv-console-body"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="gv-side">
+                            
+
+                                <aside class="gcode-analysis-card" aria-live="polite">
                                 <div class="gcode-analysis-header">
                                     <div>
                                         <span class="gcode-analysis-eyebrow" data-i18n="gcodeAnalysisEyebrow">LECTURA AUTOMÁTICA</span>
@@ -853,8 +1031,51 @@
                                 <div class="gcode-analysis-details" id="gcode-analysis-details"></div>
                                 <div class="gcode-analysis-signals" id="gcode-analysis-signals"></div>
                             </aside>
+
+                                <section class="gv-card">
+                                    <header class="gv-card-head"><h3 data-i18n="gcodeProperties">Propiedades</h3></header>
+                                    <div class="gv-group">
+                                        <div class="gv-row"><label data-i18n="gcodeColorBy">Color por</label>
+                                            <select id="gcode-viewer-color" class="settings-select gcode-viewer-select">
+                                                <option value="0" data-i18n="gcodeViewerByLayer">Capa</option>
+                                                <option value="1" data-i18n="gcodeViewerByPower">Potencia (S)</option>
+                                                <option value="2" data-i18n="gcodeViewerBySpeed">Velocidad (F)</option>
+                                            </select></div>
+                                        <div class="gv-row"><label data-i18n="gcodeWorkArea">Área trabajo</label>
+                                            <span class="gv-inline"><input type="number" id="gv-wa-w" value="420" min="1"> × <input type="number" id="gv-wa-h" value="300" min="1"> mm</span></div>
+                                        <div class="gv-row"><label>Potencia máx.</label><b id="gv-p-maxs">—</b></div>
+                                        <div class="gv-row"><label>Velocidad máx.</label><b id="gv-p-maxf">—</b></div>
+                                        <div class="gv-row"><label data-i18n="gcodeUnits">Unidades</label><b>mm</b></div>
+                                        <div class="gv-row"><label data-i18n="gcodeOrigin">Origen</label><b id="gv-p-origen">—</b></div>
+                                    </div>
+                                </section>
+                            </div>
                         </div>
                     </section>
+
+                    <div class="gclib" id="gcode-library" hidden>
+                        <div class="gclib-backdrop" data-gclib-close></div>
+                        <div class="gclib-dialog">
+                            <header class="gclib-head">
+                                <div class="gclib-title">
+                                    <h2 data-i18n="gcodeLibraryTitle">Biblioteca de G-code</h2>
+                                    <span class="gclib-crumbs" id="gclib-crumbs"></span>
+                                </div>
+                                <input type="search" class="gclib-search" id="gclib-search" data-i18n-placeholder="gcodeLibrarySearch" placeholder="Buscar en esta carpeta…">
+                                <div class="gclib-modes" id="gclib-modes">
+                                    <button type="button" class="gclib-mode is-active" data-modo="list" title="Lista">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                    </button>
+                                    <button type="button" class="gclib-mode" data-modo="grid" title="Mosaico">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                    </button>
+                                </div>
+                                <button type="button" class="gclib-close" data-gclib-close aria-label="Cerrar">&times;</button>
+                            </header>
+                            <div class="gclib-recientes" id="gclib-recientes" hidden></div>
+                            <div class="gclib-body" id="gclib-body"></div>
+                        </div>
+                    </div>
                 </main>
             </section>
 
@@ -5081,11 +5302,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=47"></script>
-    <script src="/static/js/translations-pt-BR.js?v=7"></script>
-    <script src="/static/js/translations-fr.js?v=7"></script>
-    <script src="/static/js/translations-de.js?v=7"></script>
-    <script src="/static/js/app.js?v=276"></script>
+    <script src="/static/js/translations.js?v=50"></script>
+    <script src="/static/js/translations-pt-BR.js?v=8"></script>
+    <script src="/static/js/translations-fr.js?v=8"></script>
+    <script src="/static/js/translations-de.js?v=8"></script>
+    <script src="/static/js/app.js?v=289"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

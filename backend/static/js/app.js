@@ -5985,7 +5985,9 @@ async function loadPrinters() {
     if (printersLoading) return;
     printersLoading = true;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    // 10 s se quedaba corto en el F5, cuando compite con el resto de la
+    // carga inicial: el panel salía siempre en error y al reintentar iba bien.
+    const timer = setTimeout(() => controller.abort(), 25000);
     try {
         const response = await fetch('/api/printers/status', { signal: controller.signal });
         if (!response.ok) throw new Error('No se pudo cargar el estado de impresoras');
@@ -6009,7 +6011,9 @@ async function loadPrinters() {
     } catch (error) {
         console.error(error);
         dashboardPrintersLoaded = true;
-        dashboardPrintersLoadError = true;
+        // Si ya hay máquinas de un sondeo anterior se siguen mostrando: un
+        // fallo puntual no debe borrar las que sí respondieron.
+        dashboardPrintersLoadError = !allPrinters.length;
         renderPrinters(allPrinters);
     } finally {
         clearTimeout(timer);
@@ -6296,8 +6300,9 @@ async function refreshDashboardLaserCard() {
         dashboardLaserDevicesLoadError = false;
     } catch (error) {
         console.error(error);
-        dashboardLaserEntries = [];
-        dashboardLaserDevicesLoadError = true;
+        // Igual que con las impresoras: sólo es "error" si no queda nada que
+        // enseñar; si había equipos de antes, se conservan.
+        dashboardLaserDevicesLoadError = !dashboardLaserEntries.length;
     }
     dashboardLaserDevicesLoaded = true;
     renderPrinters(allPrinters);
@@ -21699,3 +21704,786 @@ document.getElementById('backup-import-input')?.addEventListener('change', async
         backupShow(error.message, 'error');
     }
 });
+
+
+/* ==================== Visor G-code 2D (pestaña del editor) ==================
+   El visor es un módulo ES; app.js es un script clásico, así que se carga con
+   import() dinámico la primera vez que se abre la pestaña. Ver
+   static/js/visor/viewer.js. */
+(function () {
+    const tabs = document.getElementById('gcode-editor-tabs');
+    const paneCode = document.getElementById('gcode-editor-pane-code');
+    const paneView = document.getElementById('gcode-editor-pane-view');
+    const lienzo = document.getElementById('gcode-viewer-canvas');
+    const textarea = document.getElementById('gcode-editor-textarea');
+    if (!tabs || !paneCode || !paneView || !lienzo || !textarea) return;
+
+    const elStats = document.getElementById('gcode-viewer-stats');
+    const elCoords = document.getElementById('gcode-viewer-coords');
+    let visor = null;
+    let textoCargado = null;
+    let montando = false;
+
+    function tiempo(s) {
+        s = Math.max(0, Math.round(s || 0));
+        const p = n => String(n).padStart(2, '0');
+        return p(Math.floor(s / 3600)) + ':' + p(Math.floor(s / 60) % 60) + ':' + p(s % 60);
+    }
+
+    function pintarStats(stats) {
+        if (!elStats) return;
+        const b = stats.bounds;
+        const dim = b ? (b.maxX - b.minX).toFixed(1) + ' × ' + (b.maxY - b.minY).toFixed(1) + ' mm' : '—';
+        elStats.innerHTML =
+            '<span>Trayectos: <b>' + stats.segments.toLocaleString() + '</b></span>' +
+            '<span>Tiempo estimado: <b>' + tiempo(stats.seconds) + '</b></span>' +
+            '<span>Corte: <b>' + (stats.distCut / 1000).toFixed(2) + ' m</b></span>' +
+            '<span>Viaje: <b>' + (stats.distTravel / 1000).toFixed(2) + ' m</b></span>' +
+            '<span>Medidas: <b>' + dim + '</b></span>' +
+            (stats.maxPower ? '<span>S máx.: <b>' + stats.maxPower + '</b></span>' : '') +
+            (stats.maxFeed ? '<span>F máx.: <b>' + stats.maxFeed + '</b></span>' : '');
+    }
+
+    async function asegurarVisor() {
+        if (visor || montando) return visor;
+        montando = true;
+        try {
+            const mod = await import('/static/js/visor/viewer.js');
+            visor = new mod.GcodeViewer(lienzo, {
+                workArea: { w: 420, h: 300 },
+                supersample: 2   // los rásters tramados se ven como mancha a 1x
+            });
+            paneView.__visor = visor;   // lo usa el indicador de carga
+            paneView.dispatchEvent(new CustomEvent('visor-listo', { detail: visor }));
+            visor.on('loaded', d => pintarStats(d.stats));
+            visor.on('pointer', p => {
+                if (elCoords) elCoords.textContent = 'X ' + p.x.toFixed(2) + '   Y ' + p.y.toFixed(2) + ' mm';
+            });
+            visor.on('error', e => {
+                if (elStats) elStats.textContent = 'No se pudo leer el G-code: ' + e.message;
+            });
+        } catch (err) {
+            paneView.innerHTML = '<p style="padding:24px;color:var(--text-muted)">' +
+                'No se pudo iniciar el visor 2D (requiere WebGL2): ' + err.message + '</p>';
+        } finally {
+            montando = false;
+        }
+        return visor;
+    }
+
+    async function verVisor() {
+        paneCode.hidden = true;
+        paneView.hidden = false;
+        const v = await asegurarVisor();
+        if (!v) return;
+        const txt = textarea.value;
+        if (txt !== textoCargado) {
+            textoCargado = txt;
+            if (elStats) elStats.textContent = 'Leyendo…';
+            if (txt.trim()) v.loadText(txt, document.getElementById('gcode-editor-filename')?.textContent || 'gcode');
+            else { v.reset(); if (elStats) elStats.textContent = ''; }
+        } else {
+            v.resize();   // la pestaña venía oculta: el contenedor medía 0
+        }
+    }
+
+    function verCodigo() {
+        // si el visor tiene ediciones aplicadas, el editor debe verlas
+        const v = paneView.__visor;
+        if (v && v.ops) {
+            const editado = v.getText();
+            if (editado && editado !== textarea.value) {
+                textarea.value = editado;
+                textoCargado = editado;
+                if (typeof updateGcodeEditorLineCount === 'function') updateGcodeEditorLineCount();
+            }
+        }
+        paneView.hidden = true;
+        paneCode.hidden = false;
+    }
+
+    tabs.addEventListener('click', event => {
+        const btn = event.target.closest('.option-switch-btn');
+        if (!btn) return;
+        tabs.querySelectorAll('.option-switch-btn').forEach(b => b.classList.toggle('active', b === btn));
+        if (btn.dataset.value === 'view') verVisor(); else verCodigo();
+    });
+
+    document.getElementById('gcode-viewer-fit')?.addEventListener('click', () => visor?.zoomToFit());
+    document.getElementById('gcode-viewer-travel')?.addEventListener('change', e => visor?.setShowTravel(e.target.checked));
+    document.getElementById('gcode-viewer-color')?.addEventListener('change', e => visor?.setColorMode(Number(e.target.value)));
+
+    const btnMedir = document.getElementById('gcode-viewer-measure');
+    btnMedir?.addEventListener('click', () => {
+        const on = !btnMedir.classList.contains('is-active');
+        btnMedir.classList.toggle('is-active', on);
+        visor?.setTool(on ? 'measure' : 'select');
+    });
+
+    const btnEncuadre = document.getElementById('gcode-viewer-frame');
+    btnEncuadre?.addEventListener('click', () => {
+        const on = !btnEncuadre.classList.contains('is-active');
+        btnEncuadre.classList.toggle('is-active', on);
+        visor?.setShowFrame(on);
+    });
+})();
+
+
+/* El Visor 2D es la pestaña inicial: hay que refrescarlo cuando entra
+   contenido nuevo (abrir archivo, escribir, Nuevo) sin esperar a un clic. */
+(function () {
+    const tabs = document.getElementById('gcode-editor-tabs');
+    const lineCount = document.getElementById('gcode-editor-line-count');
+    const pill = document.getElementById('gcode-editor-state');
+    const textarea = document.getElementById('gcode-editor-textarea');
+    if (!tabs || !lineCount || !textarea) return;
+
+    const visorActivo = () =>
+        tabs.querySelector('.option-switch-btn[data-value="view"]')?.classList.contains('active');
+
+    let temporizador = null;
+    function refrescar() {
+        clearTimeout(temporizador);
+        temporizador = setTimeout(() => {
+            pill?.classList.toggle('is-loaded', textarea.value.trim().length > 0);
+            const seccion = document.getElementById('gcode-editor-section');
+            if (!visorActivo() || !seccion || seccion.style.display === 'none') return;
+            tabs.querySelector('.option-switch-btn[data-value="view"]')
+                ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }, 180);
+    }
+
+    // el contador de líneas cambia justo cuando el editor recibe contenido
+    new MutationObserver(refrescar).observe(lineCount, { childList: true, characterData: true, subtree: true });
+
+    // y al entrar a la sección desde el menú
+    document.querySelector('.nav-item[data-section="gcode-editor"]')
+        ?.addEventListener('click', () => setTimeout(refrescar, 120));
+})();
+
+
+/* ============ Biblioteca de G-code + indicador de carga del visor =========
+   La biblioteca lista lo que ya está en NOPAL (/api/browse?type=gcode) para
+   no tener que subir de nuevo un archivo que ya está guardado. */
+(function () {
+    const paneView = document.getElementById('gcode-editor-pane-view');
+    const textarea = document.getElementById('gcode-editor-textarea');
+    const overlay = document.getElementById('gcode-viewer-loading');
+    const overlayText = document.getElementById('gcode-viewer-loading-text');
+    const overlayBar = document.getElementById('gcode-viewer-loading-bar');
+    const dialogo = document.getElementById('gcode-library');
+    if (!paneView || !textarea) return;
+
+    /* ---------------------------------------------------- carga en curso */
+    let ocultarTardio = null;
+
+    function mostrarCarga(texto) {
+        if (!overlay) return;
+        clearTimeout(ocultarTardio);
+        if (overlayText) overlayText.textContent = texto || 'Leyendo archivo…';
+        if (overlayBar) overlayBar.style.width = '0%';
+        overlay.hidden = false;
+        // red de seguridad: nunca dejar el indicador colgado
+        ocultarTardio = setTimeout(ocultarCarga, 30000);
+    }
+
+    function ocultarCarga() {
+        clearTimeout(ocultarTardio);
+        if (overlay) overlay.hidden = true;
+    }
+
+    function progreso(pct, texto) {
+        if (overlayBar) overlayBar.style.width = Math.min(100, Math.max(0, pct)) + '%';
+        if (texto && overlayText) overlayText.textContent = texto;
+    }
+
+    // El visor se crea de forma perezosa: el panel avisa con 'visor-listo'
+    // en cuanto existe la instancia, así no hace falta sondear.
+    function engancharVisor(v) {
+        if (!v || v.__cargaEnganchada) return;
+        v.__cargaEnganchada = true;
+        v.on('progress', p => {
+            const pct = p.total ? (p.bytes / p.total) * 100 : 0;
+            progreso(pct, p.lines.toLocaleString() + ' líneas · ' + p.segments.toLocaleString() + ' trayectos');
+        });
+        v.on('loaded', () => { progreso(100); setTimeout(ocultarCarga, 150); });
+        v.on('error', ocultarCarga);
+    }
+    paneView.addEventListener('visor-listo', e => engancharVisor(e.detail));
+    engancharVisor(paneView.__visor);
+
+    // al elegir un archivo del disco: el volcado al textarea ya es lento
+    document.getElementById('gcode-editor-file-input')
+        ?.addEventListener('change', () => mostrarCarga('Leyendo archivo…'), true);
+
+    // el visor se refresca solo cuando cambia el contador de líneas; si tarda
+    // en llegar el 'loaded', el temporizador de seguridad cierra el indicador
+    document.getElementById('gcode-editor-new-btn')?.addEventListener('click', ocultarCarga);
+
+    /* ------------------------------------------------------- biblioteca */
+    if (!dialogo) return;
+    const cuerpo = document.getElementById('gclib-body');
+    const migas = document.getElementById('gclib-crumbs');
+    const buscador = document.getElementById('gclib-search');
+    let rutaActual = '';
+    let contenido = { folders: [], files: [] };
+
+    const ICONO_CARPETA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>';
+    const ICONO_ARCHIVO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    const ICONO_CARPETA_GRANDE = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>';
+
+    function tamano(b) {
+        if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MB';
+        if (b >= 1024) return Math.round(b / 1024) + ' KB';
+        return b + ' B';
+    }
+
+    function pintarMigas() {
+        if (!migas) return;
+        const partes = rutaActual ? rutaActual.split('/') : [];
+        let acumulado = '';
+        const trozos = ['<button type="button" data-ruta="">G-code</button>'];
+        for (const parte of partes) {
+            acumulado = acumulado ? acumulado + '/' + parte : parte;
+            trozos.push('<span> / </span><button type="button" data-ruta="' + escapeHtml(acumulado) + '">' + escapeHtml(parte) + '</button>');
+        }
+        migas.innerHTML = trozos.join('');
+    }
+
+    // Las miniaturas las dibuja el propio visor (mismo parser + WebGL); se
+    // generan sólo cuando la tarjeta entra en pantalla y de una en una.
+    function imgMiniatura(f) {
+        return '<img class="gclib-img" alt="" data-thumb="' + escapeHtml(f.file_url) + '">';
+    }
+
+    let observador = null;
+
+    function generarMiniaturasVisibles() {
+        if (observador) observador.disconnect();
+        observador = new IntersectionObserver(async (entradas) => {
+            for (const entrada of entradas) {
+                if (!entrada.isIntersecting) continue;
+                const img = entrada.target;
+                observador.unobserve(img);
+                const url = img.dataset.thumb;
+                if (!url) continue;
+                img.classList.add('is-cargando');
+                try {
+                    const mod = await import('/static/js/visor/thumbnail.js');
+                    const datos = await mod.miniatura(url);
+                    if (datos) { img.src = datos; img.classList.remove('is-cargando'); }
+                    else img.remove();
+                } catch (_) {
+                    img.remove();   // sin miniatura queda el icono de archivo
+                }
+            }
+        }, { rootMargin: '150px' });
+        dialogo.querySelectorAll('img[data-thumb]:not([src])').forEach(i => observador.observe(i));
+    }
+
+    function tarjetaArchivo(f) {
+        return '<button type="button" class="gclib-tile" data-archivo="' + escapeHtml(f.file_url) +
+            '" data-nombre="' + escapeHtml(f.name) + '" title="' + escapeHtml(f.name) + '">' +
+            '<span class="gclib-thumb">' + imgMiniatura(f) + '</span>' +
+            '<span class="gclib-name">' + escapeHtml(f.name) + '</span>' +
+            '<span class="gclib-meta">' + tamano(f.size) + '</span></button>';
+    }
+
+    function tarjetaCarpeta(ruta, nombre, meta) {
+        return '<button type="button" class="gclib-tile is-folder" data-carpeta="' + escapeHtml(ruta) + '">' +
+            '<span class="gclib-thumb">' + ICONO_CARPETA_GRANDE + '</span>' +
+            '<span class="gclib-name">' + escapeHtml(nombre) + '</span>' +
+            '<span class="gclib-meta">' + (meta || '') + '</span></button>';
+    }
+
+    function pintar() {
+        if (!cuerpo) return;
+        const filtro = (buscador?.value || '').trim().toLowerCase();
+        const carpetas = contenido.folders.filter(f => !filtro || f.name.toLowerCase().includes(filtro));
+        const archivos = contenido.files.filter(f => !filtro || f.name.toLowerCase().includes(filtro));
+        const mosaico = cuerpo.classList.contains('is-grid');
+
+        if (!carpetas.length && !archivos.length) {
+            cuerpo.innerHTML = '<div class="gclib-empty">No hay archivos G-code aquí.</div>';
+            return;
+        }
+
+        const padre = rutaActual
+            ? (rutaActual.includes('/') ? rutaActual.slice(0, rutaActual.lastIndexOf('/')) : '')
+            : null;
+        const piezas = [];
+
+        if (mosaico) {
+            if (padre !== null) piezas.push(tarjetaCarpeta(padre, '..', ''));
+            for (const f of carpetas) piezas.push(tarjetaCarpeta(f.path, f.name, f.file_count + ' archivos'));
+            for (const f of archivos) piezas.push(tarjetaArchivo(f));
+        } else {
+            if (padre !== null) {
+                piezas.push('<button type="button" class="gclib-row is-folder" data-carpeta="' + escapeHtml(padre) + '">' +
+                    ICONO_CARPETA + '<span class="gclib-name">..</span></button>');
+            }
+            for (const f of carpetas) {
+                piezas.push('<button type="button" class="gclib-row is-folder" data-carpeta="' + escapeHtml(f.path) + '">' +
+                    ICONO_CARPETA + '<span class="gclib-name">' + escapeHtml(f.name) + '</span>' +
+                    '<span class="gclib-meta">' + f.file_count + ' archivos</span></button>');
+            }
+            for (const f of archivos) {
+                piezas.push('<button type="button" class="gclib-row" data-archivo="' + escapeHtml(f.file_url) + '" data-nombre="' + escapeHtml(f.name) + '">' +
+                    '<span class="gclib-mini">' + imgMiniatura(f) + '</span>' +
+                    '<span class="gclib-name">' + escapeHtml(f.name) + '</span>' +
+                    '<span class="gclib-meta">' + tamano(f.size) + '</span></button>');
+            }
+        }
+        cuerpo.innerHTML = piezas.join('');
+        generarMiniaturasVisibles();
+    }
+
+    /* --------------------------- últimos agregados --------------------- */
+    async function pintarRecientes() {
+        const tira = document.getElementById('gclib-recientes');
+        if (!tira) return;
+        try {
+            const res = await fetch('/api/models');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const todos = await res.json();
+            const gcode = todos
+                .filter(f => String(f.file_url || '').startsWith('/uploads/gcode/'))
+                .sort((a, b) => (b.modified || 0) - (a.modified || 0))
+                .slice(0, 5);
+            if (!gcode.length) { tira.hidden = true; return; }
+            tira.innerHTML = '<span class="gclib-rec-titulo">Últimos agregados</span>' +
+                gcode.map(tarjetaArchivo).join('');
+            tira.hidden = false;
+            generarMiniaturasVisibles();
+        } catch (_) {
+            tira.hidden = true;   // sin recientes no pasa nada: la lista sigue
+        }
+    }
+
+    /* ------------------------------ modo de vista ---------------------- */
+    const MODO = 'nopal.gclibModo';
+    function aplicarModo(modo) {
+        cuerpo?.classList.toggle('is-grid', modo === 'grid');
+        document.querySelectorAll('#gclib-modes .gclib-mode').forEach(b =>
+            b.classList.toggle('is-active', b.dataset.modo === modo));
+        try { localStorage.setItem(MODO, modo); } catch (_) {}
+        pintar();
+    }
+
+    document.getElementById('gclib-modes')?.addEventListener('click', event => {
+        const btn = event.target.closest('.gclib-mode');
+        if (btn) aplicarModo(btn.dataset.modo);
+    });
+
+    try {
+        const guardado = localStorage.getItem(MODO);
+        if (guardado === 'grid') aplicarModo('grid');
+    } catch (_) {}
+
+    async function abrirCarpeta(ruta) {
+        rutaActual = ruta || '';
+        if (cuerpo) cuerpo.innerHTML = '<div class="gclib-empty">Cargando…</div>';
+        pintarMigas();
+        try {
+            const res = await fetch('/api/browse?type=gcode&path=' + encodeURIComponent(rutaActual));
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            contenido = await res.json();
+            pintar();
+        } catch (err) {
+            if (cuerpo) cuerpo.innerHTML = '<div class="gclib-empty">No se pudo leer la biblioteca: ' + escapeHtml(err.message) + '</div>';
+        }
+    }
+
+    async function abrirArchivo(url, nombre) {
+        dialogo.hidden = true;
+        mostrarCarga('Descargando ' + nombre + '…');
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const texto = await res.text();
+            progreso(35, 'Cargando en el editor…');
+            textarea.value = texto;
+            const nombreEl = document.getElementById('gcode-editor-filename');
+            if (nombreEl) nombreEl.textContent = nombre;
+            updateGcodeEditorLineCount();   // recuenta y dispara el análisis
+        } catch (err) {
+            ocultarCarga();
+            if (typeof showToast === 'function') showToast('No se pudo abrir ' + nombre + ': ' + err.message, 'error');
+            else console.error(err);
+        }
+    }
+
+    document.getElementById('gcode-editor-library-btn')?.addEventListener('click', () => {
+        dialogo.hidden = false;
+        if (buscador) buscador.value = '';
+        abrirCarpeta(rutaActual);
+        pintarRecientes();
+    });
+
+    dialogo.addEventListener('click', event => {
+        if (event.target.closest('[data-gclib-close]')) { dialogo.hidden = true; return; }
+        const miga = event.target.closest('.gclib-crumbs button');
+        if (miga) { abrirCarpeta(miga.dataset.ruta); return; }
+        const fila = event.target.closest('.gclib-row, .gclib-tile');
+        if (!fila) return;
+        if (fila.dataset.carpeta !== undefined) abrirCarpeta(fila.dataset.carpeta);
+        else abrirArchivo(fila.dataset.archivo, fila.dataset.nombre);
+    });
+
+    buscador?.addEventListener('input', pintar);
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && !dialogo.hidden) dialogo.hidden = true;
+    });
+})();
+
+
+/* ============ Visor 2D: herramientas, capas, edición y simulación ========
+   Reutiliza la misma API del componente que la página de pruebas local. */
+(function () {
+    const paneView = document.getElementById('gcode-editor-pane-view');
+    const textarea = document.getElementById('gcode-editor-textarea');
+    const rail = document.getElementById('gcode-viewer-rail');
+    if (!paneView || !textarea || !rail) return;
+
+    let V = null;                       // instancia del visor
+    const $ = id => document.getElementById(id);
+
+    /* ------------------------------------------------------------ consola */
+    function log(msg, clase) {
+        const cuerpo = $('gv-console-body');
+        if (!cuerpo) return;
+        const fila = document.createElement('div');
+        fila.className = 'gv-log ' + (clase || 'info');
+        fila.innerHTML = '<span class="gv-t"></span><span class="gv-m"></span>';
+        fila.children[0].textContent = new Date().toTimeString().slice(0, 8);
+        fila.children[1].textContent = msg;
+        cuerpo.appendChild(fila);
+        cuerpo.scrollTop = cuerpo.scrollHeight;
+    }
+    $('gv-console-clear')?.addEventListener('click', () => { const c = $('gv-console-body'); if (c) c.innerHTML = ''; });
+    $('gv-console-toggle')?.addEventListener('click', () => $('gv-console')?.classList.toggle('collapsed'));
+
+    function hhmmss(s) {
+        s = Math.max(0, Math.round(s || 0));
+        const p = n => String(n).padStart(2, '0');
+        return p(Math.floor(s / 3600)) + ':' + p(Math.floor(s / 60) % 60) + ':' + p(s % 60);
+    }
+
+    /* ------------------------------------------------------- herramientas */
+    rail.addEventListener('click', event => {
+        const btn = event.target.closest('.gv-tool');
+        if (!btn) return;
+        if (btn.dataset.toggle === 'frame') {
+            btn.classList.toggle('is-active');
+            V?.setShowFrame(btn.classList.contains('is-active'));
+            return;
+        }
+        rail.querySelectorAll('.gv-tool[data-tool]').forEach(b => b.classList.toggle('is-active', b === btn));
+        V?.setTool(btn.dataset.tool);
+    });
+
+    /* -------------------------------------------------------------- capas */
+    function pintarCapas() {
+        const lista = $('gv-layers');
+        if (!lista || !V) return;
+        if (!V.layers.length) { lista.innerHTML = '<div class="gv-empty">Sin capas</div>'; return; }
+        lista.innerHTML = '';
+        V.layers.forEach((L, i) => {
+            const fila = document.createElement('div');
+            fila.className = 'gv-layer';
+            fila.innerHTML = '<span class="gv-swatch" style="background:' + L.color + '"></span>' +
+                '<span class="gv-lname"></span>' +
+                '<span class="gv-lval">S' + L.power + '</span>' +
+                '<span class="gv-lval">' + (L.feed || '—') + '</span>' +
+                '<button type="button" class="gv-eye is-on" title="Mostrar/ocultar">' +
+                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+                '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg></button>';
+            fila.querySelector('.gv-lname').textContent = L.name;
+            const ojo = fila.querySelector('.gv-eye');
+            // el visor oculta solo el relleno del ráster al cargar
+            ojo.classList.toggle('is-on', V.layerVisible[i] !== false);
+            ojo.addEventListener('click', () => {
+                const visible = !ojo.classList.contains('is-on');
+                ojo.classList.toggle('is-on', visible);
+                V.setLayerVisible(i, visible);
+            });
+            lista.appendChild(fila);
+        });
+    }
+
+    /* --------------------------------------------------------- propiedades */
+    function pintarPropiedades(stats) {
+        if ($('gv-p-maxs')) $('gv-p-maxs').textContent = stats.maxPower ? 'S' + stats.maxPower : '—';
+        if ($('gv-p-maxf')) $('gv-p-maxf').textContent = stats.maxFeed ? stats.maxFeed + ' mm/min' : '—';
+        const b = stats.bounds;
+        if ($('gv-p-origen')) $('gv-p-origen').textContent = b ? b.minX.toFixed(2) + ', ' + b.minY.toFixed(2) : '—';
+    }
+
+    $('gcode-viewer-color')?.addEventListener('change', e => V?.setColorMode(Number(e.target.value)));
+    const aplicarArea = () => V?.setWorkArea(Number($('gv-wa-w')?.value) || 0, Number($('gv-wa-h')?.value) || 0);
+    $('gv-wa-w')?.addEventListener('change', aplicarArea);
+    $('gv-wa-h')?.addEventListener('change', aplicarArea);
+
+    /* ------------------------------------------------------------ edición */
+    function leerOps() {
+        const capa = $('gv-ed-layer')?.value || '*';
+        return {
+            offsetX: Number($('gv-ed-offx').value) || 0,
+            offsetY: Number($('gv-ed-offy').value) || 0,
+            scale: Number($('gv-ed-scale').value) || 100,
+            rotate: Number($('gv-ed-rot').value) || 0,
+            mirrorX: $('gv-ed-mx').checked,
+            mirrorY: $('gv-ed-my').checked,
+            toOrigin: $('gv-ed-origin').checked,
+            power: { mode: $('gv-ed-pmode').value, value: Number($('gv-ed-pval').value) || 0, layer: capa },
+            feed: { mode: $('gv-ed-fmode').value, value: Number($('gv-ed-fval').value) || 0, layer: capa },
+            passes: Math.max(1, Number($('gv-ed-passes').value) || 1),
+            frame: {
+                enabled: $('gv-ed-frame').checked,
+                power: Number($('gv-ed-fr-pow').value) || 0,
+                feed: Number($('gv-ed-fr-feed').value) || 1000,
+                repeat: Math.max(1, Number($('gv-ed-fr-rep').value) || 1),
+                margin: Number($('gv-ed-fr-mg').value) || 0
+            },
+            header: $('gv-ed-header').value,
+            footer: $('gv-ed-footer').value
+        };
+    }
+
+    function hayEdiciones(o) {
+        return !!(o.offsetX || o.offsetY || o.scale !== 100 || o.rotate || o.mirrorX || o.mirrorY ||
+            o.toOrigin || o.passes > 1 || o.frame.enabled ||
+            (o.power.mode === 'set' || o.power.value !== 100) ||
+            (o.feed.mode === 'set' || o.feed.value !== 100) ||
+            o.header.trim() || o.footer.trim());
+    }
+
+    let aplicando = false, pendiente = false, retardo = null;
+
+    async function aplicar(manual) {
+        if (!V || !V.getSourceText()) { if (manual) log('Carga un archivo primero', 'warn'); return; }
+        if (aplicando) { pendiente = true; return; }
+        aplicando = true;
+        const ops = leerOps();
+        try {
+            await V.applyEdits(ops);
+            const badge = $('gv-ed-badge');
+            if (badge) badge.hidden = !hayEdiciones(ops);
+        } catch (err) {
+            log('Error al editar: ' + err.message, 'err');
+        } finally {
+            aplicando = false;
+            if (pendiente) { pendiente = false; aplicar(false); }
+        }
+    }
+
+    function programar() {
+        const opts = $('gv-frame-opts');
+        if (opts) opts.hidden = !$('gv-ed-frame').checked;
+        if (!$('gv-ed-auto')?.checked) return;
+        clearTimeout(retardo);
+        retardo = setTimeout(() => aplicar(false), 320);
+    }
+
+    const tarjeta = $('gv-edit-card');
+    tarjeta?.addEventListener('input', programar);
+    tarjeta?.addEventListener('change', programar);
+    tarjeta?.querySelectorAll('.gv-chip[data-rot]').forEach(b => {
+        b.addEventListener('click', () => {
+            const campo = $('gv-ed-rot');
+            campo.value = (((Number(campo.value) || 0) + Number(b.dataset.rot)) % 360 + 360) % 360;
+            programar();
+        });
+    });
+
+    $('gv-ed-apply')?.addEventListener('click', () => aplicar(true));
+    $('gv-ed-reset')?.addEventListener('click', () => {
+        ['gv-ed-offx', 'gv-ed-offy', 'gv-ed-rot'].forEach(id => { $(id).value = 0; });
+        $('gv-ed-scale').value = 100;
+        $('gv-ed-pval').value = 100; $('gv-ed-fval').value = 100;
+        $('gv-ed-pmode').value = 'mul'; $('gv-ed-fmode').value = 'mul';
+        $('gv-ed-passes').value = 1;
+        ['gv-ed-mx', 'gv-ed-my', 'gv-ed-origin', 'gv-ed-frame'].forEach(id => { $(id).checked = false; });
+        $('gv-ed-layer').value = '*';
+        $('gv-ed-header').value = ''; $('gv-ed-footer').value = '';
+        $('gv-frame-opts').hidden = true;
+        log('Ediciones descartadas: se vuelve al original');
+        aplicar(true);
+    });
+
+    $('gv-ed-save')?.addEventListener('click', () => {
+        if (!V) return;
+        const texto = V.getText();
+        if (!texto) { log('No hay nada que guardar', 'warn'); return; }
+        const base = ($('gcode-editor-filename')?.textContent || 'trabajo').replace(/\.[^.]+$/, '');
+        const nombre = base + (hayEdiciones(leerOps()) ? '-editado' : '') + '.gc';
+        const url = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = nombre; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        log('Guardado: ' + nombre, 'ok');
+    });
+
+    /* --------------------------------------------------------- simulación */
+    let simCorre = false, simT = 1, simRaf = null, simUltimo = 0;
+
+    function pintarSim() {
+        const total = V?.totalSeconds || 0;
+        if ($('gv-sim-time')) $('gv-sim-time').textContent = hhmmss(total * simT) + ' / ' + hhmmss(total);
+        $('gv-sim-dot')?.classList.toggle('is-running', simCorre);
+    }
+
+    function bucleSim(ts) {
+        if (!simCorre) return;
+        const dt = (ts - simUltimo) / 1000; simUltimo = ts;
+        simT += (dt * Number($('gv-sim-speed').value)) / Math.max(1, V.totalSeconds);
+        if (simT >= 1) { simT = 1; simCorre = false; log('Simulación completada', 'ok'); }
+        V.setSimProgress(simT);
+        $('gv-sim-range').value = Math.round(simT * 1000);
+        pintarSim();
+        if (simCorre) simRaf = requestAnimationFrame(bucleSim);
+    }
+
+    function reiniciarSim() {
+        simCorre = false; simT = 1;
+        V?.setSimProgress(1);
+        if ($('gv-sim-range')) $('gv-sim-range').value = 1000;
+        pintarSim();
+    }
+
+    $('gv-sim-play')?.addEventListener('click', () => {
+        if (!V) return;
+        if (simT >= 1) simT = 0;
+        simCorre = true; simUltimo = performance.now();
+        cancelAnimationFrame(simRaf); simRaf = requestAnimationFrame(bucleSim);
+        log('Iniciando simulación…');
+        pintarSim();
+    });
+    $('gv-sim-pause')?.addEventListener('click', () => {
+        simCorre = !simCorre;
+        if (simCorre) { simUltimo = performance.now(); simRaf = requestAnimationFrame(bucleSim); }
+        else log('Simulación en pausa', 'warn');
+        pintarSim();
+    });
+    $('gv-sim-stop')?.addEventListener('click', () => { cancelAnimationFrame(simRaf); reiniciarSim(); log('Simulación detenida'); });
+    $('gv-sim-range')?.addEventListener('input', e => {
+        simCorre = false; simT = Number(e.target.value) / 1000;
+        V?.setSimProgress(simT); pintarSim();
+    });
+
+    /* ------------------------------------------------- enganche al visor */
+    function engancharPanel(v) {
+        if (!v || v.__panelEnganchado) return;
+        v.__panelEnganchado = true;
+        V = v;
+
+        v.on('loaded', d => {
+            const stats = d.stats;
+            pintarCapas();
+            pintarPropiedades(stats);
+            if (!d.edited) {
+                const sel = $('gv-ed-layer');
+                if (sel) {
+                    sel.innerHTML = '<option value="*">Todas las capas</option>';
+                    for (const L of v.layers) {
+                        const o = document.createElement('option');
+                        o.value = L.name; o.textContent = L.name;
+                        sel.appendChild(o);
+                    }
+                }
+                log('Archivo leído: ' + stats.lines.toLocaleString() + ' líneas · ' +
+                    stats.segments.toLocaleString() + ' trayectos en ' + Math.round(d.ms) + ' ms', 'ok');
+                log('Tiempo estimado del trabajo: ' + hhmmss(stats.seconds), 'ok');
+            } else {
+                log('Edición aplicada en ' + Math.round(d.editMs) + ' ms', 'ok');
+            }
+            for (const w of (d.warnings || [])) log('Aviso: ' + w, 'warn');
+            ['gv-sim-play', 'gv-sim-pause', 'gv-sim-stop', 'gv-sim-range'].forEach(id => {
+                const el = $(id); if (el) el.disabled = false;
+            });
+            reiniciarSim();
+        });
+
+        v.on('error', e => log('Error: ' + e.message, 'err'));
+        aplicarArea();
+    }
+
+    paneView.addEventListener('visor-listo', e => engancharPanel(e.detail));
+    engancharPanel(paneView.__visor);
+})();
+
+
+/* La consola del visor se agranda arrastrando su borde superior. El alto
+   elegido se recuerda en este navegador. */
+(function () {
+    const consola = document.getElementById('gv-console');
+    const grip = document.getElementById('gv-console-grip');
+    const paneView = document.getElementById('gcode-editor-pane-view');
+    if (!consola || !grip || !paneView) return;
+
+    const CLAVE = 'nopal.gvConsolaAlto';
+    const MIN = 90;
+
+    function maximo() {
+        const main = document.querySelector('.gv-main');
+        const alto = main ? main.getBoundingClientRect().height : 600;
+        return Math.max(140, alto - 220);   // deja sitio al lienzo
+    }
+
+    function aplicar(alto) {
+        consola.style.height = Math.round(alto) + 'px';
+    }
+
+    try {
+        const guardado = Number(localStorage.getItem(CLAVE));
+        if (guardado >= MIN) aplicar(guardado);
+    } catch (_) { /* almacenamiento no disponible: se usa el alto por defecto */ }
+
+    let arrastrando = false, yInicial = 0, altoInicial = 0, pedido = null;
+
+    grip.addEventListener('pointerdown', event => {
+        arrastrando = true;
+        yInicial = event.clientY;
+        altoInicial = consola.getBoundingClientRect().height;
+        if (consola.classList.contains('collapsed')) {
+            consola.classList.remove('collapsed');
+            altoInicial = Math.max(MIN, altoInicial);
+        }
+        consola.classList.add('is-resizing');
+        grip.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+
+    grip.addEventListener('pointermove', event => {
+        if (!arrastrando) return;
+        const alto = Math.min(Math.max(MIN, altoInicial - (event.clientY - yInicial)), maximo());
+        aplicar(alto);
+        if (!pedido) {
+            pedido = requestAnimationFrame(() => {
+                pedido = null;
+                paneView.__visor?.resize();
+            });
+        }
+    });
+
+    function soltar(event) {
+        if (!arrastrando) return;
+        arrastrando = false;
+        consola.classList.remove('is-resizing');
+        try { grip.releasePointerCapture(event.pointerId); } catch (_) {}
+        paneView.__visor?.resize();
+        try { localStorage.setItem(CLAVE, String(Math.round(consola.getBoundingClientRect().height))); } catch (_) {}
+    }
+
+    grip.addEventListener('pointerup', soltar);
+    grip.addEventListener('pointercancel', soltar);
+    grip.addEventListener('dblclick', () => {
+        consola.classList.toggle('collapsed');
+        paneView.__visor?.resize();
+    });
+
+    // al plegar/desplegar con la flechita también hay que reajustar el lienzo
+    document.getElementById('gv-console-toggle')?.addEventListener('click', () => {
+        setTimeout(() => paneView.__visor?.resize(), 30);
+    });
+})();

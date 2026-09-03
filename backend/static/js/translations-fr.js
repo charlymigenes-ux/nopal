@@ -356,7 +356,7 @@ window.NopalTranslations["fr"] = {
   "pluginCatalog_material_library_description": "Profils de puissance, de vitesse et de profondeur partagés organisés par matériau.",
   "pluginCatalog_arduino_accessories_name": "Accessoires Arduino/ESP32",
   "pluginCatalog_arduino_accessories_description": "Relais de commande et bandes LED câblées à votre propre carte Arduino/ESP32, aucune fiche WiFi tierce n'est nécessaire.",
-  "gcodeEditorDescription": "Ouvrez, modifiez et téléchargez les fichiers G-Code directement dans le navigateur.",
+  "gcodeEditorDescription": "Ouvrez, modifiez et téléchargez les fichiers G-Code.",
   "gcodeEditorNew": "Nouveau",
   "gcodeEditorOpen": "Ouvert",
   "gcodeEditorDownload": "Télécharger&#10;",

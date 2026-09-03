@@ -356,7 +356,7 @@ window.NopalTranslations["de"] = {
   "pluginCatalog_material_library_description": "Gemeinsame Leistungs-, Geschwindigkeits- und Tiefenprofile, sortiert nach Material.",
   "pluginCatalog_arduino_accessories_name": "Arduino/ESP32 Zubehör",
   "pluginCatalog_arduino_accessories_description": "Steuerrelais und LED-Streifen sind mit Ihrer eigenen Arduino/ESP32-Platine verkabelt, es sind keine WiFi-Stecker von Drittanbietern erforderlich.",
-  "gcodeEditorDescription": "Öffnen, bearbeiten und laden Sie G-Code-Dateien direkt im Browser herunter.",
+  "gcodeEditorDescription": "Öffnen, bearbeiten und laden Sie G-Code-Dateien herunter.",
   "gcodeEditorNew": "Neu",
   "gcodeEditorOpen": "Offen",
   "gcodeEditorDownload": "Herunterladen",
