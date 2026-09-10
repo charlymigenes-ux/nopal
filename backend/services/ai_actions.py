@@ -116,6 +116,186 @@ async def set_accessory_power(accessory_id: str, on: bool) -> Dict[str, Any]:
     return {"ok": True, "accessory_id": accessory_id, "on": bool(on)}
 
 
+def _validar_acciones_escena(actions: List[Dict[str, Any]], registrados: Dict[str, Any], donde: str = "") -> None:
+    """Valida una lista de acciones contra los accesorios REALES.
+
+    Se comprueba antes de guardar porque el modelo puede alucinar un id, y
+    una escena persistida apuntando a un accesorio inexistente no falla al
+    crearla sino al ejecutarla, lejos de acá y sin contexto.
+    """
+    if not actions:
+        raise ActionError(f"{donde or 'La escena'} necesita al menos una acción".strip())
+    for accion in actions:
+        accessory_id = accion.get("accessory_id")
+        if accessory_id not in registrados:
+            conocidos = ", ".join(
+                f"{a.get('name')} ({a.get('id')})" for a in registrados.values()
+            ) or "ninguno"
+            raise ActionError(
+                f"No existe el accesorio '{accessory_id}'. Los registrados son: {conocidos}"
+            )
+        if "on" not in accion and "color" not in accion:
+            raise ActionError(
+                f"La acción sobre '{registrados[accessory_id].get('name')}' necesita 'on' o 'color'"
+            )
+
+
+def _preparar_modo(
+    mode: Optional[str],
+    actions: Optional[List[Dict[str, Any]]],
+    variants: Optional[List[Dict[str, Any]]],
+    registrados: Dict[str, Any],
+) -> tuple:
+    """Normaliza modo/acciones/variantes y las valida.
+
+    El plugin admite tres modos desde hace tiempo -- normal, toggle y cycle --
+    pero la IA solo sabía crear "normal", así que ante un "hazla de dos
+    estados" el modelo respondía que NOPAL no puede, presentando su propio
+    límite como un límite del producto. Eso es peor que una función que
+    falta: informa mal sobre lo que el usuario ya tiene.
+    """
+    modo = (mode or "normal").strip().lower()
+    if modo in ("doble", "toggle"):
+        modo = "toggle"
+    elif modo in ("multiple", "múltiple", "cycle"):
+        modo = "cycle"
+    elif modo in ("", "normal"):
+        modo = "normal"
+    else:
+        raise ActionError(f"Modo de escena no válido: '{mode}'. Usa normal, toggle o cycle")
+
+    if modo == "normal":
+        _validar_acciones_escena(actions or [], registrados)
+        return modo, list(actions or []), None
+
+    if not variants or len(variants) < 2:
+        raise ActionError(
+            "Una escena de tipo toggle necesita 2 estados, y cycle 3 o más. "
+            "Cada estado lleva 'name' y su propia lista de 'actions'."
+        )
+    if modo == "cycle" and len(variants) < 3:
+        raise ActionError("El modo cycle necesita 3 estados o más; con 2 usa toggle")
+
+    limpias = []
+    for i, variante in enumerate(variants):
+        nombre_v = str(variante.get("name") or "").strip() or f"Estado {i + 1}"
+        acciones_v = variante.get("actions") or []
+        _validar_acciones_escena(acciones_v, registrados, f"El estado «{nombre_v}»")
+        limpias.append({"name": nombre_v, "actions": list(acciones_v)})
+    return modo, list(limpias[0]["actions"]), limpias
+
+
+async def create_scene(
+    name: str,
+    actions: Optional[List[Dict[str, Any]]] = None,
+    mode: str = "normal",
+    variants: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Crea una escena de accesorios nueva a partir de los que ya existen.
+
+    `actions` usa el mismo formato que el editor del panel: cada entrada
+    lleva un `accessory_id` y luego `on` (bool) para un relé, o `color`
+    ([r,g,b]) para iluminación.
+    """
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    escenas = get_loaded_plugin_module("arduino-accessories", "services.accessory_scenes")
+    accesorios_mod = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if escenas is None or accesorios_mod is None:
+        raise ActionError("El plugin de Automatización de Taller no está instalado")
+
+    crear = getattr(escenas, "create_scene", None)
+    if crear is None:
+        raise ActionError("Esta versión del plugin no permite crear escenas desde la IA")
+
+    nombre = str(name or "").strip()
+    if not nombre:
+        raise ActionError("La escena necesita un nombre")
+    registrados = {a.get("id"): a for a in accesorios_mod.get_accessories()}
+    modo, acciones_base, variantes = _preparar_modo(mode, actions, variants, registrados)
+
+    resultado = crear(nombre, modo, acciones_base, variantes)
+    if inspect.isawaitable(resultado):
+        resultado = await resultado
+
+    return {
+        "ok": True,
+        "scene": resultado,
+        "summary": _resumen_escena(nombre, "creada", modo, acciones_base, variantes, registrados),
+    }
+
+
+def _resumen_escena(nombre, verbo, modo, acciones, variantes, registrados) -> str:
+    def describir(lista):
+        partes = []
+        for accion in lista:
+            etiqueta = registrados.get(accion.get("accessory_id"), {}).get("name", accion.get("accessory_id"))
+            if "color" in accion:
+                partes.append(f"{etiqueta} en color {tuple(accion['color'])}")
+            else:
+                partes.append(f"{etiqueta} {'encendido' if accion.get('on') else 'apagado'}")
+        return "; ".join(partes)
+
+    if variantes:
+        estados = " · ".join(f"«{v['name']}»: {describir(v['actions'])}" for v in variantes)
+        tipo = "de 2 estados" if modo == "toggle" else f"de {len(variantes)} estados"
+        return f"Escena «{nombre}» {verbo} {tipo} — {estados}"
+    return f"Escena «{nombre}» {verbo} con {len(acciones)} acción(es): {describir(acciones)}"
+
+
+async def update_scene(
+    scene_id: str,
+    name: Optional[str] = None,
+    actions: Optional[List[Dict[str, Any]]] = None,
+    mode: Optional[str] = None,
+    variants: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Edita una escena existente: nombre, modo o acciones.
+
+    Lo que no se pase se conserva de la escena actual, para que "conviértela
+    en doble" no obligue al modelo a repetir lo que ya estaba y perder algo
+    por el camino.
+    """
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    escenas = get_loaded_plugin_module("arduino-accessories", "services.accessory_scenes")
+    accesorios_mod = get_loaded_plugin_module("arduino-accessories", "services.accessory_service")
+    if escenas is None or accesorios_mod is None:
+        raise ActionError("El plugin de Automatización de Taller no está instalado")
+
+    actualizar = getattr(escenas, "update_scene", None)
+    if actualizar is None:
+        raise ActionError("Esta versión del plugin no permite editar escenas desde la IA")
+
+    existentes = escenas.get_scenes() or []
+    actual = next((e for e in existentes if str(e.get("id")) == str(scene_id)), None)
+    if actual is None:
+        conocidas = ", ".join(f"{e.get('name')} ({e.get('id')})" for e in existentes) or "ninguna"
+        raise ActionError(f"No existe la escena '{scene_id}'. Las que hay son: {conocidas}")
+
+    nombre = str(name or actual.get("name") or "").strip()
+    if not nombre:
+        raise ActionError("La escena necesita un nombre")
+
+    registrados = {a.get("id"): a for a in accesorios_mod.get_accessories()}
+    modo_pedido = mode or actual.get("mode") or "normal"
+    acciones_pedidas = actions if actions is not None else actual.get("actions")
+    variantes_pedidas = variants if variants is not None else actual.get("variants")
+    modo, acciones_base, variantes = _preparar_modo(
+        modo_pedido, acciones_pedidas, variantes_pedidas, registrados
+    )
+
+    resultado = actualizar(str(scene_id), nombre, modo, acciones_base, variantes)
+    if inspect.isawaitable(resultado):
+        resultado = await resultado
+
+    return {
+        "ok": True,
+        "scene": resultado,
+        "summary": _resumen_escena(nombre, "actualizada", modo, acciones_base, variantes, registrados),
+    }
+
+
 async def activate_scene(scene_id: str) -> Dict[str, Any]:
     """Activa una escena de accesorios ya guardada."""
     from backend.services.plugin_loader_service import get_loaded_plugin_module
@@ -410,6 +590,144 @@ ACTIONS: Dict[str, Action] = {
             },
             risk="low",
             role="any",
+        ),
+        Action(
+            "create_scene",
+            "Crea una escena de ACCESORIOS nueva (por ejemplo 'Ciclo de ventilación' o 'Modo "
+            "noche') combinando relés y luces del taller. Consulta antes los accesorios "
+            "disponibles para usar sus id reales; no inventes ninguno.",
+            create_scene,
+            {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Nombre visible de la escena."},
+                    "actions": {
+                        "type": "array",
+                        "description": (
+                            "Acciones de la escena. Cada una lleva accessory_id y luego 'on' "
+                            "(booleano) para un relé, o 'color' ([r,g,b]) para iluminación."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "accessory_id": {"type": "string"},
+                                "on": {"type": "boolean"},
+                                "color": {
+                                    "type": "array",
+                                    "items": {"type": "integer"},
+                                    "minItems": 3,
+                                    "maxItems": 3,
+                                },
+                            },
+                            "required": ["accessory_id"],
+                        },
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["normal", "toggle", "cycle"],
+                        "description": "Modo de la escena. 'normal': hace siempre lo mismo. 'toggle': dos estados con nombre y cada ejecución aplica el siguiente, como un interruptor. 'cycle': lo mismo con 3 o más. Con toggle o cycle usa 'variants' en vez de 'actions'.",
+                    },
+                    "variants": {
+                        "type": "array",
+                        "description": (
+                            "Estados de una escena toggle o cycle. Cada uno lleva 'name' y su "
+                            "propia lista de 'actions'. Dos para toggle, tres o más para cycle."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "actions": {"type": "array", "items": {
+                            "type": "object",
+                            "properties": {
+                                "accessory_id": {"type": "string"},
+                                "on": {"type": "boolean"},
+                                "color": {
+                                    "type": "array",
+                                    "items": {"type": "integer"},
+                                    "minItems": 3,
+                                    "maxItems": 3,
+                                },
+                            },
+                            "required": ["accessory_id"],
+                        }},
+                            },
+                            "required": ["name", "actions"],
+                        },
+                    },
+                },
+                "required": ["name"],
+            },
+            risk="confirm",
+            role="admin",
+        ),
+        Action(
+            "update_scene",
+            "Edita una escena de accesorios que YA existe: cambiarle el nombre, las acciones, "
+            "o convertirla en una de varios estados. Lo que no se pase se conserva. Consulta "
+            "antes las escenas para usar su id real.",
+            update_scene,
+            {
+                "type": "object",
+                "properties": {
+                    "scene_id": {"type": "string", "description": "id de la escena a editar."},
+                    "name": {"type": "string", "description": "Nombre nuevo. Si se omite se conserva."},
+                    "actions": {
+                        "type": "array",
+                        "description": "Acciones nuevas para una escena normal. Si se omite se conservan.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "accessory_id": {"type": "string"},
+                                "on": {"type": "boolean"},
+                                "color": {
+                                    "type": "array",
+                                    "items": {"type": "integer"},
+                                    "minItems": 3,
+                                    "maxItems": 3,
+                                },
+                            },
+                            "required": ["accessory_id"],
+                        },
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["normal", "toggle", "cycle"],
+                        "description": "Modo de la escena. 'normal': hace siempre lo mismo. 'toggle': dos estados con nombre y cada ejecución aplica el siguiente, como un interruptor. 'cycle': lo mismo con 3 o más. Con toggle o cycle usa 'variants' en vez de 'actions'.",
+                    },
+                    "variants": {
+                        "type": "array",
+                        "description": (
+                            "Estados de una escena toggle o cycle. Cada uno lleva 'name' y su "
+                            "propia lista de 'actions'. Dos para toggle, tres o más para cycle."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "actions": {"type": "array", "items": {
+                            "type": "object",
+                            "properties": {
+                                "accessory_id": {"type": "string"},
+                                "on": {"type": "boolean"},
+                                "color": {
+                                    "type": "array",
+                                    "items": {"type": "integer"},
+                                    "minItems": 3,
+                                    "maxItems": 3,
+                                },
+                            },
+                            "required": ["accessory_id"],
+                        }},
+                            },
+                            "required": ["name", "actions"],
+                        },
+                    },
+                },
+                "required": ["scene_id"],
+            },
+            risk="confirm",
+            role="admin",
         ),
         Action(
             "send_matrix_announcement",

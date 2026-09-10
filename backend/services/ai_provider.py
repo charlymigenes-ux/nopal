@@ -46,6 +46,36 @@ logger = logging.getLogger(__name__)
 MAX_RETRY_AFTER_SECONDS = 3600
 
 
+# Etiquetas con las que los modelos de razonamiento envuelven su borrador.
+# `think` la usan DeepSeek-R1, QwQ y Qwen3; `thought`/`thinking`, Gemini y
+# algunos servidores locales. Se listan explícitamente en vez de barrer
+# cualquier <tag> para no comerse contenido legítimo del usuario.
+_REASONING_TAGS = ("think", "thought", "thinking", "reasoning", "reflection")
+
+_REASONING_BLOCK = re.compile(
+    r"<(?P<tag>" + "|".join(_REASONING_TAGS) + r")\b[^>]*>.*?</(?P=tag)\s*>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+# Un bloque abierto y nunca cerrado: pasa cuando el borrador se comió el
+# presupuesto de max_tokens y la respuesta se cortó a la mitad. Se descarta
+# igual -- mostrar medio razonamiento es peor que no mostrar nada.
+_REASONING_UNCLOSED = re.compile(
+    r"<(?:" + "|".join(_REASONING_TAGS) + r")\b[^>]*>.*\Z",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def strip_reasoning(text: str) -> str:
+    """Quita los bloques de razonamiento y deja solo la respuesta final."""
+    if not text or "<" not in text:
+        return text
+
+    limpio = _REASONING_BLOCK.sub("", text)
+    limpio = _REASONING_UNCLOSED.sub("", limpio)
+    return limpio.strip()
+
+
 class AIProviderError(RuntimeError):
     """Falla al hablar con el servidor de IA (red, timeout, respuesta
     inválida). El router la traduce a un 502/503 con mensaje mostrable.
@@ -166,7 +196,13 @@ class OpenAICompatibleProvider(AIProvider):
 
         try:
             data = response.json()
-            return data["choices"][0]["message"]
+            message = data["choices"][0]["message"]
+            # El borrador de razonamiento se descarta acá y no más arriba en
+            # la cadena: así ningún consumidor (chat, agente, historial) lo
+            # ve nunca. Ver strip_reasoning().
+            if isinstance(message.get("content"), str):
+                message["content"] = strip_reasoning(message["content"])
+            return message
         except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
             raise AIProviderError(
                 "El servidor respondió algo que no es una respuesta de chat estilo OpenAI. "

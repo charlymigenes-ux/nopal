@@ -603,6 +603,37 @@ async def _marlin_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# GRBL informa DOS estados distintos y hasta ahora solo se miraba uno. La línea
+# de status de la máquina trae Idle/Run/Hold/Alarm/Door/...; job.state es el
+# estado del trabajo que lanzó NOPAL. Se leía solo el segundo, así que una CNC
+# en Alarm -- finales de carrera disparados, por ejemplo -- se reportaba "idle"
+# porque no había trabajo propio en curso. De ahí salía verde en las fichas del
+# panel, en el conteo de alertas de /api/dashboard/summary y en lo que responde
+# NOPAL Intelligence: una máquina en alarma con el sistema entero creyéndola
+# sana.
+#
+# Ahora la alarma de la MÁQUINA gana siempre, porque es la condición que exige
+# atención física y ningún trabajo puede avanzar mientras dure. Cuando la
+# máquina no está en alarma se conserva el estado del trabajo, para no perder
+# el progreso que ya mostraban las fichas.
+_GRBL_MACHINE_STATES = {
+    "alarm": "error",
+    "door": "error",
+    "hold": "paused",
+    "run": "running",
+}
+
+
+def _grbl_state(status: Optional[Dict[str, Any]], job: Optional[Dict[str, Any]]) -> str:
+    maquina = _GRBL_MACHINE_STATES.get(str((status or {}).get("state") or "").lower())
+    if maquina in ("error", "paused"):
+        return maquina
+    trabajo = (job or {}).get("state")
+    if trabajo:
+        return _normalize_job_state(trabajo)
+    return _normalize_job_state(maquina)
+
+
 async def _laser_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     host = entry["host"]
     registered_online = bool(entry.get("online"))
@@ -638,7 +669,7 @@ async def _laser_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
         "capabilities": [*capabilities, *camera_capabilities],
         "actions": CNC_ACTIONS if kind == "cnc" else LASER_ACTIONS,
         "status": {
-            "state": _normalize_job_state((job or {}).get("state")) if online else "offline",
+            "state": _grbl_state(status, job) if online else "offline",
             "position": (
                 {"x": status["x"], "y": status["y"], "z": status["z"]} if status else None
             ),

@@ -11,6 +11,7 @@ from urllib.parse import quote
 import requests
 
 from backend.utils import safe_section_path
+from concurrent.futures import ThreadPoolExecutor
 
 SCHEDULE_PATH = "scheduled_prints.json"
 
@@ -727,29 +728,36 @@ def get_all_printers_status(host: Optional[str] = None) -> List[Dict[str, Any]]:
     Devuelve el estado de todas las impresoras detectadas.
     """
 
-    printers = []
+    instancias = find_moonraker_instances()
+    if not instancias:
+        return []
 
-    for printer in find_moonraker_instances():
-
+    def _consultar(printer: Dict[str, Any]) -> Dict[str, Any]:
         client = MoonrakerClient(printer["port"])
-
         info = printer.get("_printer_info") or client.get_printer_info()
         status = client.get_printer_status()
-
-        printers.append(
-            normalize_printer_payload(
-                {
-                    "name": printer["name"],
-                    "port": printer["port"],
-                    "state": info.get("state", "unknown"),
-                    "printer_info": info,
-                    "status": status,
-                },
-                printer["port"],
-                client=client,
-                host=host,
-            )
+        return normalize_printer_payload(
+            {
+                "name": printer["name"],
+                "port": printer["port"],
+                "state": info.get("state", "unknown"),
+                "printer_info": info,
+                "status": status,
+            },
+            printer["port"],
+            client=client,
+            host=host,
         )
+
+    # En serie, el tiempo total era la SUMA de todas las máquinas (2 s de
+    # timeout x 2 peticiones x N). Con una sola apagada eso se comía el corte
+    # de 10 s del navegador y el panel mostraba "no se pudo consultar" en cada
+    # F5. En paralelo el total es el de la más lenta.
+    printers: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(8, len(instancias))) as pool:
+        for resultado in pool.map(_consultar, instancias):
+            if resultado:
+                printers.append(resultado)
 
     return printers
 

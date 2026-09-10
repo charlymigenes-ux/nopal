@@ -68,7 +68,20 @@ Frontend code for a plugin never touches NOPAL core's `templates/`/`static/` —
 
 ### Arduino accessory firmware
 
-`firmware/nopal_accessory/` holds `.ino` sketches for a generic user-flashable Arduino (relay/LED/etc. accessories over USB-serial) — real embedded C++, no arduino-cli/platformio available in this environment to compile it. This is distinct from the `arduino-accessories` *plugin* (its backend driver logic). See the `arduino` subagent for this area.
+The `.ino` sketches live in the **`arduino-accessories` plugin repo**, not in NOPAL core: `plugins/arduino-accessories/firmware/`. Core used to carry a `firmware/nopal_accessory/` copy too; it was removed because the sketches and the plugin's driver logic are the same feature and had drifted apart. Real embedded C++ — no arduino-cli/platformio is available in this environment, so nothing here compiles or flashes; that happens on the user's Windows machine.
+
+Layout, one folder per physical board (Arduino requires the `.ino` basename to match its folder):
+
+- `firmware/nopal_accessory/` — the "FF" full firmware. One sketch for **both** ESP32 and ESP8266; it reports `board` as `esp32_generic_ff` / `esp8266_generic_ff` so the backend can tell the variants apart.
+- `firmware/nopal_tcall_sim800l/` — the AM-036 / T-Call SIM800L board (`utilities.h` holds its real pin map).
+- `firmware/legacy/` — superseded single-board sketches, kept for reference only. Nothing flashes these.
+
+Two headers are shared verbatim by both live sketches and **must stay byte-identical between the folders** (they're copies, not a shared include path — the Arduino IDE compiles each sketch folder on its own):
+
+- `nopal_cluster.h` — UDP discovery + leader election + heartbeat/failover. Opt-in via `NOPAL_CLUSTER_ENABLE`.
+- `nopal_power.h` — MAX17048 battery gauge over I2C, serving `GET /api/power`. Opt-in via `NOPAL_POWER_MONITOR_ENABLE`.
+
+Both are off by default and become no-ops when disabled. Per-board configuration (enable flags, pins, calibration offsets, credentials) lives in each board's `secrets.h`, which is never committed — only `secrets.h.example` is. See the `arduino` subagent for this area.
 
 ### Frontend
 
