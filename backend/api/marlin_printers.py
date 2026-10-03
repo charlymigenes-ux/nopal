@@ -275,6 +275,9 @@ async def marlin_printers_print_start_endpoint(
     user: dict = Depends(require_auth),
 ):
     """Inicia el envío de un archivo G-code (de la biblioteca) a la impresora."""
+    # Ruta migrada a la Authorization Policy (ADR-006). Se autoriza antes de
+    # resolver o leer el archivo.
+    ensure_authorized(user, Action.START_JOB, _marlin_resource(device))
     file_path = safe_section_path(section, path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
