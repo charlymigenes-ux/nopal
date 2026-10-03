@@ -128,6 +128,9 @@ async def restart_printer_endpoint(port: int, user: dict = Depends(require_auth)
 @router.post("/api/printers/{port}/firmware-restart")
 async def firmware_restart_endpoint(port: int, user: dict = Depends(require_auth)):
     """Reinicia el firmware del MCU (equivalente a FIRMWARE_RESTART)."""
+    # ADR-006 (D3-Q4): firmware restart solo admin. Antes, cualquier usuario
+    # autenticado. Se autoriza antes de reiniciar.
+    ensure_authorized(user, Action.FIRMWARE_RESTART, klipper_resource(port))
     if not firmware_restart_printer(port):
         raise HTTPException(status_code=400, detail="No se pudo reiniciar el firmware")
     return {"success": True}
