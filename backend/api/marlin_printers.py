@@ -270,6 +270,9 @@ async def marlin_printers_console_command_endpoint(
     command: str = Form(...),
     user: dict = Depends(require_auth),
 ):
+    # ADR-006 (D3-Q2): consola / G-code arbitrario solo admin. Antes, cualquier
+    # usuario autenticado. Se autoriza antes de enviar nada a la impresora.
+    ensure_authorized(user, Action.SEND_CONSOLE_COMMAND, _marlin_resource(device))
     if not await send_console_command(device, command):
         raise HTTPException(status_code=502, detail="No se pudo enviar el comando")
     return {"success": True}
