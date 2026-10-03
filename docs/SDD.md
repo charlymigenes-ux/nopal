@@ -1,0 +1,1577 @@
+# NOPAL — Software Design Document
+
+## 1. Información del documento
+
+| Campo | Valor |
+|---|---|
+| Nombre | NOPAL |
+| Nombre completo | Network Operating Platform for Automation & Libraries |
+| Tipo | Software Design Document (SDD) |
+| Estado | **Draft / Proposed Architecture** |
+| Versión del SDD | 0.4 |
+| Fecha | 2026-10-03 |
+| Base analizada | rama `dev-main`, commit `f47aa17` **más cambios sin commit en el árbol de trabajo**: corrección de S-1 (`backend/api/upload.py`, `backend/tests/test_upload.py`) y pytest en CI (`.github/workflows/smoke-test.yml`) y su descripción en `CLAUDE.md` |
+| Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
+
+### Convenciones de estado
+
+| Etiqueta | Significado |
+|---|---|
+| `CURRENT` | Existe hoy en el código y funciona. |
+| `PROPOSED` | Propuesta de este documento; no implementada. |
+| `OPEN` | Decisión no tomada. Requiere al dueño del proyecto. |
+| `DECISION PENDING` | Hay una dirección propuesta, pero la decisión final depende de evidencia futura. |
+| `LEGACY` | Existe y funciona, pero lo reemplazó otro mecanismo que convive con él. |
+| `DEPRECATED` | Marcado para retirarse. |
+| `UNKNOWN` | No hay evidencia suficiente en el repositorio para afirmarlo. |
+
+### Fuentes, en orden de prioridad
+
+1. Código del repositorio. 2. Tests (`backend/tests/`, 533 tests). 3. Configuración real
+(`requirements*.txt`, `install.sh`, `.github/workflows/`, `.gitignore`).
+4. Documentación (`README.md`, `CLAUDE.md`, `AGENTS.md`, `docs/*.md`).
+5. Auditoría técnica del 2026-10-03 y auditoría de permisos D3 (misma fecha).
+Cuando documentación y código discrepan, **manda el código**; las discrepancias
+se listan en §5.6.
+
+> Este documento reemplaza a la versión 0.1, que partía de un diseño anterior a
+> la auditoría (asumía SQLite como decisión, una capa `machine_registry` nueva y
+> versionado `/api/v1` como hecho). Nada de eso se conserva como decisión.
+
+---
+
+## 2. Propósito de NOPAL
+
+### Actualmente (`CURRENT`)
+
+NOPAL es un panel web auto-hospedado, de un solo proceso, que se ejecuta en un
+host Linux del taller y concentra en una interfaz:
+
+- **Monitoreo y control de impresoras 3D de cinco familias** con protocolos
+  distintos: Klipper/Moonraker, Marlin standalone, Bambu Lab, Elegoo y FlashForge.
+- **Control de láser y CNC GRBL** por red (placas estilo ESP3D) y por USB,
+  con varias máquinas a la vez.
+- **Biblioteca de archivos** (modelos y G-code) sobre el sistema de archivos,
+  con navegación, subida, previsualización y envío a máquina.
+- **Plugins** instalables desde un catálogo (cámaras, Spoolman, cotizador,
+  automatización con Arduino, etc.).
+- **TUNA-Screen**: API normalizada para una app Android que controla cualquier
+  máquina sin conocer su marca.
+- **NOPAL Intelligence**: capa de IA opcional, apagada por omisión, que
+  consulta el estado del taller y, si se habilita, ejecuta acciones con
+  confirmación.
+- **Usuarios** con dos roles (`admin`, `operador`).
+
+El problema que resuelve: un taller mixto que hoy tendría abiertas varias
+pestañas de Mainsail/Fluidd, apps de cada fabricante, LightBurn/LaserGRBL y un
+explorador de archivos, sin una vista común.
+
+### Objetivo (`PROPOSED`)
+
+Que NOPAL pueda crecer en número de marcas, máquinas, plugins y consumidores
+sin reescribirse, apoyado en:
+
+- un **contrato de dispositivo estable** (el modelo de TUNA-Screen, §7);
+- **persistencia confiable** (escritura atómica, §16);
+- **permisos explícitos** por acción (§18);
+- **API con convenciones consistentes** (§11);
+- **frontend modular** sin cambiar de tecnología (§12).
+
+---
+
+## 3. Alcance
+
+### Dentro del alcance actual (`CURRENT`)
+
+| Área | Detalle |
+|---|---|
+| Impresoras 3D | Klipper (solo Moonraker local), Marlin (USB y MKS WiFi), Bambu, Elegoo, FlashForge |
+| Láser / CNC | GRBL por red y USB; streaming de G-code; trabajos desde SD; encuadre; cola |
+| Biblioteca | Modelos y G-code en `uploads/`; carpetas; subida; mover/renombrar/borrar; miniaturas de G-code; vista 3D |
+| G-code | Envío a máquina, análisis de límites (`gcode_bounds`), geometría (`gcode_geometry`), editor/visor 2D en el frontend |
+| Plugins | Catálogo curado, instalación por `git clone`, carga dinámica de backend y frontend |
+| IA | Proveedor OpenAI-compatible, herramientas de lectura, acciones con confirmación, conversaciones |
+| Usuarios / auth | Sesiones, roles `admin`/`operador`, primer arranque con creación de admin |
+| TUNA-Screen | Emparejamiento por código, token Bearer, REST + WebSocket |
+| Sistema | Servicios systemd vía Moonraker, reinicio/apagado del host, actualización por git, respaldo cifrado de configuración, logs |
+
+### Fuera del alcance actual
+
+| Área | Evidencia |
+|---|---|
+| Base de datos (SQLite/PostgreSQL) | No hay código de BD; `backend/database.py` está vacío. |
+| Moonraker en otro host | `MoonrakerClient` usa `http://localhost:{port}`. |
+| Tags, categorías, metadatos y búsqueda en biblioteca | No implementado; aparece en el roadmap del README. |
+| Historial unificado de trabajos | Solo existe `laser_history.json`; Klipper delega en Moonraker. |
+| OctoPrint, Prusa Link, otras marcas | Sin driver. |
+| API pública para terceros, API keys | No existe; solo sesión y token de TUNA-Screen. |
+| Sandboxing de plugins | No existe (§13). |
+| Docker / contenedores | No existe. |
+| Multi-instancia / alta disponibilidad | Un proceso, estado en memoria y JSON locales. |
+| Plugins de pago | El endpoint responde 501 ("falta el servidor de licencias"). |
+
+---
+
+## 4. Principios arquitectónicos
+
+Todos están derivados de cómo está construido el código hoy.
+
+| # | Principio | Evidencia en el código |
+|---|---|---|
+| P1 | **Separación router / servicio.** Los routers reciben y responden; la lógica y la E/S viven en servicios. | `backend/api/*.py` + `backend/services/*_service.py`. Hay excepciones (§21). |
+| P2 | **Un driver por protocolo, independientes entre sí.** No se fuerza un transporte común. | Cinco servicios de impresora + `laser_service`, cada uno con su transporte; ninguno importa a otro (salvo `marlin_driver`, que es protocolo compartido a propósito). |
+| P3 | **La normalización vive encima de los drivers, no dentro.** | `tunascreen_service` traduce lo que ya devuelve cada servicio; no reimplementa control. |
+| P4 | **Capacidades y acciones declaradas, no inferidas.** Lo que una máquina no soporta no se anuncia. | `capabilities` / `actions` por driver; `dispatch_action` valida contra ambas. |
+| P5 | **Datos observados, nunca inventados.** Valor desconocido = `null` / `"unknown"`. | Mapeos de estado de Elegoo/Bambu; comentarios explícitos en `tunascreen_service`. |
+| P6 | **Extensibilidad por plugins, sin bloquear el core.** Un plugin roto no tumba NOPAL. | `plugin_loader_service._load_plugin_router` captura y registra. |
+| P7 | **IA desacoplada del proveedor y opcional.** Apagada no contacta nada. | `AIProvider` (ABC), `ai_config_service`, import perezoso de httpx. |
+| P8 | **La IA no escala privilegios.** Cada acción copia el rol del endpoint equivalente. | `ai_actions.Action.role`; acciones `confirm` requieren confirmación humana. |
+| P9 | **Testeable sin hardware.** | Transportes simulados; fixture `isolated_printer_registries`. |
+| P10 | **Evolución incremental.** Ningún cambio rompe una ruta que use el frontend. | Patrón aplicado en `PrinterRegistrationError` (agrega `error_code` sin cambiar `detail`). |
+
+---
+
+## 5. Arquitectura actual (`CURRENT`)
+
+### 5.1 Vista general
+
+NOPAL es un **monolito modular**: un proceso `uvicorn` sirve la interfaz, la
+API, los WebSockets y ejecuta tareas en segundo plano. No hay workers, colas ni
+base de datos externa.
+
+```mermaid
+flowchart TB
+  subgraph Clientes
+    BR["Navegador<br/>index.html + app.js"]
+    TS["TUNA-Screen (Android)<br/>Bearer token"]
+    FW["Firmware ESP32<br/>X-NOPAL-Token"]
+  end
+
+  subgraph Proceso["Proceso uvicorn (FastAPI)"]
+    MW["SessionMiddleware + log de excepciones"]
+    subgraph Routers["backend/api (21 routers, ~212 endpoints)"]
+      R1["printers / console<br/>(Klipper)"]
+      R2["marlin_printers"]
+      R3["bambu / elegoo /<br/>flashforge"]
+      R4["laser"]
+      R5["models / upload<br/>(biblioteca)"]
+      R6["auth"]
+      R7["status / system / logs /<br/>config_backup"]
+      R8["dashboard / devices /<br/>notifications"]
+      R9["tunascreen (REST + WS)"]
+      R10["ai"]
+      R11["plugins"]
+    end
+    PR["Routers de plugins<br/>(cargados al arrancar)"]
+    subgraph Services["backend/services"]
+      TUN["tunascreen_service<br/>modelo normalizado"]
+      DASH["dashboard_service"]
+      AI["ai_agent / ai_router /<br/>ai_provider / ai_tools / ai_actions"]
+      DRV["Drivers:<br/>klipper · marlin · bambu ·<br/>elegoo · flashforge · laser"]
+      LIB["file / thumbnail /<br/>gcode_bounds / gcode_geometry"]
+      AUTH["auth_service"]
+      SYS["system_service"]
+      PLG["plugin_loader /<br/>plugin_installer"]
+    end
+    BG["Tareas de fondo:<br/>programadas 30 s · broadcaster TUNA 2 s ·<br/>hilos serie · hilos paho-mqtt · WS Elegoo/láser"]
+  end
+
+  subgraph Externos
+    MR[("Moonraker/Klipper<br/>localhost:7125-7127")]
+    HW[("Marlin · Bambu · Elegoo ·<br/>FlashForge · GRBL")]
+    LLM[("Servidor IA<br/>OpenAI /v1")]
+    GH[("GitHub<br/>repos de plugins")]
+  end
+
+  subgraph Persistencia
+    JS[("~20 archivos JSON<br/>en la raíz y data/")]
+    FS[("uploads/ previews/<br/>logs/")]
+  end
+
+  BR --> MW --> Routers
+  BR --> PR
+  TS --> R9
+  FW --> PR
+  R1 & R2 & R3 & R4 --> DRV
+  R5 --> LIB
+  R6 --> AUTH
+  R7 --> SYS
+  R8 --> TUN & DASH
+  R9 --> TUN
+  R10 --> AI
+  R11 --> PLG
+  TUN & DASH & AI --> DRV
+  DRV --> MR & HW
+  SYS --> MR
+  AI --> LLM
+  PLG --> GH
+  Services --> JS
+  LIB --> FS
+```
+
+### 5.2 Capas
+
+| Capa | Ubicación | Responsabilidad |
+|---|---|---|
+| Composición | `backend/main.py` (227 líneas) | Logging, middleware, montaje de estáticos, registro de routers, tareas de arranque. |
+| Transversal ("core") | `backend/config.py`, `errors.py`, `auth_deps.py`, `utils.py` | Constantes de logging, error tipificado, dependencias de auth, validaciones y rutas seguras. No existe carpeta `core/`. |
+| API | `backend/api/` | Routers delgados (mayoritariamente). Sin schemas Pydantic: `Form(...)` y dicts. |
+| Servicios | `backend/services/` | Lógica, drivers, agregación, IA, plugins, persistencia JSON. |
+| Presentación | `backend/templates/`, `backend/static/` | SPA servida por Jinja + JS vanilla. |
+| Plugins | `plugins/<id>/` (ignorado por git) | Repos externos con backend y/o frontend propios. |
+
+### 5.3 Arranque (`backend/main.py`)
+
+En orden de registro (`@app.on_event("startup")`, mecanismo deprecado en FastAPI 0.128):
+
+1. Log de inicio.
+2. Carga de routers de plugins instalados y habilitados.
+3. Captura del event loop principal para los hilos serie de láser y Marlin.
+4. Loop de impresiones programadas de Klipper (cada 30 s).
+5. Broadcaster de TUNA-Screen (cada ~2 s).
+
+### 5.4 Ciclo de una petición del navegador
+
+```text
+Navegador ──fetch()──▶ SessionMiddleware (cookie firmada)
+                     ▶ log_unhandled_exceptions
+                     ▶ router (Depends(require_auth | require_role("admin")))
+                         └─ auth_deps relee el rol desde auth_users.json
+                     ▶ servicio de la marca / biblioteca / sistema
+                     ▶ transporte (HTTP, MQTT, WS, serie) o archivo
+                     ◀ dict JSON (forma variable por router)
+```
+
+El frontend actualiza por **polling** (34 `setInterval`, mayoría entre 3 y 10 s).
+El único WebSocket servidor→cliente es el de TUNA-Screen.
+
+### 5.5 Autenticación (resumen; detalle en §17–18)
+
+- `SessionMiddleware` de Starlette, `same_site="lax"`, secreto en `.session_secret` (0600).
+- Contraseñas con PBKDF2-HMAC-SHA256 y sal, en `auth_users.json` (0600, escritura atómica).
+- `require_auth` / `require_role("admin")`; el rol se relee en cada request.
+- Límite de intentos de login: 5 fallos por IP en 300 s, en memoria (`CURRENT`).
+- TUNA-Screen: `Authorization: Bearer <token>` por dispositivo; el token se guarda con hash; **el dispositivo no tiene rol** (§18).
+- Firmware de accesorios (plugin): cabecera `X-NOPAL-Token` compartida.
+- No existe un sistema de permisos por acción centralizado (§18.2).
+
+### 5.6 Contradicciones documentación vs código
+
+| # | La documentación dice | El código hace | Fuente |
+|---|---|---|---|
+| C1 | README: requiere "Python 3.9+" | `backend/api/plugins.py:50` usa `str \| None` en una firma evaluada en ejecución → requiere **3.10+**. CI usa 3.11; desarrollo 3.13. | README, código |
+| C2 | CLAUDE.md: el fixture de tests aísla "every brand's `REGISTRY_PATH`" | No aísla `laser_service.REGISTRY_PATH` / `HISTORY_PATH` (ni `auth_users.json`, `scheduled_prints.json`, `temperature_presets.json`). `test_tunascreen.py` aísla el láser localmente y lo comenta. | `conftest.py` |
+| C3 | CLAUDE.md: plugins "`arduino-accessories`, `camera-viewer`, `cotizador`" | El catálogo tiene 10; esta instancia tiene 8 instalados. | `plugin_catalog.json`, `data/plugins/installed.json` |
+| C4 | CLAUDE.md y README: las marcas "no se unifican detrás de una abstracción compartida" | Los **transportes** no se unifican (cierto), pero `tunascreen_service` **sí** normaliza todas las marcas a un modelo común con capacidades y acciones (el propio README lo describe en otra sección). | `tunascreen_service.py` |
+| C5 | CLAUDE.md: la lógica va en servicios, el router es delgado | `api/status.py` ejecuta `git`/`pip` y escribe `temperature_presets.json`; `api/models.py` opera el sistema de archivos con `shutil`; `api/upload.py` escribe el archivo. | código |
+| C6 | CLAUDE.md: `app.py`, `routes.py`, `database.py` están vacíos | Cierto; `models.py` también está vacío y no se menciona. | código |
+| C7 | CLAUDE.md: el frontend de un plugin no toca `templates/`/`static/` del core | Cierto en esa dirección, pero el **core** sí depende de plugins: `app.js` llama `/api/accessories` (20 referencias), `/api/cameras`, `/api/spoolman`. | `app.js` |
+| C8 | FastAPI `description`: "Biblioteca inteligente para modelos 3D y G-code"; unidad systemd: "Panel de control de impresión 3D" | El producto cubre impresoras, láser/CNC, plugins, IA y TUNA-Screen. | `main.py`, `install.sh` |
+| C9 | README: Moonraker se "auto-descubre en el host local" | Cierto; no se documenta que **no hay forma** de agregar un Moonraker remoto. | README, `klipper_service.py` |
+| C10 | `.gitignore` ignora `database/` | No existe código de base de datos. | `.gitignore` |
+| C11 | `requirements.txt` incluye `aiofiles` | No se encontró ningún import en `backend/`. Uso en plugins: `UNKNOWN`. | código |
+| C12 | CLAUDE.md decía: "CI … only boots the server and checks the homepage renders; it does not run pytest" | **Resuelta** (en el árbol de trabajo, sin commit): el workflow ejecuta `pytest` antes del smoke test (§19.1) y CLAUDE.md ya lo describe así. | `.github/workflows/smoke-test.yml`, `CLAUDE.md` |
+| C13 | Versión 0.2 de este SDD: "sin límite de intentos de login" | Existe límite: 5 fallos / IP / 300 s, en memoria (`backend/api/auth.py:20-66`). Corregido en 0.3. | código |
+
+---
+
+## 6. Mapa de módulos
+
+Estados: `CURRENT` = implementado y en uso; `PARTIAL` = implementado con
+limitaciones relevantes; `LEGACY` = convive con su reemplazo.
+
+| Módulo | Responsabilidad | Estado | Dependencias principales |
+|---|---|---|---|
+| `main.py` | Composición de la app y tareas de arranque | `CURRENT` (usa `on_event`, deprecado) | todos los routers, `plugin_loader_service` |
+| `auth_service` + `auth_deps` + `api/auth` | Usuarios, hash, sesión, roles | `CURRENT` | `auth_users.json`, `.session_secret` |
+| `klipper_service` + `api/printers`, `api/console` | Moonraker: estado, control, cola, config, macros, programadas | `PARTIAL` (solo localhost) | requests |
+| `marlin_printer_service` + `marlin_driver` + `mks_wifi_transport` | Marlin por serie o TCP; protocolo ok/resend compartido | `CURRENT` | pyserial |
+| `bambu_service` | MQTT-TLS, caché con lock desde hilo paho | `CURRENT` | paho-mqtt |
+| `elegoo_service` | SDCP por WebSocket persistente | `CURRENT` | websockets |
+| `flashforge_service` | HTTP REST | `CURRENT` | requests |
+| `laser_service` + `api/laser` | GRBL red/USB, streaming, SD, cola, encuadre, historial | `CURRENT`; "host activo" `LEGACY` (§10) | requests, requests-toolbelt, websockets, pyserial |
+| `printer_profiles` | Catálogo estático de modelos (volumen, placas) | `CURRENT` | — |
+| `tunascreen_service` + `api/tunascreen` | Modelo normalizado de máquinas, dispatch, emparejamiento, WS | `CURRENT` | los seis drivers, plugins (cámaras, Spoolman, accesorios) |
+| `api/devices` | Expone `list_machines()` con sesión | `CURRENT` | `tunascreen_service` |
+| `dashboard_service` + `api/dashboard` | Resumen: conteos, trabajos activos, host, plugins | `CURRENT` (agregación propia, §21) | los seis drivers |
+| `notification_service` | Alertas calculadas al vuelo (no persistidas) | `CURRENT` | drivers, plugin de cámaras |
+| `maintenance_service` | Mantenimiento por máquina | `CURRENT` | — |
+| `ai_*` + `api/ai` | NOPAL Intelligence | `CURRENT` (apagado por omisión) | httpx, drivers, `dashboard_service` |
+| `file_service`, `thumbnail_service`, `api/models`, `api/upload` | Biblioteca | `PARTIAL` (sin metadatos; S-1 corregido, sin commit) | Pillow, sistema de archivos |
+| `gcode_bounds`, `gcode_geometry` | Límites y análisis de G-code | `CURRENT` | `gcode_bounds_cache.json` |
+| `system_service` + `api/system` | Servicios systemd vía Moonraker, reinicio/apagado | `CURRENT` | Moonraker `/machine/*` |
+| `api/status` | Estado, almacenamiento, temperaturas, presets, versión, diagnóstico, actualización | `CURRENT` (lógica en router) | git, pip, `klipper_service` |
+| `config_backup_service` | Exportar/importar configuración cifrada (Fernet) | `CURRENT` | cryptography |
+| `plugin_installer_service`, `plugin_loader_service`, `api/plugins` | Catálogo, clonado, carga dinámica | `CURRENT` | git |
+| `app.py`, `routes.py`, `database.py`, `models.py` | — | Vacíos | — |
+| Frontend (`index.html`, `app.js`, `style.css`, `guided-printer-setup.js`, i18n) | SPA | `CURRENT` (monolítico) | Three.js incluido |
+
+---
+
+## 7. Modelo de dispositivos
+
+### 7.1 Estado actual (`CURRENT`)
+
+No existe una clase `Device`. Existe un **modelo de datos normalizado**,
+producido por `backend/services/tunascreen_service.py`, que hoy es lo más
+cercano a un contrato común de dispositivos en NOPAL.
+
+**Forma de una máquina** (ejemplo real de Klipper):
+
+```json
+{
+  "id": "klipper:7125",
+  "name": "manchas 1",
+  "type": "printer",
+  "driver": "klipper",
+  "online": true,
+  "capabilities": ["temperature", "movement", "extrusion", "fan",
+                   "speed_override", "flow_override", "z_offset",
+                   "macros", "console"],
+  "actions": ["pause", "resume", "cancel", "home", "move", "extrude",
+              "set_temperature", "set_fan", "set_speed_factor",
+              "set_flow_factor", "set_z_offset", "run_macro",
+              "send_console_command"],
+  "status": {
+    "state": "printing",
+    "hotend": {"current": 210.1, "target": 210},
+    "bed": {"current": 60.0, "target": 60},
+    "position": [...], "fan_percent": 100,
+    "speed_factor": 1.0, "flow_factor": 1.0, "z_offset": 0.0,
+    "job": {...}, "camera": null
+  }
+}
+```
+
+| Campo | Significado | Origen |
+|---|---|---|
+| `id` | `"<prefijo>:<id nativo>"` | Klipper: puerto. Marlin: dispositivo. Bambu/FlashForge: número de serie. Elegoo: mainboard id. Láser/CNC: host. |
+| `type` | `printer` \| `laser` \| `cnc` | Láser vs CNC lo decide `kind` del registro láser. |
+| `driver` | Marca/protocolo | `klipper`, `marlin`, `bambu`, `elegoo`, `flashforge`, `grbl`. |
+| `capabilities` | Qué puede **mostrar** la UI | Declaradas por normalizador; algunas dependen de plugins (`camera`, `spool`). |
+| `actions` | Qué se puede **ordenar** | Listas fijas por driver (ver tabla). |
+| `status` | Estado normalizado | `state` (`printing`, `paused`, `offline`…), temperaturas, posición, trabajo, cámara. |
+
+La separación `capabilities` / `actions` es deliberada (comentario en el
+código): evita botones falsos en máquinas que reportan temperatura pero no
+permiten cambiarla por su driver.
+
+**Acciones por driver** (constantes en `tunascreen_service`):
+
+| Driver | Acciones |
+|---|---|
+| Klipper | pause, resume, cancel, home, move, extrude, set_temperature, set_fan, set_speed_factor, set_flow_factor, set_z_offset, run_macro, send_console_command |
+| Marlin | igual que Klipper sin set_z_offset ni run_macro |
+| Bambu, Elegoo, FlashForge | pause, resume, cancel |
+| GRBL láser | pause, resume, cancel, home, move, set_laser_power, set_air_assist |
+| GRBL CNC | pause, resume, cancel, home, move, set_work_zero, set_spindle, set_coolant |
+
+**Caché y estabilidad**
+
+- `list_machines()` consulta las seis fuentes **en paralelo**
+  (`asyncio.gather` + `run_in_executor` para los servicios síncronos).
+- Caché de **2.5 s** (`MACHINE_CACHE_TTL_SECONDS`), invalidada si cambia la
+  "firma de fuentes" (`_current_source_signature`).
+- Si una fuente completa falla, se conserva su **último snapshot**.
+- **Grace snapshots**: una máquina que pasa de online a offline se sigue
+  mostrando online hasta **3** snapshots fallidos (`OFFLINE_GRACE_SNAPSHOTS`),
+  para que un timeout aislado no haga parpadear la tarjeta.
+
+**Dispatch de acciones** (`dispatch_action(machine_id, action, params)`):
+
+```text
+split "driver:raw_id"
+ → get_machine() (usa la caché)
+ → ¿existe? ¿online? ¿action ∈ actions? ¿capability requerida ∈ capabilities?
+ → _dispatch_<driver>(raw_id, action, params)
+     └─ llama funciones ya existentes del servicio de la marca
+        (p. ej. Klipper home/move = G28/G1 vía send_console_command)
+```
+
+**Consumidores actuales del modelo**
+
+| Consumidor | Cómo |
+|---|---|
+| TUNA-Screen | `/api/tunascreen/machines`, `/machine/{id}`, `/action`, `/ws/tunascreen` (broadcast cada 2 s) |
+| Panel web, "Todos los dispositivos" | `/api/devices/registry` |
+
+**No lo consumen** (tienen su propia agregación de las seis fuentes):
+
+| Módulo | Agregación propia |
+|---|---|
+| `ai_tools._collect_machines` | ~95 líneas |
+| `dashboard_service._device_counts` / `_active_jobs` | ~120 líneas |
+| Rutas por marca del panel | Hablan directo con cada servicio (correcto: son pantallas específicas de marca) |
+
+### 7.2 Por qué este modelo es importante
+
+1. Es el **único lugar** donde existe un vocabulario común de capacidades y
+   acciones, y está **probado** (38 tests en `test_tunascreen.py`).
+2. Un **cliente externo real** (la app Android) ya depende de él: es un
+   contrato de facto, con `API_VERSION = 1`.
+3. Respeta P2/P3: no toca los transportes; traduce lo que cada servicio ya
+   devuelve.
+4. Resuelve los problemas transversales (paralelismo, caché, tolerancia a
+   fallos, validación) que los otros dos agregadores resuelven a medias.
+
+### 7.3 Arquitectura objetivo (`PROPOSED`)
+
+**No se crea una abstracción nueva.** Se promueve el modelo existente a
+contrato de arquitectura:
+
+1. **Separar responsabilidades dentro de lo que ya existe**: la parte de
+   "máquinas" de `tunascreen_service` (normalizadores, caché, grace, dispatch)
+   y la parte de "dispositivo TUNA-Screen" (emparejamiento, tokens, WS)
+   conviven hoy en un archivo de 1228 líneas. Propuesta: mover la primera a un
+   módulo propio **sin cambiar comportamiento ni forma de salida**; nombre
+   `OPEN`.
+2. **Un solo agregador**: `dashboard_service` y `ai_tools` consumen
+   `list_machines()` en lugar de su agregación propia.
+3. **Documentar el contrato**: forma, vocabulario cerrado de capacidades y
+   acciones, semántica de `state`, formato de `id` (en un `docs/DEVICES.md`
+   cuando se ejecute la fase correspondiente).
+4. **Test de contrato** por driver: cada normalizador produce la forma
+   documentada y toda acción declarada tiene dispatch.
+5. **Agregar una marca** = servicio con su transporte + normalizador +
+   dispatcher registrados. TUNA-Screen, dashboard, IA y panel la ven.
+
+Lo que **no** se propone: clases `Device → Printer/Laser/CNC` (ver ADR-001/002),
+ni que las pantallas por marca pasen por el modelo normalizado.
+
+Puntos del contrato a resolver (`OPEN`): unificar el prefijo `laser:` con
+`driver: "grbl"`; formato de id para Klipper remoto (depende de ADR-004).
+
+---
+
+## 8. Drivers
+
+Todos son módulos de funciones (no clases intercambiables). Ninguno conoce a
+otro, salvo el protocolo Marlin compartido.
+
+### 8.1 Klipper / Moonraker
+Ver §9.
+
+### 8.2 Marlin standalone
+
+| Aspecto | Detalle |
+|---|---|
+| Propósito | Impresoras 3D con Marlin sin Klipper |
+| Protocolo | Marlin: un comando por `ok`; `Resend`, `busy`; estado solo por consulta (M105/M114) |
+| Transporte | USB serie (autobaud 115200/250000) o TCP a módulo MKS WiFi (puerto 8080, descubrimiento UDP 8989) |
+| Servicios | `marlin_printer_service.py` (gestor de conexión, registro, trabajos, SD) + `marlin_driver.py` (protocolo puro, recibe un `MarlinTransport` inyectado) + `mks_wifi_transport.py` |
+| Capacidades | Temperatura, movimiento, extrusión, ventilador, velocidad/flujo, consola, SD, cola de comandos |
+| Limitaciones | Un trabajo streamed depende de que NOPAL siga corriendo; los hilos serie requieren el event loop capturado al arranque |
+| TUNA-Screen | `_marlin_machine`; acciones de movimiento y temperatura |
+| Registro | `marlin_printer_registry.json` (escritura no atómica, con lock) |
+
+### 8.3 Bambu Lab
+
+| Aspecto | Detalle |
+|---|---|
+| Protocolo / transporte | MQTT sobre TLS; la impresora es el broker; usuario fijo + access code |
+| Servicio | `bambu_service.py`; paho-mqtt corre en su propio hilo y escribe en una caché protegida por lock (no se fuerza al event loop) |
+| Capacidades | Estado, temperaturas, progreso; pause/resume/cancel; envío |
+| Limitaciones | Sin home/jog/extrude por REST |
+| TUNA-Screen | `_bambu_like_machine`; solo acciones de transporte |
+| Registro | `bambu_printer_registry.json` (access code en texto plano) |
+
+### 8.4 Elegoo
+
+| Aspecto | Detalle |
+|---|---|
+| Protocolo / transporte | SDCP por WebSocket persistente; la impresora empuja estado (sin polling una vez conectada) |
+| Servicio | `elegoo_service.py`; códigos `PrintInfo.Status` observados en hardware real, documentados en el docstring; no mapeados → `"unknown"` |
+| Capacidades / limitaciones | Igual que Bambu |
+| Registro | `elegoo_printer_registry.json` (no atómico, sin lock) |
+
+### 8.5 FlashForge
+
+| Aspecto | Detalle |
+|---|---|
+| Protocolo / transporte | HTTP REST petición/respuesta; sin conexión persistente |
+| Servicio | `flashforge_service.py` |
+| Capacidades / limitaciones | Igual que Bambu |
+| Registro | `flashforge_printer_registry.json` (no atómico, sin lock) |
+
+### 8.6 GRBL (láser / CNC)
+Ver §10.
+
+---
+
+## 9. Klipper / Moonraker
+
+### 9.1 Estado actual (`CURRENT`)
+
+| Aspecto | Implementación |
+|---|---|
+| Descubrimiento | `find_moonraker_instances()` sondea `localhost` en `MOONRAKER_DEFAULT_PORTS = 7125..7127` más los puertos de la variable de entorno `NOPAL_KLIPPER_PORTS` (separados por coma). Caché de 5 s. Solo registra en log las transiciones (aparece / deja de responder). |
+| Configuración | **No hay registro de impresoras Klipper.** Una impresora es lo que responda en esos puertos. |
+| Cliente | `MoonrakerClient(port)` → `base_url = http://localhost:{port}` (hardcodeado), timeout 2 s, sin API key. |
+| Estado | `GET /printer/objects/query?extruder&heater_bed&fan&print_stats&toolhead&virtual_sdcard&gcode_move` → `normalize_printer_payload`. |
+| Temperaturas | Objetos `extruder`/`heater_bed`, `/server/temperature_store`. |
+| Progreso | `virtual_sdcard.progress`, `print_stats`, `/server/files/metadata`. |
+| Control | `/printer/print/{pause,resume,cancel}`, `/printer/restart`, `/printer/firmware_restart`, `/printer/gcode/script`, `/server/files/upload`, cola (`/server/job_queue`), archivos de config. |
+| Errores | `_get` captura `ConnectionError` y `Exception`, registra y devuelve `{}`. |
+| Varias instancias | Una por puerto. Identificadas como `klipper:{port}`. |
+| Nombres | En orden: nombre de Mainsail (`/server/database/item?namespace=mainsail`), `server.name`/`hostname`, `printer_N_data` en la ruta de config → `"manchas N"`, y un mapa fijo `{7125: "manchas 1", 7126: "manchas 2", 7127: "manchas 3"}`. Los nombres `"manchas"` son de una instalación concreta y están en el código. |
+| Impresiones programadas | Solo Klipper. `scheduled_prints.json`; loop cada 30 s en `main.py` → `run_due_scheduled_prints()`. Escritura no atómica. |
+| Sistema | `system_service` usa la API `/machine/*` de Moonraker para servicios systemd, reinicio y apagado del host. |
+| Rutas | `/api/printers/{port}/...` identifican por puerto; `/api/printers/{printer_name}/status` por nombre. |
+
+### 9.2 Decisiones pendientes
+
+| Pregunta | Estado |
+|---|---|
+| ¿NOPAL soportará Moonraker remoto (otro host de la LAN)? | `OPEN` (ADR-004) |
+| Si sí: ¿registro explícito, descubrimiento, o ambos? | `OPEN` |
+| Si sí: ¿cómo se preservan los ids `klipper:{port}` existentes (vinculados a cámaras, Spoolman, TUNA-Screen)? | `OPEN` |
+| ¿Se retiran los nombres `"manchas"` del código? | `PROPOSED` (bajo riesgo; requiere un nombre por omisión alternativo) |
+| ¿Soporte de API key de Moonraker? | `OPEN` |
+
+---
+
+## 10. Láser / CNC
+
+### 10.1 Estado actual (`CURRENT`)
+
+| Aspecto | Implementación |
+|---|---|
+| Protocolo | GRBL / grblHAL / FluidNC; también placas con Marlin (reutiliza `marlin_driver`) |
+| Transporte de red | HTTP (comandos, SD) + WebSocket en puerto 81 (estilo ESP3D) |
+| Transporte USB | pyserial, con identidad por ubicación física USB (`_resolve_usb_location`), no por `/dev/ttyUSBx` |
+| Streaming | Protocolo de buffer por conteo de caracteres (`GRBL_RX_BUFFER_SIZE = 120`) para mantener el planificador lleno |
+| Concurrencia | Estado de conexión y trabajo **por host**; varias máquinas a la vez |
+| Funciones | Estado, consola, jog, home, settings `$`, trabajos (inicio/pausa/reanudar/cancelar), encuadre, cola, SD (listar, ejecutar, carpetas, borrar, formatear), historial |
+| Láser vs CNC | `kind` en `laser_registry.json` → `type` y conjunto de capacidades/acciones distinto |
+| Persistencia | `laser_registry.json`, `laser_history.json` (máx. 200), sin escritura atómica, con lock |
+| TUNA-Screen | `_laser_machine` → `id = "laser:{host}"`, `driver = "grbl"` |
+| IA | Por diseño **no existe** herramienta para arrancar láser o CNC; un test lo verifica |
+
+### 10.2 Coexistencia: host activo `LEGACY` vs multi-host `CURRENT`
+
+| Modelo | Evidencia |
+|---|---|
+| **Host activo (legacy)** | Variable global `_active_host`, inicializada con `DEFAULT_LASER_HOST = "192.168.0.61"` (`laser_service.py:22`). `GET/POST /api/laser/host` lee y cambia ese host global (POST lo permite cualquier usuario autenticado). Unas 8 funciones de servicio usan `host=DEFAULT_LASER_HOST` como valor por omisión. `_get_local_subnet()` cae a la subred de esa IP si no puede detectar la propia. |
+| **Multi-host (actual)** | `laser_registry.json` con varias máquinas; endpoints como `/api/laser/registry/status` y `/api/laser/jobs/active` operan sobre todas; TUNA-Screen e IA usan el host explícito. |
+
+**Deuda arquitectónica**: dos modelos de selección conviven. Una llamada que
+omita `host` actúa sobre el "host activo" global, compartido entre todos los
+usuarios conectados. Retirarlo es `OPEN` (decisión D4): hace falta verificar
+qué partes de `app.js` siguen dependiendo de `/api/laser/host`.
+
+---
+
+## 11. API
+
+### 11.1 Estado actual (`CURRENT`)
+
+- **~212 endpoints en core** en 21 routers, más los de plugins.
+- **Sin versionado**, salvo TUNA-Screen (`API_VERSION = 1`, informado en `/api/tunascreen/info`).
+- **Sin schemas Pydantic**: entradas por `Form(...)` o query; salidas como dict.
+- Documentación OpenAPI automática de FastAPI disponible (`/docs`), no curada.
+
+| Router | Prefijo | Endpoints aprox. | Auth |
+|---|---|---|---|
+| laser | `/api/laser/*` | 41 | sesión; 3 admin |
+| marlin_printers | `/api/marlin-printers/*` | 27 | sesión; 2 admin |
+| ai | `/api/ai/*` | 26 | sesión; 13 admin |
+| printers | `/api/printers/*` (solo Klipper) | 21 | sesión |
+| tunascreen | `/api/tunascreen/*`, `/ws/tunascreen` | 19 | token Bearer; 3 admin por sesión (emparejar, listar, revocar) |
+| status | `/api/status`, `/api/storage`, `/api/system/*` | 12 | sesión; 3 admin |
+| models | `/api/models`, `/api/browse`, `/api/files`, `/api/folders`, `/api/*/thumbnail` | 11 | sesión |
+| bambu / elegoo / flashforge | `/api/<marca>/printers/*` | 9 c/u | sesión; alta/baja admin |
+| auth | `/api/auth/*` | 9 | login/setup públicos; usuarios admin |
+| system | `/api/system/*` | 5 | admin |
+| console | `/api/console/*`, `/api/macros*` | 4 | sesión |
+| plugins | `/api/plugins/*` | 4 | listar sesión; instalar/actualizar/borrar admin |
+| config_backup | `/api/config-backup/*` | 4 | admin |
+| dashboard, devices, logs, notifications, upload | — | 1 c/u | sesión |
+| fuera de routers | `/`, `/uploads/{path}`, `/view/{path}` | 3 | `/` pública; resto sesión |
+
+**Convenciones observadas**: JSON; nombres de campo mayormente `snake_case`;
+errores con `HTTPException` → `{"detail": "<mensaje es-MX>"}`; el frontend
+depende de que `detail` sea texto (`new Error(data.detail)`).
+`PrinterRegistrationError` agrega `error_code` como campo hermano.
+
+### 11.2 Inconsistencias conocidas
+
+| Inconsistencia | Ejemplo |
+|---|---|
+| Nombres de recurso | `/api/printers` = solo Klipper; `/api/marlin-printers`; `/api/bambu/printers` |
+| Identificadores | puerto, ruta de dispositivo, número de serie, mainboard id, host, nombre |
+| Verbos | `POST /api/auth/users/update` y `/remove` en vez de `PUT`/`DELETE`; `POST /api/laser/registry/remove` |
+| Forma de respuesta | `{"success": true}`, `{"ok": true}`, listas desnudas, dicts con claves variables |
+| Errores | Solo el registro de impresoras usa `error_code`; 502/504 no se usan de forma sistemática para fallas de dispositivo |
+| Duplicación | `/api/devices/registry` ≡ `/api/tunascreen/machines` (distinta auth); `/api/dashboard/summary` recalcula |
+| Espacio de nombres de plugins | `/api/plugins/matriz-led/*` vs `/api/accessories/*`, `/api/cameras/*`, `/api/pricing/*`, `/api/spoolman/*` |
+| `/api/system/*` | Repartido entre `status.py` y `system.py` |
+| Endpoints sin referencia aparente en el frontend (heurística, a verificar) | `GET/PUT /api/ai/config`, `GET /api/ai/tiers`, `GET /api/marlin-printers/discover`, `GET /api/status` |
+
+### 11.3 API objetivo — principios (`PROPOSED`)
+
+No se define todavía una API nueva. Principios propuestos:
+
+1. **Compatibilidad**: ninguna ruta usada por `app.js` o TUNA-Screen se rompe.
+   Una ruta solo se retira después de que ningún cliente la use, marcándola
+   antes como `DEPRECATED`.
+2. **Errores**: `detail` sigue siendo texto; `error_code` estable se generaliza
+   (patrón de `PrinterRegistrationError`). Fallas de dispositivo diferenciadas
+   (502 la máquina respondió con error; 504 no respondió; 409 ocupada).
+3. **Contratos explícitos** con Pydantic en endpoints nuevos.
+4. **Un recurso normalizado de máquinas** basado en el modelo de §7.
+5. **Versionado** (`/api/v1/...`): `PROPOSED` solo para recursos pensados para
+   clientes fuera del panel. Depende de la decisión D2.
+
+**Decisión pendiente (D2)**: ¿NOPAL tendrá consumidores externos además del
+frontend y TUNA-Screen? → `OPEN`.
+
+---
+
+## 12. Frontend
+
+### 12.1 Estado actual (`CURRENT`)
+
+| Aspecto | Implementación |
+|---|---|
+| Arquitectura | SPA server-rendered: un `index.html` (5.3 k líneas) con todas las secciones; se muestran/ocultan por JS |
+| JavaScript | `app.js` (22.5 k líneas) vanilla, sin módulos, sin build step; `guided-printer-setup.js` (851) |
+| CSS | `style.css` (20.3 k líneas) |
+| 3D | Three.js incluido en el repo (`three.min.js`, `STLLoader.js`, `3MFLoader.js`) |
+| Comunicación | 259 llamadas `fetch(` dispersas; **sin cliente de API común** |
+| Actualización | Polling: 34 `setInterval` (100 ms – 20 s; mayoría 3–10 s). Sin WebSocket en el panel |
+| i18n | `translations.js` (es/en) canónico; de/fr/pt-BR generados por `scripts/generate_i18n.py` |
+| Temas | Clase en `<body>`: claro (sin clase), `dark`, `green`, `red`, `custom`; variables CSS; regla: sin colores fijos. Guía: `NOPAL_DESIGN_SYSTEM_v1.md` |
+| Modo IA | Atributo `data-ai-active` en `<body>`, ortogonal al tema (`docs/MODO_IA_PLAN.md`) |
+| Plugins | JS/CSS de cada plugin servido desde `/plugins-static/<id>/frontend/...` e inyectado aparte |
+| Acoplamiento | `app.js` llama endpoints de plugins (`/api/accessories`, `/api/cameras`, `/api/spoolman`) |
+
+### 12.2 Problema: frontend monolítico
+
+El problema no es la tecnología (JS vanilla es suficiente para el caso de uso:
+pocos usuarios en LAN, servido por el mismo proceso) sino el **tamaño y la
+falta de fronteras**: tres archivos concentran ~48 k líneas; cualquier cambio
+toca un archivo compartido; no hay una capa común para llamadas a la API.
+
+### 12.3 Evolución (`PROPOSED`, incremental)
+
+- **No** migrar a React/Vue/otro framework (ver §28).
+- Extraer secciones de `app.js` a **módulos ES nativos** (`<script type="module">`),
+  que los navegadores actuales soportan sin bundler, una sección a la vez.
+- Introducir un **cliente de API** pequeño (manejo uniforme de `detail`/`error_code`, sesión expirada).
+- Partir `style.css` por área manteniendo un archivo base de variables de tema.
+- Que el core no llame endpoints de plugins directamente (mecanismo `OPEN`).
+- Estrategia de largo plazo: decisión D8, `OPEN`.
+
+---
+
+## 13. Sistema de plugins
+
+### 13.1 Estado actual (`CURRENT`)
+
+| Aspecto | Implementación |
+|---|---|
+| Catálogo | `backend/plugin_catalog.json` (en el repo): id, categoría, `repo_url`, disponibilidad, precio. 10 plugins. |
+| Instalación | Solo admin. `git clone <repo_url>` en `plugins/<id>/` (ignorado por git). Solo plugins `free`; `paid` → 501. |
+| Estado instalado | `data/plugins/installed.json` (`version`, `enabled`, `installed_at`), escritura atómica. Lo lee el servicio (no el router) para que el loader lo use antes de que exista cualquier router. |
+| Manifiesto | `nopal-plugin.json`: `schema_version`, `id`, `name`, `version`, `publisher`, `category`, `description`, `permissions`, `compatibility`, `frontend {script, style, section}`, `backend {entry}` (opcional). |
+| Carga | Al arrancar, para cada plugin habilitado: valida que `backend.entry` esté dentro de su carpeta; lo importa con `importlib` como paquete `nopal_plugins.<id>` (los imports relativos funcionan); registra su variable `router` con `app.include_router`. Falla → warning y se omite. |
+| Puntos de extensión | `router` (endpoints), `AI_TOOLS` (herramientas para la IA, `get_plugin_ai_tools`), lectura opcional por el core vía `get_loaded_plugin_module` (cámaras, accesorios, Spoolman en dashboard/notificaciones/TUNA-Screen). |
+| Estáticos | `/plugins-static` monta `plugins/` completo. |
+| Configuración y datos | Cada plugin guarda sus JSON (en la raíz: `spoolman_*.json`, `pricing_config.json`, `quotes_registry.json`, `camera_registry.json`, `accessory_registry.json`…; o en `data/`). |
+| Dependencias Python | Las de plugins están en el `requirements.txt` del core (p. ej. `xhtml2pdf`, `esptool`). |
+| Tests | Viven en cada repo de plugin; se corren aparte. |
+
+### 13.2 Aislamiento y permisos — situación real
+
+- **No hay sandboxing.** El backend de un plugin es Python importado **dentro
+  del mismo proceso**, con los mismos privilegios que NOPAL: acceso a todos los
+  archivos JSON (incluidos `auth_users.json` y credenciales de máquinas), a la
+  red, a los puertos serie y a cualquier módulo del core.
+- **El campo `permissions` del manifiesto es descriptivo**: se muestra en la
+  galería; ningún código lo verifica ni lo aplica.
+- **La autenticación de las rutas de cada plugin la decide el plugin.** En los 5
+  plugins con backend instalados, todas las rutas usan `Depends(...)` salvo
+  `POST /api/accessories/cluster/event`, que se autentica con `X-NOPAL-Token`
+  (llamada desde firmware, documentado así a propósito).
+- **Confianza**: la seguridad depende de que los repos del catálogo sean
+  confiables; actualizar un plugin trae y ejecuta el código nuevo de su remoto.
+
+---
+
+## 14. Inteligencia Artificial (NOPAL Intelligence)
+
+### 14.1 Estado actual (`CURRENT`)
+
+Documentación detallada existente: `docs/NOPAL_INTELLIGENCE.md`.
+
+| Componente | Responsabilidad |
+|---|---|
+| `ai_config_service` | Configuración (`ai_config.json`): habilitado, proveedores, modelos por nivel, `actions_enabled`, endpoints públicos permitidos |
+| `ai_provider` | `AIProvider` (ABC) y su única implementación `OpenAICompatibleProvider` (`/v1/chat/completions`): llama.cpp, Ollama `/v1`, LM Studio, vLLM o nube si se habilita. httpx con import perezoso; manejo de `Retry-After` |
+| `ai_router` | Clasifica la pregunta y elige nivel/modelo |
+| `ai_agent` | Orquesta: perfil, loop nativo de herramientas o modo contexto, conversación |
+| `ai_tools` | Herramientas de **solo lectura** (estado del taller, máquinas, temperaturas, trabajos, eventos del log, biblioteca, materiales, plugins, accesorios, cámaras) + herramientas declaradas por plugins |
+| `ai_actions` | Acciones físicas, **registro separado**: interruptor propio (apagado por omisión), `role` por acción copiado del endpoint equivalente, riesgo `low` (directo) o `confirm` (token pendiente, TTL 300 s, en memoria). No existe acción para arrancar láser/CNC |
+| `ai_conversations_service` | Historial (`ai_conversations.json`, escritura atómica) |
+
+### 14.2 Flujo confirmado
+
+```text
+Usuario (panel) ─POST /api/ai/ask─▶ api/ai.py (sesión; rol del usuario)
+  ▶ ai_agent.ask()
+      ├─ ai_router.route()              → modelo
+      ├─ ai_provider (AIProvider)       ⇄ servidor IA (OpenAI-compatible)
+      ├─ ai_tools.<tool>()              → servicios de marca / dashboard_service
+      │      └─ drivers → máquinas
+      └─ ai_actions (si actions_enabled y rol suficiente)
+             ├─ risk=low     → ejecuta vía servicios → drivers → máquina
+             └─ risk=confirm → token → POST /api/ai/actions/{token}/confirm
+```
+
+El flujo `Usuario → AI Provider → AI Tools → Services → Drivers → Machine` se
+confirma, con dos matices: (a) las herramientas las orquesta `ai_agent`, no
+el proveedor; (b) `ai_tools` usa su propia agregación de máquinas, no el modelo
+de §7.
+
+### 14.3 Observaciones
+
+- `ai_tools.py:759` importa constantes de `backend.api.models` (servicio → router: capa invertida).
+- `get_recent_events` lee `logs/nopal.log` con expresiones regulares (no hay almacén de eventos).
+- `ai_config.json` puede contener una API key y tiene permisos 644.
+
+---
+
+## 15. Biblioteca
+
+### 15.1 Implementado (`CURRENT`)
+
+| Función | Detalle |
+|---|---|
+| Formatos | Modelos: `.stl .3mf .obj .step .stp .svg .dxf`. G-code: `.gcode .gc .gco .nc .tap .cnc` (`api/models.py`) |
+| Almacenamiento | `uploads/models/` y `uploads/gcode/`; el árbol de carpetas es la organización y la fuente de verdad |
+| Navegar | `GET /api/browse`, `GET /api/models` |
+| Carpetas | `POST/PATCH/DELETE /api/folders` |
+| Archivos | `PATCH /api/files` (renombrar), `DELETE /api/files`, `POST /api/files/move` |
+| Rutas seguras | `safe_section_path()` resuelve y verifica que la carpeta quede dentro de la sección |
+| Subida | `POST /api/upload` (multipart). El nombre de archivo se valida y se verifica que la ruta final quede dentro de la carpeta destino (S-1 `FIXED`, §17.2) |
+| Descarga | `GET /uploads/{path}` (sesión, protegido contra traversal); se entrega en línea con el tipo deducido de la extensión (ver S-10, §17.2); vista `/view/{path}` |
+| Miniaturas | G-code: render 2D con Pillow (`thumbnail_service`), cacheado; `GET /api/gcode/thumbnail`, `/api/models/thumbnail` |
+| Preview | 3D en el navegador con Three.js (STL/3MF); visor 2D de G-code en el Editor G-Code |
+| Análisis | `gcode_bounds` (límites para encuadre, caché JSON), `gcode_geometry` |
+| Envío a máquina | Por driver (Klipper sube a Moonraker; Marlin/láser streaming o SD) |
+
+### 15.2 No implementado
+
+| Función | Estado |
+|---|---|
+| Tags | No existe |
+| Categorías | No existe (solo carpetas) |
+| Metadatos persistidos (slicer, tiempo, material) | No existe |
+| Búsqueda avanzada | No existe; hay filtrado en cliente y `ai_tools._scan_library` recorre el disco |
+| Asociación archivo → máquina / historial de uso | No existe |
+| Límite de tamaño y lista blanca de extensiones en subida | No existe |
+
+Prioridad de estas funciones: decisión D5, `OPEN`.
+
+---
+
+## 16. Persistencia
+
+### 16.1 Estado actual (`CURRENT`): JSON + sistema de archivos
+
+No hay base de datos. Inventario principal:
+
+| Archivo | Clase de dato | Atómico | Lock | Notas |
+|---|---|---|---|---|
+| `auth_users.json` | Permanente / secretos | Sí | — | 0600 |
+| `.session_secret` | Secreto | — | — | 0600 |
+| `marlin_printer_registry.json` | Configuración | **No** | Sí | |
+| `bambu_printer_registry.json` | Configuración / secretos | **No** | Sí | access codes en texto plano |
+| `elegoo_printer_registry.json` | Configuración | **No** | **No** | |
+| `flashforge_printer_registry.json` | Configuración | **No** | **No** | |
+| `laser_registry.json` | Configuración | **No** | Sí | |
+| `laser_history.json` | Historial (máx. 200) | **No** | Sí | |
+| `scheduled_prints.json` | Estado | **No** | **No** | |
+| `temperature_presets.json` | Configuración | **No** | **No** | escrito desde un router |
+| `ai_config.json` | Configuración / secretos | **No** | **No** | 0644; puede tener API key |
+| `ai_conversations.json` | Permanente | Sí | — | |
+| `tunascreen_devices.json` | Credenciales (hash) | Sí (+ respaldo `.corrupt`) | Sí | 0600 |
+| `gcode_bounds_cache.json` | Caché reconstruible | Sí | — | |
+| `data/plugins/installed.json` | Configuración | Sí | lock en router | |
+| JSON de plugins | Varios | Según plugin | — | `UNKNOWN` por plugin |
+| `uploads/`, `previews/` | Archivos de usuario | — | — | |
+| `logs/nopal.log` | Logs | Rotación 5 MB × 5 | — | |
+| Memoria | Cachés de máquinas/Moonraker/MQTT, buffers de consola, códigos de emparejamiento, acciones IA pendientes, historial de CPU | — | — | se pierden al reiniciar (a propósito en emparejamiento y acciones IA) |
+
+Todos estos archivos están en `.gitignore` (estado por instalación).
+
+### 16.2 Análisis
+
+| Tema | Situación |
+|---|---|
+| Atomicidad | 5 servicios escriben con archivo temporal + `os.replace`; el resto sobrescribe directo. Un corte durante la escritura deja JSON truncado. |
+| Corrupción | Ya ocurrió: existe `tunascreen_devices.json.corrupt-20260728-0406.bak`. Solo `tunascreen_service` tiene recuperación. |
+| Concurrencia | Locks por módulo en algunos servicios; ninguno en Elegoo, FlashForge, programadas, presets ni configuración de IA. Un solo proceso, así que basta con locks de hilo/async. |
+| Respaldos | `config_backup_service`: exportación/importación cifrada (Fernet con clave derivada de frase). Manual. |
+| Permisos | Solo los archivos de credenciales de auth y TUNA-Screen se crean con 0600. |
+| Secretos | Access codes de Bambu, API key de IA y token de clúster en texto plano. |
+| Historia | No hay almacén de trabajos ni eventos; las notificaciones no se persisten. |
+
+### 16.3 Estrategia propuesta (`PROPOSED`)
+
+**Primera etapa** — servicio de almacenamiento sobre lo que ya existe:
+
+```text
+servicios de marca, IA, presets, programadas…
+                ↓
+        Storage Service (PROPOSED)
+        read_json / write_json
+        - escritura atómica (tmp + os.replace)
+        - lock por ruta
+        - respaldo .corrupt-<fecha> si no parsea
+        - permisos 0600 para archivos con secretos
+                ↓
+        mismos archivos JSON, mismo formato
+```
+
+Sin cambio de formato ni de ubicación: compatibilidad total con
+`config_backup_service` y con instalaciones existentes.
+
+**Después — SQLite: `DECISION PENDING`** (ADR-003). Se evaluará solo si aparece
+una necesidad concreta que JSON no cubre bien (p. ej. historial de trabajos o
+eventos consultable por rango, metadatos de biblioteca con búsqueda). No se
+decide en este documento.
+
+---
+
+## 17. Seguridad
+
+### 17.1 Estado actual
+
+| Área | Situación |
+|---|---|
+| Autenticación | Sesión con cookie firmada (`itsdangerous`), `SameSite=Lax`; primer arranque crea el admin (`/api/auth/setup`). |
+| Contraseñas | PBKDF2-HMAC-SHA256 con sal. |
+| Límite de login | `CURRENT`: 5 intentos fallidos por IP en una ventana de 300 s, en memoria (se reinicia con el proceso) — `backend/api/auth.py:20-66`. |
+| Roles | `admin` / `operador`; releído en cada request (degradar o borrar un usuario tiene efecto inmediato). Principales y autorización en §18. |
+| Tokens | TUNA-Screen: Bearer permanente por dispositivo, guardado con hash, revocable por admin; códigos de emparejamiento de 6 dígitos y 5 min en memoria. Clúster de accesorios: token compartido en cabecera. |
+| API keys | No existen para la API de NOPAL. API key del proveedor IA en `ai_config.json` (0644). |
+| CORS | No configurado (solo mismo origen). |
+| CSRF | Sin token; mitigado por `SameSite=Lax`. |
+| Plugins | Código en proceso con privilegios completos (§13.2). |
+| Archivos | Carpetas validadas con `safe_section_path`; descargas protegidas; nombre de archivo de subida validado (S-1 `FIXED`). `/plugins-static` sirve `plugins/` completo sin autenticación (D-8). |
+| Ejecución de comandos | `subprocess` con lista de argumentos (sin `shell=True`): `git`, `pip`, `systemctl list-units` (lectura). Control de servicios y del host vía API de Moonraker, con nombre de servicio validado por regex. |
+| Moonraker | Sin autenticación en la LAN: cualquiera en la red puede hablarle sin pasar por NOPAL. |
+| Despliegue | uvicorn en `0.0.0.0:8420`, sin TLS; README recomienda proxy inverso para exponer fuera de la LAN. |
+| Autoactualización | Admin: `git pull --ff-only` + `pip install -r requirements.txt`, bloqueada con trabajos activos o cambios locales. Confía en `origin`. |
+
+### 17.2 Registro de riesgos
+
+| ID | Riesgo | Severidad | Estado |
+|---|---|---|---|
+> Nomenclatura: `S-n` = riesgos de la auditoría técnica; `D-7`…`D-11` =
+> riesgos de la auditoría de permisos D3 (se conserva su numeración original).
+> No confundir con las decisiones abiertas `D1`…`D12` de §25 ni con las
+> inconsistencias `D3-1`…`D3-6` de §18.4.
+
+| ID | Riesgo | Severidad | Estado |
+|---|---|---|---|
+| **S-1** | **Upload path traversal**: `POST /api/upload` unía el nombre de archivo enviado por el cliente sin validarlo; un usuario autenticado de cualquier rol podía escribir fuera de `uploads/`. **Corrección**: `_safe_upload_target()` en `backend/api/upload.py` rechaza (400, sin revelar rutas) nombres vacíos, `.`/`..`, con `/` o `\`, con byte nulo o absolutos, y verifica que la ruta resuelta quede directamente dentro de la carpeta destino; la respuesta de éxito devuelve una ruta relativa. 20 tests nuevos en `backend/tests/test_upload.py` (fallan contra el código anterior); la suite pasó de 513 a **533 tests, todos verdes**. | **CRITICAL** | **`FIXED`** — en el árbol de trabajo, pendiente de commit. Sigue sin haber límite de tamaño ni lista blanca de extensiones (decisión deliberada: no forman parte de S-1). |
+| S-2 | Sin token CSRF; depende de `SameSite=Lax`. | MEDIUM | `OPEN` |
+| S-3 | ~~Sin límite de intentos de login~~ — **afirmación incorrecta de la versión 0.2**. Existe límite (`CURRENT`): 5 fallos por IP en 300 s, en memoria. Limitaciones: se pierde al reiniciar y es por IP. | LOW (residual) | `CURRENT` — sin acción pendiente salvo decidir si basta |
+| S-4 | Secretos en texto plano y permisos laxos (`ai_config.json` 0644; access codes de Bambu). | MEDIUM | `OPEN` |
+| S-5 | Plugins sin aislamiento; `permissions` no aplicado; actualización ejecuta código remoto. | MEDIUM | `OPEN` (aceptado implícitamente hoy) |
+| S-6 | Moonraker accesible sin autenticación en la LAN. | MEDIUM (despliegue) | `OPEN` |
+| S-7 | NOPAL sin TLS en `0.0.0.0`. | LOW en LAN / HIGH si se expone | `OPEN` (mitigación documentada en README) |
+| S-8 | Autorización inconsistente entre canales y rutas equivalentes; la consola permite saltarse restricciones específicas (D3-1…D3-6, §18.4). | HIGH | `OPEN` — depende de las decisiones D3 (§18.9) |
+| S-9 | Un dispositivo TUNA-Screen emparejado ejecuta cualquier acción declarada sin rol ni alcance (incluidas temperatura, consola y potencia de láser/husillo). | HIGH | `OPEN` — ver §18.7 |
+| **S-10** | **Stored XSS potencial en archivos servidos desde `/uploads/{path}`**: la biblioteca acepta cualquier extensión y `GET /uploads/{path}` (`backend/main.py`, `protected_upload`) entrega el archivo con `FileResponse`, **en línea** (sin `Content-Disposition: attachment`), con el tipo deducido de la extensión (p. ej. `text/html`, `image/svg+xml`) y sin cabeceras `Content-Security-Policy` ni `X-Content-Type-Options`, **desde el mismo origen que el panel**. Un archivo con contenido activo —un HTML, o un SVG que incluya script— podría ejecutarse en la sesión de quien lo abra directamente en el navegador. No todo SVG es un riesgo: depende de su contenido y de cómo se abra (como documento, no como `<img>`). **Independiente de S-1**: S-1 impide escribir fuera de `uploads/`, pero no controla qué contenido se sirve desde ahí. No se ha demostrado explotación. Requiere analizar la política de entrega de archivos (tipos permitidos, descarga forzada, cabeceras, origen separado). Nota: `.svg` es un formato legítimo de la biblioteca (láser/CNC), por lo que una lista blanca de extensiones por sí sola no lo resuelve. | MEDIUM | `OPEN` |
+| **D-7** | **Emparejamiento TUNA-Screen**: `POST /api/tunascreen/pair/confirm` es anónimo por diseño y acepta un código de **6 dígitos** con vigencia de **5 minutos**, **sin límite de intentos**; un código válido entrega un **token permanente** con el que el dispositivo controla máquinas (S-9). Además, `GET /api/tunascreen/info` (anónimo) indica si hay un emparejamiento abierto. | HIGH | `OPEN` |
+| **D-8** | **`/plugins-static`**: monta el directorio `plugins/` completo sin autenticación. Se confirmó acceso anónimo al código fuente del backend de los plugins y a su carpeta `.git`. Hoy los repositorios de plugins son públicos, por lo que la exposición actual es baja; el riesgo es que cualquier archivo que un plugin o una persona coloque dentro de `plugins/` (datos, credenciales de firmware) quedaría publicado. | MEDIUM | `OPEN` |
+| **D-9** | **Conversaciones de IA sin propietario**: cualquier usuario autenticado puede listar, leer, renombrar o borrar conversaciones de otros usuarios (`backend/api/ai.py:261-288`). Solo borrar *todas* exige admin. | MEDIUM | `OPEN` |
+| **D-10** | **Último administrador**: `delete_user` impide borrar al último admin, pero `update_user` permite **degradar** su rol a `operador` (`backend/services/auth_service.py:111-128`), lo que dejaría la instalación sin administrador. | MEDIUM | `OPEN` |
+| **D-11** | **Host láser activo global**: `POST /api/laser/host` (cualquier usuario autenticado) cambia el host por omisión compartido por todas las sesiones (§10.2). | MEDIUM | `OPEN` (ligado a la decisión D4 de §25) |
+
+> **Nota de publicación**: el repositorio es público. S-1 está corregido en el
+> árbol de trabajo pero **no en `main`**; D-7 sigue abierto. Este documento
+> describe los riesgos sin pasos de reproducción. Se recomienda publicarlo
+> después de que la corrección de S-1 esté en `main`.
+
+---
+
+## 18. Roles, principales y autorización
+
+> Fuente: auditoría de permisos D3 (2026-10-03), por inspección de código.
+> Las secciones 18.1–18.5 describen el estado `CURRENT`. Las secciones
+> 18.6–18.9 son `PROPOSED` / `OPEN`: **ninguna decisión de permisos está tomada**.
+
+### 18.1 Principales (`CURRENT`)
+
+NOPAL no solo autentica personas. Hoy existen cinco tipos de principal:
+
+| Principal | Cómo se autentica | Rol / alcance | Evidencia |
+|---|---|---|---|
+| **ADMIN** | Cookie de sesión | `admin` | `auth_service.ROLES`, `auth_deps.require_role` |
+| **OPERATOR** | Cookie de sesión | `operador` (nombre interno en español) | `auth_service.ROLES` |
+| **ANONYMOUS** | Ninguna | Solo rutas públicas (login, setup inicial, info y canje de emparejamiento de TUNA-Screen, página `/`, estáticos) | §18.2 |
+| **TUNA-SCREEN DEVICE** | `Authorization: Bearer <token>` permanente por dispositivo, guardado con hash | **Ninguno**: no tiene rol ni alcance equivalente a un usuario. Un dispositivo emparejado puede usar todas las rutas `/api/tunascreen/*` de dispositivo y todas las acciones de `dispatch_action` | `backend/api/tunascreen.py:18-29` |
+| **FIRMWARE ACCESSORY** | Cabecera `X-NOPAL-Token` con un **token compartido** por el clúster (plugin `arduino-accessories`), rotable por admin | Solo `POST /api/accessories/cluster/event` | `plugins/arduino-accessories/backend/router.py:683` |
+
+Los roles humanos no tienen jerarquía: `require_role("admin")` compara por
+igualdad; el admin accede a las rutas de operador porque `require_auth` acepta
+a cualquier usuario autenticado. No existe autoservicio de contraseña: un
+operador no puede cambiar la suya (solo un admin vía `/api/auth/users/update`).
+
+### 18.2 Mecanismos de autorización (`CURRENT`)
+
+Coexisten **seis mecanismos paralelos**:
+
+| Mecanismo | Dónde | Qué comprueba |
+|---|---|---|
+| `require_auth` | `backend/auth_deps.py:6` | Sesión válida; relee el usuario en cada request |
+| `require_role("admin")` | `backend/auth_deps.py:25` | Rol exactamente `admin` (403 si no) |
+| `require_device_token` | `backend/api/tunascreen.py:18` | Token de dispositivo válido; **sin rol** |
+| Auth manual del WebSocket | `backend/api/tunascreen.py:232-241` | Token en la cabecera antes de `accept()`; cierra con 4401 |
+| Rol por acción de IA | `backend/services/ai_actions.py` (`Action.role`, `risk`) | `admin` o `any`, copiado a mano del endpoint equivalente; `confirm` exige confirmación humana |
+| Autorización propia de cada plugin | `plugins/<id>/backend/router.py` | Cada plugin elige `require_auth` o `require_role("admin")` |
+
+Complementos: límite de login (5 fallos/IP/300 s, en memoria), protección del
+último admin solo al borrar (D-10), y ocultamiento de botones en `app.js`
+(no es control de seguridad; replica lo que ya protege el backend).
+
+**No existe un sistema de permisos por acción centralizado.** Cada ruta,
+canal (panel, TUNA-Screen, IA) y plugin decide por su cuenta.
+
+**Inventario de rutas** (core **+ plugins** instalados en la instancia auditada):
+
+| Dependencia | Rutas |
+|---|---|
+| `require_role("admin")` | **95** (core + plugins) |
+| `require_auth` | **233** |
+| Token de dispositivo TUNA-Screen | **12** |
+| Sin dependencia de auth | **8** — login, logout, setup, setup-required, `GET /api/tunascreen/info`, `POST /api/tunascreen/pair/confirm`, `/ws/tunascreen` (auth manual), `POST /api/accessories/cluster/event` (token en cabecera) |
+
+Fuera de routers: `/` (pública), `/uploads/*` y `/view/*` (sesión), montajes
+`/static` y `/plugins-static` (sin autenticación; ver D-8).
+
+### 18.3 Matriz real de permisos (`CURRENT`, resumida)
+
+✅ permitido · ❌ denegado · ⚠️ depende del endpoint/driver · — no aplica.
+"TUNA" = dispositivo emparejado.
+
+| Área | Acción | Anón. | Operador | Admin | TUNA |
+|---|---|:-:|:-:|:-:|:-:|
+| Sistema | Ver estado, versión, diagnóstico, dashboard, notificaciones | ❌ | ✅ | ✅ | ✅ (registro de máquinas) |
+| Sistema | Leer logs de NOPAL | ❌ | ✅ | ✅ | — |
+| Sistema | Actualizar NOPAL, servicios systemd, reiniciar/apagar host, respaldo/importación | ❌ | ❌ | ✅ | — |
+| Usuarios | Login / logout; primer admin (solo sin usuarios) | ✅ | ✅ | ✅ | — |
+| Usuarios | Crear, listar, borrar usuarios; cambiar rol o contraseña | ❌ | ❌ | ✅ | — |
+| Usuarios | Cambiar su propia contraseña | ❌ | ❌ (no existe) | vía update | — |
+| Máquinas | Alta / baja (Bambu, Elegoo, FlashForge, Marlin, láser) | ❌ | ❌ | ✅ | — |
+| Máquinas | Descubrir, probar conexión | ❌ | ✅ | ✅ | — |
+| Máquinas | Ver estado y temperaturas | ❌ | ✅ | ✅ | ✅ |
+| Máquinas | Pausar / reanudar / cancelar | ❌ | ✅ | ✅ | ✅ |
+| Máquinas | Iniciar trabajo (impresión, SD, cola, programadas) | ❌ | ✅ | ✅ | — |
+| Máquinas | Home / jog, ventilador, velocidad, flujo, macros | ❌ | ✅ | ✅ | ✅ |
+| **Temperatura** | Klipper desde el panel (`/api/system/temperature-target`) | ❌ | ❌ | ✅ | — |
+| **Temperatura** | Marlin desde el panel (`/api/marlin-printers/temperature-target`) | ❌ | ✅ | ✅ | — |
+| **Temperatura** | TUNA-Screen `set_temperature` (Klipper, Marlin) | ❌ | — | — | ✅ |
+| **Consola/G-code** | Klipper, Marlin, GRBL desde el panel | ❌ | ✅ | ✅ | — |
+| **Consola/G-code** | TUNA-Screen `send_console_command` (Klipper, Marlin) | ❌ | — | — | ✅ |
+| **Config. de máquina** | Editar `printer.cfg`; reiniciar Klipper; firmware restart | ❌ | ✅ | ✅ | — |
+| **Config. de máquina** | Cambiar settings `$` de GRBL | ❌ | ✅ | ✅ | — |
+| Láser/CNC | Ver estado, jog, home, iniciar/pausar/cancelar trabajo, encuadre, cola | ❌ | ✅ | ✅ | ⚠️ (pause/resume/cancel/home/move) |
+| Láser/CNC | Potencia láser / husillo (M3/M4) | ❌ | ✅ (vía consola) | ✅ | ✅ (`set_laser_power`/`set_spindle`) |
+| Láser/CNC | Cambiar el host activo global | ❌ | ✅ | ✅ | — |
+| Láser/CNC | SD: subir, borrar, crear carpeta | ❌ | ✅ | ✅ | — |
+| Láser/CNC | Formatear SD | ❌ | ❌ | ✅ | — |
+| Biblioteca | Ver, descargar, miniaturas; subir, renombrar, mover, **borrar**, carpetas | ❌ | ✅ | ✅ | — |
+| Plugins | Ver catálogo | ❌ | ✅ | ✅ | — |
+| Plugins | Instalar, actualizar, desinstalar | ❌ | ❌ | ✅ | — |
+| Plugins | Leer código y `.git` vía `/plugins-static` | ✅ | ✅ | ✅ | ✅ |
+| Plugins | Configurar Spoolman, cámaras, matriz LED; flashear firmware; relés | ❌ | ❌ | ✅ | — |
+| Plugins | Configurar el cotizador (materiales, máquinas, ajustes) | ❌ | ✅ | ✅ | — |
+| Plugins | Encender accesorios, ejecutar escenas | ❌ | ✅ | ✅ | ✅ |
+| Plugins | Asignar bobina activa (Spoolman) | ❌ | ❌ | ✅ | ✅ (`materials/active`) |
+| IA | Preguntar; herramientas de lectura | ❌ | ✅ | ✅ | — |
+| IA | Configurar proveedor, API key, activar IA/acciones | ❌ | ❌ | ✅ | — |
+| IA | Leer, renombrar, borrar conversaciones **de otros** | ❌ | ✅ | ✅ | — |
+| IA | Acciones físicas | ❌ | ⚠️ según `Action.role` (`preheat_machine` y `assign_spool`: admin; `control_print`, `queue_file`, accesorios: `any`) | ✅ | — |
+| IA | Arrancar láser/CNC | ❌ | ❌ (no existe la acción) | ❌ | — |
+| TUNA-Screen | Generar código de emparejamiento; listar/revocar dispositivos | ❌ | ❌ | ✅ | — |
+| TUNA-Screen | Canjear código por token permanente | ✅ (con código vigente) | — | — | — |
+
+### 18.4 Autorización inconsistente (`CURRENT`)
+
+**D3-1 — Temperatura.** La misma acción tiene cuatro reglas:
+
+```text
+Klipper (panel)  → ADMIN      backend/api/status.py:194
+Marlin  (panel)  → OPERATOR   backend/api/marlin_printers.py:231
+TUNA-Screen      → sin rol    tunascreen_service._dispatch_klipper / _dispatch_marlin
+IA               → ADMIN      ai_actions "preheat_machine" (copiado de status.py)
+```
+
+**D3-2 — La consola salta restricciones específicas.**
+
+```text
+operador ─► /api/console/command ─► M104 / M140 ─► Klipper
+```
+
+La restricción admin de `/api/system/temperature-target` no impide fijar la
+temperatura: solo bloquea esa ruta. Lo mismo vale para macros y para la
+consola de Marlin y GRBL.
+
+**D3-3 — TUNA-Screen no pasa por la política del panel.** `dispatch_action`
+valida existencia, conexión, `actions` y `capabilities`, pero **no quién la
+pide**. Acciones restringidas a admin en el panel (temperatura de Klipper,
+bobina activa) son libres para cualquier dispositivo emparejado.
+
+**D3-4 — Potencia de láser/husillo.** IA: prohibido por diseño (con test que lo
+verifica). Panel: posible para operador vía consola. TUNA-Screen: `M3/M4 S…`
+directo con cualquier token. En CNC arranca el husillo; en láser con `$32=0`
+puede disparar el haz sin movimiento.
+
+**D3-5 — Configuración de máquina más débil que lo administrativo.** Dar de
+alta una impresora o formatear una SD exige admin, pero editar `printer.cfg`,
+cambiar settings `$` de GRBL (límites, velocidades, modo láser) y hacer
+firmware restart los puede hacer un operador.
+
+**D3-6 — Plugins con criterios distintos.** La configuración de Spoolman,
+cámaras y matriz LED es admin; la del cotizador es de operador; la bobina
+activa es admin en el plugin pero libre por TUNA-Screen.
+
+### 18.5 Impacto técnico de las acciones (`CURRENT`)
+
+> **Impacto técnico ≠ permiso definitivo.** Esta clasificación describe el
+> efecto potencial de la acción; no decide quién puede ejecutarla.
+
+| Impacto | Acciones | Efecto |
+|---|---|---|
+| **CRITICAL** | Actualizar NOPAL (git + pip); instalar/actualizar plugins; importar respaldo; gestionar usuarios y roles; canjear emparejamiento; reiniciar/apagar host; controlar servicios systemd | Ejecución de código, credenciales, sistema operativo, integridad de NOPAL |
+| **HIGH** | Consola / G-code arbitrario; editar `printer.cfg`; settings `$` de GRBL; firmware restart / reinicio de Klipper; potencia láser/husillo; fijar temperatura; iniciar trabajos; flashear firmware, relés, formatear SD; alta/baja de máquinas; configurar proveedor IA y credenciales de integraciones | Riesgo físico (fuego, calor, herramienta en movimiento), daño de hardware, credenciales y red |
+| **MEDIUM** | Home, jog, ventilador, velocidad, flujo, z-offset, macros, air assist; borrar/mover/renombrar en biblioteca; borrar en SD; cambiar host láser global; accesorios y escenas; leer logs; leer conversaciones ajenas | Movimiento acotado, pérdida de datos, efecto sobre otros usuarios, exposición de información |
+| **LOW** | Pausar, reanudar, cancelar; ver estado, dashboard, biblioteca, miniaturas; subir a la biblioteca; descubrir / probar conexión | Lectura, o escritura acotada |
+
+### 18.6 Matriz propuesta (`PROPOSED` — **NOT DECIDED**)
+
+> Borrador técnico derivado de la auditoría. **No es política vigente ni
+> decisión tomada.** Las celdas `OPEN` requieren al dueño del proyecto (§18.9).
+> La regla de base propuesta: una misma acción tiene el mismo requisito en
+> todos los canales (panel, TUNA-Screen, IA, plugins).
+
+| Acción | Anón. | Operador | Admin | Motivo técnico |
+|---|:-:|:-:|:-:|---|
+| Ver estado, dashboard, biblioteca | ❌ | ✅ | ✅ | Lectura |
+| Pausar / reanudar / cancelar | ❌ | ✅ | ✅ | Acción de seguridad: debe estar al alcance de quien opera |
+| Iniciar trabajo | ❌ | ✅ | ✅ | Uso normal; `OPEN` si se exige confirmación |
+| Home, jog, ventilador, velocidad, flujo, macros | ❌ | ✅ | ✅ | Operación cotidiana |
+| **Fijar temperatura** | ❌ | `OPEN` | ✅ | Hoy hay cuatro reglas (D3-1); debe haber una |
+| **Consola / G-code arbitrario** | ❌ | `OPEN` | ✅ | Equivale a cualquier acción (D3-2, §18.8) |
+| **Potencia manual láser/husillo** | ❌ | `OPEN` | `OPEN` | Reglas contradictorias (D3-4) |
+| Editar `printer.cfg`, settings `$` de GRBL | ❌ | ❌ | ✅ | Configuración física, comparable a alta/baja |
+| **Firmware restart** | ❌ | `OPEN` | ✅ | Recuperación habitual vs. corte de trabajo |
+| Reiniciar Klipper (sin firmware) | ❌ | `OPEN` | ✅ | Ídem |
+| **Borrar en biblioteca** | ❌ | `OPEN` | ✅ | Pérdida de datos compartidos |
+| Subir, renombrar, mover en biblioteca | ❌ | ✅ | ✅ | Uso normal |
+| **Borrar en SD** | ❌ | `OPEN` | ✅ | Pérdida de datos en la máquina |
+| Formatear SD, flashear firmware, relés | ❌ | ❌ | ✅ | Igual que hoy |
+| Host láser global | ❌ | `OPEN` | `OPEN` | Probablemente debe retirarse (D4 de §25), no recibir un rol |
+| **Asignar bobina** | ❌ | `OPEN` | ✅ | Admin en panel, libre en TUNA (D3-6) |
+| **Configuración de plugins** (incluido cotizador) | ❌ | `OPEN` | ✅ | Criterio uniforme (D3-6) |
+| **Conversaciones de IA** | ❌ | `OPEN` (propuesta: solo las suyas) | `OPEN` | Privacidad (D-9); requiere guardar el dueño |
+| Cambiar su propia contraseña | ❌ | ✅ | ✅ | Hoy no existe |
+| Degradar o borrar al último admin | ❌ | ❌ | ❌ | Evitar quedarse sin administrador (D-10) |
+| **Logs y diagnóstico** | ❌ | `OPEN` | ✅ | Información interna |
+| Usuarios, sistema, actualización, respaldo, instalar plugins, config. IA, emparejamiento | ❌ | ❌ | ✅ | Igual que hoy |
+| `/plugins-static` | `OPEN` (propuesta: solo `frontend/`) | ✅ | ✅ | D-8 |
+| **Dispositivo TUNA-Screen** | — | — | — | `OPEN`: principal con rol/perfil y alcance (§18.7) |
+| **Tercer rol** (p. ej. solo lectura) | — | — | — | `OPEN` |
+
+### 18.7 Arquitectura objetivo de autorización (`PROPOSED`, no implementada)
+
+**Estado actual**: cuatro caminos paralelos hacia los drivers, cada uno con su
+propio criterio, más un bypass:
+
+```text
+Panel (sesión) ──► router por marca ──► servicio/driver   (rol por endpoint)
+TUNA (token) ────► dispatch_action ───► servicio/driver   (sin rol)
+IA (sesión) ─────► ai_actions ────────► servicio/driver   (rol copiado a mano)
+Consola ─────────► G-code libre ──────► driver            (bypass de lo anterior)
+```
+
+El flujo `Usuario → Autorización NOPAL → acción TUNA → Driver → Máquina` **no
+está soportado hoy**: existen bypasses confirmados (D3-2, D3-3, D-7).
+
+**Objetivo propuesto**:
+
+```text
+Principal (admin · operador · dispositivo TUNA · plugin)
+    ↓
+Authorization Policy   ← una tabla acción → requisito (la matriz D3 decidida)
+    ↓
+Action                 ← vocabulario existente: pause, set_temperature,
+    ↓                    send_console_command, set_laser_power, …
+Device                 ← modelo normalizado (ADR-002, PROPOSED)
+    ↓
+TUNA-Screen dispatch / router por marca
+    ↓
+Driver
+    ↓
+Machine
+```
+
+Principios de la propuesta:
+
+1. **Una sola política** basada en el **vocabulario de acciones que ya existe**
+   en `tunascreen_service` (más las acciones no ligadas a máquinas: configurar,
+   borrar archivos, etc.). No se crea una abstracción nueva.
+2. **Una sola función de autorización** consultada por todos los canales:
+   - **panel**: dependencia FastAPI por acción en los routers existentes (sin cambiar rutas);
+   - **TUNA-Screen**: dentro de `dispatch_action`, antes de despachar;
+   - **IA**: `Action.role` se derivaría de la misma tabla en vez de copiarse a mano;
+   - **plugins**: la misma función expuesta como punto de extensión, con la convención documentada.
+3. **Primero centralizar sin cambiar comportamiento** (la tabla reproduce la
+   matriz actual de §18.3, cubierta por tests); después cambiar las celdas que
+   se decidan, una por cambio.
+
+**TUNA-Screen como principal** (`PROPOSED`):
+
+```text
+TUNA-Screen Device = principal autenticado + rol/perfil + alcance
+```
+
+El token seguiría siendo la credencial; al emparejar se asignaría un rol o
+perfil que la política trataría igual que a un usuario. Qué rol o perfil
+tiene un dispositivo es **`OPEN`**, con estas alternativas:
+
+| Alternativa | Descripción |
+|---|---|
+| Rol fijo | Todos los dispositivos actúan como un rol (p. ej. operador) |
+| Rol asignado al emparejar | El admin elige el rol al generar el código |
+| Rol equivalente al usuario | El dispositivo hereda el rol de quien lo emparejó |
+| Perfil limitado | Un perfil propio de dispositivo (p. ej. solo lectura + pausa) |
+
+Los tokens ya emitidos necesitarían un valor por omisión (también `OPEN`).
+
+### 18.8 Principio: la consola es una acción privilegiada (`PROPOSED`)
+
+> Las restricciones por acción no son efectivas si un principal puede acceder
+> a una consola / G-code arbitrario capaz de realizar la misma operación.
+
+Por lo tanto, la consola (Klipper, Marlin, GRBL, TUNA-Screen) debe evaluarse
+como la acción de **mayor privilegio** sobre su máquina: quien no pueda
+ejecutar una acción restringida no debería tener G-code libre. Pendiente de
+decisión (D3-Q2); no implementado.
+
+### 18.9 D3 — OPEN DECISIONS
+
+Decisiones que corresponden al dueño de NOPAL. Todas `OPEN`.
+
+| # | Pregunta | Relación |
+|---|---|---|
+| D3-Q1 | ¿El operador puede fijar temperatura? | D3-1 |
+| D3-Q2 | ¿El operador puede usar consola / G-code arbitrario? | D3-2, §18.8 |
+| D3-Q3 | ¿Quién puede controlar la potencia manual de láser/husillo, y por qué canal? | D3-4 |
+| D3-Q4 | ¿La configuración física de la máquina (`printer.cfg`, `$` de GRBL, firmware restart) es solo admin? | D3-5 |
+| D3-Q5 | ¿Qué rol o perfil tiene un dispositivo TUNA-Screen? | S-9, §18.7 |
+| D3-Q6 | ¿Cómo se protege el emparejamiento (límite de intentos, código más largo, `pairing_open` público)? | D-7 |
+| D3-Q7 | ¿Quién puede borrar en la biblioteca y en la SD? | §18.6 |
+| D3-Q8 | ¿Las conversaciones de IA son privadas por usuario? ¿El admin ve todas? | D-9 |
+| D3-Q9 | ¿La configuración de plugins es siempre admin (incluido el cotizador)? | D3-6 |
+| D3-Q10 | ¿Quién puede ver logs y diagnóstico? | §18.6 |
+| D3-Q11 | ¿Se necesita un tercer rol (p. ej. solo lectura)? | §18.6 |
+| D3-Q12 | ¿Debe existir un perfil específico para dispositivos? | §18.7 |
+
+---
+
+## 19. Testing
+
+### 19.1 Existing coverage (`CURRENT`)
+
+- **533 tests**, todos pasan (~37 s), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1.)
+- La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
+- 12 warnings: deprecación de `on_event`.
+- Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
+- Cobertura numérica: `UNKNOWN` (no hay `pytest-cov` instalado).
+
+| Área | Tests aprox. |
+|---|---|
+| IA (config, router, tools, actions, conversaciones, retry) | 156 |
+| Marlin (driver, servicio, API, UI) | 68 |
+| Bambu / Elegoo / FlashForge | 45 |
+| TUNA-Screen | 38 |
+| Plugins (catálogo, instalador, loader, caché frontend) | 36 |
+| Utilidades | 29 |
+| Klipper (descubrimiento, archivos de config) | 16 |
+| G-code bounds | 14 |
+| Mantenimiento, perfiles, backup | 36 |
+| Láser (encuadre, SD) | 12 |
+| Dashboard | 7 |
+| Otros (diagnóstico, presets, integridad de registros, help center, devices) | ~56 |
+| Subida de biblioteca (regresión S-1) | 20 |
+
+**Fixtures**: `isolated_printer_registries` (autouse) redirige a `tmp_path`
+los registros de Bambu, Elegoo, FlashForge, Marlin, TUNA-Screen, plugins,
+configuración/conversaciones de IA y caché de bounds.
+
+**CI** (`.github/workflows/smoke-test.yml`, `CURRENT` en el árbol de trabajo,
+pendiente de commit): **CI ejecuta pytest.** Un solo job (`smoke-test`), Python 3.11:
+
+```text
+checkout → setup-python 3.11 → pip install -r requirements-dev.txt
+        → pytest (falla el job si falla un test)
+        → arrancar uvicorn → verificar que la portada responda "NOPAL"
+```
+
+Disparadores:
+
+| Evento | Ramas |
+|---|---|
+| `push` | `main`, `dev-main` |
+| `pull_request` | `main` |
+
+Limitación conocida: el entorno local usa Python 3.13; la compatibilidad con
+3.11 se verificó solo a nivel de sintaxis. La primera ejecución en GitHub
+Actions es la confirmación.
+
+### 19.2 Problemas conocidos
+
+- El fixture no aísla `laser_service.REGISTRY_PATH`/`HISTORY_PATH`, `auth_users.json`, `scheduled_prints.json`, `temperature_presets.json` (C2).
+- Sin tests de: autenticación y matriz de roles; operaciones de biblioteca distintas de la subida (navegar, mover, renombrar, borrar); control de Klipper (pausa, cola, programadas); streaming GRBL; frontend (más allá de cadenas/i18n).
+- `laser_service` (1956 líneas) tiene 12 tests.
+
+### 19.3 Target coverage (`PROPOSED`)
+
+| Objetivo | Motivo |
+|---|---|
+| ~~`pytest` en CI, también en la rama de desarrollo~~ | **Hecho** (pendiente de commit) |
+| ~~Test de regresión de S-1 y de subida~~ | **Hecho**: 20 tests (pendiente de commit) |
+| Fixture de aislamiento completo | Evitar escribir estado real durante tests |
+| Tests de auth y de la matriz de autorización actual (§18.3) | Red de seguridad antes de centralizar la política (§18.7) |
+| Tests de emparejamiento TUNA-Screen y de alcance de dispositivo | D-7, D3-Q5 |
+| Test de contrato del modelo de máquinas (§7.3) | Estabilidad del contrato |
+| Moonraker simulado por HTTP | Probar Klipper sin mocks de `requests` |
+| Tests del protocolo de streaming GRBL | Riesgo funcional alto, cobertura baja |
+
+---
+
+## 20. Deployment
+
+### 20.1 Producción (`CURRENT`)
+
+| Aspecto | Detalle |
+|---|---|
+| SO | Debian / Ubuntu / Raspberry Pi OS (instalador usa `apt-get`) |
+| Instalación | `install.sh`: no corre como root; instala `python3-venv`/`python3-pip`; crea `.venv`; `pip install -r requirements.txt`; crea `uploads/`, `previews/` |
+| Servicio | `/etc/systemd/system/nopal.service`: `User=<usuario>`, `WorkingDirectory=<repo>`, `ExecStart=.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port ${NOPAL_PORT:-8420}`, `After=network-online.target moonraker.service`, `Restart=on-failure` |
+| Puerto | 8420 por omisión |
+| Variables de entorno | `NOPAL_PORT` (instalador), `NOPAL_KLIPPER_PORTS` (puertos extra de Moonraker). No hay `.env` |
+| Moonraker | Esperado en el mismo host; NOPAL usa además su API `/machine/*` para control del sistema |
+| Datos | En el directorio del repo (JSON en la raíz, `uploads/`, `data/`, `logs/`) |
+| Actualización | Desde la UI (admin) o `git pull` manual |
+| Desinstalación | `uninstall.sh` (271 líneas) |
+| Docker / nginx | No existen; README recomienda Nginx/Caddy solo para exponer fuera de la LAN |
+
+### 20.2 Desarrollo (`CURRENT`)
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8420
+pytest
+```
+
+Diferencias con producción: `--reload` (el secreto de sesión persistido evita
+cerrar sesiones en cada recarga); sin systemd; mismo directorio de datos. No
+hay separación de configuración dev/prod.
+
+---
+
+## 21. Problemas arquitectónicos actuales
+
+Severidad por impacto técnico o de seguridad.
+
+| Severidad | Problema | Evidencia |
+|---|---|---|
+| ~~CRITICAL~~ `FIXED` | S-1: path traversal en subida — corregido en el árbol de trabajo, pendiente de commit | `api/upload.py`, §17.2 |
+| **HIGH** | Autorización sin política central: seis mecanismos paralelos, reglas distintas por canal y consola que salta restricciones (D3-1…D3-6) | §18.2, §18.4 |
+| **HIGH** | Dispositivo TUNA-Screen sin rol ni alcance (S-9) y emparejamiento sin límite de intentos (D-7) | §17.2, §18.7 |
+| **HIGH** | Persistencia JSON no atómica en registros de máquinas, programadas, presets y configuración de IA (pérdida de configuración ante corte) | §16 |
+| **HIGH** | Agregación de máquinas triplicada (`tunascreen_service`, `ai_tools`, `dashboard_service`) | §7.1 |
+| **HIGH** | Klipper limitado a `localhost`, sin registro | `MoonrakerClient.__init__` |
+| ~~HIGH~~ `FIXED` | CI no ejecutaba tests — ahora ejecuta `pytest` (pendiente de commit) | `smoke-test.yml`, §19.1 |
+| MEDIUM | `/plugins-static` expone `plugins/` completo sin autenticación (D-8) | `main.py`, §17.2 |
+| MEDIUM | Archivos de la biblioteca servidos en línea desde el mismo origen, sin política de contenido: XSS almacenado potencial (S-10) | `main.py` (`/uploads`), §17.2 |
+| MEDIUM | Conversaciones de IA sin propietario (D-9) | `api/ai.py`, §17.2 |
+| MEDIUM | Se puede degradar al último admin (D-10) | `auth_service.update_user` |
+| MEDIUM | Host activo de láser global (legacy) coexistiendo con multi-host; cualquier usuario lo cambia (D-11) | §10.2 |
+| MEDIUM | Frontend monolítico (~48 k líneas en 3 archivos), sin cliente de API | §12 |
+| MEDIUM | Sin schemas Pydantic; contratos implícitos | §11 |
+| MEDIUM | Inconsistencias de API (nombres, ids, verbos, respuestas, errores) | §11.2 |
+| MEDIUM | Lógica de negocio en routers (`status.py`, `models.py`, `upload.py`) | C5 |
+| MEDIUM | Acoplamiento core → plugins (frontend llama endpoints de plugins; servicios leen módulos de plugins) | C7, §13 |
+| MEDIUM | Fixture de aislamiento incompleto | C2 |
+| LOW | Dependencias de plugins en `requirements.txt` del core | §13 |
+| LOW | `@app.on_event` deprecado (12 warnings) | `main.py` |
+| LOW | Importación invertida servicio → router (`ai_tools` → `api.models`) | §14.3 |
+| LOW | Nombres e IPs de una instalación en el código (`"manchas"`, `192.168.0.61`) | §9, §10 |
+| LOW | Módulos vacíos, ~40 archivos `.bak` sin rastrear en el árbol | §6 |
+| LOW | Documentación desactualizada (C1, C3, C6, C8) | §5.6 |
+
+---
+
+## 22. Arquitectura objetivo (`PROPOSED`)
+
+No es una reescritura. Es la arquitectura actual con contratos explícitos y
+sin duplicación:
+
+```text
+CURRENT NOPAL
+     ↓  estabilización   (S-1 ✓, CI con tests ✓, escritura atómica)
+     ↓  contratos        (modelo de máquinas, errores, política de autorización §18.7)
+     ↓  consolidación    (un agregador, un storage, menos lógica en routers)
+TARGET NOPAL
+```
+
+```mermaid
+flowchart TB
+  UI["Panel web<br/>(módulos ES + cliente API)"] --> R
+  TS["TUNA-Screen"] --> R
+  R["Routers<br/>(contratos Pydantic en endpoints nuevos;<br/>rutas actuales intactas)"]
+  R --> MM["Modelo de máquinas<br/>(contrato de TUNA-Screen promovido)"]
+  R --> SVC["Servicios de dominio<br/>(biblioteca, auth, sistema, IA, plugins)"]
+  MM --> D["Drivers independientes<br/>klipper · marlin · bambu · elegoo · flashforge · grbl"]
+  SVC --> MM
+  AI["IA (AIProvider)"] --> MM
+  DASH["Dashboard"] --> MM
+  D --> HW[("Máquinas")]
+  SVC & D --> ST["Storage Service<br/>(JSON atómico)"]
+  ST --> JS[("JSON")]
+  ST -. "DECISION PENDING" .-> SQL[("SQLite")]
+  PL["Plugins (en proceso)"] --> R
+```
+
+| Se mantiene | Se mejora progresivamente |
+|---|---|
+| Drivers independientes por protocolo | Storage: escritura atómica común |
+| Modelo normalizado de TUNA-Screen | Contratos de API: errores, Pydantic en endpoints nuevos |
+| Sistema de plugins y su catálogo | Permisos: una política común para panel, TUNA-Screen, IA y plugins (§18.7) |
+| Abstracción `AIProvider`, `ai_tools`/`ai_actions` separados | Agregación de máquinas: un solo origen |
+| Frontend vanilla sin build | Organización del frontend: módulos |
+| JSON como formato | Testing: CI, contratos, auth, biblioteca |
+| systemd + venv | Deployment: documentación, permisos de archivos |
+
+---
+
+## 23. Roadmap arquitectónico (`PROPOSED`, no definitivo)
+
+| Fase | Objetivo | Entregable comprobable |
+|---|---|---|
+| **0 — Audit** | Auditoría técnica, auditoría de permisos D3 y este SDD | `docs/SDD.md` revisado y aceptado — en curso |
+| **1 — Security stabilization** | ~~Corregir S-1~~ (**hecho**, sin commit); pendientes: emparejamiento TUNA-Screen (D-7), `/plugins-static` (D-8), último admin (D-10), política de entrega de `/uploads` (S-10), permisos 0600 en archivos con secretos | Test de regresión por cada riesgo cerrado |
+| **2 — Architecture contracts** | Decidir D3 (§18.9); documentar contrato de máquinas, convención de errores y matriz de autorización; tests de la matriz actual | `DEVICES.md`; matriz aprobada |
+| **3 — Device/TUNA consolidation** | Separar el modelo de máquinas de lo específico de TUNA-Screen; `dashboard_service` y `ai_tools` consumen `list_machines()` | Tests de TUNA-Screen sin cambios + test de contrato |
+| **4 — Persistence** | Storage Service con JSON atómico; adoptarlo servicio por servicio | Tests de corrupción y concurrencia |
+| **5 — API consistency** | Error común (`detail` + `error_code`), Pydantic en endpoints nuevos, decidir D2 | Sin cambios visibles en el frontend |
+| **6 — Testing / CI** | ~~pytest en CI~~ (**hecho**, sin commit); pendientes: fixture completo; tests de auth, biblioteca, Klipper, streaming | CI rojo ante un test fallido |
+| **7 — Frontend evolution** | Módulos ES por sección; cliente de API; retirar llamadas del core a plugins | Cada sección extraída funciona igual en todos los temas |
+| **8 — Plugin evolution** | Dependencias de plugins separadas (D6); espacio de nombres de rutas; evaluar extensión de máquinas por plugin | Instalación de un plugin no altera `requirements.txt` del core |
+| **9 — Library evolution** | Según D5: metadatos, tags, búsqueda, asociación con máquinas | `UNKNOWN` hasta decidir D5 |
+
+Observación: la parte de CI de la fase 6 ya se adelantó (pytest en CI) porque
+protege a todas las demás. La centralización de la autorización (§18.7) cabe
+en la fase 3 junto con la consolidación del modelo de máquinas, porque usa el
+mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
+
+---
+
+## 24. Architecture Decision Records
+
+### ADR-001 — Mantener drivers independientes por protocolo
+
+- **Estado**: `ACCEPTED` (refleja la arquitectura actual y la regla explícita de `CLAUDE.md`).
+- **Contexto**: cada familia de máquinas usa un transporte distinto: REST con polling (Moonraker), serie/TCP con protocolo ok/resend (Marlin), MQTT-TLS con hilos de paho (Bambu), WebSocket con push (Elegoo), HTTP (FlashForge), HTTP+WS y serie con buffer de caracteres (GRBL).
+- **Decisión**: cada driver conserva su servicio, su registro y su modelo de concurrencia. La normalización ocurre encima (ADR-002).
+- **Consecuencias**: agregar una marca no obliga a encajarla en una interfaz que no le corresponde; la normalización debe mantenerse aparte; cierta repetición de forma (registro, CRUD) es aceptada.
+- **Alternativas consideradas**: clase base `Device` con subclases `Printer`/`Laser`/`CNC` — descartada: las fronteras no son limpias (GRBL es láser o CNC según configuración; capacidades varían dentro de un mismo tipo) y acoplaría modelos de concurrencia incompatibles.
+
+### ADR-002 — Utilizar el modelo de TUNA-Screen como contrato normalizado de dispositivos
+
+- **Estado**: `PROPOSED` — **todavía no aceptado formalmente**.
+- **Contexto**: `tunascreen_service` ya produce un modelo común (`id`, `type`, `driver`, `capabilities`, `actions`, `status`) con caché, grace snapshots y dispatch validado; un cliente externo depende de él. Otros dos módulos duplican la agregación. La auditoría D3 mostró además que su vocabulario de acciones es el candidato natural para el vocabulario de permisos (§18.7), y que hoy `dispatch_action` no aplica ninguna autorización por principal (D3-3).
+- **Decisión propuesta**: promover ese modelo a contrato de arquitectura sin cambiar su forma; separarlo de la lógica específica de TUNA-Screen; hacer que dashboard e IA lo consuman; documentarlo y cubrirlo con un test de contrato; usar su vocabulario de acciones como base de la política de autorización.
+- **Consecuencias**: una sola definición de "máquina en línea"; marcas nuevas visibles para todos los consumidores; el contrato queda congelado de facto por la app Android (cambios solo aditivos o versionados). Aceptarlo **no** resuelve la autorización: esa decisión es D3 (§18.9).
+- **Alternativas consideradas**: nueva capa `machine_registry` diseñada desde cero (versión 0.1 de este SDD) — descartada: duplicaría lo existente. Mantener tres agregadores — descartada: divergencia comprobada.
+
+### ADR-003 — No migrar inmediatamente a SQLite
+
+- **Estado**: `ACCEPTED` para "no migrar ahora"; uso futuro de SQLite `DECISION PENDING`.
+- **Contexto**: la configuración son pocos registros, editables y respaldados por `config_backup_service`; el problema real comprobado es la escritura no atómica, no el modelo de datos.
+- **Decisión**: primero un Storage Service con JSON atómico. SQLite se reevalúa cuando exista una necesidad concreta (historial consultable, eventos, metadatos de biblioteca).
+- **Consecuencias**: sin migraciones de datos en el corto plazo; el historial de trabajos y eventos sigue sin almacén hasta decidir.
+- **Alternativas consideradas**: SQLite para todo — descartada por ahora (costo de migración sin problema que lo justifique). PostgreSQL — sin justificación para un proceso por taller.
+
+### ADR-004 — Estrategia futura de Klipper remoto
+
+- **Estado**: `OPEN`.
+- **Contexto**: hoy solo Moonraker local por puertos; ids `klipper:{port}` vinculados a cámaras, Spoolman y TUNA-Screen.
+- **Decisión**: ninguna. Requiere saber si existe la necesidad (D1).
+- **Consecuencias si se aprueba**: registro de Klipper, cliente con host configurable, esquema de id que preserve los existentes, nuevo registro en el fixture de tests.
+- **Alternativas a evaluar**: solo `NOPAL_KLIPPER_PORTS` (estado actual); registro explícito; registro + descubrimiento como sugerencia.
+
+### ADR-005 — Estrategia futura de API versionada
+
+- **Estado**: `OPEN`.
+- **Contexto**: el panel se despliega junto con el backend (versionar sus rutas no protege a nadie); TUNA-Screen ya tiene su versión propia.
+- **Decisión**: ninguna. Depende de D2 (consumidores externos).
+- **Alternativas a evaluar**: sin versionado (estado actual); `/api/v1` solo para recursos nuevos de uso externo; versionado general (descartable de antemano por costo: ~212 rutas).
+
+---
+
+## 25. Decisiones abiertas
+
+| ID | Decisión | Impacto | Estado |
+|---|---|---|---|
+| D1 | ¿Soportar Moonraker remoto? | Registro de Klipper, ids, ADR-004 | `OPEN` |
+| D2 | ¿API para consumidores externos o solo panel + TUNA-Screen? | Versionado, API keys, ADR-005 | `OPEN` |
+| D3 | Matriz de autorización: ¿qué puede hacer cada principal? Desglosada en las 12 preguntas D3-Q1…D3-Q12 (§18.9) | Seguridad, IA (hereda roles), TUNA-Screen, plugins | `OPEN` |
+| D4 | ¿Eliminar el host activo del láser? | Endpoints `/api/laser/host`, valores por omisión, frontend | `OPEN` |
+| D5 | ¿Tags / categorías / metadatos de biblioteca? ¿Cuándo? | Fase 9, posible necesidad de SQLite | `OPEN` |
+| D6 | ¿Dependencias de plugins separadas del core? | `requirements.txt`, instalador de plugins | `OPEN` |
+| D7 | ¿Migración futura a SQLite? | Persistencia, ADR-003 | `DECISION PENDING` |
+| D8 | ¿Estrategia de frontend a largo plazo? | Fase 7 | `OPEN` (corto plazo: módulos ES, `PROPOSED`) |
+| D9 | ¿Modelo de permisos para dispositivos TUNA-Screen? (= D3-Q5 y D3-Q12) | S-9, D-7, §18.7 | `OPEN` |
+| D10 | ¿Cómo deja el core de llamar endpoints de plugins? | Acoplamiento, fase 7 | `OPEN` |
+| D11 | ¿Nombre y ubicación del módulo de máquinas separado de TUNA-Screen? | Fase 3 | `OPEN` |
+| D12 | ¿Qué hacer con los `.bak-visor*` y `.backup-ai-panel-*` del árbol de trabajo? | Higiene | `OPEN` (pueden contener trabajo no guardado) |
+
+---
+
+## 26. Deuda técnica
+
+### Architectural Debt
+- Agregación de máquinas en tres lugares.
+- Modelo de máquinas mezclado con emparejamiento/WS de TUNA-Screen en un archivo de 1228 líneas.
+- Klipper sin registro y atado a `localhost`.
+- Host activo global de láser coexistiendo con multi-host.
+- Acoplamiento core → plugins.
+- Lógica en routers (`status.py`, `models.py`, `upload.py`).
+- Importación invertida `ai_tools` → `api.models`.
+- Autorización dispersa: seis mecanismos paralelos, sin política por acción (§18.2).
+- Dispositivo TUNA-Screen como principal sin rol ni alcance.
+
+### Code Debt
+- Archivos grandes: `laser_service` 1956, `tunascreen_service` 1228, `ai_tools` 1154, `klipper_service` 1086, `marlin_printer_service` 1062 líneas.
+- `app.js` 22.5 k, `style.css` 20.3 k, `index.html` 5.3 k líneas.
+- 259 `fetch` sin cliente común.
+- 90 `except Exception` (mayoría con log y valor por defecto; ocultan el tipo de falla al llamador).
+- Sin schemas Pydantic.
+- `@app.on_event` deprecado.
+- Módulos vacíos (`app.py`, `routes.py`, `database.py`, `models.py`).
+- Nombres e IPs de una instalación en el código.
+- Ids inconsistentes (`laser:` vs `driver: grbl`).
+
+### Security Debt
+- S-2, S-4…S-10 y D-7…D-11 abiertos (§17.2). S-1 `FIXED` (pendiente de commit); S-3 era una afirmación incorrecta (el límite de login existe).
+- Inconsistencias de autorización D3-1…D3-6 (§18.4).
+
+### Testing Debt
+- ~~CI sin pytest y solo en `main`~~ — resuelto (pendiente de commit).
+- Fixture de aislamiento incompleto.
+- Sin tests de auth y de la matriz de autorización; biblioteca (salvo subida); control Klipper; streaming GRBL; emparejamiento TUNA-Screen.
+- Cobertura numérica desconocida.
+
+### Documentation Debt
+- Contradicciones C1–C13 (§5.6).
+- `CHANGELOG.md` sin entradas.
+- Sin documento del contrato de máquinas; la matriz de autorización solo existe en este SDD (§18).
+- Descripción de la app y de la unidad systemd desactualizadas.
+
+### Deployment Debt
+- Sin separación de configuración dev/prod.
+- Datos dentro del directorio del repo.
+- Permisos de archivos con secretos no uniformes.
+- Sin guía para asegurar Moonraker.
+- Dependencias de plugins instaladas con el core.
+
+---
+
+## 27. Compatibilidad y migración
+
+| Cambio futuro | Impacto | Compatibilidad | Migración | Rollback |
+|---|---|---|---|---|
+| Corregir S-1 (**hecho**, sin commit) | Subida de archivos | Nombres válidos siguen funcionando; nombres con rutas se rechazan; el campo `path` de la respuesta pasa a ser relativo (ningún cliente lo lee) | Ninguna | Revertir el commit |
+| Centralizar la autorización con la matriz actual (§18.7) | Todos los canales | Sin cambio de comportamiento (la tabla reproduce §18.3) | Canal por canal, con tests de la matriz actual | Revertir el canal |
+| Dispositivo TUNA-Screen con rol/perfil (D3-Q5) | TUNA-Screen, tokens emitidos | **Puede romper** acciones hoy permitidas a dispositivos | Valor por omisión para tokens existentes (`OPEN`); comunicar antes | Volver al comportamiento sin alcance |
+| Límite de intentos en emparejamiento (D-7) | `POST /api/tunascreen/pair/confirm` | Un emparejamiento legítimo no se ve afectado | Ninguna | Revertir |
+| Restringir `/plugins-static` (D-8) | Frontend de plugins | Los recursos de `frontend/` deben seguir servidos | Verificar que ningún plugin cargue archivos fuera de `frontend/` | Revertir el montaje |
+| Storage Service (JSON atómico) | Todos los servicios con JSON | Mismo formato y ubicación | Adopción servicio por servicio, un commit cada uno | Revertir el commit del servicio afectado |
+| Separar el modelo de máquinas de TUNA-Screen | TUNA-Screen, `/api/devices/registry` | Salida idéntica (verificada por tests existentes) | Mover código sin reescribir | Revertir; no hay datos involucrados |
+| Dashboard e IA consumen `list_machines()` | Dashboard, herramientas IA | Mismos campos hacia el frontend / el modelo | Un consumidor por commit; comparar salida antes/después | Revertir el consumidor |
+| Error común (`error_code`) | Todas las respuestas de error | `detail` sigue siendo texto | Gradual por router | Revertir |
+| Cambiar celdas de la matriz (D3) | Endpoints y acciones que cambien de requisito | **Rompe** flujos de operador que pierdan permisos | Comunicar antes; aplicar en un release | Revertir dependencias de rol |
+| Retirar host activo del láser (D4) | `/api/laser/host`, frontend | **Rompe** llamadas sin `host` | Marcar `DEPRECATED`, migrar frontend, retirar después | Restaurar endpoint |
+| Klipper remoto (D1) | Registro, ids | Ids locales preservados (requisito) | Sin registro → comportamiento actual | Borrar registro → comportamiento actual |
+| SQLite (D7) | Persistencia de la parte que se migre | JSON intacto para configuración | Importador único desde JSON | Conservar JSON hasta validar |
+| Módulos ES en frontend | `app.js` | Sin cambio de rutas | Una sección por vez | Revertir la sección |
+| Separar dependencias de plugins (D6) | Instalación de plugins y del core | Instalaciones existentes ya tienen las dependencias | Instalador de plugins instala las suyas | Volver a listarlas en el core |
+
+Regla general: **ninguna API existente se rompe sin una fase `DEPRECATED`
+previa** y sin migrar antes a sus consumidores (`app.js`, TUNA-Screen, plugins).
+
+---
+
+## 28. NO-GOALS
+
+Se derivan del análisis; no son preferencias abstractas.
+
+- **Reescribir NOPAL desde cero** — la arquitectura actual funciona y tiene 533 tests.- **Reemplazar o unificar los drivers** — sus transportes son incompatibles (ADR-001).
+- **Crear una jerarquía `Device → Printer/Laser/CNC`** — el modelo de capacidades existente lo resuelve mejor (ADR-002).
+- **Migrar inmediatamente a SQLite** — el problema comprobado es atomicidad, no el modelo de datos (ADR-003).
+- **Migrar el frontend a React/Vue/otro framework** — el problema es modularidad, resoluble sin build step.
+- **Versionar todas las rutas actuales** — su único consumidor se despliega junto con el backend.
+- **Sandboxing completo de plugins en el corto plazo** — costo alto; se documenta el riesgo (S-5).
+- **Eliminar o reescribir plugins existentes.**
+- **Contenerizar NOPAL ahora** — depende de USB, sysfs, broadcast UDP y control del host.
+
+---
+
+## 29. Glosario
+
+| Término | Definición en NOPAL |
+|---|---|
+| **NOPAL** | Network Operating Platform for Automation & Libraries. Panel web auto-hospedado del taller. |
+| **TUNA-Screen** | App Android complementaria. En el backend, también la API (`/api/tunascreen/*`, `/ws/tunascreen`) y el servicio que normaliza todas las máquinas. |
+| **Driver** | Servicio que habla el protocolo de una familia de máquinas (`klipper_service`, `bambu_service`…). No es una clase intercambiable. |
+| **Moonraker** | Servidor API de Klipper; NOPAL lo consume por REST. |
+| **Klipper** | Firmware de impresora que corre en un host Linux; se controla vía Moonraker. |
+| **Marlin** | Firmware de impresora que corre en la placa; se controla por serie (o TCP vía MKS WiFi). |
+| **GRBL** | Firmware de control de movimiento para láser/CNC (incluye variantes grblHAL/FluidNC). |
+| **Plugin** | Repositorio externo con `nopal-plugin.json`, clonado en `plugins/<id>/`, que aporta backend y/o frontend. |
+| **Device / Machine** | Una máquina representada con el modelo normalizado de §7. |
+| **Capability** | Lo que la UI puede mostrar de una máquina (`temperature`, `movement`, `camera`…). |
+| **Action** | Lo que se le puede ordenar a una máquina (`pause`, `set_temperature`…), validado al despachar. |
+| **Dispatch** | Traducción de una acción normalizada a la llamada del driver correspondiente. |
+| **Grace snapshot** | Snapshot fallido tolerado antes de marcar una máquina como fuera de línea (hoy 3). |
+| **Provider** | Implementación de `AIProvider`; hoy solo `OpenAICompatibleProvider`. |
+| **AI Tool / AI Action** | Función de solo lectura / función con efecto físico (con rol y riesgo) disponible para la IA. |
+| **Service** | Módulo de `backend/services/` con lógica de negocio, persistencia o E/S. |
+| **Router** | `APIRouter` de FastAPI en `backend/api/` (o en un plugin). |
+| **Registro (registry)** | Archivo JSON con las máquinas dadas de alta de una marca. |
+| **Host activo** | Host láser global por omisión (`LEGACY`, §10.2). |
+| **operador** | Rol de usuario no administrador (nombre interno en español). |
+| **Principal** | Quien hace una petición autenticada (o no): admin, operador, anónimo, dispositivo TUNA-Screen o firmware de accesorios (§18.1). |
+| **Authorization Policy** | (`PROPOSED`) Tabla única acción → requisito, consultada por todos los canales (§18.7). Hoy no existe. |
+| **Canal** | Vía por la que un principal llega a un driver: panel (routers por marca), TUNA-Screen (`dispatch_action`), IA (`ai_actions`) o consola. |
+
+---
+
+## 30. Historial de cambios del SDD
+
+| Versión | Fecha | Descripción |
+|---|---|---|
+| 0.1 | 2026-10-03 | Borrador inicial basado en un diseño previo a la auditoría. **Obsoleto**: asumía SQLite, una capa `machine_registry` nueva y `/api/v1` como decisiones. |
+| 0.2 | 2026-10-03 | Reescritura completa basada en la auditoría técnica del commit `f47aa17`: arquitectura actual documentada, modelo de TUNA-Screen como contrato propuesto, ADR-001…005, decisiones abiertas D1–D12. |
+| 0.3 | 2026-10-03 | Actualización posterior a la auditoría D3: corrección del rate limiting documentado (existe: 5 fallos/IP/300 s); corrección del conteo de endpoints (95 admin = core + plugins; 233 `require_auth`; 12 token de dispositivo; 8 sin dependencia); nueva matriz de autorización real y propuesta (§18); inconsistencias D3-1…D3-6; nuevos riesgos D-7…D-11; modelo de principales y TUNA-Screen como principal (`PROPOSED`); decisiones D3 abiertas (D3-Q1…Q12). Además: S-1 marcado `FIXED` y CI con pytest (ambos pendientes de commit); contradicciones C12–C13. |
+| 0.4 | 2026-10-03 | Cierre de documentación antes de D3: nuevo riesgo S-10 (XSS almacenado potencial en archivos servidos desde `/uploads`, independiente de S-1, `OPEN`); C12 resuelta al actualizar la descripción del CI en `CLAUDE.md`. |
