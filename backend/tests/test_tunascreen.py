@@ -395,6 +395,11 @@ class TestDispatchAction:
             "name": "ET4-AC", "port": 7125, "status": "offline",
             "data": {}, "job": {},
         }])
+
+        def _must_not_run(port, command):
+            raise AssertionError("una máquina offline no debe llegar al servicio de Klipper")
+        monkeypatch.setattr(klipper_service, "send_console_command", _must_not_run)
+
         with pytest.raises(ValueError, match="fuera de línea"):
             await tunascreen_service.dispatch_action("klipper:7125", "home", {})
 
@@ -466,6 +471,67 @@ class TestDispatchAction:
     async def test_unknown_machine_rejected(self):
         with pytest.raises(ValueError, match="no encontrada"):
             await tunascreen_service.dispatch_action("klipper:9999", "pause", {})
+
+
+def _klipper_status(online: bool):
+    status = "online" if online else "offline"
+    return lambda host=None: [{
+        "name": "ET4-AC", "port": 7125, "status": status,
+        "data": {"extruder": {}, "heater_bed": {}}, "job": {},
+    }]
+
+
+def _forbid_klipper_commands(monkeypatch):
+    def _must_not_run(port, command):
+        raise AssertionError("una máquina offline no debe llegar al servicio de Klipper")
+    monkeypatch.setattr(klipper_service, "send_console_command", _must_not_run)
+
+
+class TestMachineCacheIsolation:
+    """Regresión del flaky preexistente de TestDispatchAction: la caché global
+    de list_machines() sobrevivía entre tests y, si la firma de invalidación
+    coincidía (id() reutilizados por CPython), un test recibía las máquinas
+    del anterior. Aquí la colisión de firma se fuerza de forma determinista
+    (firma constante), sin depender de id() concretos."""
+
+    async def test_reset_prevents_inheriting_online_state(self, monkeypatch):
+        from backend.tests.conftest import reset_tunascreen_machine_cache
+
+        monkeypatch.setattr(tunascreen_service, "_current_source_signature", lambda: ("firma-fija",))
+
+        # "Test A": deja en caché la máquina en línea.
+        monkeypatch.setattr(klipper_service, "get_all_printers_status", _klipper_status(online=True))
+        assert [m["online"] for m in await tunascreen_service.list_machines()] == [True]
+
+        # Control negativo: sin reinicio, con la misma firma, se sirve el estado
+        # viejo aunque la fuente ya diga offline (el mecanismo del flaky).
+        monkeypatch.setattr(klipper_service, "get_all_printers_status", _klipper_status(online=False))
+        assert [m["online"] for m in await tunascreen_service.list_machines()] == [True]
+
+        # "Test B": tras el reinicio que hace el fixture entre tests, se ve offline.
+        reset_tunascreen_machine_cache()
+        assert [m["online"] for m in await tunascreen_service.list_machines()] == [False]
+
+    async def test_a_leaves_online_machine_in_cache(self, monkeypatch):
+        """Primera mitad del escenario entre tests (el orden de definición se
+        conserva): deja la caché poblada con la máquina en línea y una firma
+        constante, la misma que usará el test siguiente."""
+        monkeypatch.setattr(tunascreen_service, "_current_source_signature", lambda: ("firma-fija",))
+        monkeypatch.setattr(klipper_service, "get_all_printers_status", _klipper_status(online=True))
+        assert [m["online"] for m in await tunascreen_service.list_machines()] == [True]
+
+    async def test_b_does_not_inherit_online_state_from_previous_test(self, monkeypatch):
+        """Segunda mitad: misma firma constante que el test anterior; sin el
+        fixture de aislamiento recibiría la máquina en línea de A. Con el
+        fixture arranca con la caché vacía y la acción se rechaza sin tocar el
+        servicio real de Klipper."""
+        assert tunascreen_service._machines_cache == []
+        monkeypatch.setattr(tunascreen_service, "_current_source_signature", lambda: ("firma-fija",))
+        monkeypatch.setattr(klipper_service, "get_all_printers_status", _klipper_status(online=False))
+        _forbid_klipper_commands(monkeypatch)
+
+        with pytest.raises(ValueError, match="fuera de línea"):
+            await tunascreen_service.dispatch_action("klipper:7125", "home", {})
 
 
 class TestWebSocket:

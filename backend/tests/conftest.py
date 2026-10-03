@@ -45,6 +45,29 @@ def as_operator():
     app.dependency_overrides.pop(require_auth, None)
 
 
+def reset_tunascreen_machine_cache():
+    """Vacía la caché global de máquinas de tunascreen_service (la que usa
+    list_machines()). Su invalidación compara id() de funciones; si un test
+    reemplaza esas funciones por objetos nuevos y CPython reutiliza los
+    mismos id(), la firma coincide y el test recibe la caché del anterior.
+    Se asigna directo (no con monkeypatch): monkeypatch restauraría al final
+    la caché contaminada para el test siguiente."""
+    tunascreen_service._machines_cache = []
+    tunascreen_service._machines_cache_at = 0.0
+    tunascreen_service._machines_source_signature = ()
+    tunascreen_service._machine_offline_counts.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolated_tunascreen_machine_cache():
+    """Cada test arranca y termina con la caché de máquinas de TUNA-Screen
+    vacía: ningún test hereda las máquinas cacheadas por otro (flaky
+    preexistente en TestDispatchAction, ver SDD §19.2)."""
+    reset_tunascreen_machine_cache()
+    yield
+    reset_tunascreen_machine_cache()
+
+
 @pytest.fixture(autouse=True)
 def isolated_printer_registries(tmp_path, monkeypatch):
     """Aísla el REGISTRY_PATH de las 3 marcas a un directorio temporal por
