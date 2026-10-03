@@ -8,9 +8,9 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.4 |
+| Versión del SDD | 0.6 |
 | Fecha | 2026-10-03 |
-| Base analizada | rama `dev-main`, commit `f47aa17` **más cambios sin commit en el árbol de trabajo**: corrección de S-1 (`backend/api/upload.py`, `backend/tests/test_upload.py`) y pytest en CI (`.github/workflows/smoke-test.yml`) y su descripción en `CLAUDE.md` |
+| Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
 
 ### Convenciones de estado
@@ -253,7 +253,7 @@ El único WebSocket servidor→cliente es el de TUNA-Screen.
 - Límite de intentos de login: 5 fallos por IP en 300 s, en memoria (`CURRENT`).
 - TUNA-Screen: `Authorization: Bearer <token>` por dispositivo; el token se guarda con hash; **el dispositivo no tiene rol** (§18).
 - Firmware de accesorios (plugin): cabecera `X-NOPAL-Token` compartida.
-- No existe un sistema de permisos por acción centralizado (§18.2).
+- No existe un sistema de permisos por acción centralizado (§18.2). La política objetivo está decidida en ADR-006 (`ACCEPTED`) y aún no implementada (§18.6–18.10).
 
 ### 5.6 Contradicciones documentación vs código
 
@@ -270,7 +270,7 @@ El único WebSocket servidor→cliente es el de TUNA-Screen.
 | C9 | README: Moonraker se "auto-descubre en el host local" | Cierto; no se documenta que **no hay forma** de agregar un Moonraker remoto. | README, `klipper_service.py` |
 | C10 | `.gitignore` ignora `database/` | No existe código de base de datos. | `.gitignore` |
 | C11 | `requirements.txt` incluye `aiofiles` | No se encontró ningún import en `backend/`. Uso en plugins: `UNKNOWN`. | código |
-| C12 | CLAUDE.md decía: "CI … only boots the server and checks the homepage renders; it does not run pytest" | **Resuelta** (en el árbol de trabajo, sin commit): el workflow ejecuta `pytest` antes del smoke test (§19.1) y CLAUDE.md ya lo describe así. | `.github/workflows/smoke-test.yml`, `CLAUDE.md` |
+| C12 | CLAUDE.md decía: "CI … only boots the server and checks the homepage renders; it does not run pytest" | **Resuelta** en `dev-main` (`247efab`, `09a5630`): el workflow ejecuta `pytest` antes del smoke test (§19.1) y CLAUDE.md ya lo describe así. | `.github/workflows/smoke-test.yml`, `CLAUDE.md` |
 | C13 | Versión 0.2 de este SDD: "sin límite de intentos de login" | Existe límite: 5 fallos / IP / 300 s, en memoria (`backend/api/auth.py:20-66`). Corregido en 0.3. | código |
 
 ---
@@ -297,7 +297,7 @@ limitaciones relevantes; `LEGACY` = convive con su reemplazo.
 | `notification_service` | Alertas calculadas al vuelo (no persistidas) | `CURRENT` | drivers, plugin de cámaras |
 | `maintenance_service` | Mantenimiento por máquina | `CURRENT` | — |
 | `ai_*` + `api/ai` | NOPAL Intelligence | `CURRENT` (apagado por omisión) | httpx, drivers, `dashboard_service` |
-| `file_service`, `thumbnail_service`, `api/models`, `api/upload` | Biblioteca | `PARTIAL` (sin metadatos; S-1 corregido, sin commit) | Pillow, sistema de archivos |
+| `file_service`, `thumbnail_service`, `api/models`, `api/upload` | Biblioteca | `PARTIAL` (sin metadatos; S-1 corregido en `6fc0aec`) | Pillow, sistema de archivos |
 | `gcode_bounds`, `gcode_geometry` | Límites y análisis de G-code | `CURRENT` | `gcode_bounds_cache.json` |
 | `system_service` + `api/system` | Servicios systemd vía Moonraker, reinicio/apagado | `CURRENT` | Moonraker `/machine/*` |
 | `api/status` | Estado, almacenamiento, temperaturas, presets, versión, diagnóstico, actualización | `CURRENT` (lógica en router) | git, pip, `klipper_service` |
@@ -876,34 +876,39 @@ decide en este documento.
 
 | ID | Riesgo | Severidad | Estado |
 |---|---|---|---|
-| **S-1** | **Upload path traversal**: `POST /api/upload` unía el nombre de archivo enviado por el cliente sin validarlo; un usuario autenticado de cualquier rol podía escribir fuera de `uploads/`. **Corrección**: `_safe_upload_target()` en `backend/api/upload.py` rechaza (400, sin revelar rutas) nombres vacíos, `.`/`..`, con `/` o `\`, con byte nulo o absolutos, y verifica que la ruta resuelta quede directamente dentro de la carpeta destino; la respuesta de éxito devuelve una ruta relativa. 20 tests nuevos en `backend/tests/test_upload.py` (fallan contra el código anterior); la suite pasó de 513 a **533 tests, todos verdes**. | **CRITICAL** | **`FIXED`** — en el árbol de trabajo, pendiente de commit. Sigue sin haber límite de tamaño ni lista blanca de extensiones (decisión deliberada: no forman parte de S-1). |
+| **S-1** | **Upload path traversal**: `POST /api/upload` unía el nombre de archivo enviado por el cliente sin validarlo; un usuario autenticado de cualquier rol podía escribir fuera de `uploads/`. **Corrección**: `_safe_upload_target()` en `backend/api/upload.py` rechaza (400, sin revelar rutas) nombres vacíos, `.`/`..`, con `/` o `\`, con byte nulo o absolutos, y verifica que la ruta resuelta quede directamente dentro de la carpeta destino; la respuesta de éxito devuelve una ruta relativa. 20 tests nuevos en `backend/tests/test_upload.py` (fallan contra el código anterior); la suite pasó de 513 a **533 tests, todos verdes**. | **CRITICAL** | **`FIXED`** — commit `6fc0aec` en `dev-main` (aún no en `main`); CI verde. Sigue sin haber límite de tamaño ni lista blanca de extensiones (decisión deliberada: no forman parte de S-1). |
 | S-2 | Sin token CSRF; depende de `SameSite=Lax`. | MEDIUM | `OPEN` |
 | S-3 | ~~Sin límite de intentos de login~~ — **afirmación incorrecta de la versión 0.2**. Existe límite (`CURRENT`): 5 fallos por IP en 300 s, en memoria. Limitaciones: se pierde al reiniciar y es por IP. | LOW (residual) | `CURRENT` — sin acción pendiente salvo decidir si basta |
 | S-4 | Secretos en texto plano y permisos laxos (`ai_config.json` 0644; access codes de Bambu). | MEDIUM | `OPEN` |
 | S-5 | Plugins sin aislamiento; `permissions` no aplicado; actualización ejecuta código remoto. | MEDIUM | `OPEN` (aceptado implícitamente hoy) |
 | S-6 | Moonraker accesible sin autenticación en la LAN. | MEDIUM (despliegue) | `OPEN` |
 | S-7 | NOPAL sin TLS en `0.0.0.0`. | LOW en LAN / HIGH si se expone | `OPEN` (mitigación documentada en README) |
-| S-8 | Autorización inconsistente entre canales y rutas equivalentes; la consola permite saltarse restricciones específicas (D3-1…D3-6, §18.4). | HIGH | `OPEN` — depende de las decisiones D3 (§18.9) |
-| S-9 | Un dispositivo TUNA-Screen emparejado ejecuta cualquier acción declarada sin rol ni alcance (incluidas temperatura, consola y potencia de láser/husillo). | HIGH | `OPEN` — ver §18.7 |
+| S-8 | Autorización inconsistente entre canales y rutas equivalentes; la consola permite saltarse restricciones específicas (D3-1…D3-6, §18.4). | HIGH | `OPEN` — política decidida (ADR-006); pendiente de implementar (§18.10) |
+| S-9 | Un dispositivo TUNA-Screen emparejado ejecuta cualquier acción declarada sin rol ni alcance (incluidas temperatura, consola y potencia de láser/husillo). | HIGH | `OPEN` — decidido Operator + scope (D3-Q5); pendiente de implementar |
 | **S-10** | **Stored XSS potencial en archivos servidos desde `/uploads/{path}`**: la biblioteca acepta cualquier extensión y `GET /uploads/{path}` (`backend/main.py`, `protected_upload`) entrega el archivo con `FileResponse`, **en línea** (sin `Content-Disposition: attachment`), con el tipo deducido de la extensión (p. ej. `text/html`, `image/svg+xml`) y sin cabeceras `Content-Security-Policy` ni `X-Content-Type-Options`, **desde el mismo origen que el panel**. Un archivo con contenido activo —un HTML, o un SVG que incluya script— podría ejecutarse en la sesión de quien lo abra directamente en el navegador. No todo SVG es un riesgo: depende de su contenido y de cómo se abra (como documento, no como `<img>`). **Independiente de S-1**: S-1 impide escribir fuera de `uploads/`, pero no controla qué contenido se sirve desde ahí. No se ha demostrado explotación. Requiere analizar la política de entrega de archivos (tipos permitidos, descarga forzada, cabeceras, origen separado). Nota: `.svg` es un formato legítimo de la biblioteca (láser/CNC), por lo que una lista blanca de extensiones por sí sola no lo resuelve. | MEDIUM | `OPEN` |
-| **D-7** | **Emparejamiento TUNA-Screen**: `POST /api/tunascreen/pair/confirm` es anónimo por diseño y acepta un código de **6 dígitos** con vigencia de **5 minutos**, **sin límite de intentos**; un código válido entrega un **token permanente** con el que el dispositivo controla máquinas (S-9). Además, `GET /api/tunascreen/info` (anónimo) indica si hay un emparejamiento abierto. | HIGH | `OPEN` |
-| **D-8** | **`/plugins-static`**: monta el directorio `plugins/` completo sin autenticación. Se confirmó acceso anónimo al código fuente del backend de los plugins y a su carpeta `.git`. Hoy los repositorios de plugins son públicos, por lo que la exposición actual es baja; el riesgo es que cualquier archivo que un plugin o una persona coloque dentro de `plugins/` (datos, credenciales de firmware) quedaría publicado. | MEDIUM | `OPEN` |
-| **D-9** | **Conversaciones de IA sin propietario**: cualquier usuario autenticado puede listar, leer, renombrar o borrar conversaciones de otros usuarios (`backend/api/ai.py:261-288`). Solo borrar *todas* exige admin. | MEDIUM | `OPEN` |
-| **D-10** | **Último administrador**: `delete_user` impide borrar al último admin, pero `update_user` permite **degradar** su rol a `operador` (`backend/services/auth_service.py:111-128`), lo que dejaría la instalación sin administrador. | MEDIUM | `OPEN` |
+| **D-7** | **Emparejamiento TUNA-Screen**: `POST /api/tunascreen/pair/confirm` es anónimo por diseño y acepta un código de **6 dígitos** con vigencia de **5 minutos**, **sin límite de intentos**; un código válido entrega un **token permanente** con el que el dispositivo controla máquinas (S-9). Además, `GET /api/tunascreen/info` (anónimo) indica si hay un emparejamiento abierto. | HIGH | `OPEN` — refuerzo **decidido** (D3-Q6: un solo uso, expiración, límite de intentos, invalidación tras canje, no reutilización, token independiente); forma de implementación `PROPOSED` |
+| **D-8** | **`/plugins-static`**: monta el directorio `plugins/` completo sin autenticación. Se confirmó acceso anónimo al código fuente del backend de los plugins y a su carpeta `.git`. Hoy los repositorios de plugins son públicos, por lo que la exposición actual es baja; el riesgo es que cualquier archivo que un plugin o una persona coloque dentro de `plugins/` (datos, credenciales de firmware) quedaría publicado. | MEDIUM | `OPEN` — decidido: solo frontend público (D3-Q10); pendiente de implementar |
+| **D-9** | **Conversaciones de IA sin propietario**: cualquier usuario autenticado puede listar, leer, renombrar o borrar conversaciones de otros usuarios (`backend/api/ai.py:261-288`). Solo borrar *todas* exige admin. | MEDIUM | `OPEN` — decidido: conversaciones privadas por usuario (D3-Q8); requiere propietario; pendiente de implementar |
+| **D-10** | **Último administrador**: `delete_user` impide borrar al último admin, pero `update_user` permite **degradar** su rol a `operador` (`backend/services/auth_service.py:111-128`), lo que dejaría la instalación sin administrador. | MEDIUM | `OPEN` — política decidida (C-6: NOPAL nunca queda sin al menos un Admin, en borrar, cambiar rol, degradar y auto-degradar); pendiente de implementar |
 | **D-11** | **Host láser activo global**: `POST /api/laser/host` (cualquier usuario autenticado) cambia el host por omisión compartido por todas las sesiones (§10.2). | MEDIUM | `OPEN` (ligado a la decisión D4 de §25) |
 
-> **Nota de publicación**: el repositorio es público. S-1 está corregido en el
-> árbol de trabajo pero **no en `main`**; D-7 sigue abierto. Este documento
-> describe los riesgos sin pasos de reproducción. Se recomienda publicarlo
-> después de que la corrección de S-1 esté en `main`.
+> **Nota de publicación**: el repositorio es público. Este documento ya está
+> publicado en `dev-main` junto con la corrección de S-1 (`6fc0aec`), pero
+> **`main` todavía no la contiene**. D-7, D-8, D-9 y S-10 siguen abiertos. El
+> documento describe los riesgos sin pasos de reproducción.
 
 ---
 
 ## 18. Roles, principales y autorización
 
-> Fuente: auditoría de permisos D3 (2026-10-03), por inspección de código.
-> Las secciones 18.1–18.5 describen el estado `CURRENT`. Las secciones
-> 18.6–18.9 son `PROPOSED` / `OPEN`: **ninguna decisión de permisos está tomada**.
+> Fuente: auditoría de permisos D3 (2026-10-03), por inspección de código, y
+> decisiones del propietario del mismo día.
+> - 18.1–18.5: estado `CURRENT` (lo que hace el código hoy).
+> - 18.6–18.9: política oficial **D3, `CERRADO`**, formalizada en **ADR-006 (`ACCEPTED`)**.
+>   Está decidida pero **no implementada**: hasta completar la migración (18.10)
+>   el comportamiento real sigue siendo el de 18.3.
+> - NOPAL mantiene dos roles humanos (`ADMIN`, `OPERATOR`); los dispositivos
+>   TUNA-Screen son un principal propio, no un tercer rol.
 
 ### 18.1 Principales (`CURRENT`)
 
@@ -956,6 +961,9 @@ Fuera de routers: `/` (pública), `/uploads/*` y `/view/*` (sesión), montajes
 
 ### 18.3 Matriz real de permisos (`CURRENT`, resumida)
 
+> Situación real previa a ADR-006, documentada por la auditoría D3. Se conserva
+> como línea base de la migración; la política objetivo es la matriz TARGET (18.6).
+
 ✅ permitido · ❌ denegado · ⚠️ depende del endpoint/driver · — no aplica.
 "TUNA" = dispositivo emparejado.
 
@@ -1002,6 +1010,13 @@ Fuera de routers: `/` (pública), `/uploads/*` y `/view/*` (sesión), montajes
 | TUNA-Screen | Canjear código por token permanente | ✅ (con código vigente) | — | — | — |
 
 ### 18.4 Autorización inconsistente (`CURRENT`)
+
+> Siguen presentes en el código. ADR-006 define cómo se resuelve cada una:
+> D3-1 → `set_temperature` = Operator en todos los canales (D3-Q1);
+> D3-2 → consola solo Admin (D3-Q2, 18.9); D3-3 → TUNA-Screen pasa por la
+> política con Operator + scope (D3-Q5); D3-4 → potencia manual solo Admin en
+> todos los canales (D3-Q3); D3-5 → configuración física solo Admin (D3-Q4);
+> D3-6 → configurar plugin = Admin, usar = Operator (D3-Q9).
 
 **D3-1 — Temperatura.** La misma acción tiene cuatro reglas:
 
@@ -1053,45 +1068,123 @@ activa es admin en el plugin pero libre por TUNA-Screen.
 | **MEDIUM** | Home, jog, ventilador, velocidad, flujo, z-offset, macros, air assist; borrar/mover/renombrar en biblioteca; borrar en SD; cambiar host láser global; accesorios y escenas; leer logs; leer conversaciones ajenas | Movimiento acotado, pérdida de datos, efecto sobre otros usuarios, exposición de información |
 | **LOW** | Pausar, reanudar, cancelar; ver estado, dashboard, biblioteca, miniaturas; subir a la biblioteca; descubrir / probar conexión | Lectura, o escritura acotada |
 
-### 18.6 Matriz propuesta (`PROPOSED` — **NOT DECIDED**)
+### 18.6 Matriz TARGET — política oficial D3 (`ACCEPTED`, ADR-006)
 
-> Borrador técnico derivado de la auditoría. **No es política vigente ni
-> decisión tomada.** Las celdas `OPEN` requieren al dueño del proyecto (§18.9).
-> La regla de base propuesta: una misma acción tiene el mismo requisito en
-> todos los canales (panel, TUNA-Screen, IA, plugins).
+> Decidida por el propietario de NOPAL el 2026-10-03 y formalizada en
+> **ADR-006** (§24). **Es la política objetivo; todavía no está implementada.**
+> Mientras no se migre (§18.10), el comportamiento real sigue siendo el de la
+> matriz `CURRENT` de §18.3. Reemplaza a la matriz `PROPOSED` de la versión 0.3
+> de este documento (ver historial, §30).
 
-| Acción | Anón. | Operador | Admin | Motivo técnico |
-|---|:-:|:-:|:-:|---|
-| Ver estado, dashboard, biblioteca | ❌ | ✅ | ✅ | Lectura |
-| Pausar / reanudar / cancelar | ❌ | ✅ | ✅ | Acción de seguridad: debe estar al alcance de quien opera |
-| Iniciar trabajo | ❌ | ✅ | ✅ | Uso normal; `OPEN` si se exige confirmación |
-| Home, jog, ventilador, velocidad, flujo, macros | ❌ | ✅ | ✅ | Operación cotidiana |
-| **Fijar temperatura** | ❌ | `OPEN` | ✅ | Hoy hay cuatro reglas (D3-1); debe haber una |
-| **Consola / G-code arbitrario** | ❌ | `OPEN` | ✅ | Equivale a cualquier acción (D3-2, §18.8) |
-| **Potencia manual láser/husillo** | ❌ | `OPEN` | `OPEN` | Reglas contradictorias (D3-4) |
-| Editar `printer.cfg`, settings `$` de GRBL | ❌ | ❌ | ✅ | Configuración física, comparable a alta/baja |
-| **Firmware restart** | ❌ | `OPEN` | ✅ | Recuperación habitual vs. corte de trabajo |
-| Reiniciar Klipper (sin firmware) | ❌ | `OPEN` | ✅ | Ídem |
-| **Borrar en biblioteca** | ❌ | `OPEN` | ✅ | Pérdida de datos compartidos |
-| Subir, renombrar, mover en biblioteca | ❌ | ✅ | ✅ | Uso normal |
-| **Borrar en SD** | ❌ | `OPEN` | ✅ | Pérdida de datos en la máquina |
-| Formatear SD, flashear firmware, relés | ❌ | ❌ | ✅ | Igual que hoy |
-| Host láser global | ❌ | `OPEN` | `OPEN` | Probablemente debe retirarse (D4 de §25), no recibir un rol |
-| **Asignar bobina** | ❌ | `OPEN` | ✅ | Admin en panel, libre en TUNA (D3-6) |
-| **Configuración de plugins** (incluido cotizador) | ❌ | `OPEN` | ✅ | Criterio uniforme (D3-6) |
-| **Conversaciones de IA** | ❌ | `OPEN` (propuesta: solo las suyas) | `OPEN` | Privacidad (D-9); requiere guardar el dueño |
-| Cambiar su propia contraseña | ❌ | ✅ | ✅ | Hoy no existe |
-| Degradar o borrar al último admin | ❌ | ❌ | ❌ | Evitar quedarse sin administrador (D-10) |
-| **Logs y diagnóstico** | ❌ | `OPEN` | ✅ | Información interna |
-| Usuarios, sistema, actualización, respaldo, instalar plugins, config. IA, emparejamiento | ❌ | ❌ | ✅ | Igual que hoy |
-| `/plugins-static` | `OPEN` (propuesta: solo `frontend/`) | ✅ | ✅ | D-8 |
-| **Dispositivo TUNA-Screen** | — | — | — | `OPEN`: principal con rol/perfil y alcance (§18.7) |
-| **Tercer rol** (p. ej. solo lectura) | — | — | — | `OPEN` |
+**Regla de lectura**: el permiso depende de la **acción**, no del driver ni del
+canal. Una misma acción tiene el mismo requisito venga del panel, de
+TUNA-Screen, de la IA o de un plugin.
 
-### 18.7 Arquitectura objetivo de autorización (`PROPOSED`, no implementada)
+"según scope" = el dispositivo TUNA-Screen tiene el nivel funcional de
+`OPERATOR`, pero **solo** sobre las máquinas o recursos incluidos en su alcance.
 
-**Estado actual**: cuatro caminos paralelos hacia los drivers, cada uno con su
-propio criterio, más un bypass:
+| Capacidad | Anonymous | Operator | Admin | TUNA-Screen |
+|---|:-:|:-:|:-:|:-:|
+| Ver dashboard | ❌ | ✅ | ✅ | según scope |
+| Ver máquinas | ❌ | ✅ | ✅ | según scope |
+| Pausar / reanudar / cancelar | ❌ | ✅ | ✅ | según scope |
+| Iniciar trabajo | ❌ | ✅ | ✅ | según scope |
+| Fijar temperatura (`set_temperature`) | ❌ | ✅ | ✅ | según scope |
+| Home / jog / operación normal | ❌ | ✅ | ✅ | según scope |
+| Asignar / cambiar bobina activa (`assign_active_spool`) | ❌ | ✅ | ✅ | según scope |
+| Consola / G-code arbitrario (`send_console_command`) | ❌ | ❌ | ✅ | ❌ |
+| Macros capaces de ejecutar G-code arbitrario (`run_macro`) | ❌ | ❌ | ✅ | ❌ |
+| Potencia manual láser / husillo (`set_laser_power`, `set_spindle`, M3/M4 manual) | ❌ | ❌ | ✅ | ❌ |
+| Configuración física de máquina (`printer.cfg`, `$` de GRBL, límites, parámetros de seguridad, firmware restart) | ❌ | ❌ | ✅ | ❌ |
+| Reiniciar Klipper (recarga configuración; `restart_klipper`) | ❌ | ❌ | ✅ | ❌ |
+| Borrar en biblioteca (archivos y carpetas) | ❌ | ✅ | ✅ | según scope |
+| Borrar en SD | ❌ | ❌ | ✅ | ❌ |
+| Configuración de plugins | ❌ | ❌ | ✅ | ❌ |
+| Usar plugins | ❌ | ✅ | ✅ | según scope |
+| Leer logs / diagnóstico | ❌ | ✅ | ✅ | ❌ |
+| Configuración IA | ❌ | ❌ | ✅ | ❌ |
+| Conversaciones IA (leer, renombrar, borrar) | ❌ | ✅ solo las propias | ✅ solo las propias | ❌ |
+| Borrado masivo del historial de conversaciones (operación de almacenamiento, sin lectura) | ❌ | ❌ | ✅ | ❌ |
+| Usuarios (respetando la regla del último Admin) | ❌ | ❌ | ✅ | ❌ |
+| Sistema / actualización | ❌ | ❌ | ✅ | ❌ |
+| `/plugins-static` | solo recursos públicos del frontend de cada plugin | ídem | ídem | ídem |
+
+**Diferencias respecto de `CURRENT` (§18.3)** — cambios de comportamiento que
+la migración tendrá que aplicar:
+
+| Capacidad | CURRENT | TARGET |
+|---|---|---|
+| Temperatura Klipper (panel) | Admin | Operator |
+| Temperatura vía IA (`preheat_machine`) | Admin | Operator |
+| Temperatura vía TUNA-Screen | cualquier dispositivo | Operator + scope |
+| Consola Klipper / Marlin / GRBL (panel) | Operator | **Admin** |
+| Consola vía TUNA-Screen | cualquier dispositivo | **❌** |
+| Potencia láser/husillo vía TUNA-Screen | cualquier dispositivo | **❌** |
+| Potencia láser/husillo vía consola (panel) | Operator | **Admin** (consecuencia de D3-Q2) |
+| `printer.cfg`, `$` de GRBL, firmware restart | Operator | **Admin** |
+| Borrar en SD | Operator | **Admin** |
+| Configurar cotizador | Operator | **Admin** (D3-Q9) |
+| Macros Klipper (panel) | Operator | **Admin** |
+| Macros vía TUNA-Screen (`run_macro`) | cualquier dispositivo | **❌** |
+| Reiniciar Klipper (`/printer/restart`) | Operator | **Admin** |
+| Bobina activa (panel, plugin Spoolman) | Admin | **Operator** |
+| Bobina activa vía IA (`assign_spool`) | Admin | **Operator** |
+| Bobina activa vía TUNA-Screen (`materials/active`) | cualquier dispositivo | Operator + scope |
+| Degradar al último Admin | permitido | **prohibido** |
+| Conversaciones IA ajenas | cualquier usuario | **❌** (privadas) |
+| `/plugins-static` | todo `plugins/`, anónimo | solo frontend público |
+| Dispositivo TUNA-Screen | sin rol ni alcance | Operator + scope |
+
+### 18.7 D3 — decisiones (`CERRADO`)
+
+> D3 quedó **cerrado** el 2026-10-03. Numeración oficial del propietario.
+
+| # | Decisión | Resultado | Notas |
+|---|---|---|---|
+| D3-Q1 | Temperatura | **Operator** puede fijar temperatura, en todos los canales (panel, TUNA-Screen, IA) y drivers (Klipper, Marlin) | `set_temperature → OPERATOR` |
+| D3-Q2 | Consola / G-code arbitrario | **Solo Admin**, incluido todo mecanismo equivalente a una consola | `send_console_command → ADMIN`; incluye macros con G-code arbitrario (C-1) (§18.9) |
+| D3-Q3 | Potencia manual láser / husillo | **Solo Admin** | Aplica a `set_laser_power`, `set_spindle`, M3/M4 usados para controlar potencia o arranque **fuera de un flujo de trabajo normal**. La potencia contenida en el G-code de un trabajo iniciado normalmente no se ve afectada |
+| D3-Q4 | Configuración física de máquinas | **Solo Admin** | `machine_configuration`, `firmware_restart`, `grbl_settings`, `printer_config → ADMIN`; incluye `restart_klipper` (C-2) |
+| D3-Q5 | TUNA-Screen | **Operator + scope** | Principal propio (§18.8). El almacenamiento y la edición del scope se definen en la implementación (`PROPOSED`) |
+| D3-Q6 | Emparejamiento TUNA-Screen | **Se refuerza** (la necesidad está decidida) | Requisitos: código de un solo uso, expiración, límite de intentos, invalidación tras canje exitoso, no reutilización, token posterior independiente del código. La forma exacta de implementación es `PROPOSED` |
+| D3-Q7 | Borrado | **Biblioteca: Operator. SD: solo Admin** | Diferencia explícita |
+| D3-Q8 | Conversaciones IA | **Privadas por usuario** | Nadie lee, renombra ni borra conversaciones ajenas; ser Admin no da acceso al contenido privado. La administración del sistema de IA sigue siendo una capacidad administrativa aparte. Requiere asociar cada conversación a su propietario. Borrado masivo por Admin: ver C-4 |
+| D3-Q9 | Configuración de plugins | **Solo Admin** | Regla: configurar plugin → Admin; usar plugin → Operator. Los plugins existentes deben evolucionar hacia esta convención |
+| D3-Q10 | `/plugins-static` | **Solo frontend público** | No deben exponerse: backend, código Python, `.git`, secretos, archivos internos, configuración privada, artefactos arbitrarios |
+| D3-Q11 | Logs y diagnóstico | **Operator** puede consultarlos | Regla de diseño adicional: secretos, credenciales y API keys **nunca** deben exponerse por estar en logs o diagnóstico. TUNA-Screen: sin acceso (C-5) |
+| D3-Q12 | Tercer rol | **No** | Solo `ADMIN` y `OPERATOR`. El principal de dispositivo TUNA-Screen **no** es un rol humano |
+
+**Casos adicionales** (`ACCEPTED`, 2026-10-03) — casos que el código tenía y la
+política inicial no nombraba; decididos por el propietario como parte de D3:
+
+| # | Caso | Decisión | Justificación técnica |
+|---|---|---|---|
+| C-1 | Macros de Klipper (`run_macro`) | Una macro capaz de ejecutar G-code arbitrario → **Admin** (TUNA-Screen: ❌). Una macro puramente informativa podría ser una excepción **futura**; no se define ni implementa ahora | Una macro puede contener cualquier G-code (temperaturas, M3/M4, `SAVE_CONFIG`). Dejarla en Operator reabriría el bypass que D3-Q2 cierra (§18.9) |
+| C-2 | Reinicio de Klipper (`/printer/restart`) | `restart_klipper` → **Admin** (TUNA-Screen: ❌) | Recarga la configuración y puede interrumpir un trabajo en curso: mismo nivel que firmware restart (D3-Q4) |
+| C-3 | Bobina activa de Spoolman | `assign_active_spool` → **Operator** (TUNA-Screen: según scope), en todos los canales (panel, IA, TUNA-Screen) | Asignar o cambiar la bobina durante una operación es trabajo diario, no configuración del plugin; aplica la regla "usar plugin → Operator" (D3-Q9). Configurar la conexión con Spoolman sigue siendo Admin |
+| C-4 | Borrado masivo del historial de conversaciones (`DELETE /api/ai/conversations`) | **Admin** puede ejecutarlo como operación administrativa de almacenamiento | Gestionar el almacenamiento no implica leerlo: `ADMIN ≠ acceso automático al contenido privado`. Las conversaciones siguen siendo de cada usuario (D3-Q8); el Admin no obtiene permiso para leer, renombrar ni borrar selectivamente conversaciones ajenas |
+| C-5 | Logs para TUNA-Screen | **Sin acceso**; no se crea excepción | No hay un caso de uso del dispositivo que lo requiera y los logs exponen información interna; se reduce la superficie del principal de dispositivo |
+| C-6 | Último administrador | **Regla de seguridad: NOPAL nunca debe quedar sin al menos un Admin.** Aplica a eliminar usuario, cambiar rol, degradar un administrador, auto-degradación y cualquier operación equivalente | Hoy `delete_user` protege al último Admin pero `update_user` permite degradarlo (D-10): una instalación sin Admin no puede gestionar usuarios, plugins, sistema ni recuperarse sin editar archivos a mano |
+
+Sigue fuera de D3 y `OPEN`: el **host láser global** (`POST /api/laser/host`),
+que depende de D4 (retirar el mecanismo o asignarle una acción).
+
+**Política vs. implementación** — todo lo anterior es política decidida; nada
+está implementado todavía:
+
+| Elemento | POLICY DECIDED | IMPLEMENTATION NOT YET DONE |
+|---|---|---|
+| D3-Q1…Q12 | ✅ `ACCEPTED` (ADR-006) | ⏳ migración §18.10 |
+| C-1…C-6 | ✅ `ACCEPTED` (ADR-006) | ⏳ migración §18.10 |
+| Matriz TARGET (§18.6) | ✅ | ⏳ el comportamiento real sigue siendo la matriz CURRENT (§18.3) |
+| Scope de TUNA-Screen | ✅ (Operator + scope) | ⏳ almacenamiento y edición `PROPOSED` |
+| Emparejamiento reforzado | ✅ (requisitos) | ⏳ forma exacta `PROPOSED` |
+| Regla del último Admin | ✅ | ⏳ `update_user` aún permite degradar al último Admin |
+
+### 18.8 Arquitectura de autorización (`ACCEPTED` como principio; implementación `PROPOSED`)
+
+**Estado actual** (`CURRENT`): cuatro caminos paralelos hacia los drivers, cada
+uno con su criterio, más un bypass:
 
 ```text
 Panel (sesión) ──► router por marca ──► servicio/driver   (rol por endpoint)
@@ -1100,88 +1193,115 @@ IA (sesión) ─────► ai_actions ────────► servicio/
 Consola ─────────► G-code libre ──────► driver            (bypass de lo anterior)
 ```
 
-El flujo `Usuario → Autorización NOPAL → acción TUNA → Driver → Máquina` **no
-está soportado hoy**: existen bypasses confirmados (D3-2, D3-3, D-7).
+El flujo `Principal → Autorización → Acción → Driver → Máquina` no está
+soportado hoy (bypasses D3-2, D3-3, D-7).
 
-**Objetivo propuesto**:
+**Principio oficial** (ADR-006, `ACCEPTED`):
 
 ```text
-Principal (admin · operador · dispositivo TUNA · plugin)
-    ↓
-Authorization Policy   ← una tabla acción → requisito (la matriz D3 decidida)
-    ↓
-Action                 ← vocabulario existente: pause, set_temperature,
-    ↓                    send_console_command, set_laser_power, …
-Device                 ← modelo normalizado (ADR-002, PROPOSED)
-    ↓
-TUNA-Screen dispatch / router por marca
-    ↓
+Principal (admin · operator · dispositivo TUNA-Screen [operator + scope])
+   ↓
+Authorization Policy     ← tabla única acción → requisito (§18.6)
+   ↓
+Action                   ← vocabulario existente: pause, set_temperature,
+   ↓                       send_console_command, set_laser_power, …
+Resource / Device        ← máquina o recurso; aquí se aplica el scope
+   ↓
 Driver
-    ↓
+   ↓
 Machine
 ```
 
-Principios de la propuesta:
-
-1. **Una sola política** basada en el **vocabulario de acciones que ya existe**
-   en `tunascreen_service` (más las acciones no ligadas a máquinas: configurar,
-   borrar archivos, etc.). No se crea una abstracción nueva.
-2. **Una sola función de autorización** consultada por todos los canales:
-   - **panel**: dependencia FastAPI por acción en los routers existentes (sin cambiar rutas);
-   - **TUNA-Screen**: dentro de `dispatch_action`, antes de despachar;
-   - **IA**: `Action.role` se derivaría de la misma tabla en vez de copiarse a mano;
-   - **plugins**: la misma función expuesta como punto de extensión, con la convención documentada.
-3. **Primero centralizar sin cambiar comportamiento** (la tabla reproduce la
-   matriz actual de §18.3, cubierta por tests); después cambiar las celdas que
-   se decidan, una por cambio.
-
-**TUNA-Screen como principal** (`PROPOSED`):
+La autorización es **independiente del driver y del canal**. Se abandona:
 
 ```text
-TUNA-Screen Device = principal autenticado + rol/perfil + alcance
+Klipper → política propia
+Marlin  → política propia
+TUNA    → sin política
+IA      → política distinta
 ```
 
-El token seguiría siendo la credencial; al emparejar se asignaría un rol o
-perfil que la política trataría igual que a un usuario. Qué rol o perfil
-tiene un dispositivo es **`OPEN`**, con estas alternativas:
+y se evoluciona hacia:
 
-| Alternativa | Descripción |
-|---|---|
-| Rol fijo | Todos los dispositivos actúan como un rol (p. ej. operador) |
-| Rol asignado al emparejar | El admin elige el rol al generar el código |
-| Rol equivalente al usuario | El dispositivo hereda el rol de quien lo emparejó |
-| Perfil limitado | Un perfil propio de dispositivo (p. ej. solo lectura + pausa) |
+```text
+                 Authorization Policy
+                    /      |      \
+                 Panel    TUNA     IA      (+ plugins)
+                    \      |      /
+                         Action
+                           ↓
+                         Driver
+```
 
-Los tokens ya emitidos necesitarían un valor por omisión (también `OPEN`).
+Lineamientos de implementación (`PROPOSED`, sin implementar):
 
-### 18.8 Principio: la consola es una acción privilegiada (`PROPOSED`)
+1. La política se expresa sobre el **vocabulario de acciones que ya existe** en
+   `tunascreen_service`, más acciones no ligadas a máquinas (configurar,
+   borrar archivos, administrar usuarios…). No se crea una abstracción nueva.
+2. Una sola función de autorización `(principal, acción, recurso)` consultada
+   por todos los canales:
+   - **panel**: dependencia FastAPI por acción en los routers existentes, sin cambiar rutas;
+   - **TUNA-Screen**: dentro de `dispatch_action`, antes de despachar;
+   - **IA**: `Action.role` se deriva de la misma tabla en vez de copiarse a mano;
+   - **plugins**: la misma función expuesta como punto de extensión.
 
-> Las restricciones por acción no son efectivas si un principal puede acceder
-> a una consola / G-code arbitrario capaz de realizar la misma operación.
+**TUNA-Screen como principal** (D3-Q5, `ACCEPTED`):
 
-Por lo tanto, la consola (Klipper, Marlin, GRBL, TUNA-Screen) debe evaluarse
-como la acción de **mayor privilegio** sobre su máquina: quien no pueda
-ejecutar una acción restringida no debería tener G-code libre. Pendiente de
-decisión (D3-Q2); no implementado.
+```text
+TUNA-Screen Device
+    ├── identity        (token de dispositivo, ya existe)
+    ├── role/profile = OPERATOR
+    └── scope           (máquinas / recursos permitidos)
 
-### 18.9 D3 — OPEN DECISIONS
+Ejemplo conceptual:
+TUNA-01   role = operator   scope = printer_01, laser_01
+```
 
-Decisiones que corresponden al dueño de NOPAL. Todas `OPEN`.
+El dispositivo **no** es un tercer rol humano. Formato de almacenamiento,
+edición del scope y valor por omisión para los tokens ya emitidos: `PROPOSED`,
+a definir en la implementación.
 
-| # | Pregunta | Relación |
-|---|---|---|
-| D3-Q1 | ¿El operador puede fijar temperatura? | D3-1 |
-| D3-Q2 | ¿El operador puede usar consola / G-code arbitrario? | D3-2, §18.8 |
-| D3-Q3 | ¿Quién puede controlar la potencia manual de láser/husillo, y por qué canal? | D3-4 |
-| D3-Q4 | ¿La configuración física de la máquina (`printer.cfg`, `$` de GRBL, firmware restart) es solo admin? | D3-5 |
-| D3-Q5 | ¿Qué rol o perfil tiene un dispositivo TUNA-Screen? | S-9, §18.7 |
-| D3-Q6 | ¿Cómo se protege el emparejamiento (límite de intentos, código más largo, `pairing_open` público)? | D-7 |
-| D3-Q7 | ¿Quién puede borrar en la biblioteca y en la SD? | §18.6 |
-| D3-Q8 | ¿Las conversaciones de IA son privadas por usuario? ¿El admin ve todas? | D-9 |
-| D3-Q9 | ¿La configuración de plugins es siempre admin (incluido el cotizador)? | D3-6 |
-| D3-Q10 | ¿Quién puede ver logs y diagnóstico? | §18.6 |
-| D3-Q11 | ¿Se necesita un tercer rol (p. ej. solo lectura)? | §18.6 |
-| D3-Q12 | ¿Debe existir un perfil específico para dispositivos? | §18.7 |
+### 18.9 Principio: la consola es una acción privilegiada (`ACCEPTED`, D3-Q2)
+
+> Si una acción específica está restringida, no debe existir una consola con
+> privilegios menores que permita realizar la misma operación indirectamente.
+
+En consecuencia, `send_console_command` y todo mecanismo equivalente (consola
+de Klipper, Marlin, GRBL y TUNA-Screen) quedan en **Admin**, igual que las
+macros capaces de ejecutar G-code arbitrario (C-1, §18.7). Una posible excepción
+para macros puramente informativas queda para el futuro; no está definida.
+
+### 18.10 Migración (`PROPOSED`)
+
+ADR-006 **no se implementa de una sola vez**. Secuencia propuesta:
+
+```text
+CURRENT (matriz §18.3)
+   ↓  infraestructura de política central (tabla + función), reproduciendo
+   ↓  primero el comportamiento CURRENT: cero cambios visibles
+   ↓  tests de la matriz (CURRENT y luego TARGET, por acción y por canal)
+   ↓  migración del panel (routers por marca)
+   ↓  migración de TUNA-Screen (scope de dispositivo + refuerzo del emparejamiento)
+   ↓  migración de la IA (Action.role derivado de la política)
+   ↓  migración de plugins (convención configurar/usar)
+   ↓  eliminación de bypasses (consola, macros con G-code arbitrario, /plugins-static)
+TARGET (matriz §18.6)
+```
+
+Reglas:
+
+- Cada celda que cambie de requisito (tabla "Diferencias" de §18.6) es un cambio
+  de comportamiento: se hace en un cambio propio, con test, y se comunica.
+- Durante la migración convivirán rutas ya migradas y no migradas; la tabla de
+  política debe poder reflejar ambos estados.
+- Los tokens TUNA-Screen existentes necesitan un scope por omisión definido
+  antes de activar la restricción.
+- Las conversaciones existentes no tienen propietario: la migración debe decidir
+  cómo tratarlas (asignación o archivo), sin exponer su contenido. El borrado
+  masivo por Admin (C-4) se conserva como operación de almacenamiento.
+- La regla del último Admin (C-6) no depende de la infraestructura de política:
+  puede implementarse antes, como cambio aislado con su test, en todas las
+  operaciones de usuario (borrar, cambiar rol, degradar, auto-degradar).
 
 ---
 
@@ -1215,8 +1335,8 @@ Decisiones que corresponden al dueño de NOPAL. Todas `OPEN`.
 los registros de Bambu, Elegoo, FlashForge, Marlin, TUNA-Screen, plugins,
 configuración/conversaciones de IA y caché de bounds.
 
-**CI** (`.github/workflows/smoke-test.yml`, `CURRENT` en el árbol de trabajo,
-pendiente de commit): **CI ejecuta pytest.** Un solo job (`smoke-test`), Python 3.11:
+**CI** (`.github/workflows/smoke-test.yml`, `CURRENT`, commit `247efab`):
+**CI ejecuta pytest.** Un solo job (`smoke-test`), Python 3.11:
 
 ```text
 checkout → setup-python 3.11 → pip install -r requirements-dev.txt
@@ -1231,9 +1351,9 @@ Disparadores:
 | `push` | `main`, `dev-main` |
 | `pull_request` | `main` |
 
-Limitación conocida: el entorno local usa Python 3.13; la compatibilidad con
-3.11 se verificó solo a nivel de sintaxis. La primera ejecución en GitHub
-Actions es la confirmación.
+Verificado en GitHub Actions: ejecución #58 (`37126493980`, push a `dev-main`,
+2026-10-03) — Python 3.11.16, `collected 533 items`, **533 passed**, smoke test
+correcto, job en verde. (Localmente se usa Python 3.13.)
 
 ### 19.2 Problemas conocidos
 
@@ -1245,11 +1365,11 @@ Actions es la confirmación.
 
 | Objetivo | Motivo |
 |---|---|
-| ~~`pytest` en CI, también en la rama de desarrollo~~ | **Hecho** (pendiente de commit) |
-| ~~Test de regresión de S-1 y de subida~~ | **Hecho**: 20 tests (pendiente de commit) |
+| ~~`pytest` en CI, también en la rama de desarrollo~~ | **Hecho** (`247efab`; CI #58 verde) |
+| ~~Test de regresión de S-1 y de subida~~ | **Hecho**: 20 tests (`6fc0aec`) |
 | Fixture de aislamiento completo | Evitar escribir estado real durante tests |
-| Tests de auth y de la matriz de autorización actual (§18.3) | Red de seguridad antes de centralizar la política (§18.7) |
-| Tests de emparejamiento TUNA-Screen y de alcance de dispositivo | D-7, D3-Q5 |
+| Tests de auth y de la matriz de autorización: CURRENT (§18.3) como línea base y TARGET (§18.6) por acción y canal | Requisito de la migración de ADR-006 (§18.10) |
+| Tests de emparejamiento TUNA-Screen y de scope de dispositivo | D-7, D3-Q5, D3-Q6 |
 | Test de contrato del modelo de máquinas (§7.3) | Estabilidad del contrato |
 | Moonraker simulado por HTTP | Probar Klipper sin mocks de `requests` |
 | Tests del protocolo de streaming GRBL | Riesgo funcional alto, cobertura baja |
@@ -1294,17 +1414,17 @@ Severidad por impacto técnico o de seguridad.
 
 | Severidad | Problema | Evidencia |
 |---|---|---|
-| ~~CRITICAL~~ `FIXED` | S-1: path traversal en subida — corregido en el árbol de trabajo, pendiente de commit | `api/upload.py`, §17.2 |
-| **HIGH** | Autorización sin política central: seis mecanismos paralelos, reglas distintas por canal y consola que salta restricciones (D3-1…D3-6) | §18.2, §18.4 |
-| **HIGH** | Dispositivo TUNA-Screen sin rol ni alcance (S-9) y emparejamiento sin límite de intentos (D-7) | §17.2, §18.7 |
+| ~~CRITICAL~~ `FIXED` | S-1: path traversal en subida — corregido (`6fc0aec`) | `api/upload.py`, §17.2 |
+| **HIGH** | Autorización sin política central: seis mecanismos paralelos, reglas distintas por canal y consola que salta restricciones (D3-1…D3-6). Política objetivo decidida (ADR-006); implementación pendiente | §18.2, §18.4, §18.10 |
+| **HIGH** | Dispositivo TUNA-Screen sin rol ni alcance (S-9) y emparejamiento sin límite de intentos (D-7). Decidido: Operator + scope y emparejamiento reforzado; implementación pendiente | §17.2, §18.8 |
 | **HIGH** | Persistencia JSON no atómica en registros de máquinas, programadas, presets y configuración de IA (pérdida de configuración ante corte) | §16 |
 | **HIGH** | Agregación de máquinas triplicada (`tunascreen_service`, `ai_tools`, `dashboard_service`) | §7.1 |
 | **HIGH** | Klipper limitado a `localhost`, sin registro | `MoonrakerClient.__init__` |
-| ~~HIGH~~ `FIXED` | CI no ejecutaba tests — ahora ejecuta `pytest` (pendiente de commit) | `smoke-test.yml`, §19.1 |
+| ~~HIGH~~ `FIXED` | CI no ejecutaba tests — ahora ejecuta `pytest` (`247efab`; CI #58 verde) | `smoke-test.yml`, §19.1 |
 | MEDIUM | `/plugins-static` expone `plugins/` completo sin autenticación (D-8) | `main.py`, §17.2 |
 | MEDIUM | Archivos de la biblioteca servidos en línea desde el mismo origen, sin política de contenido: XSS almacenado potencial (S-10) | `main.py` (`/uploads`), §17.2 |
 | MEDIUM | Conversaciones de IA sin propietario (D-9) | `api/ai.py`, §17.2 |
-| MEDIUM | Se puede degradar al último admin (D-10) | `auth_service.update_user` |
+| MEDIUM | Se puede degradar al último admin (D-10). Política decidida (C-6); implementación pendiente | `auth_service.update_user` |
 | MEDIUM | Host activo de láser global (legacy) coexistiendo con multi-host; cualquier usuario lo cambia (D-11) | §10.2 |
 | MEDIUM | Frontend monolítico (~48 k líneas en 3 archivos), sin cliente de API | §12 |
 | MEDIUM | Sin schemas Pydantic; contratos implícitos | §11 |
@@ -1329,7 +1449,7 @@ sin duplicación:
 ```text
 CURRENT NOPAL
      ↓  estabilización   (S-1 ✓, CI con tests ✓, escritura atómica)
-     ↓  contratos        (modelo de máquinas, errores, política de autorización §18.7)
+     ↓  contratos        (modelo de máquinas, errores, política de autorización ADR-006)
      ↓  consolidación    (un agregador, un storage, menos lógica en routers)
 TARGET NOPAL
 ```
@@ -1356,7 +1476,7 @@ flowchart TB
 |---|---|
 | Drivers independientes por protocolo | Storage: escritura atómica común |
 | Modelo normalizado de TUNA-Screen | Contratos de API: errores, Pydantic en endpoints nuevos |
-| Sistema de plugins y su catálogo | Permisos: una política común para panel, TUNA-Screen, IA y plugins (§18.7) |
+| Sistema de plugins y su catálogo | Permisos: una política común por acción para panel, TUNA-Screen, IA y plugins (ADR-006, §18.8) |
 | Abstracción `AIProvider`, `ai_tools`/`ai_actions` separados | Agregación de máquinas: un solo origen |
 | Frontend vanilla sin build | Organización del frontend: módulos |
 | JSON como formato | Testing: CI, contratos, auth, biblioteca |
@@ -1369,20 +1489,20 @@ flowchart TB
 | Fase | Objetivo | Entregable comprobable |
 |---|---|---|
 | **0 — Audit** | Auditoría técnica, auditoría de permisos D3 y este SDD | `docs/SDD.md` revisado y aceptado — en curso |
-| **1 — Security stabilization** | ~~Corregir S-1~~ (**hecho**, sin commit); pendientes: emparejamiento TUNA-Screen (D-7), `/plugins-static` (D-8), último admin (D-10), política de entrega de `/uploads` (S-10), permisos 0600 en archivos con secretos | Test de regresión por cada riesgo cerrado |
-| **2 — Architecture contracts** | Decidir D3 (§18.9); documentar contrato de máquinas, convención de errores y matriz de autorización; tests de la matriz actual | `DEVICES.md`; matriz aprobada |
+| **1 — Security stabilization** | ~~Corregir S-1~~ (**hecho**, `6fc0aec`); pendientes: emparejamiento TUNA-Screen (D-7), `/plugins-static` (D-8), último admin (D-10), política de entrega de `/uploads` (S-10), permisos 0600 en archivos con secretos | Test de regresión por cada riesgo cerrado |
+| **2 — Architecture contracts** | ~~Decidir D3~~ (**hecho**: ADR-006 `ACCEPTED`); pendientes: documentar contrato de máquinas y convención de errores; tests de la matriz CURRENT como línea base | `DEVICES.md`; tests de la matriz |
 | **3 — Device/TUNA consolidation** | Separar el modelo de máquinas de lo específico de TUNA-Screen; `dashboard_service` y `ai_tools` consumen `list_machines()` | Tests de TUNA-Screen sin cambios + test de contrato |
 | **4 — Persistence** | Storage Service con JSON atómico; adoptarlo servicio por servicio | Tests de corrupción y concurrencia |
 | **5 — API consistency** | Error común (`detail` + `error_code`), Pydantic en endpoints nuevos, decidir D2 | Sin cambios visibles en el frontend |
-| **6 — Testing / CI** | ~~pytest en CI~~ (**hecho**, sin commit); pendientes: fixture completo; tests de auth, biblioteca, Klipper, streaming | CI rojo ante un test fallido |
+| **6 — Testing / CI** | ~~pytest en CI~~ (**hecho**, `247efab`); pendientes: fixture completo; tests de auth, biblioteca, Klipper, streaming | CI rojo ante un test fallido |
 | **7 — Frontend evolution** | Módulos ES por sección; cliente de API; retirar llamadas del core a plugins | Cada sección extraída funciona igual en todos los temas |
 | **8 — Plugin evolution** | Dependencias de plugins separadas (D6); espacio de nombres de rutas; evaluar extensión de máquinas por plugin | Instalación de un plugin no altera `requirements.txt` del core |
 | **9 — Library evolution** | Según D5: metadatos, tags, búsqueda, asociación con máquinas | `UNKNOWN` hasta decidir D5 |
 
 Observación: la parte de CI de la fase 6 ya se adelantó (pytest en CI) porque
-protege a todas las demás. La centralización de la autorización (§18.7) cabe
+protege a todas las demás. La centralización de la autorización (ADR-006, §18.8) cabe
 en la fase 3 junto con la consolidación del modelo de máquinas, porque usa el
-mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
+mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §18.10.
 
 ---
 
@@ -1399,9 +1519,9 @@ mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
 ### ADR-002 — Utilizar el modelo de TUNA-Screen como contrato normalizado de dispositivos
 
 - **Estado**: `PROPOSED` — **todavía no aceptado formalmente**.
-- **Contexto**: `tunascreen_service` ya produce un modelo común (`id`, `type`, `driver`, `capabilities`, `actions`, `status`) con caché, grace snapshots y dispatch validado; un cliente externo depende de él. Otros dos módulos duplican la agregación. La auditoría D3 mostró además que su vocabulario de acciones es el candidato natural para el vocabulario de permisos (§18.7), y que hoy `dispatch_action` no aplica ninguna autorización por principal (D3-3).
+- **Contexto**: `tunascreen_service` ya produce un modelo común (`id`, `type`, `driver`, `capabilities`, `actions`, `status`) con caché, grace snapshots y dispatch validado; un cliente externo depende de él. Otros dos módulos duplican la agregación. La auditoría D3 mostró además que su vocabulario de acciones es el candidato natural para el vocabulario de permisos (adoptado por ADR-006, §18.8), y que hoy `dispatch_action` no aplica ninguna autorización por principal (D3-3).
 - **Decisión propuesta**: promover ese modelo a contrato de arquitectura sin cambiar su forma; separarlo de la lógica específica de TUNA-Screen; hacer que dashboard e IA lo consuman; documentarlo y cubrirlo con un test de contrato; usar su vocabulario de acciones como base de la política de autorización.
-- **Consecuencias**: una sola definición de "máquina en línea"; marcas nuevas visibles para todos los consumidores; el contrato queda congelado de facto por la app Android (cambios solo aditivos o versionados). Aceptarlo **no** resuelve la autorización: esa decisión es D3 (§18.9).
+- **Consecuencias**: una sola definición de "máquina en línea"; marcas nuevas visibles para todos los consumidores; el contrato queda congelado de facto por la app Android (cambios solo aditivos o versionados). La autorización se decidió aparte (ADR-006, `ACCEPTED`), que usa el vocabulario de acciones de este modelo; aceptar ADR-002 como contrato de dispositivos sigue pendiente.
 - **Alternativas consideradas**: nueva capa `machine_registry` diseñada desde cero (versión 0.1 de este SDD) — descartada: duplicaría lo existente. Mantener tres agregadores — descartada: divergencia comprobada.
 
 ### ADR-003 — No migrar inmediatamente a SQLite
@@ -1427,6 +1547,69 @@ mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
 - **Decisión**: ninguna. Depende de D2 (consumidores externos).
 - **Alternativas a evaluar**: sin versionado (estado actual); `/api/v1` solo para recursos nuevos de uso externo; versionado general (descartable de antemano por costo: ~212 rutas).
 
+### ADR-006 — Centralización de autorización por acción
+
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). Implementación: `PROPOSED`, por fases (§18.10).
+
+- **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
+  - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
+  - **TUNA-Screen sin rol**: un dispositivo emparejado ejecuta cualquier acción declarada, incluidas temperatura, consola y potencia de láser/husillo, y el emparejamiento no limita intentos (D-7);
+  - **IA con permisos duplicados**: `ai_actions` copia a mano el rol del endpoint equivalente, lo que hereda y puede desalinear las inconsistencias;
+  - **consola capaz de saltar restricciones**: un operador con consola puede hacer por G-code (`M104`, `M140`, `M3`…) lo que una ruta específica le prohíbe;
+  - **plugins con reglas distintas**: la configuración del cotizador es de Operator; la de Spoolman, cámaras y matriz LED es de Admin; la bobina activa es Admin en el panel y libre por TUNA-Screen.
+  Además: conversaciones de IA sin propietario (D-9) y `/plugins-static` sirviendo `plugins/` completo sin autenticación (D-8).
+
+- **Decisión**: la autorización se define **por acción**, en una política única, independiente del driver y del canal, aplicada por igual al panel, TUNA-Screen, IA y plugins:
+
+  ```text
+  Principal → Authorization Policy → Action → Resource/Device → Driver → Machine
+  ```
+
+  Contenido de la política (D3-Q1…Q12, detalle en §18.6–18.7):
+  1. `set_temperature` → **Operator**, en todos los canales y drivers.
+  2. `send_console_command` y todo mecanismo equivalente → **solo Admin**; ninguna consola con menos privilegio que la acción restringida que podría emular.
+  3. Potencia manual de láser/husillo (`set_laser_power`, `set_spindle`, M3/M4 fuera de un trabajo normal) → **solo Admin**.
+  4. Configuración física (`printer.cfg`, `$` de GRBL, límites, parámetros de seguridad, firmware restart) → **solo Admin**.
+  5. TUNA-Screen → **principal propio con perfil Operator + scope** sobre máquinas/recursos; no es un rol humano.
+  6. Emparejamiento TUNA-Screen **reforzado**: un solo uso, expiración, límite de intentos, invalidación tras canje, no reutilización, token independiente del código.
+  7. Borrado: **biblioteca → Operator; SD → solo Admin**.
+  8. Conversaciones de IA **privadas por usuario**; Admin no accede al contenido ajeno por ser Admin; la administración del sistema de IA es una capacidad aparte.
+  9. Configurar plugin → **Admin**; usar plugin → **Operator**.
+  10. `/plugins-static` → **solo recursos públicos del frontend** de cada plugin.
+  11. Logs y diagnóstico → **Operator**, con la regla de que secretos, credenciales y API keys nunca se exponen por esa vía.
+  12. **Sin tercer rol humano**: solo `ADMIN` y `OPERATOR`.
+
+  Casos adicionales (C-1…C-6, §18.7):
+  - C-1: macros capaces de ejecutar G-code arbitrario → **Admin** (equivalentes a consola).
+  - C-2: `restart_klipper` → **Admin** (recarga configuración; puede interrumpir un trabajo).
+  - C-3: `assign_active_spool` → **Operator** en todos los canales (operación de trabajo, no configuración del plugin).
+  - C-4: borrado masivo del historial de conversaciones → **Admin**, como operación de almacenamiento; `ADMIN ≠ acceso automático al contenido privado`.
+  - C-5: TUNA-Screen **sin acceso a logs**.
+  - C-6: **NOPAL nunca debe quedar sin al menos un Admin** (borrar usuario, cambiar rol, degradar, auto-degradar u operación equivalente).
+
+- **Consecuencias positivas**:
+  - una sola fuente de verdad de permisos: la misma acción tiene el mismo requisito sin importar el canal o la marca;
+  - se eliminan los bypasses: la consola deja de ser una puerta lateral y TUNA-Screen deja de operar sin política;
+  - la IA deja de duplicar roles a mano: deriva sus requisitos de la política y no puede ser más permisiva que el panel;
+  - agregar una marca o un canal no exige repensar permisos: hereda la política por acción;
+  - la política es testeable como tabla (acción × principal), lo que permite verificarla en CI;
+  - el scope de dispositivo permite asignar tablets a máquinas concretas del taller.
+
+- **Consecuencias negativas / trade-offs**:
+  - **migración de endpoints existentes**: los routers por marca, `dispatch_action`, `ai_actions` y los plugins deben adaptarse uno por uno;
+  - **cambios de comportamiento** respecto del sistema actual (tabla "Diferencias" de §18.6): operadores pierden consola, configuración física y borrado en SD; ganan temperatura en Klipper e IA; los dispositivos TUNA-Screen pierden consola y potencia de láser;
+  - **necesidad de tests** de la matriz por acción y por canal antes y después de cada cambio;
+  - **necesidad de scope para TUNA-Screen**: almacenamiento, edición, y valor por omisión para los tokens ya emitidos;
+  - **necesidad de propiedad para conversaciones**: las existentes no tienen dueño y hay que decidir cómo tratarlas;
+  - **compatibilidad temporal**: durante la migración convivirán rutas migradas y no migradas;
+  - más cambios de comportamiento por los casos adicionales: los operadores pierden macros con G-code arbitrario y el reinicio de Klipper; ganan la asignación de bobina activa; los dispositivos TUNA-Screen pierden `run_macro`;
+  - la regla del último Admin exige validar cada operación de usuario contra el conjunto completo de administradores.
+
+- **Alternativas consideradas**:
+  1. **Mantener autorización por endpoint** (estado actual): descartada; produce las inconsistencias D3-1…D3-6 y no cubre TUNA-Screen ni la consola.
+  2. **Mantener permisos diferentes por driver**: descartada; la misma acción física tendría requisitos distintos según la marca, y cada driver nuevo reabriría la discusión.
+  3. **Centralizar autorización por acción**: **adoptada**. Se apoya en el vocabulario de acciones ya existente de TUNA-Screen (ver ADR-002, que sigue `PROPOSED` como contrato de dispositivos; ADR-006 solo usa su vocabulario de acciones).
+
 ---
 
 ## 25. Decisiones abiertas
@@ -1435,13 +1618,13 @@ mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
 |---|---|---|---|
 | D1 | ¿Soportar Moonraker remoto? | Registro de Klipper, ids, ADR-004 | `OPEN` |
 | D2 | ¿API para consumidores externos o solo panel + TUNA-Screen? | Versionado, API keys, ADR-005 | `OPEN` |
-| D3 | Matriz de autorización: ¿qué puede hacer cada principal? Desglosada en las 12 preguntas D3-Q1…D3-Q12 (§18.9) | Seguridad, IA (hereda roles), TUNA-Screen, plugins | `OPEN` |
+| D3 | Matriz de autorización: ¿qué puede hacer cada principal? (D3-Q1…D3-Q12) | Seguridad, IA, TUNA-Screen, plugins | **`CERRADO`** — ADR-006 `ACCEPTED`; política en §18.6–18.7; implementación pendiente (§18.10) |
 | D4 | ¿Eliminar el host activo del láser? | Endpoints `/api/laser/host`, valores por omisión, frontend | `OPEN` |
 | D5 | ¿Tags / categorías / metadatos de biblioteca? ¿Cuándo? | Fase 9, posible necesidad de SQLite | `OPEN` |
 | D6 | ¿Dependencias de plugins separadas del core? | `requirements.txt`, instalador de plugins | `OPEN` |
 | D7 | ¿Migración futura a SQLite? | Persistencia, ADR-003 | `DECISION PENDING` |
 | D8 | ¿Estrategia de frontend a largo plazo? | Fase 7 | `OPEN` (corto plazo: módulos ES, `PROPOSED`) |
-| D9 | ¿Modelo de permisos para dispositivos TUNA-Screen? (= D3-Q5 y D3-Q12) | S-9, D-7, §18.7 | `OPEN` |
+| D9 | ¿Modelo de permisos para dispositivos TUNA-Screen? | S-9, D-7 | **`CERRADO`** por D3-Q5/D3-Q6 (Operator + scope; emparejamiento reforzado). Almacenamiento del scope: `PROPOSED` |
 | D10 | ¿Cómo deja el core de llamar endpoints de plugins? | Acoplamiento, fase 7 | `OPEN` |
 | D11 | ¿Nombre y ubicación del módulo de máquinas separado de TUNA-Screen? | Fase 3 | `OPEN` |
 | D12 | ¿Qué hacer con los `.bak-visor*` y `.backup-ai-panel-*` del árbol de trabajo? | Higiene | `OPEN` (pueden contener trabajo no guardado) |
@@ -1473,11 +1656,11 @@ mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
 - Ids inconsistentes (`laser:` vs `driver: grbl`).
 
 ### Security Debt
-- S-2, S-4…S-10 y D-7…D-11 abiertos (§17.2). S-1 `FIXED` (pendiente de commit); S-3 era una afirmación incorrecta (el límite de login existe).
+- S-2, S-4…S-10 y D-7…D-11 abiertos (§17.2). S-1 `FIXED` (`6fc0aec`); S-3 era una afirmación incorrecta (el límite de login existe).
 - Inconsistencias de autorización D3-1…D3-6 (§18.4).
 
 ### Testing Debt
-- ~~CI sin pytest y solo en `main`~~ — resuelto (pendiente de commit).
+- ~~CI sin pytest y solo en `main`~~ — resuelto (`247efab`).
 - Fixture de aislamiento incompleto.
 - Sin tests de auth y de la matriz de autorización; biblioteca (salvo subida); control Klipper; streaming GRBL; emparejamiento TUNA-Screen.
 - Cobertura numérica desconocida.
@@ -1485,7 +1668,7 @@ mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
 ### Documentation Debt
 - Contradicciones C1–C13 (§5.6).
 - `CHANGELOG.md` sin entradas.
-- Sin documento del contrato de máquinas; la matriz de autorización solo existe en este SDD (§18).
+- Sin documento del contrato de máquinas; la política de autorización (ADR-006) solo existe en este SDD (§18, §24).
 - Descripción de la app y de la unidad systemd desactualizadas.
 
 ### Deployment Debt
@@ -1501,16 +1684,18 @@ mismo vocabulario de acciones; su orden exacto depende de las decisiones D3.
 
 | Cambio futuro | Impacto | Compatibilidad | Migración | Rollback |
 |---|---|---|---|---|
-| Corregir S-1 (**hecho**, sin commit) | Subida de archivos | Nombres válidos siguen funcionando; nombres con rutas se rechazan; el campo `path` de la respuesta pasa a ser relativo (ningún cliente lo lee) | Ninguna | Revertir el commit |
-| Centralizar la autorización con la matriz actual (§18.7) | Todos los canales | Sin cambio de comportamiento (la tabla reproduce §18.3) | Canal por canal, con tests de la matriz actual | Revertir el canal |
-| Dispositivo TUNA-Screen con rol/perfil (D3-Q5) | TUNA-Screen, tokens emitidos | **Puede romper** acciones hoy permitidas a dispositivos | Valor por omisión para tokens existentes (`OPEN`); comunicar antes | Volver al comportamiento sin alcance |
-| Límite de intentos en emparejamiento (D-7) | `POST /api/tunascreen/pair/confirm` | Un emparejamiento legítimo no se ve afectado | Ninguna | Revertir |
-| Restringir `/plugins-static` (D-8) | Frontend de plugins | Los recursos de `frontend/` deben seguir servidos | Verificar que ningún plugin cargue archivos fuera de `frontend/` | Revertir el montaje |
+| Corregir S-1 (**hecho**, `6fc0aec`) | Subida de archivos | Nombres válidos siguen funcionando; nombres con rutas se rechazan; el campo `path` de la respuesta pasa a ser relativo (ningún cliente lo lee) | Ninguna | Revertir el commit |
+| ADR-006, paso 1: infraestructura de política central reproduciendo la matriz CURRENT (§18.8, §18.10) | Todos los canales | Sin cambio de comportamiento (la tabla reproduce §18.3) | Canal por canal, con tests de la matriz actual | Revertir el canal |
+| ADR-006: dispositivo TUNA-Screen con perfil Operator + scope (D3-Q5) | TUNA-Screen, tokens emitidos | **Rompe** acciones hoy permitidas a dispositivos (consola, potencia láser/husillo, máquinas fuera de scope) | Scope por omisión para tokens existentes (`PROPOSED`, a definir antes de activar); comunicar antes | Volver al comportamiento sin scope |
+| ADR-006: emparejamiento TUNA-Screen reforzado (D3-Q6, D-7) | `POST /api/tunascreen/pair/confirm` | Un emparejamiento legítimo no se ve afectado | Ninguna | Revertir |
 | Storage Service (JSON atómico) | Todos los servicios con JSON | Mismo formato y ubicación | Adopción servicio por servicio, un commit cada uno | Revertir el commit del servicio afectado |
 | Separar el modelo de máquinas de TUNA-Screen | TUNA-Screen, `/api/devices/registry` | Salida idéntica (verificada por tests existentes) | Mover código sin reescribir | Revertir; no hay datos involucrados |
 | Dashboard e IA consumen `list_machines()` | Dashboard, herramientas IA | Mismos campos hacia el frontend / el modelo | Un consumidor por commit; comparar salida antes/después | Revertir el consumidor |
 | Error común (`error_code`) | Todas las respuestas de error | `detail` sigue siendo texto | Gradual por router | Revertir |
-| Cambiar celdas de la matriz (D3) | Endpoints y acciones que cambien de requisito | **Rompe** flujos de operador que pierdan permisos | Comunicar antes; aplicar en un release | Revertir dependencias de rol |
+| ADR-006: aplicar la matriz TARGET (tabla "Diferencias", §18.6) | Endpoints y acciones que cambian de requisito | **Rompe** flujos de operador que pierden permisos (consola, configuración física, borrado en SD, configurar cotizador); amplía otros (temperatura en Klipper e IA) | Un cambio por celda, con test; comunicar antes | Revertir la celda |
+| ADR-006: regla del último Admin (C-6) | Gestión de usuarios | Solo bloquea operaciones que dejarían la instalación sin Admin | Ninguna; puede implementarse antes que el resto de ADR-006 | Revertir el commit |
+| ADR-006: conversaciones privadas (D3-Q8) | IA, `ai_conversations.json` | Las conversaciones existentes no tienen propietario | Decidir asignación o archivo sin exponer contenido | Conservar el archivo original hasta validar |
+| ADR-006: `/plugins-static` solo frontend (D3-Q10) | Frontend de plugins | Los recursos de `frontend/` deben seguir servidos | Verificar que ningún plugin cargue archivos fuera de `frontend/` | Revertir el montaje |
 | Retirar host activo del láser (D4) | `/api/laser/host`, frontend | **Rompe** llamadas sin `host` | Marcar `DEPRECATED`, migrar frontend, retirar después | Restaurar endpoint |
 | Klipper remoto (D1) | Registro, ids | Ids locales preservados (requisito) | Sin registro → comportamiento actual | Borrar registro → comportamiento actual |
 | SQLite (D7) | Persistencia de la parte que se migre | JSON intacto para configuración | Importador único desde JSON | Conservar JSON hasta validar |
@@ -1562,7 +1747,8 @@ Se derivan del análisis; no son preferencias abstractas.
 | **Host activo** | Host láser global por omisión (`LEGACY`, §10.2). |
 | **operador** | Rol de usuario no administrador (nombre interno en español). |
 | **Principal** | Quien hace una petición autenticada (o no): admin, operador, anónimo, dispositivo TUNA-Screen o firmware de accesorios (§18.1). |
-| **Authorization Policy** | (`PROPOSED`) Tabla única acción → requisito, consultada por todos los canales (§18.7). Hoy no existe. |
+| **Authorization Policy** | Tabla única acción → requisito, consultada por todos los canales. Principio `ACCEPTED` (ADR-006, §18.8); implementación pendiente: hoy no existe en el código. |
+| **Scope** | Conjunto de máquinas/recursos sobre los que un dispositivo TUNA-Screen puede actuar con su perfil Operator (D3-Q5). Almacenamiento: `PROPOSED`. |
 | **Canal** | Vía por la que un principal llega a un driver: panel (routers por marca), TUNA-Screen (`dispatch_action`), IA (`ai_actions`) o consola. |
 
 ---
@@ -1575,3 +1761,5 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.2 | 2026-10-03 | Reescritura completa basada en la auditoría técnica del commit `f47aa17`: arquitectura actual documentada, modelo de TUNA-Screen como contrato propuesto, ADR-001…005, decisiones abiertas D1–D12. |
 | 0.3 | 2026-10-03 | Actualización posterior a la auditoría D3: corrección del rate limiting documentado (existe: 5 fallos/IP/300 s); corrección del conteo de endpoints (95 admin = core + plugins; 233 `require_auth`; 12 token de dispositivo; 8 sin dependencia); nueva matriz de autorización real y propuesta (§18); inconsistencias D3-1…D3-6; nuevos riesgos D-7…D-11; modelo de principales y TUNA-Screen como principal (`PROPOSED`); decisiones D3 abiertas (D3-Q1…Q12). Además: S-1 marcado `FIXED` y CI con pytest (ambos pendientes de commit); contradicciones C12–C13. |
 | 0.4 | 2026-10-03 | Cierre de documentación antes de D3: nuevo riesgo S-10 (XSS almacenado potencial en archivos servidos desde `/uploads`, independiente de S-1, `OPEN`); C12 resuelta al actualizar la descripción del CI en `CLAUDE.md`. |
+| 0.5 | 2026-10-03 | **D3 cerrado.** Decisiones del propietario formalizadas en **ADR-006 — Centralización de autorización por acción (`ACCEPTED`)**. Nueva matriz TARGET (§18.6) junto a la matriz CURRENT conservada (§18.3), tabla de diferencias, decisiones D3-Q1…Q12 (§18.7; numeración oficial del propietario: Q10 = `/plugins-static`, Q11 = logs, Q12 = tercer rol, distinta de la usada en 0.3), principio de autorización y TUNA-Screen como principal Operator + scope (§18.8), consola como acción privilegiada (§18.9), plan de migración (§18.10). D9 cerrado por D3-Q5/Q6. Sin tercer rol humano. Estados de S-1 y CI actualizados a los commits `6fc0aec`/`247efab`/`09a5630` y a la ejecución de CI #58 (533 passed, Python 3.11.16). |
+| 0.6 | 2026-10-03 | Cierre de los casos pendientes de D3, todos `ACCEPTED` (política decidida, implementación pendiente): C-1 macros con G-code arbitrario → Admin; C-2 `restart_klipper` → Admin; C-3 `assign_active_spool` → Operator en todos los canales; C-4 borrado masivo de conversaciones → Admin como operación de almacenamiento, sin acceso al contenido; C-5 TUNA-Screen sin acceso a logs; C-6 regla de seguridad "NOPAL nunca queda sin al menos un Admin". Actualizados matriz TARGET, diferencias CURRENT → TARGET, D3-Q2/Q4/Q8/Q11, ADR-006, riesgo D-10, migración y tabla "política vs. implementación". |
