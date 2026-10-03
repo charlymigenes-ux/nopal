@@ -40,6 +40,13 @@ from backend.utils import safe_section_path
 router = APIRouter()
 
 
+def _marlin_resource(device: str) -> Resource:
+    """Recurso de la Authorization Policy (ADR-006) para una impresora Marlin:
+    el id normalizado de la máquina (`marlin:<device>`, el mismo del modelo de
+    TUNA-Screen). Única construcción para todas las rutas migradas."""
+    return Resource(ResourceKind.PRINTER, f"marlin:{device}")
+
+
 @router.get("/api/marlin-printers/profiles")
 async def marlin_printers_profiles_endpoint(user: dict = Depends(require_auth)):
     """Catálogo de perfiles de impresora conocidos (ver printer_profiles.py)
@@ -236,10 +243,8 @@ async def marlin_printers_temperature_target_endpoint(
     target: float = Form(...),
     user: dict = Depends(require_auth),
 ):
-    # Primera ruta migrada a la Authorization Policy (ADR-006). El recurso usa
-    # el id normalizado de la máquina (`marlin:<device>`, el mismo del modelo
-    # de TUNA-Screen).
-    ensure_authorized(user, Action.SET_TEMPERATURE, Resource(ResourceKind.PRINTER, f"marlin:{device}"))
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.SET_TEMPERATURE, _marlin_resource(device))
     if not set_heater_target(device, heater, target):
         raise HTTPException(status_code=502, detail="No se pudo actualizar la temperatura objetivo")
     return {"success": True}
@@ -353,6 +358,7 @@ async def marlin_printers_active_jobs_endpoint(user: dict = Depends(require_auth
 
 @router.post("/api/marlin-printers/print/pause")
 async def marlin_printers_print_pause_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+    ensure_authorized(user, Action.PAUSE, _marlin_resource(device))
     if not await pause_job(device):
         raise HTTPException(status_code=409, detail="No hay una impresión en curso para pausar")
     return {"success": True}
@@ -360,6 +366,7 @@ async def marlin_printers_print_pause_endpoint(device: str = Form(...), user: di
 
 @router.post("/api/marlin-printers/print/resume")
 async def marlin_printers_print_resume_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+    ensure_authorized(user, Action.RESUME, _marlin_resource(device))
     if not await resume_job(device):
         raise HTTPException(status_code=409, detail="No hay una impresión pausada para reanudar")
     return {"success": True}
@@ -367,6 +374,7 @@ async def marlin_printers_print_resume_endpoint(device: str = Form(...), user: d
 
 @router.post("/api/marlin-printers/print/cancel")
 async def marlin_printers_print_cancel_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+    ensure_authorized(user, Action.CANCEL, _marlin_resource(device))
     if not await cancel_job(device):
         raise HTTPException(status_code=409, detail="No hay una impresión en curso para cancelar")
     return {"success": True}
