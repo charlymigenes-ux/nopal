@@ -27,7 +27,7 @@ jobs:
       # simulados y conftest.py redirige los registros JSON a un tmp. Un test
       # fallido sale con código distinto de 0 y detiene el job aquí.
       - name: Run tests
-        run: pytest
+        run: pytest -rf
 
       - name: Start NOPAL
         run: |
