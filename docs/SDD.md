@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.12 |
+| Versión del SDD | 0.13 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -1182,7 +1182,7 @@ está implementado todavía:
 | Scope de TUNA-Screen | ✅ (Operator + scope) | ⏳ almacenamiento y edición `PROPOSED` |
 | Emparejamiento reforzado | ✅ (requisitos) | ⏳ forma exacta `PROPOSED` |
 | Regla del último Admin (C-6) | ✅ | ✅ **`IMPLEMENTED`** (`033b8f3`): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado. Archivos: `backend/services/auth_service.py`, `backend/services/config_backup_service.py`, `backend/tests/test_last_admin.py` (20 tests) |
-| Authorization Policy (infraestructura) | ✅ | ✅ **`IMPLEMENTED`** — `backend/services/authorization_policy.py` (matriz TARGET, 42 acciones, `authorize()`, fail-closed, scope validado por `kind:id`, `POLICY` inmutable); **enforcement: `STARTED`** — rutas migradas: Marlin `set_temperature`, `pause`, `resume`, `cancel`, `start_job`; el resto sigue con los mecanismos CURRENT |
+| Authorization Policy (infraestructura) | ✅ | ✅ **`IMPLEMENTED`** — `backend/services/authorization_policy.py` (matriz TARGET, 42 acciones, `authorize()`, fail-closed, scope validado por `kind:id`, `POLICY` inmutable); **enforcement: `STARTED`** — rutas migradas: Marlin `set_temperature`, `pause`, `resume`, `cancel`, `start_job`, `home`; el resto sigue con los mecanismos CURRENT |
 
 ### 18.8 Arquitectura de autorización (`ACCEPTED` como principio; implementación `PROPOSED`)
 
@@ -1236,7 +1236,7 @@ y se evoluciona hacia:
                          Driver
 ```
 
-**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 5 rutas migradas, todas de Marlin: `set_temperature`, `pause`, `resume`, `cancel`, `start_job` (§18.8).
+**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 6 rutas migradas, todas de Marlin: `set_temperature`, `pause`, `resume`, `cancel`, `start_job`, `home` (§18.8).
 
 Infraestructura implementada (`backend/services/authorization_policy.py`):
 `Principal` (anónimo, usuario admin/operador, dispositivo TUNA-Screen con perfil
@@ -1275,6 +1275,8 @@ Rutas migradas (en todas, CURRENT = TARGET: sin cambio visible):
 | `cancel` | `POST /api/marlin-printers/print/cancel` | ✅ `IMPLEMENTED` |
 | `start_job` | `POST /api/marlin-printers/print/start` (desde la biblioteca; se autoriza antes de resolver o leer el archivo) | ✅ `IMPLEMENTED` |
 | `start_job` — variantes de SD (`sd/print/start`, `sd/upload-and-print`), cola y programadas | — | ⏳ `NOT STARTED` |
+| `home` | `POST /api/marlin-printers/home` | ✅ `IMPLEMENTED` |
+| `move` | `POST /api/marlin-printers/jog` | ⏳ `NOT STARTED` |
 | Otras acciones y canales (Klipper, TUNA-Screen, IA, plugins, resto de Marlin) | — | ⏳ `NOT STARTED` |
 
 Lineamientos para la migración del enforcement (`PROPOSED`; hasta ahora aplicados solo en la ruta migrada):
@@ -1325,8 +1327,8 @@ CURRENT (matriz §18.3)
    ↓  codifica la matriz TARGET y no está conectada; CURRENT se mantiene porque
    ↓  los mecanismos actuales siguen aplicándose: cero cambios visibles
    ↓  tests de la matriz (CURRENT y luego TARGET, por acción y por canal)
-   ↓  migración del panel (routers por marca) — ⏳ EN CURSO: 5 rutas de Marlin
-   ↓    (set_temperature, pause, resume, cancel, start_job; CURRENT = TARGET, sin cambio visible)
+   ↓  migración del panel (routers por marca) — ⏳ EN CURSO: 6 rutas de Marlin
+   ↓    (set_temperature, pause, resume, cancel, start_job, home; CURRENT = TARGET, sin cambio visible)
    ↓  migración de TUNA-Screen (scope de dispositivo + refuerzo del emparejamiento)
    ↓  migración de la IA (Action.role derivado de la política)
    ↓  migración de plugins (convención configurar/usar)
@@ -1355,7 +1357,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **851 tests, 0 fallos** (~59 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job`, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **859 tests, 0 fallos** (~59 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home`, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1381,6 +1383,7 @@ Reglas:
 | Enforcement Marlin `set_temperature` (compatibilidad, política antes del servicio, DENY sin ejecución) | 8 |
 | Enforcement Marlin `pause` / `resume` / `cancel` (ídem, por operación) | 24 |
 | Enforcement Marlin `start_job` (ídem; con DENY tampoco se resuelve ni se lee el archivo) | 9 |
+| Enforcement Marlin `home` (ídem) | 8 |
 
 **Fixtures**: `isolated_printer_registries` (autouse) redirige a `tmp_path`
 los registros de Bambu, Elegoo, FlashForge, Marlin, TUNA-Screen, plugins,
@@ -1411,6 +1414,7 @@ correcto, job en verde. (Localmente se usa Python 3.13.)
 - El fixture no aísla `laser_service.REGISTRY_PATH`/`HISTORY_PATH`, `auth_users.json`, `scheduled_prints.json`, `temperature_presets.json` (C2).
 - Sin tests de: autenticación y matriz de roles; operaciones de biblioteca distintas de la subida (navegar, mover, renombrar, borrar); control de Klipper (pausa, cola, programadas); streaming GRBL; frontend (más allá de cadenas/i18n).
 - `laser_service` (1956 líneas) tiene 12 tests.
+- Test intermitente sin identificar: el 2026-10-03 una corrida local de la suite completa dio `1 failed, 858 passed` y no se capturó qué test falló; 8 corridas posteriores dieron 859 passed. El orden de los tests es determinista, así que apunta a un test sensible al tiempo o a hilos. `UNKNOWN`: identificarlo con `pytest -rf` si vuelve a ocurrir (también en CI).
 - ~~Fixtures de `conftest.py` con `role: "operator"` y clave `id`~~ — **resuelto** (`614d320`): `ADMIN_USER` y `OPERATOR_USER` usan `user_id` y los roles reales (`admin`, `operador`); los tests de enforcement de `pause`/`resume`/`cancel` los usan.
 
 ### 19.3 Target coverage (`PROPOSED`)
@@ -1601,7 +1605,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 
 ### ADR-006 — Centralización de autorización por acción
 
-- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 5 rutas migradas, todas de Marlin: `set_temperature`, `pause`, `resume`, `cancel`, `start_job` (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 6 rutas migradas, todas de Marlin: `set_temperature`, `pause`, `resume`, `cancel`, `start_job`, `home` (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
 
 - **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
   - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
@@ -1822,3 +1826,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.10 | 2026-10-03 | **Primer enforcement de ADR-006**: `POST /api/marlin-printers/temperature-target` consulta la Authorization Policy (`Action.SET_TEMPERATURE`, recurso `printer:marlin:<device>`) antes de ejecutar `set_heater_target`, mediante `principal_for_user()` y `ensure_authorized()` en `backend/auth_deps.py`. CURRENT = TARGET: sin cambio visible (anónimo 401, operador y admin permitidos). Estado: ENFORCEMENT MIGRATION `STARTED` (1 ruta). Suite: 818 tests, 0 fallos (8 nuevos). Registrado el problema de los fixtures `OPERATOR_USER`/`ADMIN_USER` de `conftest.py`. |
 | 0.11 | 2026-10-03 | **Segundo enforcement de ADR-006**: Marlin `pause`, `resume` y `cancel` (`POST /api/marlin-printers/print/{pause,resume,cancel}`) consultan la Authorization Policy con la acción canónica antes de ejecutar el servicio. CURRENT = TARGET: sin cambio visible. Recurso de Marlin centralizado en `_marlin_resource()`. Rutas migradas: 4 (todas de Marlin); resto `NOT STARTED`. Suite: 842 tests, 0 fallos (24 nuevos). Problema de los fixtures de `conftest.py` marcado como resuelto (`614d320`). |
 | 0.12 | 2026-10-03 | **Tercer enforcement de ADR-006**: Marlin `start_job` (`POST /api/marlin-printers/print/start`) consulta la Authorization Policy antes de resolver o leer el archivo y de llamar a `start_print`. CURRENT = TARGET: sin cambio visible. Variantes de SD, cola y programadas: `NOT STARTED`. Rutas migradas: 5 (todas de Marlin). Suite: 851 tests, 0 fallos (9 nuevos). |
+| 0.13 | 2026-10-03 | **Cuarto enforcement de ADR-006**: Marlin `home` (`POST /api/marlin-printers/home`) consulta la Authorization Policy antes de llamar al servicio. CURRENT = TARGET: sin cambio visible. `move` (`/jog`): `NOT STARTED`. Rutas migradas: 6 (todas de Marlin). Suite: 859 tests (8 nuevos). Registrado un test intermitente observado una vez y no identificado. |

@@ -226,6 +226,8 @@ async def marlin_printers_home_endpoint(
     axes: Optional[str] = Form(None),
     user: dict = Depends(require_auth),
 ):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.HOME, _marlin_resource(device))
     if not await home(device, axes):
         raise HTTPException(status_code=502, detail="No se pudo iniciar el home")
     return {"success": True}
