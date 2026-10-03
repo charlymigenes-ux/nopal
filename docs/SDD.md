@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.6 |
+| Versión del SDD | 0.7 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -27,7 +27,7 @@
 
 ### Fuentes, en orden de prioridad
 
-1. Código del repositorio. 2. Tests (`backend/tests/`, 533 tests). 3. Configuración real
+1. Código del repositorio. 2. Tests (`backend/tests/`, 553 tests). 3. Configuración real
 (`requirements*.txt`, `install.sh`, `.github/workflows/`, `.gitignore`).
 4. Documentación (`README.md`, `CLAUDE.md`, `AGENTS.md`, `docs/*.md`).
 5. Auditoría técnica del 2026-10-03 y auditoría de permisos D3 (misma fecha).
@@ -889,7 +889,7 @@ decide en este documento.
 | **D-7** | **Emparejamiento TUNA-Screen**: `POST /api/tunascreen/pair/confirm` es anónimo por diseño y acepta un código de **6 dígitos** con vigencia de **5 minutos**, **sin límite de intentos**; un código válido entrega un **token permanente** con el que el dispositivo controla máquinas (S-9). Además, `GET /api/tunascreen/info` (anónimo) indica si hay un emparejamiento abierto. | HIGH | `OPEN` — refuerzo **decidido** (D3-Q6: un solo uso, expiración, límite de intentos, invalidación tras canje, no reutilización, token independiente); forma de implementación `PROPOSED` |
 | **D-8** | **`/plugins-static`**: monta el directorio `plugins/` completo sin autenticación. Se confirmó acceso anónimo al código fuente del backend de los plugins y a su carpeta `.git`. Hoy los repositorios de plugins son públicos, por lo que la exposición actual es baja; el riesgo es que cualquier archivo que un plugin o una persona coloque dentro de `plugins/` (datos, credenciales de firmware) quedaría publicado. | MEDIUM | `OPEN` — decidido: solo frontend público (D3-Q10); pendiente de implementar |
 | **D-9** | **Conversaciones de IA sin propietario**: cualquier usuario autenticado puede listar, leer, renombrar o borrar conversaciones de otros usuarios (`backend/api/ai.py:261-288`). Solo borrar *todas* exige admin. | MEDIUM | `OPEN` — decidido: conversaciones privadas por usuario (D3-Q8); requiere propietario; pendiente de implementar |
-| **D-10** | **Último administrador**: `delete_user` impide borrar al último admin, pero `update_user` permite **degradar** su rol a `operador` (`backend/services/auth_service.py:111-128`), lo que dejaría la instalación sin administrador. | MEDIUM | `OPEN` — política decidida (C-6: NOPAL nunca queda sin al menos un Admin, en borrar, cambiar rol, degradar y auto-degradar); pendiente de implementar |
+| **D-10** | **Último administrador**: `delete_user` impide borrar al último admin, pero `update_user` permite **degradar** su rol a `operador` (`backend/services/auth_service.py:111-128`), lo que dejaría la instalación sin administrador. La importación de un respaldo del grupo `users` podía además reemplazar `auth_users.json` por una lista sin ningún admin. | MEDIUM | **`FIXED`** por C-6 (`IMPLEMENTED`, sin commit): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado. Tests: `backend/tests/test_last_admin.py` |
 | **D-11** | **Host láser activo global**: `POST /api/laser/host` (cualquier usuario autenticado) cambia el host por omisión compartido por todas las sesiones (§10.2). | MEDIUM | `OPEN` (ligado a la decisión D4 de §25) |
 
 > **Nota de publicación**: el repositorio es público. Este documento ya está
@@ -941,7 +941,7 @@ Coexisten **seis mecanismos paralelos**:
 | Autorización propia de cada plugin | `plugins/<id>/backend/router.py` | Cada plugin elige `require_auth` o `require_role("admin")` |
 
 Complementos: límite de login (5 fallos/IP/300 s, en memoria), protección del
-último admin solo al borrar (D-10), y ocultamiento de botones en `app.js`
+último admin en borrar, cambiar rol e importar respaldos (C-6, implementado; ver D-10), y ocultamiento de botones en `app.js`
 (no es control de seguridad; replica lo que ya protege el backend).
 
 **No existe un sistema de permisos por acción centralizado.** Cada ruta,
@@ -974,6 +974,7 @@ Fuera de routers: `/` (pública), `/uploads/*` y `/view/*` (sesión), montajes
 | Sistema | Actualizar NOPAL, servicios systemd, reiniciar/apagar host, respaldo/importación | ❌ | ❌ | ✅ | — |
 | Usuarios | Login / logout; primer admin (solo sin usuarios) | ✅ | ✅ | ✅ | — |
 | Usuarios | Crear, listar, borrar usuarios; cambiar rol o contraseña | ❌ | ❌ | ✅ | — |
+| Usuarios | Borrar, degradar o auto-degradar al último admin; importar un respaldo de usuarios sin admin | ❌ | ❌ | ❌ (C-6, implementado sin commit) | — |
 | Usuarios | Cambiar su propia contraseña | ❌ | ❌ (no existe) | vía update | — |
 | Máquinas | Alta / baja (Bambu, Elegoo, FlashForge, Marlin, láser) | ❌ | ❌ | ✅ | — |
 | Máquinas | Descubrir, probar conexión | ❌ | ✅ | ✅ | — |
@@ -1130,7 +1131,7 @@ la migración tendrá que aplicar:
 | Bobina activa (panel, plugin Spoolman) | Admin | **Operator** |
 | Bobina activa vía IA (`assign_spool`) | Admin | **Operator** |
 | Bobina activa vía TUNA-Screen (`materials/active`) | cualquier dispositivo | Operator + scope |
-| Degradar al último Admin | permitido | **prohibido** |
+| Degradar al último Admin / importar respaldo de usuarios sin admin | permitido | **prohibido** — ✅ ya aplicado (C-6 `IMPLEMENTED`, sin commit) |
 | Conversaciones IA ajenas | cualquier usuario | **❌** (privadas) |
 | `/plugins-static` | todo `plugins/`, anónimo | solo frontend público |
 | Dispositivo TUNA-Screen | sin rol ni alcance | Operator + scope |
@@ -1164,7 +1165,7 @@ política inicial no nombraba; decididos por el propietario como parte de D3:
 | C-3 | Bobina activa de Spoolman | `assign_active_spool` → **Operator** (TUNA-Screen: según scope), en todos los canales (panel, IA, TUNA-Screen) | Asignar o cambiar la bobina durante una operación es trabajo diario, no configuración del plugin; aplica la regla "usar plugin → Operator" (D3-Q9). Configurar la conexión con Spoolman sigue siendo Admin |
 | C-4 | Borrado masivo del historial de conversaciones (`DELETE /api/ai/conversations`) | **Admin** puede ejecutarlo como operación administrativa de almacenamiento | Gestionar el almacenamiento no implica leerlo: `ADMIN ≠ acceso automático al contenido privado`. Las conversaciones siguen siendo de cada usuario (D3-Q8); el Admin no obtiene permiso para leer, renombrar ni borrar selectivamente conversaciones ajenas |
 | C-5 | Logs para TUNA-Screen | **Sin acceso**; no se crea excepción | No hay un caso de uso del dispositivo que lo requiera y los logs exponen información interna; se reduce la superficie del principal de dispositivo |
-| C-6 | Último administrador | **Regla de seguridad: NOPAL nunca debe quedar sin al menos un Admin.** Aplica a eliminar usuario, cambiar rol, degradar un administrador, auto-degradación y cualquier operación equivalente | Hoy `delete_user` protege al último Admin pero `update_user` permite degradarlo (D-10): una instalación sin Admin no puede gestionar usuarios, plugins, sistema ni recuperarse sin editar archivos a mano |
+| C-6 | Último administrador | **Regla de seguridad: NOPAL nunca debe quedar sin al menos un Admin.** Aplica a eliminar usuario, cambiar rol, degradar un administrador, auto-degradación y cualquier operación equivalente | Antes de C-6, `delete_user` protegía al último Admin pero `update_user` permitía degradarlo y la importación de respaldos podía dejar cero admins (D-10): una instalación sin Admin no puede gestionar usuarios, plugins, sistema ni recuperarse sin editar archivos a mano. **`IMPLEMENTED`** (sin commit) |
 
 Sigue fuera de D3 y `OPEN`: el **host láser global** (`POST /api/laser/host`),
 que depende de D4 (retirar el mecanismo o asignarle una acción).
@@ -1175,11 +1176,12 @@ está implementado todavía:
 | Elemento | POLICY DECIDED | IMPLEMENTATION NOT YET DONE |
 |---|---|---|
 | D3-Q1…Q12 | ✅ `ACCEPTED` (ADR-006) | ⏳ migración §18.10 |
-| C-1…C-6 | ✅ `ACCEPTED` (ADR-006) | ⏳ migración §18.10 |
+| C-1…C-5 | ✅ `ACCEPTED` (ADR-006) | ⏳ migración §18.10 |
+| C-6 | ✅ `ACCEPTED` (ADR-006) | ✅ **`IMPLEMENTED`** (sin commit) |
 | Matriz TARGET (§18.6) | ✅ | ⏳ el comportamiento real sigue siendo la matriz CURRENT (§18.3) |
 | Scope de TUNA-Screen | ✅ (Operator + scope) | ⏳ almacenamiento y edición `PROPOSED` |
 | Emparejamiento reforzado | ✅ (requisitos) | ⏳ forma exacta `PROPOSED` |
-| Regla del último Admin | ✅ | ⏳ `update_user` aún permite degradar al último Admin |
+| Regla del último Admin (C-6) | ✅ | ✅ **`IMPLEMENTED`** (sin commit): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado. Archivos: `backend/services/auth_service.py`, `backend/services/config_backup_service.py`, `backend/tests/test_last_admin.py` (20 tests) |
 
 ### 18.8 Arquitectura de autorización (`ACCEPTED` como principio; implementación `PROPOSED`)
 
@@ -1299,9 +1301,9 @@ Reglas:
 - Las conversaciones existentes no tienen propietario: la migración debe decidir
   cómo tratarlas (asignación o archivo), sin exponer su contenido. El borrado
   masivo por Admin (C-4) se conserva como operación de almacenamiento.
-- La regla del último Admin (C-6) no depende de la infraestructura de política:
-  puede implementarse antes, como cambio aislado con su test, en todas las
-  operaciones de usuario (borrar, cambiar rol, degradar, auto-degradar).
+- La regla del último Admin (C-6) no dependía de la infraestructura de política
+  y se implementó antes, como cambio aislado con sus tests (**`IMPLEMENTED`**,
+  sin commit): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado.
 
 ---
 
@@ -1309,7 +1311,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **533 tests**, todos pasan (~37 s), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1.)
+- **553 tests, 0 fallos** (~53 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6; los de C-6 están sin commit, por lo que el CI #58 ejecutó 533.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1330,6 +1332,7 @@ Reglas:
 | Dashboard | 7 |
 | Otros (diagnóstico, presets, integridad de registros, help center, devices) | ~56 |
 | Subida de biblioteca (regresión S-1) | 20 |
+| Último admin (C-6): servicio, API e importación de respaldos | 20 |
 
 **Fixtures**: `isolated_printer_registries` (autouse) redirige a `tmp_path`
 los registros de Bambu, Elegoo, FlashForge, Marlin, TUNA-Screen, plugins,
@@ -1424,7 +1427,7 @@ Severidad por impacto técnico o de seguridad.
 | MEDIUM | `/plugins-static` expone `plugins/` completo sin autenticación (D-8) | `main.py`, §17.2 |
 | MEDIUM | Archivos de la biblioteca servidos en línea desde el mismo origen, sin política de contenido: XSS almacenado potencial (S-10) | `main.py` (`/uploads`), §17.2 |
 | MEDIUM | Conversaciones de IA sin propietario (D-9) | `api/ai.py`, §17.2 |
-| MEDIUM | Se puede degradar al último admin (D-10). Política decidida (C-6); implementación pendiente | `auth_service.update_user` |
+| ~~MEDIUM~~ `FIXED` | Se podía degradar al último admin o importar un respaldo sin admins (D-10) — resuelto por C-6 (`IMPLEMENTED`, sin commit) | `auth_service`, `config_backup_service` |
 | MEDIUM | Host activo de láser global (legacy) coexistiendo con multi-host; cualquier usuario lo cambia (D-11) | §10.2 |
 | MEDIUM | Frontend monolítico (~48 k líneas en 3 archivos), sin cliente de API | §12 |
 | MEDIUM | Sin schemas Pydantic; contratos implícitos | §11 |
@@ -1489,7 +1492,7 @@ flowchart TB
 | Fase | Objetivo | Entregable comprobable |
 |---|---|---|
 | **0 — Audit** | Auditoría técnica, auditoría de permisos D3 y este SDD | `docs/SDD.md` revisado y aceptado — en curso |
-| **1 — Security stabilization** | ~~Corregir S-1~~ (**hecho**, `6fc0aec`); pendientes: emparejamiento TUNA-Screen (D-7), `/plugins-static` (D-8), último admin (D-10), política de entrega de `/uploads` (S-10), permisos 0600 en archivos con secretos | Test de regresión por cada riesgo cerrado |
+| **1 — Security stabilization** | ~~Corregir S-1~~ (**hecho**, `6fc0aec`); pendientes: emparejamiento TUNA-Screen (D-7), `/plugins-static` (D-8), ~~último admin (D-10)~~ (**hecho**, C-6, sin commit), política de entrega de `/uploads` (S-10), permisos 0600 en archivos con secretos | Test de regresión por cada riesgo cerrado |
 | **2 — Architecture contracts** | ~~Decidir D3~~ (**hecho**: ADR-006 `ACCEPTED`); pendientes: documentar contrato de máquinas y convención de errores; tests de la matriz CURRENT como línea base | `DEVICES.md`; tests de la matriz |
 | **3 — Device/TUNA consolidation** | Separar el modelo de máquinas de lo específico de TUNA-Screen; `dashboard_service` y `ai_tools` consumen `list_machines()` | Tests de TUNA-Screen sin cambios + test de contrato |
 | **4 — Persistence** | Storage Service con JSON atómico; adoptarlo servicio por servicio | Tests de corrupción y concurrencia |
@@ -1549,7 +1552,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 
 ### ADR-006 — Centralización de autorización por acción
 
-- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). Implementación: `PROPOSED`, por fases (§18.10).
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). Implementación: `PROPOSED`, por fases (§18.10). **C-6: `IMPLEMENTED`** (sin commit); C-1…C-5 y D3-Q1…Q12: pendientes.
 
 - **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
   - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
@@ -1585,7 +1588,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
   - C-3: `assign_active_spool` → **Operator** en todos los canales (operación de trabajo, no configuración del plugin).
   - C-4: borrado masivo del historial de conversaciones → **Admin**, como operación de almacenamiento; `ADMIN ≠ acceso automático al contenido privado`.
   - C-5: TUNA-Screen **sin acceso a logs**.
-  - C-6: **NOPAL nunca debe quedar sin al menos un Admin** (borrar usuario, cambiar rol, degradar, auto-degradar u operación equivalente).
+  - C-6: **NOPAL nunca debe quedar sin al menos un Admin** (borrar usuario, cambiar rol, degradar, auto-degradar u operación equivalente). **`IMPLEMENTED`** (sin commit): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado; tests en `backend/tests/test_last_admin.py`.
 
 - **Consecuencias positivas**:
   - una sola fuente de verdad de permisos: la misma acción tiene el mismo requisito sin importar el canal o la marca;
@@ -1603,7 +1606,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
   - **necesidad de propiedad para conversaciones**: las existentes no tienen dueño y hay que decidir cómo tratarlas;
   - **compatibilidad temporal**: durante la migración convivirán rutas migradas y no migradas;
   - más cambios de comportamiento por los casos adicionales: los operadores pierden macros con G-code arbitrario y el reinicio de Klipper; ganan la asignación de bobina activa; los dispositivos TUNA-Screen pierden `run_macro`;
-  - la regla del último Admin exige validar cada operación de usuario contra el conjunto completo de administradores.
+  - la regla del último Admin exige validar cada operación de usuario contra el conjunto completo de administradores (ya implementado, C-6); como efecto visible, el mensaje de error al borrar al último admin cambió a "NOPAL debe conservar al menos un administrador".
 
 - **Alternativas consideradas**:
   1. **Mantener autorización por endpoint** (estado actual): descartada; produce las inconsistencias D3-1…D3-6 y no cubre TUNA-Screen ni la consola.
@@ -1693,7 +1696,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 | Dashboard e IA consumen `list_machines()` | Dashboard, herramientas IA | Mismos campos hacia el frontend / el modelo | Un consumidor por commit; comparar salida antes/después | Revertir el consumidor |
 | Error común (`error_code`) | Todas las respuestas de error | `detail` sigue siendo texto | Gradual por router | Revertir |
 | ADR-006: aplicar la matriz TARGET (tabla "Diferencias", §18.6) | Endpoints y acciones que cambian de requisito | **Rompe** flujos de operador que pierden permisos (consola, configuración física, borrado en SD, configurar cotizador); amplía otros (temperatura en Klipper e IA) | Un cambio por celda, con test; comunicar antes | Revertir la celda |
-| ADR-006: regla del último Admin (C-6) | Gestión de usuarios | Solo bloquea operaciones que dejarían la instalación sin Admin | Ninguna; puede implementarse antes que el resto de ADR-006 | Revertir el commit |
+| ADR-006: regla del último Admin (C-6) — **`IMPLEMENTED`** (sin commit) | Gestión de usuarios e importación de respaldos | Solo bloquea operaciones que dejarían la instalación sin Admin; respaldos con admin se importan igual | Ninguna | Revertir el commit |
 | ADR-006: conversaciones privadas (D3-Q8) | IA, `ai_conversations.json` | Las conversaciones existentes no tienen propietario | Decidir asignación o archivo sin exponer contenido | Conservar el archivo original hasta validar |
 | ADR-006: `/plugins-static` solo frontend (D3-Q10) | Frontend de plugins | Los recursos de `frontend/` deben seguir servidos | Verificar que ningún plugin cargue archivos fuera de `frontend/` | Revertir el montaje |
 | Retirar host activo del láser (D4) | `/api/laser/host`, frontend | **Rompe** llamadas sin `host` | Marcar `DEPRECATED`, migrar frontend, retirar después | Restaurar endpoint |
@@ -1711,7 +1714,8 @@ previa** y sin migrar antes a sus consumidores (`app.js`, TUNA-Screen, plugins).
 
 Se derivan del análisis; no son preferencias abstractas.
 
-- **Reescribir NOPAL desde cero** — la arquitectura actual funciona y tiene 533 tests.- **Reemplazar o unificar los drivers** — sus transportes son incompatibles (ADR-001).
+- **Reescribir NOPAL desde cero** — la arquitectura actual funciona y tiene 553 tests.
+- **Reemplazar o unificar los drivers** — sus transportes son incompatibles (ADR-001).
 - **Crear una jerarquía `Device → Printer/Laser/CNC`** — el modelo de capacidades existente lo resuelve mejor (ADR-002).
 - **Migrar inmediatamente a SQLite** — el problema comprobado es atomicidad, no el modelo de datos (ADR-003).
 - **Migrar el frontend a React/Vue/otro framework** — el problema es modularidad, resoluble sin build step.
@@ -1763,3 +1767,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.4 | 2026-10-03 | Cierre de documentación antes de D3: nuevo riesgo S-10 (XSS almacenado potencial en archivos servidos desde `/uploads`, independiente de S-1, `OPEN`); C12 resuelta al actualizar la descripción del CI en `CLAUDE.md`. |
 | 0.5 | 2026-10-03 | **D3 cerrado.** Decisiones del propietario formalizadas en **ADR-006 — Centralización de autorización por acción (`ACCEPTED`)**. Nueva matriz TARGET (§18.6) junto a la matriz CURRENT conservada (§18.3), tabla de diferencias, decisiones D3-Q1…Q12 (§18.7; numeración oficial del propietario: Q10 = `/plugins-static`, Q11 = logs, Q12 = tercer rol, distinta de la usada en 0.3), principio de autorización y TUNA-Screen como principal Operator + scope (§18.8), consola como acción privilegiada (§18.9), plan de migración (§18.10). D9 cerrado por D3-Q5/Q6. Sin tercer rol humano. Estados de S-1 y CI actualizados a los commits `6fc0aec`/`247efab`/`09a5630` y a la ejecución de CI #58 (533 passed, Python 3.11.16). |
 | 0.6 | 2026-10-03 | Cierre de los casos pendientes de D3, todos `ACCEPTED` (política decidida, implementación pendiente): C-1 macros con G-code arbitrario → Admin; C-2 `restart_klipper` → Admin; C-3 `assign_active_spool` → Operator en todos los canales; C-4 borrado masivo de conversaciones → Admin como operación de almacenamiento, sin acceso al contenido; C-5 TUNA-Screen sin acceso a logs; C-6 regla de seguridad "NOPAL nunca queda sin al menos un Admin". Actualizados matriz TARGET, diferencias CURRENT → TARGET, D3-Q2/Q4/Q8/Q11, ADR-006, riesgo D-10, migración y tabla "política vs. implementación". |
+| 0.7 | 2026-10-03 | **C-6 implementado** (política decidida → `IMPLEMENTED`, sin commit): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos, con la comprobación antes de modificar o escribir el estado. Archivos: `backend/services/auth_service.py`, `backend/services/config_backup_service.py`, `backend/tests/test_last_admin.py` (20 tests). Suite: 553 tests, 0 fallos. Riesgo D-10 → `FIXED`. Actualizados matriz CURRENT, diferencias CURRENT → TARGET, tabla política vs. implementación, §18.10, ADR-006, §21, §23, §27. C-1…C-5 siguen sin implementar. Corrección de formato en NO-GOALS (dos viñetas unidas). |
