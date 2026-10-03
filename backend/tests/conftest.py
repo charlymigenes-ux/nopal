@@ -13,8 +13,10 @@ import backend.services.tunascreen_service as tunascreen_service
 from backend.auth_deps import require_auth
 from backend.main import app
 
-ADMIN_USER = {"id": "test-admin", "username": "test-admin", "role": "admin"}
-OPERATOR_USER = {"id": "test-operator", "username": "test-operator", "role": "operator"}
+# Misma forma que devuelve `require_auth` en producción (backend/auth_deps.py):
+# `user_id` y los roles internos de auth_service.ROLES ("admin", "operador").
+ADMIN_USER = {"user_id": "test-admin", "username": "test-admin", "role": "admin"}
+OPERATOR_USER = {"user_id": "test-operator", "username": "test-operator", "role": "operador"}
 
 
 @pytest.fixture(scope="session")
