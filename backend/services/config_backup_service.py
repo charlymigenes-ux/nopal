@@ -33,6 +33,8 @@ import shutil
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from backend.services import auth_service
+
 logger = logging.getLogger(__name__)
 
 FORMAT_VERSION = 1
@@ -283,6 +285,16 @@ def import_config(raw: bytes, groups: List[str], passphrase: str = "") -> Dict[s
         if spec is None:
             raise BackupError(f"Grupo desconocido: {group_id}")
         permitidos.update(spec["files"])
+
+    # C-6 (ADR-006): restaurar usuarios no puede dejar a NOPAL sin ningún
+    # admin. Se valida antes de escribir nada, para no dejar una importación
+    # a medias.
+    usuarios = archivos.get("auth_users.json")
+    if "auth_users.json" in permitidos and usuarios is not None:
+        if not isinstance(usuarios, list) or not auth_service.has_admin(usuarios):
+            raise BackupError(
+                f"El respaldo de usuarios no contiene ningún administrador: {auth_service.LAST_ADMIN_ERROR}"
+            )
 
     restaurados, respaldados, omitidos = [], [], []
     for ruta, contenido in archivos.items():
