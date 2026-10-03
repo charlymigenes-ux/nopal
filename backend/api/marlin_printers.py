@@ -317,6 +317,8 @@ async def marlin_printers_sd_print_start_endpoint(
     user: dict = Depends(require_auth),
 ):
     """Arranca el archivo dentro de la SD con M23/M24, sin copia local."""
+    # Ruta migrada a la Authorization Policy (ADR-006): variante SD de start_job.
+    ensure_authorized(user, Action.START_JOB, _marlin_resource(device))
     try:
         return await start_sd_print(device, filename)
     except RuntimeError as exc:
@@ -344,6 +346,10 @@ async def marlin_printers_sd_upload_and_print_endpoint(
     """Sube un archivo de la biblioteca a la SD de la impresora (M28/M29) y
     arranca la impresión (M23/M24) -- opcionalmente precalentando primero a
     la temperatura que el propio archivo declara."""
+    # Ruta migrada a la Authorization Policy (ADR-006): variante SD de start_job.
+    # Se autoriza antes de resolver o leer el archivo y antes de cualquier
+    # escritura en la SD (que ocurre dentro de upload_and_start_sd_print).
+    ensure_authorized(user, Action.START_JOB, _marlin_resource(device))
     file_path = safe_section_path(section, path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
