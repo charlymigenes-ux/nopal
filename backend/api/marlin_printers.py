@@ -4,7 +4,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 
-from backend.auth_deps import require_auth, require_role
+from backend.auth_deps import ensure_authorized, require_auth, require_role
+from backend.services.authorization_policy import Action, Resource, ResourceKind
 from backend.services import mks_wifi_transport, printer_profiles
 from backend.services.marlin_printer_service import (
     list_usb_marlin_ports,
@@ -235,6 +236,10 @@ async def marlin_printers_temperature_target_endpoint(
     target: float = Form(...),
     user: dict = Depends(require_auth),
 ):
+    # Primera ruta migrada a la Authorization Policy (ADR-006). El recurso usa
+    # el id normalizado de la máquina (`marlin:<device>`, el mismo del modelo
+    # de TUNA-Screen).
+    ensure_authorized(user, Action.SET_TEMPERATURE, Resource(ResourceKind.PRINTER, f"marlin:{device}"))
     if not set_heater_target(device, heater, target):
         raise HTTPException(status_code=502, detail="No se pudo actualizar la temperatura objetivo")
     return {"success": True}
