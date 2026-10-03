@@ -26,7 +26,7 @@ pytest plugins/arduino-accessories/tests
 pytest plugins/camera-viewer/tests
 ```
 
-There is no build step (no bundler/JSX) and no linter config in the repo — don't introduce one unprompted. CI (`.github/workflows/smoke-test.yml`) only boots the server and checks the homepage renders; it does not run pytest.
+There is no build step (no bundler/JSX) and no linter config in the repo — don't introduce one unprompted. CI (`.github/workflows/smoke-test.yml`) runs on push to `main` and `dev-main` and on pull requests to `main`. A single job installs `requirements-dev.txt`, runs `pytest` (the full suite; a failing test fails the job), and then runs the smoke test (boots the server and checks the homepage renders).
 
 ## Architecture
 

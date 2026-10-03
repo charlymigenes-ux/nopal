@@ -2,7 +2,7 @@ name: Smoke test
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev-main]
   pull_request:
     branches: [main]
 
@@ -16,8 +16,18 @@ jobs:
         with:
           python-version: "3.11"
 
+      # requirements-dev.txt incluye requirements.txt (-r) más pytest,
+      # pytest-asyncio y httpx -- un solo paso de instalación para los tests
+      # y para el arranque del servidor.
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      # Suite completa (pytest.ini fija testpaths=backend/tests). No necesita
+      # hardware, servicios ni variables de entorno: los transportes están
+      # simulados y conftest.py redirige los registros JSON a un tmp. Un test
+      # fallido sale con código distinto de 0 y detiene el job aquí.
+      - name: Run tests
+        run: pytest
 
       - name: Start NOPAL
         run: |
