@@ -201,6 +201,8 @@ async def marlin_printers_registry_remove_endpoint(device: str = Form(...), user
 
 @router.get("/api/marlin-printers/status")
 async def marlin_printers_status_endpoint(device: str, user: dict = Depends(require_auth)):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.VIEW_STATUS, _marlin_resource(device))
     status = await get_status(device)
     if status is None:
         return {"connected": False, "device": device}
@@ -215,6 +217,8 @@ async def marlin_printers_jog_endpoint(
     feed: float = Form(...),
     user: dict = Depends(require_auth),
 ):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.MOVE, _marlin_resource(device))
     if not await jog(device, axis, distance, feed):
         raise HTTPException(status_code=502, detail="No se pudo mover el eje")
     return {"success": True}
@@ -235,6 +239,8 @@ async def marlin_printers_home_endpoint(
 
 @router.get("/api/marlin-printers/temperatures")
 async def marlin_printers_temperatures_endpoint(device: str, user: dict = Depends(require_auth)):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.VIEW_STATUS, _marlin_resource(device))
     return await get_temperature_snapshot(device)
 
 
@@ -353,6 +359,8 @@ async def marlin_printers_sd_upload_and_print_endpoint(
 
 @router.get("/api/marlin-printers/print/status")
 async def marlin_printers_print_status_endpoint(device: str, user: dict = Depends(require_auth)):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.VIEW_STATUS, _marlin_resource(device))
     return await get_job_status(device)
 
 
