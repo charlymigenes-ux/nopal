@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.16 |
+| Versión del SDD | 0.17 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -1038,6 +1038,12 @@ La restricción admin de `/api/system/temperature-target` no impide fijar la
 temperatura: solo bloquea esa ruta. Lo mismo vale para macros y para la
 consola de Marlin y GRBL.
 
+> **Estado (v0.17)** — D3-1 y D3-2 resueltos **en el panel de Klipper**: la
+> temperatura es de operador y la consola y las macros son de admin, así que
+> el operador ya no puede fijar temperatura por una vía indirecta en ese
+> panel. Siguen abiertos: la consola de Marlin y GRBL en el panel (operador),
+> TUNA-Screen (sin rol) e IA (`preheat_machine` sigue en admin).
+
 **D3-3 — TUNA-Screen no pasa por la política del panel.** `dispatch_action`
 valida existencia, conexión, `actions` y `capabilities`, pero **no quién la
 pide**. Acciones restringidas a admin en el panel (temperatura de Klipper,
@@ -1115,10 +1121,11 @@ la migración tendrá que aplicar:
 
 | Capacidad | CURRENT | TARGET |
 |---|---|---|
-| Temperatura Klipper (panel) | Admin | Operator |
+| Temperatura Klipper (panel) | Admin | Operator — ✅ **aplicado** (`POST /api/system/temperature-target`) |
 | Temperatura vía IA (`preheat_machine`) | Admin | Operator |
 | Temperatura vía TUNA-Screen | cualquier dispositivo | Operator + scope |
-| Consola Klipper / Marlin / GRBL (panel) | Operator | **Admin** |
+| Consola Klipper / Marlin / GRBL (panel) | Operator | **Admin** — ✅ aplicado en Klipper (`POST /api/console/command`); ⏳ Marlin y GRBL pendientes |
+| Macros Klipper (panel) | Operator | **Admin** — ✅ aplicado (`POST /api/macros/run`) |
 | Consola vía TUNA-Screen | cualquier dispositivo | **❌** |
 | Potencia láser/husillo vía TUNA-Screen | cualquier dispositivo | **❌** |
 | Potencia láser/husillo vía consola (panel) | Operator | **Admin** (consecuencia de D3-Q2) |
@@ -1182,7 +1189,7 @@ está implementado todavía:
 | Scope de TUNA-Screen | ✅ (Operator + scope) | ⏳ almacenamiento y edición `PROPOSED` |
 | Emparejamiento reforzado | ✅ (requisitos) | ⏳ forma exacta `PROPOSED` |
 | Regla del último Admin (C-6) | ✅ | ✅ **`IMPLEMENTED`** (`033b8f3`): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado. Archivos: `backend/services/auth_service.py`, `backend/services/config_backup_service.py`, `backend/tests/test_last_admin.py` (20 tests) |
-| Authorization Policy (infraestructura) | ✅ | ✅ **`IMPLEMENTED`** — `backend/services/authorization_policy.py` (matriz TARGET, 42 acciones, `authorize()`, fail-closed, scope validado por `kind:id`, `POLICY` inmutable); **enforcement: `STARTED`** — rutas migradas: 12 de Marlin (`set_temperature`, `pause`, `resume`, `cancel`, `start_job` desde biblioteca y SD, `home`, `move` y tres lecturas con `view_status`); el resto sigue con los mecanismos CURRENT |
+| Authorization Policy (infraestructura) | ✅ | ✅ **`IMPLEMENTED`** — `backend/services/authorization_policy.py` (matriz TARGET, 42 acciones, `authorize()`, fail-closed, scope validado por `kind:id`, `POLICY` inmutable); **enforcement: `STARTED`** — rutas migradas: 12 de Marlin (CURRENT = TARGET) y 3 de Klipper con la matriz TARGET ya aplicada (`set_temperature`, `send_console_command`, `run_macro`); el resto sigue con los mecanismos CURRENT |
 
 ### 18.8 Arquitectura de autorización (`ACCEPTED` como principio; implementación `PROPOSED`)
 
@@ -1236,7 +1243,7 @@ y se evoluciona hacia:
                          Driver
 ```
 
-**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 12 rutas migradas, todas de Marlin: `set_temperature`, `pause`, `resume`, `cancel`, `start_job` (biblioteca y SD), `home`, `move` y tres lecturas con `view_status` (§18.8).
+**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 15 rutas migradas: 12 de Marlin (CURRENT = TARGET) y 3 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command` y `run_macro` operador → admin) (§18.8).
 
 Infraestructura implementada (`backend/services/authorization_policy.py`):
 `Principal` (anónimo, usuario admin/operador, dispositivo TUNA-Screen con perfil
@@ -1289,6 +1296,18 @@ Enforcement de Marlin por acción (en todas las rutas migradas CURRENT = TARGET:
 
 Rutas de Marlin sin acción en la política (`NOT COVERED`): catálogo de perfiles, descubrimiento USB y MKS WiFi, pruebas de conexión, alta y baja del registro, listados del registro y de trabajos activos, lectura de consola (`GET /console`) y lectura de la SD (`sd/files`, `sd/available`). Otros canales (Klipper, TUNA-Screen, IA, plugins): ⏳ `NOT STARTED`.
 
+Enforcement del panel de Klipper — **primer cambio real de permisos** (CURRENT → TARGET, intencional, respaldado por ADR-006):
+
+| Acción | Ruta | CURRENT → TARGET | Estado |
+|---|---|---|---|
+| `set_temperature` | `POST /api/system/temperature-target` | admin → **operador** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
+| `send_console_command` | `POST /api/console/command` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
+| `run_macro` | `POST /api/macros/run` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
+| Mismas acciones por TUNA-Screen | `dispatch_action` | — | ⏳ `NOT STARTED` |
+| Mismas acciones por IA | `ai_actions` (`preheat_machine` sigue en admin) | — | ⏳ `NOT STARTED` |
+
+El recurso es `Resource(PRINTER, "klipper:<port>")`, construido por un único helper (`klipper_resource`, en `backend/api/console.py`). La política se consulta antes de enviar cualquier G-code o macro. Fuera de este bloque: lectura de consola y listado de macros (sin acción), `restart_klipper`, `printer_config` (edición de `printer.cfg`, que sigue siendo de operador) y el resto de rutas de Klipper. El frontend no oculta los controles de consola y macros al operador: ahora le responden 403 "Permiso insuficiente".
+
 Lineamientos para la migración del enforcement (`PROPOSED`; hasta ahora aplicados solo en la ruta migrada):
 
 1. La política se expresa sobre el **vocabulario de acciones que ya existe** en
@@ -1338,7 +1357,8 @@ CURRENT (matriz §18.3)
    ↓  los mecanismos actuales siguen aplicándose: cero cambios visibles
    ↓  tests de la matriz (CURRENT y luego TARGET, por acción y por canal)
    ↓  migración del panel (routers por marca) — ⏳ EN CURSO: 12 rutas de Marlin
-   ↓    (bloque CURRENT = TARGET completo; sin cambio visible)
+   ↓    (bloque CURRENT = TARGET completo; sin cambio visible) y 3 de Klipper
+   ↓    (primer cambio real de permisos: temperatura, consola, macros)
    ↓  migración de TUNA-Screen (scope de dispositivo + refuerzo del emparejamiento)
    ↓  migración de la IA (Action.role derivado de la política)
    ↓  migración de plugins (convención configurar/usar)
@@ -1367,7 +1387,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **912 tests, 0 fallos** (~60 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **931 tests, 0 fallos** (~60 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1397,6 +1417,7 @@ Reglas:
 | Enforcement Marlin, bloque seguro: `jog` (`move`) y lecturas `status`, `temperatures`, `print/status` (`view_status`) | 30 |
 | Enforcement Marlin, variantes SD de `start_job` (con DENY no se resuelve el archivo ni se escribe en la SD) | 20 |
 | Aislamiento de la caché de máquinas de TUNA-Screen entre tests (regresión del flaky) | 3 |
+| Cambio de permisos de Klipper: temperatura (operador), consola y macros (admin), sin bypass de temperatura para el operador | 19 |
 
 **Fixtures**: `isolated_printer_registries` (autouse) redirige a `tmp_path`
 los registros de Bambu, Elegoo, FlashForge, Marlin, TUNA-Screen, plugins,
@@ -1619,7 +1640,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 
 ### ADR-006 — Centralización de autorización por acción
 
-- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 12 rutas migradas, todas de Marlin: `set_temperature`, `pause`, `resume`, `cancel`, `start_job` (biblioteca y SD), `home`, `move` y tres lecturas con `view_status` (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 15 rutas migradas: 12 de Marlin (CURRENT = TARGET) y 3 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command` y `run_macro` operador → admin) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
 
 - **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
   - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
@@ -1844,3 +1865,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.14 | 2026-10-03 | **Bloque seguro de Marlin (CURRENT = TARGET)**: además de las 6 rutas anteriores, `POST /jog` (`move`) y `GET /status`, `/temperatures`, `/print/status` (`view_status`) consultan la Authorization Policy antes del servicio. Total: 10 rutas de Marlin, 0 permisos cambiados. Sin migrar: `POST /console` (cambio de permiso), variantes de SD, cola y programadas, y rutas sin acción en la política. `extrude`, `set_fan`, `set_speed_factor`, `set_flow_factor`, `set_z_offset` y `assign_active_spool` no tienen ruta de Marlin en el panel. Tabla de migración reorganizada por acción. Suite: 889 tests, 0 fallos (30 nuevos). |
 | 0.15 | 2026-10-03 | **Variantes SD de `start_job` en Marlin**: `POST /sd/print/start` y `POST /sd/upload-and-print` consultan la Authorization Policy (`Action.START_JOB`); en `upload-and-print` se autoriza antes de resolver o leer el archivo y antes de escribir en la SD. CURRENT = TARGET: 0 permisos cambiados. Rutas migradas: 12 (todas de Marlin). Suite: 909 tests, 0 fallos (20 nuevos). Test intermitente identificado (`test_tunascreen.py::…::test_klipper_advanced_controls_emit_validated_gcode[set_fan…]`), causa sin confirmar. |
 | 0.16 | 2026-10-03 | **Flaky de TUNA-Screen corregido** (`FIXED`, solo infraestructura de tests): causa preexistente — caché global de máquinas compartida entre tests con invalidación por `id()` —, reproducida y observada; fix con el fixture `autouse` `isolated_tunascreen_machine_cache` y 3 tests de regresión. Producción sin cambios. Registrada como deuda la dependencia de servicios reales de la LAN en `test_ai_conversations.py`. Suite: 912 tests, 0 fallos (12 corridas completas consecutivas en verde). |
+| 0.17 | 2026-10-03 | **Primer cambio real de permisos (CURRENT → TARGET), panel de Klipper**: `POST /api/system/temperature-target` (`set_temperature`) pasa de admin a **operador**; `POST /api/console/command` (`send_console_command`) y `POST /api/macros/run` (`run_macro`) pasan de operador a **admin**. Los tres consultan la Authorization Policy antes del servicio. D3-1 y D3-2 resueltos en el panel de Klipper; siguen abiertos en Marlin y GRBL (consola), TUNA-Screen e IA. Rutas migradas: 15. Suite: 931 tests, 0 fallos (19 nuevos). |
