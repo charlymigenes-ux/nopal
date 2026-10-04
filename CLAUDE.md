@@ -91,6 +91,8 @@ Server-rendered single page (`backend/templates/index.html`) + vanilla JS (`back
 
 `backend/tests/conftest.py` has an `autouse=True` fixture (`isolated_printer_registries`) that monkeypatches every brand's `REGISTRY_PATH` (and the plugin installer's `PLUGINS_DIR`/`INSTALLED_FILE`) to a tmp dir, because forgetting this once already corrupted a real registry in the repo. **If you add a new printer brand or any other module with a module-level `REGISTRY_PATH`-style constant backed by a JSON file, add it to this fixture** — it's not optional per-test opt-in.
 
+**Session-wide sandbox** (`backend/tests/isolation.py`, activated at the very top of `conftest.py`, before the app is imported): the `client` fixture is session-scoped and starts the app before any per-test fixture runs, so per-test monkeypatching alone was too late — on 2026-10-03 a test loaded the real plugins and ran a real `assign_spool` against Spoolman/Moonraker. Now the test session runs with its working directory in a temp sandbox (only `backend/`, `docs/`, `VERSION` symlinked, an empty `plugins/`), with network (except loopback to ports the test process itself listens on), serial ports and writes inside the repo blocked. Tests must never rely on real files, plugins, LAN machines or DNS; simulate them instead. `test_isolation.py` fails if that environment leaks.
+
 ### Language convention
 
 User-facing strings, code comments, and log messages are Mexican Spanish (es-MX) throughout the backend and firmware — no Spain regionalisms. Code identifiers (variables, functions) stay in English as in the rest of the codebase.

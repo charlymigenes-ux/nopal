@@ -1,4 +1,13 @@
 import pytest
+
+# Primero el entorno aislado (directorio temporal sin plugins ni archivos del
+# taller, red, puertos serie y escrituras en el repo bloqueados), ANTES de
+# importar la app: su arranque y el fixture `client` (de sesión) corren antes
+# que cualquier fixture por test. Ver backend/tests/isolation.py.
+from backend.tests import isolation
+
+isolation.activate()
+
 from fastapi.testclient import TestClient
 
 import backend.services.ai_config_service as ai_config_service

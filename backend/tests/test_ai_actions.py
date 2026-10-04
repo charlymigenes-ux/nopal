@@ -72,14 +72,12 @@ async def test_faltan_datos_obligatorios():
         await ai_actions.execute("queue_file", {"machine_id": "x"}, "admin")
 
 
-def test_confirmacion_de_un_solo_uso_y_del_mismo_usuario():
+async def test_confirmacion_de_un_solo_uso_y_del_mismo_usuario():
     pendiente = ai_actions.stage_action("preheat_machine", {"machine_id": "x", "nozzle": 200}, "carlos")
     assert pendiente["id"]
     # Otro usuario no puede confirmar lo que pidió alguien más
-    import asyncio
     with pytest.raises(ai_actions.ActionError, match="Solo quien pidió"):
-        asyncio.get_event_loop().run_until_complete(
-            ai_actions.confirm(pendiente["id"], "admin", "otro"))
+        await ai_actions.confirm(pendiente["id"], "admin", "otro")
     assert ai_actions.cancel(pendiente["id"]) is True
     assert ai_actions.cancel(pendiente["id"]) is False
 

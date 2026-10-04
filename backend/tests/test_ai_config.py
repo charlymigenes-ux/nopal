@@ -170,9 +170,17 @@ def test_ollama_apunta_a_localhost_y_no_cuenta_como_nube():
     assert validado["base_url"] == "http://127.0.0.1:11434/v1"
 
 
-def test_elegir_nube_sigue_exigiendo_consentimiento_explicito():
+def test_elegir_nube_sigue_exigiendo_consentimiento_explicito(monkeypatch):
     """El preset rellena la dirección, pero NO baja la guardia: mandar
-    telemetría del taller afuera sigue siendo una decisión consciente."""
+    telemetría del taller afuera sigue siendo una decisión consciente.
+
+    Los tests no tienen red (backend/tests/isolation.py): se simula que el
+    host del proveedor resuelve a una IP pública. No sirve un rango de
+    documentación (203.0.113.0/24): `ipaddress` lo considera privado."""
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo",
+                        lambda host, *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))])
     nube = next(p for p in ai_config_service.get_provider_presets() if p["cloud"])
     with pytest.raises(AIConfigError, match="red local"):
         ai_config_service.validate_config({
