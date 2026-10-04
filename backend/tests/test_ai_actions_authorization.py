@@ -344,7 +344,7 @@ class TestRiskIsNotPermission:
         """Si a quien pidió la acción lo degradan antes de confirmar, la
         confirmación se rechaza sin ejecutar."""
         monkeypatch.setattr(ai_actions, "_pending", {})
-        pendiente = ai_actions.stage_action("create_scene", {"name": "x", "actions": []}, "ana")
+        pendiente = ai_actions.stage_action("create_scene", {"name": "x", "actions": []}, "ana", "u-ana")
 
         with pytest.raises(ai_actions.ActionError, match="permiso"):
             await ai_actions.confirm(pendiente["id"], "operador", "ana", "u-ana")
@@ -352,7 +352,7 @@ class TestRiskIsNotPermission:
 
     async def test_confirmed_action_executes_after_authorize(self, log, monkeypatch):
         monkeypatch.setattr(ai_actions, "_pending", {})
-        pendiente = ai_actions.stage_action("preheat_machine", {"machine_id": "ET4", "nozzle": 200}, "ana")
+        pendiente = ai_actions.stage_action("preheat_machine", {"machine_id": "ET4", "nozzle": 200}, "ana", "u-ana")
 
         await ai_actions.confirm(pendiente["id"], "operador", "ana", "u-ana")
 

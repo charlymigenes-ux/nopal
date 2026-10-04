@@ -167,7 +167,7 @@ async def _run_action(name, arguments, role, username, actions_enabled, user_id=
             # Primero la política (¿puede?) y después el riesgo (¿confirmó?):
             # no se deja pendiente algo que esta persona no podría ejecutar.
             ai_actions.ensure_can_request(name, role, user_id)
-            pendiente = ai_actions.stage_action(name, arguments or {}, username)
+            pendiente = ai_actions.stage_action(name, arguments or {}, username, user_id)
             return {
                 "status": "pending_confirmation",
                 "message": "La acción NO se ejecutó. Espera la confirmación de la persona.",
@@ -434,7 +434,8 @@ async def ask(question: str, conversation_id: Optional[str] = None,
     provider = get_provider(config)
     # Turnos previos para que "¿y el otro láser?" tenga sentido. Van
     # recortados: el prompt de herramientas ya es caro (ver HISTORY_TURNS).
-    history = ai_conversations_service.recent_turns(conversation_id)
+    # Solo de una conversación PROPIA (D-9): una ajena no aporta historial.
+    history = ai_conversations_service.recent_turns(conversation_id, user_id, role)
     started = time.monotonic()
 
     # None = modo de modelo fijo: todo sigue exactamente como antes.
@@ -471,9 +472,15 @@ async def ask(question: str, conversation_id: Optional[str] = None,
         raise AIProviderError("El modelo no devolvió ninguna respuesta.")
 
     # Se persiste solo lo que salió bien: una conversación no debe quedar
-    # sembrada de errores de red del servidor de IA.
+    # sembrada de errores de red del servidor de IA. Sin usuario autenticado
+    # no se persiste nada: una conversación sin propietario no sería de nadie.
+    if not user_id:
+        result["conversation_id"] = None
+        result["conversation_title"] = None
+        return result
     conversacion = ai_conversations_service.append_turn(
         conversation_id, question, result["answer"], result.get("tool_calls"),
+        owner_user_id=user_id, role=role,
     )
     result["conversation_id"] = conversacion["id"]
     result["conversation_title"] = conversacion["title"]

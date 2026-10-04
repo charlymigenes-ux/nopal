@@ -12,7 +12,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from backend.auth_deps import require_auth, require_role
+from backend.auth_deps import ensure_authorized, require_auth, require_role
 from backend.services import (
     ai_actions,
     ai_agent,
@@ -23,6 +23,7 @@ from backend.services import (
 )
 from backend.services.ai_config_service import AIConfigError
 from backend.services.ai_provider import AIProviderError, get_provider
+from backend.services.authorization_policy import Action
 
 logger = logging.getLogger(__name__)
 
@@ -270,14 +271,19 @@ async def call_ai_tool_endpoint(
 async def list_conversations_endpoint(user: dict = Depends(require_auth)):
     """Listado sin los mensajes: una conversación larga no tiene por qué
     viajar entera solo para pintar la barra lateral."""
-    return ai_conversations_service.list_conversations()
+    return ai_conversations_service.list_conversations(user.get("user_id"))
+
+
+# D-9: una conversación ajena (o sin propietario) responde exactamente igual
+# que una inexistente, para no revelar si existe.
+CONVERSATION_NOT_FOUND = "Esa conversación ya no existe"
 
 
 @router.get("/conversations/{conversation_id}")
 async def get_conversation_endpoint(conversation_id: str, user: dict = Depends(require_auth)):
-    conversacion = ai_conversations_service.get_conversation(conversation_id)
+    conversacion = ai_conversations_service.get_conversation(conversation_id, user.get("user_id"), user["role"])
     if conversacion is None:
-        raise HTTPException(status_code=404, detail="Esa conversación ya no existe")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND)
     return conversacion
 
 
@@ -287,23 +293,27 @@ async def rename_conversation_endpoint(
     payload: dict = Body(...),
     user: dict = Depends(require_auth),
 ):
-    conversacion = ai_conversations_service.rename_conversation(conversation_id, payload.get("title", ""))
+    # Solo `title` cuenta: un propietario u otra identidad en el cuerpo se ignoran.
+    conversacion = ai_conversations_service.rename_conversation(
+        conversation_id, payload.get("title", ""), user.get("user_id"), user["role"])
     if conversacion is None:
-        raise HTTPException(status_code=404, detail="Esa conversación ya no existe")
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND)
     return conversacion
 
 
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation_endpoint(conversation_id: str, user: dict = Depends(require_auth)):
-    if not ai_conversations_service.delete_conversation(conversation_id):
-        raise HTTPException(status_code=404, detail="Esa conversación ya no existe")
-    return ai_conversations_service.list_conversations()
+    if not ai_conversations_service.delete_conversation(conversation_id, user.get("user_id"), user["role"]):
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND)
+    return ai_conversations_service.list_conversations(user.get("user_id"))
 
 
 @router.delete("/conversations")
-async def clear_conversations_endpoint(user: dict = Depends(require_role("admin"))):
-    """Borrar el historial completo es admin-only: afecta lo que vieron
-    todos los usuarios, no solo a quien lo pide."""
+async def clear_conversations_endpoint(user: dict = Depends(require_auth)):
+    """Borrar el historial completo (C-4): operación de almacenamiento solo
+    para admin. Afecta lo que vieron todos los usuarios, pero no da acceso
+    de lectura a ninguna conversación ajena."""
+    ensure_authorized(user, Action.CLEAR_ALL_CONVERSATIONS)
     return {"deleted": ai_conversations_service.clear_conversations()}
 
 

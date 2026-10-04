@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.30 |
+| Versión del SDD | 0.31 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -712,7 +712,7 @@ Documentación detallada existente: `docs/NOPAL_INTELLIGENCE.md`.
 | `ai_agent` | Orquesta: perfil, loop nativo de herramientas o modo contexto, conversación |
 | `ai_tools` | Herramientas de **solo lectura** (estado del taller, máquinas, temperaturas, trabajos, eventos del log, biblioteca, materiales, plugins, accesorios, cámaras) + herramientas declaradas por plugins |
 | `ai_actions` | Acciones físicas, **registro separado**: interruptor propio (apagado por omisión), acción canónica de la Authorization Policy por herramienta (v0.27; antes `role` copiado del endpoint equivalente), riesgo `low` (directo) o `confirm` (token pendiente, TTL 300 s, en memoria). No existe acción para arrancar láser/CNC |
-| `ai_conversations_service` | Historial (`ai_conversations.json`, escritura atómica) |
+| `ai_conversations_service` | Historial (`ai_conversations.json`, escritura atómica); privado por usuario (`owner_user_id`, D-9, v0.31) |
 
 ### 14.2 Flujo confirmado
 
@@ -794,7 +794,7 @@ No hay base de datos. Inventario principal:
 | `scheduled_prints.json` | Estado | **No** | **No** | |
 | `temperature_presets.json` | Configuración | **No** | **No** | escrito desde un router |
 | `ai_config.json` | Configuración / secretos | **No** | **No** | 0644; puede tener API key |
-| `ai_conversations.json` | Permanente | Sí | — | |
+| `ai_conversations.json` | Permanente | Sí | — | Privado por usuario (`owner_user_id`); fuera de los respaldos generales (D-9) |
 | `tunascreen_devices.json` | Credenciales (hash) | Sí (+ respaldo `.corrupt`) | Sí | 0600 |
 | `gcode_bounds_cache.json` | Caché reconstruible | Sí | — | |
 | `data/plugins/installed.json` | Configuración | Sí | lock en router | |
@@ -812,7 +812,7 @@ Todos estos archivos están en `.gitignore` (estado por instalación).
 | Atomicidad | 5 servicios escriben con archivo temporal + `os.replace`; el resto sobrescribe directo. Un corte durante la escritura deja JSON truncado. |
 | Corrupción | Ya ocurrió: existe `tunascreen_devices.json.corrupt-20260728-0406.bak`. Solo `tunascreen_service` tiene recuperación. |
 | Concurrencia | Locks por módulo en algunos servicios; ninguno en Elegoo, FlashForge, programadas, presets ni configuración de IA. Un solo proceso, así que basta con locks de hilo/async. |
-| Respaldos | `config_backup_service`: exportación/importación cifrada (Fernet con clave derivada de frase). Manual. |
+| Respaldos | `config_backup_service`: exportación/importación cifrada (Fernet con clave derivada de frase). Manual. `ai_conversations.json` está excluido (D-9, v0.31): ni se exporta ni se importa, hasta diseñar un respaldo compatible con propietarios. |
 | Permisos | Solo los archivos de credenciales de auth y TUNA-Screen se crean con 0600. |
 | Secretos | Access codes de Bambu, API key de IA y token de clúster en texto plano. |
 | Historia | No hay almacén de trabajos ni eventos; las notificaciones no se persisten. |
@@ -888,13 +888,13 @@ decide en este documento.
 | **S-10** | **Stored XSS potencial en archivos servidos desde `/uploads/{path}`**: la biblioteca acepta cualquier extensión y `GET /uploads/{path}` (`backend/main.py`, `protected_upload`) entrega el archivo con `FileResponse`, **en línea** (sin `Content-Disposition: attachment`), con el tipo deducido de la extensión (p. ej. `text/html`, `image/svg+xml`) y sin cabeceras `Content-Security-Policy` ni `X-Content-Type-Options`, **desde el mismo origen que el panel**. Un archivo con contenido activo —un HTML, o un SVG que incluya script— podría ejecutarse en la sesión de quien lo abra directamente en el navegador. No todo SVG es un riesgo: depende de su contenido y de cómo se abra (como documento, no como `<img>`). **Independiente de S-1**: S-1 impide escribir fuera de `uploads/`, pero no controla qué contenido se sirve desde ahí. No se ha demostrado explotación. Requiere analizar la política de entrega de archivos (tipos permitidos, descarga forzada, cabeceras, origen separado). Nota: `.svg` es un formato legítimo de la biblioteca (láser/CNC), por lo que una lista blanca de extensiones por sí sola no lo resuelve. | MEDIUM | `OPEN` |
 | **D-7** | **Emparejamiento TUNA-Screen**: `POST /api/tunascreen/pair/confirm` es anónimo por diseño y acepta un código de **6 dígitos** con vigencia de **5 minutos**, **sin límite de intentos**; un código válido entrega un **token permanente** con el que el dispositivo controla máquinas (S-9). Además, `GET /api/tunascreen/info` (anónimo) indica si hay un emparejamiento abierto. | HIGH | **`FIXED`** (D3-Q6 implementado): `tunascreen_service`: vencimiento con `time.monotonic()` (300 s), canje atómico bajo lock (un solo uso, invalidado al canjear, no reutilizable), `PAIRING_MAX_FAILED_ATTEMPTS = 5` fallos por ventana invalidan todos los códigos vigentes, error genérico sin intentos restantes, token posterior aleatorio e independiente del código; `GET /api/tunascreen/info` ya no expone `pairing_open`. Tests: `backend/tests/test_tunascreen_pairing.py` |
 | **D-8** | **`/plugins-static`**: monta el directorio `plugins/` completo sin autenticación. Se confirmó acceso anónimo al código fuente del backend de los plugins y a su carpeta `.git`. Hoy los repositorios de plugins son públicos, por lo que la exposición actual es baja; el riesgo es que cualquier archivo que un plugin o una persona coloque dentro de `plugins/` (datos, credenciales de firmware) quedaría publicado. | MEDIUM | `OPEN` — decidido: solo frontend público (D3-Q10); pendiente de implementar |
-| **D-9** | **Conversaciones de IA sin propietario**: cualquier usuario autenticado puede listar, leer, renombrar o borrar conversaciones de otros usuarios (`backend/api/ai.py:261-288`). Solo borrar *todas* exige admin. | MEDIUM | `OPEN` — decidido: conversaciones privadas por usuario (D3-Q8); requiere propietario; pendiente de implementar |
+| **D-9** | **Conversaciones de IA sin propietario**: cualquier usuario autenticado podía listar, leer, continuar, renombrar o borrar conversaciones de otros usuarios. Solo borrar *todas* exigía admin. | MEDIUM | ✅ `FIXED` (v0.31): conversaciones privadas por usuario (D3-Q8), ver §18.8 "Conversaciones de IA" |
 | **D-10** | **Último administrador**: `delete_user` impide borrar al último admin, pero `update_user` permite **degradar** su rol a `operador` (`backend/services/auth_service.py:111-128`), lo que dejaría la instalación sin administrador. La importación de un respaldo del grupo `users` podía además reemplazar `auth_users.json` por una lista sin ningún admin. | MEDIUM | **`FIXED`** por C-6 (`IMPLEMENTED`, `033b8f3`): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado. Tests: `backend/tests/test_last_admin.py` |
 | **D-11** | **Host láser activo global**: `POST /api/laser/host` (cualquier usuario autenticado) cambia el host por omisión compartido por todas las sesiones (§10.2). | MEDIUM | `OPEN` (ligado a la decisión D4 de §25) |
 
 > **Nota de publicación**: el repositorio es público. Este documento ya está
 > publicado en `dev-main` junto con la corrección de S-1 (`6fc0aec`), pero
-> **`main` todavía no la contiene**. D-7, D-8, D-9 y S-10 siguen abiertos. El
+> **`main` todavía no la contiene**. D-7, D-8, D-9 y S-10 siguen abiertos (estado de la nota original; D-7 y D-9 están corregidos en `dev-main`, ver §17.2). El
 > documento describe los riesgos sin pasos de reproducción.
 
 ---
@@ -1402,7 +1402,7 @@ El dispositivo **no** es un tercer rol humano. Formato de almacenamiento,
 edición del scope y valor por omisión para los tokens ya emitidos: `PROPOSED`,
 a definir en la implementación.
 
-**Enforcement del canal IA** (v0.27) — **AI Authorization: `IMPLEMENTED`** para las 11 acciones físicas/operativas de `ai_actions`. **Conversation ownership: `NOT STARTED`** (tarea separada; no se mezcla con acciones físicas).
+**Enforcement del canal IA** (v0.27) — **AI Authorization: `IMPLEMENTED`** para las 11 acciones físicas/operativas de `ai_actions`. **Conversation ownership: `IMPLEMENTED`** (D-9, v0.31; control separado de las acciones físicas, ver "Conversaciones de IA" más abajo).
 
 Cada `ai_actions.Action` declara `policy_actions` (acciones canónicas) y `resource`. `execute(name, arguments, role, user_id)` sigue este orden: acción conocida → datos obligatorios → recurso (resolver la máquina es solo lectura; el servicio la recibe ya resuelta) → `authorize(Principal.user(user_id, rol), acción, recurso)` → servicio. El principal sale del usuario que devuelve `require_auth` (rol releído en cada request; `admin`/`operador`); los argumentos de la herramienta se filtran por el esquema y no pueden elevar el rol. Un DENY responde con el mismo texto de siempre ("Tu cuenta no tiene permiso para esta acción"), sin rol requerido, acción interna ni recurso, y no ejecuta nada. El catálogo que ve el modelo (y `GET /api/ai/actions`) se filtra con la misma política.
 
@@ -1443,6 +1443,30 @@ Cada `ai_actions.Action` declara `policy_actions` (acciones canónicas) y `resou
 - El catálogo (`get_exposed_tools`, `GET /api/ai/tools`, esquema del agente) solo ofrece las herramientas de plugin que ese usuario podría ejecutar; sin usuario no ofrece ninguna. El modo contexto llama herramientas sin usuario y solo del core, así que no gana permisos por esta vía.
 - Las herramientas de plugin no tienen flujo de confirmación (`risk`): eso sigue siendo exclusivo de `ai_actions`. El handler no recibe la identidad del usuario (ningún plugin la necesita hoy).
 - Límite del modelo de confianza: el código de un plugin corre dentro del proceso de NOPAL, así que el control garantiza la identidad y la decisión de la política, no que el plugin clasifique honestamente su herramienta ni que no llame a servicios por su cuenta. Fuera de alcance.
+
+**Conversaciones de IA (D-9, v0.31)** — **`IMPLEMENTED`**: privadas por usuario (D3-Q8), con la excepción de almacenamiento de C-4. Es un control de **datos**, distinto de las acciones físicas, pero lo decide la misma Authorization Policy con sus acciones de conversación ya existentes (`owner_only`), sin acciones nuevas.
+
+- **Propietario:** cada conversación guarda `owner_user_id`, el `user_id` que devuelve `require_auth` (releído del registro en cada request). Se fija al crearla en `POST /api/ai/ask` y nunca lo elige el cliente, el modelo, una herramienta ni un payload (`owner_user_id`, `user_id`, `username` o `role` en el cuerpo se ignoran). Un usuario recreado con el mismo nombre tiene otro `user_id` y no hereda nada. Formato: el mismo objeto de siempre (`id`, `title`, `created_at`, `updated_at`, `messages`) más `owner_user_id`.
+- **Decisión:** `authorize(Principal.user(user_id, rol), acción, Resource(CONVERSATION, id, owner_id=owner_user_id))`.
+
+| Operación | Endpoint | Acción de la política | Propietario | Otro usuario | Admin no propietario |
+|---|---|---|---|---|---|
+| Listar | `GET /api/ai/conversations` | (filtro por `owner_user_id`) | solo las suyas | — | solo las suyas; no hay vista de "todas" |
+| Leer | `GET /api/ai/conversations/{id}` | `read_conversation` | ✅ | 404 | 404 |
+| Continuar | `POST /api/ai/ask` con `conversation_id` | `read_conversation` | ✅ con historial | conversación nueva propia | conversación nueva propia |
+| Renombrar | `PUT /api/ai/conversations/{id}` | `rename_conversation` | ✅ | 404 | 404 |
+| Borrar una | `DELETE /api/ai/conversations/{id}` | `delete_conversation` | ✅ | 404 | 404 |
+| Borrar todo (C-4) | `DELETE /api/ai/conversations` | `clear_all_conversations` | admin ✅ · operador 403 | | |
+
+- **Sin enumeración:** ajena, sin propietario, inexistente o inventada responden igual: 404 "Esa conversación ya no existe". En `ask`, una ajena se comporta como un id desconocido: empieza una conversación propia, sin mandar al modelo ni devolver historial o título ajenos y sin tocar la ajena (ni su `updated_at`). Los ids siguen siendo `uuid4` de 12 hex (no secuenciales) y ya no se exponen en ningún listado ajeno.
+- **Sin usuario autenticado** `ask` no lee historial ni persiste nada (fail-closed): no se crean conversaciones sin propietario.
+- **Conversaciones antiguas sin propietario** (24 en la instalación de referencia al implementarlo): no se asignan a nadie ni se reescriben. No aparecen en ningún listado; leer, renombrar y borrar responden 404 para todos, Admin incluido; continuarlas crea una conversación nueva propia. Se conservan físicamente y solo desaparecen con el borrado global (C-4) u otra limpieza explícita futura.
+- **Recorte por propietario:** `MAX_CONVERSATIONS` (50) se aplica por `owner_user_id`; la escritura de un usuario no puede expulsar conversaciones de otro. Las antiguas no cuentan para nadie y el recorte no las toca.
+- **C-4:** el borrado global es una operación de almacenamiento solo para Admin (incluye las antiguas) y no concede leer, renombrar ni borrar selectivamente conversaciones ajenas.
+- **Respaldos:** `ai_conversations.json` quedó fuera del sistema general de respaldos: `POST /api/config-backup/export` no lo incluye y `POST /api/config-backup/import` no lo escribe (un respaldo anterior que traiga el grupo `ai_conversations` responde "Grupo desconocido" si se elige, y su archivo nunca se restaura). Hasta diseñar un respaldo compatible con propietarios, las conversaciones no tienen respaldo.
+- **Confirmaciones pendientes:** además del `username`, el token guarda el `user_id` de quien la pidió; confirmar exige el mismo `user_id` (fail-closed si falta) y la reautorización con el rol actual sigue siendo obligatoria. Un usuario borrado y recreado con el mismo nombre no puede confirmar la acción pendiente del anterior. El `user_id` no sale en la respuesta.
+- **TUNA-Screen** no tiene acceso: las rutas de conversaciones solo aceptan sesión.
+- **Límite de la garantía:** la privacidad es de la aplicación, no criptográfica. `ai_conversations.json` está en claro en el servidor, y un Admin con control del sistema (por ejemplo, importando usuarios en un respaldo) puede suplantar a otro usuario. Lo que se garantiza es que ningún endpoint ni canal de NOPAL entrega una conversación a quien no es su propietario.
 
 ### 18.9 Principio: la consola es una acción privilegiada (`ACCEPTED`, D3-Q2)
 
@@ -1504,7 +1528,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **1285 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado + 9 de la bobina activa de TUNA-Screen + 17 de accesorios y escenas de TUNA-Screen + 65 de autorización del canal IA + 52 de las herramientas de IA de plugins + 2 netos de `set_machine_alerts` como `configure_plugin` + 24 de regresión del entorno aislado de tests, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **1353 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado + 9 de la bobina activa de TUNA-Screen + 17 de accesorios y escenas de TUNA-Screen + 65 de autorización del canal IA + 52 de las herramientas de IA de plugins + 2 netos de `set_machine_alerts` como `configure_plugin` + 24 de regresión del entorno aislado de tests + 68 de privacidad de conversaciones (D-9), contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1641,7 +1665,7 @@ Severidad por impacto técnico o de seguridad.
 | ~~HIGH~~ `FIXED` | CI no ejecutaba tests — ahora ejecuta `pytest` (`247efab`; CI #58 verde) | `smoke-test.yml`, §19.1 |
 | MEDIUM | `/plugins-static` expone `plugins/` completo sin autenticación (D-8) | `main.py`, §17.2 |
 | MEDIUM | Archivos de la biblioteca servidos en línea desde el mismo origen, sin política de contenido: XSS almacenado potencial (S-10) | `main.py` (`/uploads`), §17.2 |
-| MEDIUM | Conversaciones de IA sin propietario (D-9) | `api/ai.py`, §17.2 |
+| ~~MEDIUM~~ | ~~Conversaciones de IA sin propietario (D-9)~~ — `FIXED` (v0.31) | `api/ai.py`, §17.2 |
 | ~~MEDIUM~~ `FIXED` | Se podía degradar al último admin o importar un respaldo sin admins (D-10) — resuelto por C-6 (`IMPLEMENTED`, `033b8f3`) | `auth_service`, `config_backup_service` |
 | MEDIUM | Host activo de láser global (legacy) coexistiendo con multi-host; cualquier usuario lo cambia (D-11) | §10.2 |
 | MEDIUM | Frontend monolítico (~48 k líneas en 3 archivos), sin cliente de API | §12 |
@@ -1912,7 +1936,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 | Error común (`error_code`) | Todas las respuestas de error | `detail` sigue siendo texto | Gradual por router | Revertir |
 | ADR-006: aplicar la matriz TARGET (tabla "Diferencias", §18.6) | Endpoints y acciones que cambian de requisito | **Rompe** flujos de operador que pierden permisos (consola, configuración física, borrado en SD, configurar cotizador); amplía otros (temperatura en Klipper e IA) | Un cambio por celda, con test; comunicar antes | Revertir la celda |
 | ADR-006: regla del último Admin (C-6) — **`IMPLEMENTED`** (`033b8f3`) | Gestión de usuarios e importación de respaldos | Solo bloquea operaciones que dejarían la instalación sin Admin; respaldos con admin se importan igual | Ninguna | Revertir el commit |
-| ADR-006: conversaciones privadas (D3-Q8) | IA, `ai_conversations.json` | Las conversaciones existentes no tienen propietario | Decidir asignación o archivo sin exponer contenido | Conservar el archivo original hasta validar |
+| ADR-006: conversaciones privadas (D3-Q8) | IA, `ai_conversations.json` | Las conversaciones existentes no tienen propietario | **Resuelto (v0.31):** no se asignan a nadie; quedan invisibles e intocables para todos (Admin incluido) y solo las borra el borrado global (C-4) | Se conservan físicamente, sin reescribir |
 | ADR-006: `/plugins-static` solo frontend (D3-Q10) | Frontend de plugins | Los recursos de `frontend/` deben seguir servidos | Verificar que ningún plugin cargue archivos fuera de `frontend/` | Revertir el montaje |
 | Retirar host activo del láser (D4) | `/api/laser/host`, frontend | **Rompe** llamadas sin `host` | Marcar `DEPRECATED`, migrar frontend, retirar después | Restaurar endpoint |
 | Klipper remoto (D1) | Registro, ids | Ids locales preservados (requisito) | Sin registro → comportamiento actual | Borrar registro → comportamiento actual |
@@ -2006,3 +2030,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.28 | 2026-10-03 | **`AI_TOOLS` de plugins con Authorization Policy**: cerrado el bypass latente `get_plugin_ai_tools()` → `ai_tools.call_tool()`. Cada herramienta de plugin declara `policy_action` (`use_plugin` o `configure_plugin`, solo el Enum canónico); sin declarar, con otra acción o con parámetros de identidad no se registra. Recurso `plugin:<id>` asignado por el core (id deducido del paquete cargado). Identidad del usuario autenticado en el agente y en `POST /api/ai/tools/{name}` (403 ante DENY); las que cambian estado exigen `actions_enabled`; el catálogo se filtra por usuario. Ningún plugin instalado declara `AI_TOOLS`. 3 tests existentes adaptados al nuevo contrato. Conversation ownership: `NOT STARTED`. Suite: 1259 tests, 0 fallos (52 nuevos). |
 | 0.29 | 2026-10-03 | **Correcciones finales de la fase IA**: `set_machine_alerts` pasa de `use_plugin` a **`configure_plugin`** (admin), porque persiste la configuración de alertas por máquina de la Matriz LED (D3-Q9). Cambio de permiso en el canal IA: cualquier usuario → admin; el panel del plugin no se migró. `docs/NOPAL_INTELLIGENCE.md` describe el contrato actual de `AI_TOOLS`. Suite: 1261 tests, 0 fallos. |
 | 0.30 | 2026-10-03 | **Entorno aislado de tests** (incidente: un test ejecutó `assign_spool` real contra Spoolman/Moonraker). `backend/tests/isolation.py`, activado antes de importar la app: directorio de trabajo temporal sin plugins ni archivos del taller, red y puertos serie bloqueados, escrituras dentro del repo bloqueadas. Corrige también: escritura del log real y loop de impresiones programadas sobre el archivo real en cada sesión; dependencia de la LAN de `test_ai_conversations.py`; DNS real en `test_ai_config.py`; `asyncio.get_event_loop()` en un test síncrono (fallaba según el orden). `test_isolation.py` (24). Suite: 1285 tests, 0 fallos, también barajada. |
+| 0.31 | 2026-10-03 | **D-9: conversaciones de IA privadas por usuario** (D3-Q8, C-4). `owner_user_id` = `user_id` autenticado; leer, continuar, renombrar y borrar con la Authorization Policy (`read_/rename_/delete_conversation`, `owner_only`); listado solo propio; ajena = inexistente (404 idéntico; en `ask`, conversación nueva propia sin historial ajeno). Borrado global con `clear_all_conversations` (admin). 24 conversaciones antiguas sin propietario: invisibles e intocables, conservadas. Recorte de 50 por propietario. Conversaciones excluidas de los respaldos generales. Confirmaciones pendientes ligadas a `user_id`. `test_ai_conversations.py` adaptado (identidad explícita). Suite: 1353 tests, 0 fallos (68 nuevos). |
