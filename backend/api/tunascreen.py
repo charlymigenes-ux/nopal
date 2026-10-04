@@ -30,11 +30,13 @@ def require_device_token(authorization: Optional[str] = Header(None)) -> Dict[st
 
 @router.get("/api/tunascreen/info")
 async def tunascreen_info():
+    # Sin `pairing_open` (D3-Q6): anunciaba sin autenticación cuándo había un
+    # código vigente, la ventana exacta para intentar adivinarlo. La app solo
+    # lo deserializa con valor por omisión y no lo usa.
     return {
         "name": "NOPAL",
         "server_version": get_app_version(),
         "api_version": tunascreen_service.API_VERSION,
-        "pairing_open": tunascreen_service.has_pending_codes(),
         "websocket_path": "/ws/tunascreen",
     }
 
