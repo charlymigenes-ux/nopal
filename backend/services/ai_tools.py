@@ -47,6 +47,13 @@ from backend.services.klipper_service import (
 from backend.services.laser_service import get_registered_lasers_status, get_status as get_laser_status
 from backend.services.marlin_printer_service import get_registered_printers_with_status as get_marlin_printers
 from backend.services.notification_service import get_notifications
+from backend.services.authorization_policy import (
+    Action as PolicyAction,
+    Principal,
+    Resource,
+    ResourceKind,
+    authorize,
+)
 from backend.services.plugin_loader_service import get_loaded_plugin_module
 
 logger = logging.getLogger(__name__)
@@ -889,6 +896,8 @@ class Tool:
         parameters: Optional[Dict[str, Any]] = None,
         exposed: bool = True,
         core: bool = False,
+        policy_action: Optional[PolicyAction] = None,
+        read_only: bool = True,
     ):
         self.name = name
         self.description = description
@@ -902,6 +911,11 @@ class Tool:
         # el grueso del tiempo de respuesta. Ver `tool_profile` en
         # ai_config_service.py.
         self.core = core
+        # Solo para herramientas de plugins (ADR-006): la acción de la
+        # política que ejecutan (`use_plugin` o `configure_plugin`) y si
+        # modifican estado. Las del core son de solo lectura y no las usan.
+        self.policy_action = policy_action
+        self.read_only = read_only
 
     def to_openai_schema(self) -> Dict[str, Any]:
         return {
@@ -1086,29 +1100,87 @@ TOOLS: Dict[str, Tool] = {
 }
 
 
-def _plugin_tools() -> List["Tool"]:
+# Acciones de la política que una herramienta de plugin puede declarar. Una
+# herramienta que toque máquinas (temperatura, movimiento, consola, potencia,
+# archivos…) no cabe aquí: queda sin registrar hasta que se defina su acción
+# y su recurso de forma explícita.
+PLUGIN_TOOL_ACTIONS = frozenset({PolicyAction.USE_PLUGIN, PolicyAction.CONFIGURE_PLUGIN})
+
+# Nombres de parámetro que una herramienta de plugin no puede declarar: la
+# identidad sale del usuario autenticado, nunca de argumentos del modelo.
+RESERVED_PARAMETERS = frozenset({"role", "user_id", "user", "username", "principal", "scope"})
+
+PLUGIN_TOOL_DENIED = "Tu cuenta no tiene permiso para esta herramienta"
+
+
+class PluginTool:
+    """Herramienta de plugin ya validada, con el recurso que le asigna el
+    core (`plugin:<id>` del plugin que la declaró)."""
+
+    def __init__(self, tool: Tool, plugin_id: str):
+        self.tool = tool
+        self.resource = Resource(ResourceKind.PLUGIN, plugin_id)
+
+    @property
+    def needs_actions_enabled(self) -> bool:
+        # Configurar siempre cambia estado; usar, solo si la herramienta lo dice.
+        return not self.tool.read_only or self.tool.policy_action is PolicyAction.CONFIGURE_PLUGIN
+
+
+def _plugin_tools() -> List[PluginTool]:
     """Herramientas que los propios plugins declaran (ver
     plugin_loader_service.get_plugin_ai_tools). Un plugin puede así exponer
     sus datos a la IA sin que el core tenga que conocerlo.
 
     Las del core ganan ante un choque de nombres: un plugin no debe poder
-    sustituir una herramienta central por una suya.
+    sustituir una herramienta central por una suya (ni una acción física de
+    ai_actions). Fail-closed: sin acción de la política válida, o con
+    parámetros de identidad, la herramienta no se registra.
     """
+    from backend.services.ai_actions import ACTIONS
     from backend.services.plugin_loader_service import get_plugin_ai_tools
 
-    validas = []
-    for tool in get_plugin_ai_tools():
+    validas: List[PluginTool] = []
+    for plugin_id, tool in get_plugin_ai_tools():
         if not isinstance(tool, Tool):
-            logger.warning("Un plugin declaró en AI_TOOLS algo que no es un Tool, se omite")
+            logger.warning(f"[{plugin_id}] declaró en AI_TOOLS algo que no es un Tool, se omite")
             continue
-        if tool.name in TOOLS:
-            logger.warning(f"El plugin quiso redefinir la herramienta '{tool.name}' del core, se omite")
+        if tool.name in TOOLS or tool.name in ACTIONS:
+            logger.warning(f"[{plugin_id}] quiso redefinir la herramienta '{tool.name}' del core, se omite")
             continue
-        validas.append(tool)
+        # Solo la acción canónica (el Enum), no su texto: "configure_plugin"
+        # como cadena compararía igual pero se saltaría las comprobaciones
+        # por identidad (p. ej. el interruptor de acciones).
+        if not isinstance(tool.policy_action, PolicyAction) or tool.policy_action not in PLUGIN_TOOL_ACTIONS:
+            logger.warning(
+                f"[{plugin_id}] la herramienta '{tool.name}' no declara una acción de la política "
+                "permitida (use_plugin o configure_plugin), se omite")
+            continue
+        if RESERVED_PARAMETERS & set((tool.parameters.get("properties") or {}).keys()):
+            logger.warning(f"[{plugin_id}] la herramienta '{tool.name}' declara parámetros de identidad, se omite")
+            continue
+        validas.append(PluginTool(tool, plugin_id))
     return validas
 
 
-def get_exposed_tools(profile: str = "full") -> List[Tool]:
+def _plugin_tool_denial(entry: PluginTool, role: Optional[str], user_id: Optional[str],
+                        actions_enabled: bool) -> Optional[Dict[str, Any]]:
+    """None si el usuario autenticado puede ejecutar la herramienta; si no, el
+    error estructurado. Primero la política (¿puede?), después el interruptor
+    de acciones. Fail-closed sin usuario."""
+    if not role or not user_id:
+        return {"error": "not_authorized", "tool": entry.tool.name, "detail": PLUGIN_TOOL_DENIED}
+    principal = Principal.user(user_id, role)
+    if not authorize(principal, entry.tool.policy_action, entry.resource):
+        return {"error": "not_authorized", "tool": entry.tool.name, "detail": PLUGIN_TOOL_DENIED}
+    if entry.needs_actions_enabled and not actions_enabled:
+        return {"error": "actions_disabled", "tool": entry.tool.name,
+                "detail": "Las acciones están desactivadas en esta instalación de NOPAL."}
+    return None
+
+
+def get_exposed_tools(profile: str = "full", *, role: Optional[str] = None,
+                      user_id: Optional[str] = None, actions_enabled: bool = False) -> List[Tool]:
     """Las herramientas que se le ofrecen al modelo (excluye las reservadas).
 
     `profile="compact"` deja solo las marcadas como `core`. El catálogo
@@ -1124,19 +1196,42 @@ def get_exposed_tools(profile: str = "full") -> List[Tool]:
         # El perfil compacto se queda solo con el núcleo: las de plugins son
         # justo las que sobran cuando el servidor de IA es lento.
         return [tool for tool in tools if tool.core]
-    return tools + [t for t in _plugin_tools() if t.exposed]
+    # Las de plugins solo se ofrecen a quien podría ejecutarlas (mismo
+    # criterio que call_tool); sin usuario no se ofrece ninguna.
+    return tools + [
+        entry.tool for entry in _plugin_tools()
+        if entry.tool.exposed and _plugin_tool_denial(entry, role, user_id, actions_enabled) is None
+    ]
 
 
-def get_tools_schema(profile: str = "full") -> List[Dict[str, Any]]:
-    return [tool.to_openai_schema() for tool in get_exposed_tools(profile)]
+def get_tools_schema(profile: str = "full", *, role: Optional[str] = None,
+                     user_id: Optional[str] = None, actions_enabled: bool = False) -> List[Dict[str, Any]]:
+    return [tool.to_openai_schema() for tool in get_exposed_tools(
+        profile, role=role, user_id=user_id, actions_enabled=actions_enabled)]
 
 
-async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None, *,
+                    role: Optional[str] = None, user_id: Optional[str] = None,
+                    actions_enabled: bool = False) -> Dict[str, Any]:
     """Ejecuta una herramienta por nombre. Un nombre desconocido o un
     argumento inválido devuelven un error estructurado en vez de levantar
     excepción: el ciclo del agente se lo pasa al modelo para que se
-    corrija en la vuelta siguiente."""
-    tool = TOOLS.get(name) or next((t for t in _plugin_tools() if t.name == name), None)
+    corrija en la vuelta siguiente.
+
+    `role`/`user_id` son los del usuario autenticado (los pasa quien llama,
+    nunca salen de `arguments`). Las herramientas del core son de solo
+    lectura y no los usan; las de plugins se autorizan con la Authorization
+    Policy ANTES de ejecutarse."""
+    tool = TOOLS.get(name)
+    if tool is None:
+        entry = next((e for e in _plugin_tools() if e.tool.name == name), None)
+        if entry is not None:
+            tool = entry.tool
+            if tool.exposed:
+                denial = _plugin_tool_denial(entry, role, user_id, actions_enabled)
+                if denial is not None:
+                    logger.info(f"[IA] herramienta de plugin '{name}' rechazada ({denial['error']})")
+                    return denial
     if tool is None or not tool.exposed:
         return {"error": "unknown_tool", "requested": name, "available": sorted(t.name for t in get_exposed_tools())}
 

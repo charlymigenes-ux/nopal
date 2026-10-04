@@ -1,4 +1,13 @@
 import pytest
+
+# Primero el entorno aislado (directorio temporal sin plugins ni archivos del
+# taller, red, puertos serie y escrituras en el repo bloqueados), ANTES de
+# importar la app: su arranque y el fixture `client` (de sesión) corren antes
+# que cualquier fixture por test. Ver backend/tests/isolation.py.
+from backend.tests import isolation
+
+isolation.activate()
+
 from fastapi.testclient import TestClient
 
 import backend.services.ai_config_service as ai_config_service
@@ -13,8 +22,10 @@ import backend.services.tunascreen_service as tunascreen_service
 from backend.auth_deps import require_auth
 from backend.main import app
 
-ADMIN_USER = {"id": "test-admin", "username": "test-admin", "role": "admin"}
-OPERATOR_USER = {"id": "test-operator", "username": "test-operator", "role": "operator"}
+# Misma forma que devuelve `require_auth` en producción (backend/auth_deps.py):
+# `user_id` y los roles internos de auth_service.ROLES ("admin", "operador").
+ADMIN_USER = {"user_id": "test-admin", "username": "test-admin", "role": "admin"}
+OPERATOR_USER = {"user_id": "test-operator", "username": "test-operator", "role": "operador"}
 
 
 @pytest.fixture(scope="session")
@@ -41,6 +52,29 @@ def as_operator():
     app.dependency_overrides[require_auth] = lambda: OPERATOR_USER
     yield OPERATOR_USER
     app.dependency_overrides.pop(require_auth, None)
+
+
+def reset_tunascreen_machine_cache():
+    """Vacía la caché global de máquinas de tunascreen_service (la que usa
+    list_machines()). Su invalidación compara id() de funciones; si un test
+    reemplaza esas funciones por objetos nuevos y CPython reutiliza los
+    mismos id(), la firma coincide y el test recibe la caché del anterior.
+    Se asigna directo (no con monkeypatch): monkeypatch restauraría al final
+    la caché contaminada para el test siguiente."""
+    tunascreen_service._machines_cache = []
+    tunascreen_service._machines_cache_at = 0.0
+    tunascreen_service._machines_source_signature = ()
+    tunascreen_service._machine_offline_counts.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolated_tunascreen_machine_cache():
+    """Cada test arranca y termina con la caché de máquinas de TUNA-Screen
+    vacía: ningún test hereda las máquinas cacheadas por otro (flaky
+    preexistente en TestDispatchAction, ver SDD §19.2)."""
+    reset_tunascreen_machine_cache()
+    yield
+    reset_tunascreen_machine_cache()
 
 
 @pytest.fixture(autouse=True)

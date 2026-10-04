@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import secrets
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,20 @@ SESSION_SECRET_PATH = ".session_secret"
 PBKDF2_ITERATIONS = 260_000
 
 ROLES = ("admin", "operador")
+
+LAST_ADMIN_ERROR = "NOPAL debe conservar al menos un administrador"
+
+# Serializa leer-modificar-guardar en update/delete: la regla del último
+# admin se comprueba sobre el estado leído, y dos cambios simultáneos sobre
+# dos admins distintos no deben poder pasar los dos el chequeo.
+_users_lock = threading.RLock()
+
+
+def has_admin(users: List[Dict[str, Any]]) -> bool:
+    """C-6 (ADR-006): NOPAL nunca debe quedar sin al menos un admin. Lo usan
+    todas las operaciones que pueden quitar privilegio administrativo:
+    update_user, delete_user y la importación de respaldos."""
+    return any(isinstance(u, dict) and u.get("role") == "admin" for u in users)
 
 
 def _load_users() -> List[Dict[str, Any]]:
@@ -112,39 +127,46 @@ def update_user(user_id: str, role: Optional[str] = None, new_password: Optional
     if role is not None and role not in ROLES:
         raise ValueError(f"Rol desconocido: {role}")
 
-    users = _load_users()
-    user = next((u for u in users if u["id"] == user_id), None)
-    if user is None:
-        raise ValueError("Usuario no encontrado")
+    with _users_lock:
+        users = _load_users()
+        user = next((u for u in users if u["id"] == user_id), None)
+        if user is None:
+            raise ValueError("Usuario no encontrado")
 
-    if role is not None:
-        user["role"] = role
-    if new_password is not None and len(new_password) < 8:
-        raise ValueError("La contraseña debe tener al menos 8 caracteres")
-    if new_password:
-        user["password_hash"] = _hash_password(new_password)
+        if role is not None and role != "admin" and user["role"] == "admin":
+            # Incluye la auto-degradación: el chequeo es sobre el estado real
+            # de los usuarios, no sobre quién hace la petición.
+            others = [u for u in users if u["id"] != user_id]
+            if not has_admin(others):
+                raise ValueError(LAST_ADMIN_ERROR)
 
-    _save_users(users)
-    return _public(user)
+        if role is not None:
+            user["role"] = role
+        if new_password is not None and len(new_password) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+        if new_password:
+            user["password_hash"] = _hash_password(new_password)
+
+        _save_users(users)
+        return _public(user)
 
 
 def delete_user(user_id: str) -> bool:
     """Rechaza borrar al último admin restante — evita quedarse sin acceso
     a la app por accidente."""
-    users = _load_users()
-    target = next((u for u in users if u["id"] == user_id), None)
-    if target is None:
-        return False
+    with _users_lock:
+        users = _load_users()
+        target = next((u for u in users if u["id"] == user_id), None)
+        if target is None:
+            return False
 
-    if target["role"] == "admin":
-        remaining_admins = [u for u in users if u["role"] == "admin" and u["id"] != user_id]
-        if not remaining_admins:
-            raise ValueError("No se puede eliminar al último administrador")
+        filtered = [u for u in users if u["id"] != user_id]
+        if target["role"] == "admin" and not has_admin(filtered):
+            raise ValueError(LAST_ADMIN_ERROR)
 
-    filtered = [u for u in users if u["id"] != user_id]
-    _save_users(filtered)
-    logger.info(f"Usuario eliminado: {target['username']}")
-    return True
+        _save_users(filtered)
+        logger.info(f"Usuario eliminado: {target['username']}")
+        return True
 
 
 def ensure_bootstrap_admin():

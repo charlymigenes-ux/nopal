@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.auth_deps import require_role
 from backend.services import tunascreen_service
+from backend.services.authorization_policy import Action
 from backend.utils import get_app_version
 
 logger = logging.getLogger(__name__)
@@ -30,11 +31,13 @@ def require_device_token(authorization: Optional[str] = Header(None)) -> Dict[st
 
 @router.get("/api/tunascreen/info")
 async def tunascreen_info():
+    # Sin `pairing_open` (D3-Q6): anunciaba sin autenticación cuándo había un
+    # código vigente, la ventana exacta para intentar adivinarlo. La app solo
+    # lo deserializa con valor por omisión y no lo usa.
     return {
         "name": "NOPAL",
         "server_version": get_app_version(),
         "api_version": tunascreen_service.API_VERSION,
-        "pairing_open": tunascreen_service.has_pending_codes(),
         "websocket_path": "/ws/tunascreen",
     }
 
@@ -172,11 +175,13 @@ async def tunascreen_set_active_material(
     payload: Dict[str, Any],
     device: dict = Depends(require_device_token),
 ):
+    machine_id = str(payload.get("machine_id") or "")
     try:
-        return await tunascreen_service.set_active_material(
-            str(payload.get("machine_id") or ""),
-            payload.get("spool_id"),
-        )
+        # ADR-006: se autoriza antes de tocar el material activo.
+        await tunascreen_service.ensure_device_authorized(device, Action.ASSIGN_ACTIVE_SPOOL, machine_id)
+        return await tunascreen_service.set_active_material(machine_id, payload.get("spool_id"))
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -195,7 +200,13 @@ async def tunascreen_accessory_power(
     if "on" not in payload:
         raise HTTPException(status_code=400, detail="Falta el estado 'on'")
     try:
+        # ADR-006: usar un accesorio es use_plugin; se autoriza antes del servicio.
+        tunascreen_service.ensure_device_authorized_for(
+            device, Action.USE_PLUGIN, tunascreen_service.ACCESSORIES_PLUGIN_RESOURCE
+        )
         return await tunascreen_service.set_accessory_power(accessory_id, bool(payload["on"]))
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -206,7 +217,13 @@ async def tunascreen_run_accessory_scene(
     device: dict = Depends(require_device_token),
 ):
     try:
+        # ADR-006: ejecutar una escena es use_plugin (crearla/editarla sería configure_plugin).
+        tunascreen_service.ensure_device_authorized_for(
+            device, Action.USE_PLUGIN, tunascreen_service.ACCESSORIES_PLUGIN_RESOURCE
+        )
         return await tunascreen_service.run_accessory_scene(scene_id)
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -219,12 +236,14 @@ async def tunascreen_action(payload: Dict[str, Any], device: dict = Depends(requ
     if not machine_id or not action:
         raise HTTPException(status_code=400, detail="Faltan machine_id/action")
     try:
-        result = await tunascreen_service.dispatch_action(machine_id, action, params)
+        result = await tunascreen_service.dispatch_action(machine_id, action, params, device=device)
         return {
             "success": bool(result.get("success")),
             "action": action,
             "machine_id": machine_id,
         }
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

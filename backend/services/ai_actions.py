@@ -7,10 +7,11 @@ toca el taller vive acá, con tres candados que no son negociables:
    (`actions_enabled`). Una instalación con la IA encendida sigue siendo de
    solo consulta hasta que alguien decida lo contrario a mano.
 
-2. **La IA nunca escala privilegios.** Cada acción declara el rol que exige,
-   copiado del endpoint equivalente del panel. Si un operador no puede
-   precalentar desde la interfaz (`require_role("admin")` en
-   `backend/api/status.py`), tampoco puede lograrlo pidiéndoselo a la IA.
+2. **La IA nunca escala privilegios.** Cada acción declara la acción
+   canónica de la Authorization Policy (ADR-006) que ejecuta, y la política
+   decide con el usuario real (`Principal.user`) y el recurso real (la
+   máquina o el plugin) antes de llamar al servicio. Es la misma regla que
+   aplica el panel: la IA no tiene una tabla de permisos propia.
 
 3. **Niveles de riesgo.** Las de riesgo `low` se ejecutan directo; las de
    riesgo `confirm` NO se ejecutan: devuelven una acción pendiente que la
@@ -32,7 +33,17 @@ import logging
 import os
 import time
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from backend.services.authorization_policy import (
+    POLICY,
+    Action as PolicyAction,
+    Principal,
+    Resource,
+    ResourceKind,
+    Role,
+    authorize,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +58,26 @@ class ActionError(RuntimeError):
     """Falla al ejecutar una acción. El router la traduce a un 4xx."""
 
 
+# Mismo texto de siempre ante un DENY: sin rol requerido, acción interna ni
+# recurso (eso no se le cuenta ni al modelo ni a la persona).
+PERMISSION_DENIED = "Tu cuenta no tiene permiso para esta acción"
+
+
 class Action:
     """Una acción sobre el taller.
 
     `risk`: "low" se ejecuta directo, "confirm" exige confirmación humana.
-    `role`: "admin" o "any" — debe coincidir con el endpoint equivalente del
-    panel, para que la IA no sea una puerta trasera de permisos.
+    Es comportamiento de la herramienta, no permiso: se aplica DESPUÉS de que
+    la política autorizó.
+
+    `policy_actions`: las acciones canónicas de la Authorization Policy que
+    esta herramienta puede ejecutar. Son la única fuente de permisos (ADR-006).
+    Si son varias (p. ej. pausar/reanudar/cancelar), `select_policy_action`
+    elige la que corresponde a los argumentos; si no puede elegir, se exigen
+    todas (fail-closed).
+
+    `resource`: "machine" (la máquina de `machine_id`, resuelta antes de
+    autorizar) o un `Resource` fijo (p. ej. el plugin).
     """
 
     def __init__(
@@ -62,14 +87,34 @@ class Action:
         handler: Callable,
         parameters: Optional[Dict[str, Any]] = None,
         risk: str = "confirm",
-        role: str = "admin",
+        *,
+        policy_actions: Tuple[PolicyAction, ...],
+        resource: Any,
+        select_policy_action: Optional[Callable[[Dict[str, Any]], Optional[PolicyAction]]] = None,
     ):
+        if not policy_actions or not all(isinstance(a, PolicyAction) for a in policy_actions):
+            raise TypeError(f"La acción '{name}' debe declarar sus acciones de la política")
         self.name = name
         self.description = description
         self.handler = handler
         self.parameters = parameters or {"type": "object", "properties": {}, "required": []}
         self.risk = risk
-        self.role = role
+        self.policy_actions = tuple(policy_actions)
+        self.resource = resource
+        self.select_policy_action = select_policy_action
+
+    @property
+    def role(self) -> str:
+        """DEPRECATED — solo informativo para el listado de /api/ai/actions.
+        Se DERIVA de la política (no se declara): "admin" si alguna de sus
+        acciones exige admin, "any" si no. No se usa para autorizar."""
+        needs_admin = any(POLICY[a].min_role is Role.ADMIN for a in self.policy_actions)
+        return "admin" if needs_admin else "any"
+
+    def policy_actions_for(self, arguments: Dict[str, Any]) -> Tuple[PolicyAction, ...]:
+        chosen = self.select_policy_action(arguments) if self.select_policy_action else None
+        # Sin elección posible se exigen todas (fail-closed).
+        return (chosen,) if chosen is not None else self.policy_actions
 
     def to_openai_schema(self) -> Dict[str, Any]:
         aviso = "" if self.risk == "low" else " Requiere confirmación de la persona antes de ejecutarse."
@@ -98,6 +143,26 @@ async def _resolve_machine(machine_id: str) -> Dict[str, Any]:
             f"Las registradas son: {', '.join(m['name'] or m['id'] for m in machines)}"
         )
     return machine
+
+
+# Recursos de la Authorization Policy. Mismos ids canónicos que el panel y
+# TUNA-Screen: `printer:<marca>:<id>`, `laser:laser:<host>`, `cnc:laser:<host>`
+# y el plugin completo para accesorios/escenas (sin ResourceKind por
+# accesorio todavía).
+ACCESSORIES_PLUGIN_RESOURCE = Resource(ResourceKind.PLUGIN, "arduino-accessories")
+LED_MATRIX_PLUGIN_RESOURCE = Resource(ResourceKind.PLUGIN, "matriz-led")
+MACHINE = "machine"
+
+
+def machine_resource(machine: Dict[str, Any]) -> Resource:
+    """Recurso de una máquina del modelo de ai_tools. El láser y la CNC usan
+    el id de su registro (`laser:<host>`), igual que `_laser_resource` del
+    panel; ai_tools nombra a la CNC `cnc:<host>`, pero es la misma placa."""
+    kind = machine.get("kind")
+    if kind in ("laser", "cnc"):
+        host = str(machine["id"]).split(":", 1)[1]
+        return Resource(ResourceKind.CNC if kind == "cnc" else ResourceKind.LASER, f"laser:{host}")
+    return Resource(ResourceKind.PRINTER, str(machine["id"]))
 
 
 async def set_accessory_power(accessory_id: str, on: bool) -> Dict[str, Any]:
@@ -413,7 +478,7 @@ async def run_matrix_rule(rule_id: str) -> Dict[str, Any]:
     return {"ok": True, "rule_id": rule_id}
 
 
-async def queue_file(machine_id: str, path: str) -> Dict[str, Any]:
+async def queue_file(machine_id: str, path: str, *, machine: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Manda un archivo de la biblioteca a la cola de una máquina.
 
     Hay dos colas distintas y no se pueden unificar: la de Moonraker vive en
@@ -424,7 +489,7 @@ async def queue_file(machine_id: str, path: str) -> Dict[str, Any]:
     """
     from backend.services.klipper_service import send_gcode_to_printer
 
-    machine = await _resolve_machine(machine_id)
+    machine = machine or await _resolve_machine(machine_id)
 
     if machine["kind"] in ("laser", "cnc"):
         from backend.services.laser_service import add_to_queue
@@ -455,11 +520,12 @@ async def queue_file(machine_id: str, path: str) -> Dict[str, Any]:
 
 
 async def preheat_machine(machine_id: str, nozzle: Optional[float] = None,
-                          bed: Optional[float] = None) -> Dict[str, Any]:
+                          bed: Optional[float] = None, *,
+                          machine: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Fija temperaturas objetivo. Riesgo medio: calienta sin nadie enfrente."""
     from backend.services.klipper_service import set_heater_target
 
-    machine = await _resolve_machine(machine_id)
+    machine = machine or await _resolve_machine(machine_id)
     if machine["brand"] != "klipper":
         raise ActionError(f"Solo puedo precalentar impresoras Klipper; {machine['name']} no lo es")
     if nozzle is None and bed is None:
@@ -479,7 +545,8 @@ async def preheat_machine(machine_id: str, nozzle: Optional[float] = None,
     return {"ok": True, "machine": machine["name"], "targets": aplicado}
 
 
-async def control_print(machine_id: str, action: str) -> Dict[str, Any]:
+async def control_print(machine_id: str, action: str, *,
+                        machine: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Pausa, reanuda o cancela la impresión en curso."""
     from backend.services.klipper_service import (
         cancel_printer_print, pause_printer_print, resume_printer_print,
@@ -489,7 +556,7 @@ async def control_print(machine_id: str, action: str) -> Dict[str, Any]:
     if action not in acciones:
         raise ActionError(f"Acción inválida: usa una de {', '.join(acciones)}")
 
-    machine = await _resolve_machine(machine_id)
+    machine = machine or await _resolve_machine(machine_id)
     if machine["brand"] != "klipper":
         raise ActionError(f"{machine['name']} no es una impresora Klipper")
 
@@ -499,7 +566,8 @@ async def control_print(machine_id: str, action: str) -> Dict[str, Any]:
     return {"ok": True, "machine": machine["name"], "action": action}
 
 
-async def assign_spool(machine_id: str, spool_id: int) -> Dict[str, Any]:
+async def assign_spool(machine_id: str, spool_id: int, *,
+                       machine: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Cambia qué carrete de Spoolman tiene cargado una impresora Klipper.
 
     A diferencia de preheat_machine/control_print no le pide a la impresora
@@ -507,15 +575,14 @@ async def assign_spool(machine_id: str, spool_id: int) -> Dict[str, Any]:
     qué carrete muestra la ficha, e intenta sincronizarlo con el carrete
     "activo" del componente [spoolman] de Moonraker si está configurado
     (mismo comportamiento que set_active_spool_endpoint en
-    plugins/spoolman/backend/router.py, que es lo que copia el rol admin
-    de acá). Si Moonraker no tiene [spoolman] configurado, la asignación en
-    NOPAL se guarda igual -- perder esa sincronización no es motivo para
-    fallar la acción.
+    plugins/spoolman/backend/router.py). Si Moonraker no tiene [spoolman]
+    configurado, la asignación en NOPAL se guarda igual -- perder esa
+    sincronización no es motivo para fallar la acción.
     """
     from backend.services.klipper_service import MoonrakerClient
     from backend.services.plugin_loader_service import get_loaded_plugin_module
 
-    machine = await _resolve_machine(machine_id)
+    machine = machine or await _resolve_machine(machine_id)
     if machine["brand"] != "klipper":
         raise ActionError(
             f"Solo se puede vincular material a impresoras Klipper; {machine['name']} no lo es "
@@ -553,6 +620,12 @@ async def assign_spool(machine_id: str, spool_id: int) -> Dict[str, Any]:
 # Registro
 # --------------------------------------------------------------------------
 
+_CONTROL_PRINT_ACTIONS = {
+    "pause": PolicyAction.PAUSE,
+    "resume": PolicyAction.RESUME,
+    "cancel": PolicyAction.CANCEL,
+}
+
 _MACHINE_PARAM = {
     "machine_id": {"type": "string", "description": "Id o nombre de la máquina."},
 }
@@ -574,9 +647,8 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["accessory_id", "on"],
             },
             risk="low",
-            # El panel lo permite a cualquier usuario autenticado
-            # (accessory_power_endpoint usa require_auth).
-            role="any",
+            policy_actions=(PolicyAction.USE_PLUGIN,),
+            resource=ACCESSORIES_PLUGIN_RESOURCE,
         ),
         Action(
             "activate_scene",
@@ -589,7 +661,9 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["scene_id"],
             },
             risk="low",
-            role="any",
+            # Ejecutar una escena es usar el plugin; crearla o editarla es configurarlo.
+            policy_actions=(PolicyAction.USE_PLUGIN,),
+            resource=ACCESSORIES_PLUGIN_RESOURCE,
         ),
         Action(
             "create_scene",
@@ -659,7 +733,8 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["name"],
             },
             risk="confirm",
-            role="admin",
+            policy_actions=(PolicyAction.CONFIGURE_PLUGIN,),
+            resource=ACCESSORIES_PLUGIN_RESOURCE,
         ),
         Action(
             "update_scene",
@@ -727,7 +802,8 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["scene_id"],
             },
             risk="confirm",
-            role="admin",
+            policy_actions=(PolicyAction.CONFIGURE_PLUGIN,),
+            resource=ACCESSORIES_PLUGIN_RESOURCE,
         ),
         Action(
             "send_matrix_announcement",
@@ -740,7 +816,8 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["announcement_id"],
             },
             risk="low",
-            role="any",
+            policy_actions=(PolicyAction.USE_PLUGIN,),
+            resource=LED_MATRIX_PLUGIN_RESOURCE,
         ),
         Action(
             "set_machine_alerts",
@@ -757,7 +834,11 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["machine_id", "enabled"],
             },
             risk="low",
-            role="any",
+            # Guarda configuración persistente del plugin (save_machine_alerts
+            # reescribe machine-alerts y cambia lo que la matriz hará sola en
+            # cada cambio de estado): configurar plugin → admin (D3-Q9).
+            policy_actions=(PolicyAction.CONFIGURE_PLUGIN,),
+            resource=LED_MATRIX_PLUGIN_RESOURCE,
         ),
         Action(
             "run_matrix_rule",
@@ -770,7 +851,8 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["rule_id"],
             },
             risk="low",
-            role="any",
+            policy_actions=(PolicyAction.USE_PLUGIN,),
+            resource=LED_MATRIX_PLUGIN_RESOURCE,
         ),
         Action(
             "queue_file",
@@ -787,7 +869,11 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["machine_id", "path"],
             },
             risk="low",
-            role="any",
+            # Encolar no arranca el trabajo, pero es el paso que lo prepara:
+            # la política no tiene una acción "encolar" y start_job es la más
+            # cercana (mismo requisito: operador).
+            policy_actions=(PolicyAction.START_JOB,),
+            resource=MACHINE,
         ),
         Action(
             "preheat_machine",
@@ -803,9 +889,10 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["machine_id"],
             },
             risk="confirm",
-            # Copiado de set_temperature_target_endpoint en backend/api/status.py,
-            # que es admin-only: la IA no puede ser más permisiva que el panel.
-            role="admin",
+            # D3-Q1: set_temperature es de operador en todos los canales (antes
+            # la IA copiaba el admin-only del panel, que ya también migró).
+            policy_actions=(PolicyAction.SET_TEMPERATURE,),
+            resource=MACHINE,
         ),
         Action(
             "control_print",
@@ -820,7 +907,9 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["machine_id", "action"],
             },
             risk="confirm",
-            role="any",
+            policy_actions=(PolicyAction.PAUSE, PolicyAction.RESUME, PolicyAction.CANCEL),
+            select_policy_action=lambda args: _CONTROL_PRINT_ACTIONS.get(args.get("action")),
+            resource=MACHINE,
         ),
         Action(
             "assign_spool",
@@ -837,22 +926,47 @@ ACTIONS: Dict[str, Action] = {
                 "required": ["machine_id", "spool_id"],
             },
             risk="low",
-            # Copiado de set_active_spool_endpoint en el plugin de Materiales,
-            # que es admin-only: la IA no puede ser más permisiva que el panel.
-            role="admin",
+            # C-3: asignar la bobina activa es de operador en todos los canales.
+            policy_actions=(PolicyAction.ASSIGN_ACTIVE_SPOOL,),
+            resource=MACHINE,
         ),
     ]
 }
 
 
-def get_actions(role: str) -> List[Action]:
-    """Las acciones que ese rol puede ejecutar. Un operador nunca ve en el
-    catálogo lo que no podría hacer en el panel."""
-    return [a for a in ACTIONS.values() if a.role == "any" or a.role == role]
+def _principal(role: str, user_id: Optional[str]) -> Principal:
+    """El usuario autenticado real (rol releído por `require_auth`). Ningún
+    argumento de la herramienta participa: el modelo no puede elevarse."""
+    return Principal.user(user_id, role)
 
 
-def get_actions_schema(role: str) -> List[Dict[str, Any]]:
-    return [a.to_openai_schema() for a in get_actions(role)]
+def _allowed_for_role(accion: Action, role: str, user_id: Optional[str] = None) -> bool:
+    """Decisión de la política sin recurso. Para un usuario el recurso no
+    cambia la decisión (no hay scope ni propietario en estas acciones), así
+    que sirve para armar el catálogo y para rechazar antes de dejar algo
+    pendiente; la autorización que vale es la de `execute`, con el recurso."""
+    principal = _principal(role, user_id)
+    return all(authorize(principal, a).allowed for a in accion.policy_actions)
+
+
+def get_actions(role: str, user_id: Optional[str] = None) -> List[Action]:
+    """Las acciones que ese rol puede ejecutar según la Authorization Policy.
+    Un operador nunca ve en el catálogo lo que no podría hacer en el panel."""
+    return [a for a in ACTIONS.values() if _allowed_for_role(a, role, user_id)]
+
+
+def get_actions_schema(role: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    return [a.to_openai_schema() for a in get_actions(role, user_id)]
+
+
+def ensure_can_request(name: str, role: str, user_id: Optional[str] = None) -> None:
+    """Rechaza antes de dejar una acción pendiente de confirmación: primero
+    la política (¿puede?) y después el riesgo (¿confirmó?)."""
+    accion = ACTIONS.get(name)
+    if accion is None:
+        raise ActionError(f"No existe la acción '{name}'")
+    if not _allowed_for_role(accion, role, user_id):
+        raise ActionError(PERMISSION_DENIED)
 
 
 def _purge_expired() -> None:
@@ -876,14 +990,17 @@ def stage_action(name: str, arguments: Dict[str, Any], username: str) -> Dict[st
     return {"id": token, "action": name, "arguments": arguments, "description": accion.description}
 
 
-async def execute(name: str, arguments: Dict[str, Any], role: str) -> Dict[str, Any]:
-    """Ejecuta una acción ya autorizada. No comprueba el nivel de riesgo:
-    quien llama decide si venía de una confirmación."""
+async def execute(name: str, arguments: Dict[str, Any], role: str,
+                  user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Autoriza con la Authorization Policy y ejecuta. No comprueba el nivel
+    de riesgo: quien llama decide si venía de una confirmación.
+
+    Orden: acción conocida → datos obligatorios → recurso (resolver la
+    máquina es solo lectura) → política → servicio. Un DENY no llega al
+    servicio ni toca hardware."""
     accion = ACTIONS.get(name)
     if accion is None:
         raise ActionError(f"No existe la acción '{name}'")
-    if accion.role != "any" and accion.role != role:
-        raise ActionError("Tu cuenta no tiene permiso para esta acción")
 
     permitidos = set((accion.parameters.get("properties") or {}).keys())
     filtrados = {k: v for k, v in (arguments or {}).items() if k in permitidos}
@@ -891,11 +1008,25 @@ async def execute(name: str, arguments: Dict[str, Any], role: str) -> Dict[str, 
     if faltan:
         raise ActionError(f"Faltan datos: {', '.join(faltan)}")
 
+    extra: Dict[str, Any] = {}
+    if accion.resource == MACHINE:
+        machine = await _resolve_machine(filtrados["machine_id"])
+        resource = machine_resource(machine)
+        extra["machine"] = machine  # el servicio no vuelve a resolverla
+    else:
+        resource = accion.resource
+
+    principal = _principal(role, user_id)
+    for policy_action in accion.policy_actions_for(filtrados):
+        if not authorize(principal, policy_action, resource):
+            logger.info(f"[IA] acción {name} denegada por la política (rol={role})")
+            raise ActionError(PERMISSION_DENIED)
+
     logger.info(f"[IA] acción {name}({filtrados}) ejecutada por rol={role}")
-    return await accion.handler(**filtrados)
+    return await accion.handler(**filtrados, **extra)
 
 
-async def confirm(token: str, role: str, username: str) -> Dict[str, Any]:
+async def confirm(token: str, role: str, username: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Ejecuta una acción pendiente. Solo la puede confirmar quien la pidió."""
     _purge_expired()
     pendiente = _pending.get(token)
@@ -905,7 +1036,9 @@ async def confirm(token: str, role: str, username: str) -> Dict[str, Any]:
         raise ActionError("Solo quien pidió la acción puede confirmarla")
 
     _pending.pop(token, None)  # de un solo uso, incluso si la ejecución falla
-    return await execute(pendiente["action"], pendiente["arguments"], role)
+    # Se vuelve a autorizar con el rol de ESTE momento: una degradación entre
+    # pedir y confirmar se respeta.
+    return await execute(pendiente["action"], pendiente["arguments"], role, user_id)
 
 
 def cancel(token: str) -> bool:

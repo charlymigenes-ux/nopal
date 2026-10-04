@@ -3,7 +3,9 @@ import logging
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
-from backend.auth_deps import require_auth
+from backend.api.console import klipper_resource
+from backend.auth_deps import ensure_authorized, require_auth
+from backend.services.authorization_policy import Action
 from backend.services.klipper_service import (
     add_scheduled_print,
     cancel_printer_print,
@@ -115,6 +117,9 @@ async def cancel_printer(port: int, user: dict = Depends(require_auth)):
 @router.post("/api/printers/{port}/restart")
 async def restart_printer_endpoint(port: int, user: dict = Depends(require_auth)):
     """Reinicia el proceso de Klipper (equivalente a RESTART)."""
+    # ADR-006 (C-2): recarga la configuración y puede interrumpir un trabajo;
+    # solo admin. Antes, cualquier usuario autenticado.
+    ensure_authorized(user, Action.RESTART_KLIPPER, klipper_resource(port))
     if not restart_printer_klipper(port):
         raise HTTPException(status_code=400, detail="No se pudo reiniciar Klipper")
     return {"success": True}
@@ -123,6 +128,9 @@ async def restart_printer_endpoint(port: int, user: dict = Depends(require_auth)
 @router.post("/api/printers/{port}/firmware-restart")
 async def firmware_restart_endpoint(port: int, user: dict = Depends(require_auth)):
     """Reinicia el firmware del MCU (equivalente a FIRMWARE_RESTART)."""
+    # ADR-006 (D3-Q4): firmware restart solo admin. Antes, cualquier usuario
+    # autenticado. Se autoriza antes de reiniciar.
+    ensure_authorized(user, Action.FIRMWARE_RESTART, klipper_resource(port))
     if not firmware_restart_printer(port):
         raise HTTPException(status_code=400, detail="No se pudo reiniciar el firmware")
     return {"success": True}
@@ -147,6 +155,10 @@ async def printer_config_file_content_endpoint(port: int, path: str, user: dict 
 async def save_printer_config_file_endpoint(
     port: int, path: str = Form(...), content: str = Form(...), user: dict = Depends(require_auth)
 ):
+    # ADR-006 (D3-Q4): modificar printer.cfg es configuración física; solo
+    # admin. Antes, cualquier usuario autenticado. Se autoriza antes de validar
+    # la ruta y de escribir nada.
+    ensure_authorized(user, Action.PRINTER_CONFIG, klipper_resource(port))
     if not is_safe_config_path(path):
         raise HTTPException(status_code=400, detail="Ruta inválida")
     if not save_printer_config_file(port, path, content):

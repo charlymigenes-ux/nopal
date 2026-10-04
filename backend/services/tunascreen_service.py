@@ -33,12 +33,17 @@ from backend.services import (
     laser_service,
     marlin_printer_service,
 )
+from backend.services.authorization_policy import Action, Principal, Resource, ResourceKind, authorize
 from backend.services.plugin_loader_service import get_loaded_plugin_module
 
 logger = logging.getLogger(__name__)
 
 REGISTRY_PATH = "tunascreen_devices.json"
 PAIRING_CODE_TTL_SECONDS = 300
+# D3-Q6: intentos fallidos de canje tolerados mientras haya códigos vigentes;
+# al llegar al límite se invalidan todos. Un atacante prueba códigos distintos,
+# así que un fallo no apunta a un código concreto: el límite es por ventana.
+PAIRING_MAX_FAILED_ATTEMPTS = 5
 API_VERSION = 1
 
 # Contrato de acciones que consume Android. ``capabilities`` describe lo que
@@ -89,7 +94,11 @@ CNC_ACTIONS = [
 # Códigos de pairing: en memoria, nunca en disco -- de un solo uso y de vida
 # corta (5 min), a diferencia de tunascreen_devices.json (persistente,
 # guarda los tokens ya emitidos).
-_pending_codes: Dict[str, float] = {}
+_pending_codes: Dict[str, float] = {}  # código → vencimiento (time.monotonic())
+_pairing_failed_attempts = 0
+# Serializa generar/canjear: el canje de un código es atómico (solo una
+# petición puede consumirlo) y el contador de intentos no se pierde.
+_pairing_lock = threading.Lock()
 
 # Conexiones WS activas -- primer WebSocket servidor->cliente de NOPAL, no
 # hay infraestructura previa que reutilizar acá.
@@ -162,26 +171,54 @@ def generate_pairing_code() -> Dict[str, Any]:
     """Solo se llama desde un endpoint que ya exige sesión de admin -- el
     código no reemplaza esa autenticación, es la credencial de un solo uso
     que el dispositivo nuevo va a canjear por un token permanente."""
-    now = time.time()
-    for code in list(_pending_codes):
-        if _pending_codes[code] < now:
-            del _pending_codes[code]
-
-    code = f"{secrets.randbelow(1_000_000):06d}"
-    _pending_codes[code] = now + PAIRING_CODE_TTL_SECONDS
+    global _pairing_failed_attempts
+    with _pairing_lock:
+        now = time.monotonic()
+        _purge_expired_codes_unlocked(now)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        while code in _pending_codes:
+            code = f"{secrets.randbelow(1_000_000):06d}"
+        _pending_codes[code] = now + PAIRING_CODE_TTL_SECONDS
+        # Un código nuevo, generado por un admin, abre una ventana nueva.
+        _pairing_failed_attempts = 0
     return {"code": code, "expires_in": PAIRING_CODE_TTL_SECONDS}
 
 
+def _purge_expired_codes_unlocked(now: float) -> None:
+    for code, expires_at in list(_pending_codes.items()):
+        if expires_at <= now:
+            del _pending_codes[code]
+
+
 def has_pending_codes() -> bool:
-    now = time.time()
-    return any(expires_at >= now for expires_at in _pending_codes.values())
+    with _pairing_lock:
+        now = time.monotonic()
+        return any(expires_at > now for expires_at in _pending_codes.values())
+
+
+def _consume_pairing_code(code: str) -> bool:
+    """True si `code` estaba vigente; lo consume (un solo uso). Un fallo suma
+    un intento y, al llegar a PAIRING_MAX_FAILED_ATTEMPTS, invalida todos los
+    códigos vigentes. Todo bajo el lock: dos canjes simultáneos del mismo
+    código no pueden tener éxito los dos."""
+    global _pairing_failed_attempts
+    with _pairing_lock:
+        _purge_expired_codes_unlocked(time.monotonic())
+        if _pending_codes.pop(code, None) is not None:
+            return True
+        _pairing_failed_attempts += 1
+        if _pairing_failed_attempts >= PAIRING_MAX_FAILED_ATTEMPTS:
+            if _pending_codes:
+                # Nunca se registra el código ni el token.
+                logger.warning("TUNA-Screen: demasiados intentos de emparejamiento fallidos; códigos invalidados")
+            _pending_codes.clear()
+            _pairing_failed_attempts = 0
+        return False
 
 
 def confirm_pairing(code: str, device_name: str) -> Dict[str, Any]:
-    expires_at = _pending_codes.get(code)
-    if expires_at is None or expires_at < time.time():
+    if not _consume_pairing_code(code):
         raise ValueError("Código inválido o vencido")
-    del _pending_codes[code]  # de un solo uso
 
     token = secrets.token_urlsafe(32)
     device_id = f"tuna_{secrets.token_hex(8)}"
@@ -868,11 +905,80 @@ def _split_machine_id(machine_id: str) -> tuple:
     return brand, raw_id
 
 
-async def dispatch_action(machine_id: str, action: str, params: Dict[str, Any]) -> Dict[str, Any]:
+class DeviceActionDenied(PermissionError):
+    """La Authorization Policy denegó la acción al dispositivo. El endpoint la
+    traduce a 403 sin exponer detalles de la política."""
+
+
+_MACHINE_TYPE_KIND = {"printer": ResourceKind.PRINTER, "laser": ResourceKind.LASER, "cnc": ResourceKind.CNC}
+_ACTION_NAMES = {a.value for a in Action}
+
+
+def machine_resource(machine: Dict[str, Any]) -> Resource:
+    """Recurso de la Authorization Policy para una máquina del modelo
+    normalizado: tipo según `type` e id normalizado (`driver:raw_id`). Las
+    claves coinciden con las del panel (p. ej. `printer:klipper:7125`,
+    `laser:laser:<host>`, `cnc:laser:<host>`)."""
+    return Resource(_MACHINE_TYPE_KIND.get(machine.get("type"), ResourceKind.MACHINE), machine["id"])
+
+
+def device_scope(device: Dict[str, Any], resource: Resource) -> Set[str]:
+    """Punto de integración del scope de un dispositivo TUNA-Screen (D3-Q5).
+
+    TRANSITORIO: el scope todavía no se persiste. Por decisión del propietario
+    (2026-10-03, enforcement parcial) se usa como scope el propio recurso
+    pedido: la política sigue evaluando rol y si la acción está permitida a
+    dispositivos (las de admin se deniegan siempre), pero no limita por
+    máquina. Cuando exista la persistencia, devolver aquí el scope guardado.
+    Un recurso sin id no tiene clave: scope vacío y la política deniega."""
+    return {resource.key} if resource.key else set()
+
+
+def principal_for_device(device: Dict[str, Any], resource: Resource) -> Principal:
+    """Principal de un dispositivo: perfil fijo operador (Principal.tuna_device),
+    a partir solo de la identidad del token; nada de la petición puede
+    cambiar su rol."""
+    return Principal.tuna_device(device["device_id"], device_scope(device, resource))
+
+
+async def ensure_device_authorized(device: Dict[str, Any], action: Action, machine_id: str) -> None:
+    """Autoriza una acción de dispositivo sobre una máquina fuera de
+    dispatch_action (p. ej. asignar la bobina activa). Mismo principal (scope
+    transitorio) y mismo recurso que dispatch_action; si la máquina no está
+    en el modelo normalizado, el recurso queda como `machine:<id>` (tipo
+    desconocido). Lanza DeviceActionDenied si la política deniega."""
+    machine = await get_machine(machine_id) if machine_id else None
+    resource = machine_resource(machine) if machine else Resource(ResourceKind.MACHINE, machine_id or None)
+    ensure_device_authorized_for(device, action, resource)
+
+
+# Accesorios y escenas se autorizan sobre el plugin completo. El scope por
+# accesorio/escena queda para cuando exista la persistencia del scope.
+ACCESSORIES_PLUGIN_RESOURCE = Resource(ResourceKind.PLUGIN, "arduino-accessories")
+
+
+def ensure_device_authorized_for(device: Dict[str, Any], action: Action, resource: Resource) -> None:
+    """Autoriza una acción de dispositivo sobre un recurso ya resuelto, con el
+    mismo principal (operador, scope transitorio). Lanza DeviceActionDenied
+    si la política deniega."""
+    if not authorize(principal_for_device(device, resource), action, resource):
+        raise DeviceActionDenied("Permiso insuficiente")
+
+
+async def dispatch_action(
+    machine_id: str, action: str, params: Dict[str, Any], *, device: Dict[str, Any]
+) -> Dict[str, Any]:
     brand, raw_id = _split_machine_id(machine_id)
+    if action not in _ACTION_NAMES:
+        raise ValueError("Acción no soportada para esta máquina")
     machine = await get_machine(machine_id)
     if machine is None:
         raise ValueError("Máquina no encontrada")
+    # ADR-006: la autorización va antes de cualquier otra comprobación y de
+    # llamar a un servicio o driver.
+    resource = machine_resource(machine)
+    if not authorize(principal_for_device(device, resource), Action(action), resource):
+        raise DeviceActionDenied("Permiso insuficiente")
     if not machine.get("online"):
         raise ValueError("La máquina está fuera de línea")
     if action not in machine.get("actions", []):

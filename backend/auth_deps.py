@@ -1,6 +1,9 @@
+from typing import Optional
+
 from fastapi import Depends, HTTPException, Request
 
 from backend.services.auth_service import get_user_by_id
+from backend.services.authorization_policy import Action, Principal, Resource, authorize
 
 
 def require_auth(request: Request) -> dict:
@@ -31,3 +34,19 @@ def require_role(role: str):
             raise HTTPException(status_code=403, detail="Permiso insuficiente")
         return user
     return _dependency
+
+
+def principal_for_user(user: dict) -> Principal:
+    """Adaptador del usuario que devuelve `require_auth` (rol releído del
+    registro en cada request) al `Principal` de la Authorization Policy
+    (ADR-006). Un rol desconocido queda sin rol y la política lo deniega."""
+    return Principal.user(user.get("user_id"), user.get("role"))
+
+
+def ensure_authorized(user: dict, action: Action, resource: Optional[Resource] = None) -> None:
+    """Enforcement de ADR-006 para rutas ya migradas: consulta la política
+    antes de ejecutar la acción y responde 403 (mismo detalle que
+    `require_role`) si la decisión es DENY. La sesión la sigue validando
+    `require_auth`, que responde 401 antes de llegar aquí."""
+    if not authorize(principal_for_user(user), action, resource):
+        raise HTTPException(status_code=403, detail="Permiso insuficiente")

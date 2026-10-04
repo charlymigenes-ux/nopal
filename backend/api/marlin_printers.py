@@ -4,7 +4,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 
-from backend.auth_deps import require_auth, require_role
+from backend.auth_deps import ensure_authorized, require_auth, require_role
+from backend.services.authorization_policy import Action, Resource, ResourceKind
 from backend.services import mks_wifi_transport, printer_profiles
 from backend.services.marlin_printer_service import (
     list_usb_marlin_ports,
@@ -37,6 +38,13 @@ from backend.services.marlin_printer_service import (
 from backend.utils import safe_section_path
 
 router = APIRouter()
+
+
+def _marlin_resource(device: str) -> Resource:
+    """Recurso de la Authorization Policy (ADR-006) para una impresora Marlin:
+    el id normalizado de la máquina (`marlin:<device>`, el mismo del modelo de
+    TUNA-Screen). Única construcción para todas las rutas migradas."""
+    return Resource(ResourceKind.PRINTER, f"marlin:{device}")
 
 
 @router.get("/api/marlin-printers/profiles")
@@ -193,6 +201,8 @@ async def marlin_printers_registry_remove_endpoint(device: str = Form(...), user
 
 @router.get("/api/marlin-printers/status")
 async def marlin_printers_status_endpoint(device: str, user: dict = Depends(require_auth)):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.VIEW_STATUS, _marlin_resource(device))
     status = await get_status(device)
     if status is None:
         return {"connected": False, "device": device}
@@ -207,6 +217,8 @@ async def marlin_printers_jog_endpoint(
     feed: float = Form(...),
     user: dict = Depends(require_auth),
 ):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.MOVE, _marlin_resource(device))
     if not await jog(device, axis, distance, feed):
         raise HTTPException(status_code=502, detail="No se pudo mover el eje")
     return {"success": True}
@@ -218,6 +230,8 @@ async def marlin_printers_home_endpoint(
     axes: Optional[str] = Form(None),
     user: dict = Depends(require_auth),
 ):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.HOME, _marlin_resource(device))
     if not await home(device, axes):
         raise HTTPException(status_code=502, detail="No se pudo iniciar el home")
     return {"success": True}
@@ -225,6 +239,8 @@ async def marlin_printers_home_endpoint(
 
 @router.get("/api/marlin-printers/temperatures")
 async def marlin_printers_temperatures_endpoint(device: str, user: dict = Depends(require_auth)):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.VIEW_STATUS, _marlin_resource(device))
     return await get_temperature_snapshot(device)
 
 
@@ -235,6 +251,8 @@ async def marlin_printers_temperature_target_endpoint(
     target: float = Form(...),
     user: dict = Depends(require_auth),
 ):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.SET_TEMPERATURE, _marlin_resource(device))
     if not set_heater_target(device, heater, target):
         raise HTTPException(status_code=502, detail="No se pudo actualizar la temperatura objetivo")
     return {"success": True}
@@ -252,6 +270,9 @@ async def marlin_printers_console_command_endpoint(
     command: str = Form(...),
     user: dict = Depends(require_auth),
 ):
+    # ADR-006 (D3-Q2): consola / G-code arbitrario solo admin. Antes, cualquier
+    # usuario autenticado. Se autoriza antes de enviar nada a la impresora.
+    ensure_authorized(user, Action.SEND_CONSOLE_COMMAND, _marlin_resource(device))
     if not await send_console_command(device, command):
         raise HTTPException(status_code=502, detail="No se pudo enviar el comando")
     return {"success": True}
@@ -265,6 +286,9 @@ async def marlin_printers_print_start_endpoint(
     user: dict = Depends(require_auth),
 ):
     """Inicia el envío de un archivo G-code (de la biblioteca) a la impresora."""
+    # Ruta migrada a la Authorization Policy (ADR-006). Se autoriza antes de
+    # resolver o leer el archivo.
+    ensure_authorized(user, Action.START_JOB, _marlin_resource(device))
     file_path = safe_section_path(section, path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
@@ -296,6 +320,8 @@ async def marlin_printers_sd_print_start_endpoint(
     user: dict = Depends(require_auth),
 ):
     """Arranca el archivo dentro de la SD con M23/M24, sin copia local."""
+    # Ruta migrada a la Authorization Policy (ADR-006): variante SD de start_job.
+    ensure_authorized(user, Action.START_JOB, _marlin_resource(device))
     try:
         return await start_sd_print(device, filename)
     except RuntimeError as exc:
@@ -323,6 +349,10 @@ async def marlin_printers_sd_upload_and_print_endpoint(
     """Sube un archivo de la biblioteca a la SD de la impresora (M28/M29) y
     arranca la impresión (M23/M24) -- opcionalmente precalentando primero a
     la temperatura que el propio archivo declara."""
+    # Ruta migrada a la Authorization Policy (ADR-006): variante SD de start_job.
+    # Se autoriza antes de resolver o leer el archivo y antes de cualquier
+    # escritura en la SD (que ocurre dentro de upload_and_start_sd_print).
+    ensure_authorized(user, Action.START_JOB, _marlin_resource(device))
     file_path = safe_section_path(section, path)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
@@ -338,6 +368,8 @@ async def marlin_printers_sd_upload_and_print_endpoint(
 
 @router.get("/api/marlin-printers/print/status")
 async def marlin_printers_print_status_endpoint(device: str, user: dict = Depends(require_auth)):
+    # Ruta migrada a la Authorization Policy (ADR-006).
+    ensure_authorized(user, Action.VIEW_STATUS, _marlin_resource(device))
     return await get_job_status(device)
 
 
@@ -348,6 +380,7 @@ async def marlin_printers_active_jobs_endpoint(user: dict = Depends(require_auth
 
 @router.post("/api/marlin-printers/print/pause")
 async def marlin_printers_print_pause_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+    ensure_authorized(user, Action.PAUSE, _marlin_resource(device))
     if not await pause_job(device):
         raise HTTPException(status_code=409, detail="No hay una impresión en curso para pausar")
     return {"success": True}
@@ -355,6 +388,7 @@ async def marlin_printers_print_pause_endpoint(device: str = Form(...), user: di
 
 @router.post("/api/marlin-printers/print/resume")
 async def marlin_printers_print_resume_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+    ensure_authorized(user, Action.RESUME, _marlin_resource(device))
     if not await resume_job(device):
         raise HTTPException(status_code=409, detail="No hay una impresión pausada para reanudar")
     return {"success": True}
@@ -362,6 +396,7 @@ async def marlin_printers_print_resume_endpoint(device: str = Form(...), user: d
 
 @router.post("/api/marlin-printers/print/cancel")
 async def marlin_printers_print_cancel_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+    ensure_authorized(user, Action.CANCEL, _marlin_resource(device))
     if not await cancel_job(device):
         raise HTTPException(status_code=409, detail="No hay una impresión en curso para cancelar")
     return {"success": True}

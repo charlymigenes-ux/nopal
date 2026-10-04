@@ -130,14 +130,33 @@ prompt a la mitad. Ayudan, pero no convierten un CPU en algo interactivo.
 
 ## Seguridad
 
-**Esta versión es de solo lectura.** El catálogo entero son funciones `get_*`. No hay
-ninguna herramienta que inicie o cancele trabajos, mueva ejes, haga home, caliente,
-active el láser o el CNC, resetee el MCU, controle relés ni ejecute shell.
-`backend/tests/test_ai_tools.py` verifica ese contrato: un nombre de herramienta que
-empiece con un verbo de acción hace fallar la suite.
+**Las herramientas de consulta son de solo lectura.** El catálogo de `ai_tools` son
+funciones `get_*`; `backend/tests/test_ai_tools.py` verifica ese contrato: un nombre de
+herramienta que empiece con un verbo de acción hace fallar la suite.
 
-Las futuras acciones físicas irán en un registro aparte y requerirán confirmación del
-usuario. **Láser y CNC nunca deben poder arrancarse autónomamente por IA.**
+**Las acciones operativas viven en un registro aparte** (`backend/services/ai_actions.py`):
+encender/apagar accesorios, activar escenas, crear o editar escenas, anuncios y reglas
+de la Matriz LED, alertas por máquina, encolar archivos, precalentar, pausar/reanudar/
+cancelar y asignar la bobina activa. Cada una pasa por tres controles, en este orden:
+
+1. **Authorization Policy** (ADR-006, `docs/SDD.md` §18.8): la acción declara su
+   acción canónica de la política y la política decide con el usuario autenticado real
+   y el recurso real (la máquina o el plugin). La IA no tiene una tabla de permisos
+   propia: lo que un operador no puede hacer en el panel, tampoco lo logra pidiéndoselo
+   a la IA.
+2. **Interruptor `actions_enabled`**, apagado por omisión: con él apagado la IA solo
+   consulta, y se revalida en el punto de ejecución (un modelo puede inventarse el
+   nombre de una acción).
+3. **Riesgo**: las de riesgo `confirm` (precalentar, pausar/reanudar/cancelar, crear o
+   editar escenas) no se ejecutan; quedan pendientes hasta que la misma persona las
+   confirma, y al confirmar se vuelve a autorizar.
+
+Las herramientas que declaran los plugins (`AI_TOOLS`) siguen su propio contrato, ver
+"Contrato de `AI_TOOLS`".
+
+No hay herramientas para mover ejes, hacer home, mandar G-code o consola, resetear el
+MCU ni ejecutar shell. **Láser y CNC nunca deben poder arrancarse autónomamente por IA**:
+no existe la herramienta, y un test de `test_ai_actions.py` falla si alguien la agrega.
 
 Por omisión solo se permiten endpoints en localhost o la LAN. Apuntar a internet exige
 activar `allow_public_endpoint` a mano: mandar telemetría del taller afuera tiene que
@@ -156,6 +175,8 @@ ser una decisión explícita, no el resultado de escribir mal una IP.
 
 `POST /api/ai/tools/{nombre}` ejecuta una herramienta sin pasar por el modelo. Sirve
 para verificar los datos que vería la IA sin depender de que haya un servidor conectado.
+Las herramientas de plugins pasan aquí por la misma autorización que desde el agente
+(ver "Contrato de `AI_TOOLS`"): sin permiso o con las acciones apagadas responde 403.
 
 ## Herramientas disponibles
 
@@ -178,18 +199,72 @@ segundo es el que escala:
    `dashboard_service` y `notification_service`. Si el plugin no está
    instalado devuelven `{"available": false}` en vez de romper.
 
-2. **Herramientas que el plugin declara por su cuenta** — si el módulo de
-   entrada de un plugin define `AI_TOOLS` (una lista de `ai_tools.Tool`),
-   `plugin_loader_service.get_plugin_ai_tools()` las recoge y se suman al
-   catálogo. Un plugin nuevo puede exponerse a la IA **sin tocar el core**,
-   igual que ya declara su `router`.
+2. **Herramientas que el plugin declara por su cuenta** — si un módulo de
+   un plugin define `AI_TOOLS` (una lista de `ai_tools.Tool`),
+   `plugin_loader_service.get_plugin_ai_tools()` las recoge y, si cumplen el
+   contrato de abajo, se suman al catálogo. Un plugin nuevo puede exponerse a
+   la IA **sin tocar el core**, igual que ya declara su `router`.
 
-Reglas del punto de extensión:
+#### Contrato de `AI_TOOLS`
+
+Cada herramienta de plugin se autoriza con la Authorization Policy de NOPAL
+(ADR-006, ver `docs/SDD.md` §18.8) antes de ejecutarse.
+
+```python
+from backend.services.ai_tools import Tool
+from backend.services.authorization_policy import Action
+
+AI_TOOLS = [
+    Tool("get_estado_de_mi_plugin", "Lee el estado del plugin.", leer_estado,
+         policy_action=Action.USE_PLUGIN),
+    Tool("disparar_mi_plugin", "Hace algo con el plugin.", disparar,
+         policy_action=Action.USE_PLUGIN, read_only=False),
+    Tool("configurar_mi_plugin", "Cambia la configuración del plugin.", configurar,
+         policy_action=Action.CONFIGURE_PLUGIN),
+]
+```
+
+- **`policy_action` es obligatorio** y tiene que ser uno de los dos Enums
+  canónicos de `authorization_policy.Action`: `Action.USE_PLUGIN` o
+  `Action.CONFIGURE_PLUGIN`. Su texto (`"use_plugin"`) no cuenta.
+- **`USE_PLUGIN`**: usar el plugin; la política lo permite a operador y admin.
+- **`CONFIGURE_PLUGIN`**: cambiar configuración o comportamiento persistente
+  del plugin; la política exige **admin**.
+- **`read_only`** (por omisión `True`): una herramienta que cambia estado debe
+  declarar `read_only=False`. Las que cambian estado, y siempre las de
+  `CONFIGURE_PLUGIN`, requieren además que `actions_enabled` esté encendido.
+  Orden: primero la política (¿puede?), después el interruptor.
+- **El `plugin_id` lo determina el core**, a partir del paquete donde se cargó
+  el módulo (`nopal_plugins.<id>`), comparado con los plugins instalados. El
+  recurso que ve la política es `plugin:<id>`; el plugin no lo elige.
+- **La identidad sale del usuario autenticado** que inició la operación (en
+  `/api/ai/ask` o en `POST /api/ai/tools/{nombre}`): `user_id` y rol de la
+  sesión, con los que el core arma el principal. Ni el plugin ni el modelo
+  pueden proporcionar identidad: los argumentos se filtran por el esquema, los
+  atributos que el plugin agregue a su `Tool` se ignoran, y una herramienta
+  que declare parámetros `role`, `user_id`, `user`, `username`, `principal` o
+  `scope` no se acepta. El handler no recibe la identidad del usuario.
+- **Lo que no cumple el contrato queda fuera del registro y no se expone**:
+  sin `policy_action`, con cualquier otra acción (temperatura, movimiento,
+  consola, potencia, archivos, sistema…), con parámetros de identidad, o con
+  el nombre de una herramienta del core o de una acción de `ai_actions`. Se
+  salta con una advertencia en el log; un plugin roto nunca tumba la capa de
+  IA. Si una herramienta necesita otra acción, hay que definirla antes de
+  forma explícita.
+- El catálogo que ve el modelo (y `GET /api/ai/tools`) solo incluye las
+  herramientas que ese usuario podría ejecutar.
+- **No hay confirmación automática.** Las herramientas de plugin no tienen el
+  flujo `risk="confirm"` de `ai_actions` (acción pendiente que la persona
+  confirma): se ejecutan en cuanto la política y el interruptor lo permiten.
+- **Límite del modelo de confianza.** El código de un plugin corre dentro del
+  proceso de NOPAL (trusted, in-process). Este contrato controla lo que se
+  ejecuta *como herramienta de IA*; no impide que el código del plugin, fuera
+  de él, llame directamente a otros servicios. Eso queda fuera de alcance.
+
+Otras reglas del punto de extensión:
 
 - Las del core ganan ante un choque de nombres: un plugin no puede sustituir
   una herramienta central por una suya.
-- Lo que no sea un `Tool` válido se salta con una advertencia; un plugin roto
-  nunca tumba la capa de IA.
 - El perfil `compact` deja fuera las de plugins: son justo las que sobran
   cuando el servidor de IA es lento.
 

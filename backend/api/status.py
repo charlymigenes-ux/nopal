@@ -7,7 +7,9 @@ import time
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException
 
-from backend.auth_deps import require_auth, require_role
+from backend.api.console import klipper_resource
+from backend.auth_deps import ensure_authorized, require_auth, require_role
+from backend.services.authorization_policy import Action
 from backend.services.klipper_service import (
     get_all_printers_status,
     get_system_stats,
@@ -194,9 +196,12 @@ async def get_temperatures_endpoint(port: int, user: dict = Depends(require_auth
 @router.post("/api/system/temperature-target")
 async def set_temperature_target_endpoint(
     port: int = Form(...), heater: str = Form(...), target: float = Form(...),
-    user: dict = Depends(require_role("admin")),
+    user: dict = Depends(require_auth),
 ):
     """Actualiza la temperatura objetivo de un heater (extruder, heater_bed, etc.)."""
+    # ADR-006 (D3-Q1): set_temperature es de operador en todos los canales.
+    # Antes exigía admin (require_role); ahora decide la Authorization Policy.
+    ensure_authorized(user, Action.SET_TEMPERATURE, klipper_resource(port))
     success = set_heater_target(port=port, heater=heater, target=target)
     if not success:
         raise HTTPException(status_code=502, detail="No se pudo actualizar la temperatura objetivo")

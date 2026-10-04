@@ -147,7 +147,7 @@ def _tool_result_to_text(result: Any) -> str:
         return json.dumps({"error": "unserializable_result"}, ensure_ascii=False)
 
 
-async def _run_action(name, arguments, role, username, actions_enabled):
+async def _run_action(name, arguments, role, username, actions_enabled, user_id=None):
     """Ejecuta o deja pendiente, según el nivel de riesgo.
 
     Las de riesgo `confirm` NO se ejecutan acá: se devuelve al modelo un
@@ -164,13 +164,16 @@ async def _run_action(name, arguments, role, username, actions_enabled):
     accion = ai_actions.ACTIONS[name]
     try:
         if accion.risk == "confirm":
+            # Primero la política (¿puede?) y después el riesgo (¿confirmó?):
+            # no se deja pendiente algo que esta persona no podría ejecutar.
+            ai_actions.ensure_can_request(name, role, user_id)
             pendiente = ai_actions.stage_action(name, arguments or {}, username)
             return {
                 "status": "pending_confirmation",
                 "message": "La acción NO se ejecutó. Espera la confirmación de la persona.",
                 "action": name,
             }, pendiente
-        return await ai_actions.execute(name, arguments or {}, role), None
+        return await ai_actions.execute(name, arguments or {}, role, user_id), None
     except ai_actions.ActionError as exc:
         return {"error": "action_failed", "detail": str(exc)}, None
 
@@ -185,6 +188,7 @@ async def _run_native_loop(
     route: Optional[ai_router.Route] = None,
     model: Optional[str] = None,
     estado: Optional[Dict[str, int]] = None,
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Ciclo con function calling: el modelo pide herramientas hasta que
     tiene con qué contestar (o hasta agotar `max_tool_iterations`).
@@ -198,12 +202,15 @@ async def _run_native_loop(
         *(history or []),
         {"role": "user", "content": question},
     ]
-    schema = ai_tools.get_tools_schema(profile)
+    # Las herramientas de plugins solo entran si este usuario puede
+    # ejecutarlas (Authorization Policy); las del core son de solo lectura.
+    schema = ai_tools.get_tools_schema(
+        profile, role=role, user_id=user_id, actions_enabled=bool(config.get("actions_enabled")))
     # Las acciones solo entran al catálogo si están habilitadas Y el rol del
     # usuario las permite: la IA nunca ofrece lo que la persona no podría
     # hacer en el panel.
     if config.get("actions_enabled"):
-        schema = schema + ai_actions.get_actions_schema(role)
+        schema = schema + ai_actions.get_actions_schema(role, user_id)
     pending_action = None
     trace: List[Dict[str, Any]] = []
     max_iterations = route.max_tool_iterations if route else int(config.get("max_tool_iterations") or 4)
@@ -236,7 +243,7 @@ async def _run_native_loop(
             started = time.monotonic()
             if name in ai_actions.ACTIONS:
                 result, pendiente = await _run_action(
-                    name, arguments, role, username, bool(config.get("actions_enabled")))
+                    name, arguments, role, username, bool(config.get("actions_enabled")), user_id)
                 if pendiente is not None:
                     pending_action = pendiente
                 elif estado is not None and not (isinstance(result, dict) and result.get("error")):
@@ -244,7 +251,9 @@ async def _run_native_loop(
                     # reintentar la pregunta con otro modelo la repetiría.
                     estado["acciones_ejecutadas"] = estado.get("acciones_ejecutadas", 0) + 1
             else:
-                result = await ai_tools.call_tool(name, arguments)
+                result = await ai_tools.call_tool(
+                    name, arguments, role=role, user_id=user_id,
+                    actions_enabled=bool(config.get("actions_enabled")))
             elapsed_ms = round((time.monotonic() - started) * 1000)
 
             trace.append({
@@ -335,6 +344,7 @@ async def _run_with_model(
     route: Optional[ai_router.Route],
     model: Optional[str],
     estado: Dict[str, int],
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Una respuesta completa con un modelo concreto. El reparto entre modo
     nativo y modo contexto es exactamente el de siempre; lo único nuevo es
@@ -346,10 +356,10 @@ async def _run_with_model(
         return await _run_context_mode(provider, question, profile, history, model)
     if tool_mode == "native":
         return await _run_native_loop(
-            provider, question, config, history, role, username, route, model, estado)
+            provider, question, config, history, role, username, route, model, estado, user_id)
     try:
         return await _run_native_loop(
-            provider, question, config, history, role, username, route, model, estado)
+            provider, question, config, history, role, username, route, model, estado, user_id)
     except ToolsUnsupportedError as exc:
         logger.info(f"[IA] el modelo no soporta function calling ({exc}); se usa modo contexto")
         resultado = await _run_context_mode(provider, question, profile, history, model)
@@ -365,6 +375,7 @@ async def _run_routed(
     role: str,
     username: str,
     route: Optional[ai_router.Route],
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Intenta con el modelo elegido y, si falla, con los de respaldo.
 
@@ -377,13 +388,13 @@ async def _run_routed(
     estado: Dict[str, int] = {"acciones_ejecutadas": 0}
     if route is None:
         return await _run_with_model(
-            provider, question, config, history, role, username, None, None, estado)
+            provider, question, config, history, role, username, None, None, estado, user_id)
 
     cadena = [route.model or None, *route.fallback_models]
     for indice, modelo in enumerate(cadena):
         try:
             resultado = await _run_with_model(
-                provider, question, config, history, role, username, route, modelo, estado)
+                provider, question, config, history, role, username, route, modelo, estado, user_id)
             resultado["model"] = modelo or config.get("model")
             return resultado
         except AIProviderError as exc:
@@ -403,7 +414,8 @@ async def _run_routed(
 
 
 async def ask(question: str, conversation_id: Optional[str] = None,
-              role: str = "operador", username: str = "") -> Dict[str, Any]:
+              role: str = "operador", username: str = "",
+              user_id: Optional[str] = None) -> Dict[str, Any]:
     """Punto de entrada de NOPAL Intelligence.
 
     Levanta AIDisabledError si la capa está apagada y AIProviderError si el
@@ -431,7 +443,7 @@ async def ask(question: str, conversation_id: Optional[str] = None,
     if route and route.tier == "vision":
         result = {"answer": VISION_UNAVAILABLE_ANSWER, "tool_calls": [], "mode": "vision_unavailable"}
     else:
-        result = await _run_routed(provider, question, config, history, role, username, route)
+        result = await _run_routed(provider, question, config, history, role, username, route, user_id)
 
     result["question"] = question
     result["elapsed_ms"] = round((time.monotonic() - started) * 1000)
