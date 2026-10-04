@@ -200,7 +200,13 @@ async def tunascreen_accessory_power(
     if "on" not in payload:
         raise HTTPException(status_code=400, detail="Falta el estado 'on'")
     try:
+        # ADR-006: usar un accesorio es use_plugin; se autoriza antes del servicio.
+        tunascreen_service.ensure_device_authorized_for(
+            device, Action.USE_PLUGIN, tunascreen_service.ACCESSORIES_PLUGIN_RESOURCE
+        )
         return await tunascreen_service.set_accessory_power(accessory_id, bool(payload["on"]))
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -211,7 +217,13 @@ async def tunascreen_run_accessory_scene(
     device: dict = Depends(require_device_token),
 ):
     try:
+        # ADR-006: ejecutar una escena es use_plugin (crearla/editarla sería configure_plugin).
+        tunascreen_service.ensure_device_authorized_for(
+            device, Action.USE_PLUGIN, tunascreen_service.ACCESSORIES_PLUGIN_RESOURCE
+        )
         return await tunascreen_service.run_accessory_scene(scene_id)
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

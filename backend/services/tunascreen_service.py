@@ -949,6 +949,18 @@ async def ensure_device_authorized(device: Dict[str, Any], action: Action, machi
     desconocido). Lanza DeviceActionDenied si la política deniega."""
     machine = await get_machine(machine_id) if machine_id else None
     resource = machine_resource(machine) if machine else Resource(ResourceKind.MACHINE, machine_id or None)
+    ensure_device_authorized_for(device, action, resource)
+
+
+# Accesorios y escenas se autorizan sobre el plugin completo. El scope por
+# accesorio/escena queda para cuando exista la persistencia del scope.
+ACCESSORIES_PLUGIN_RESOURCE = Resource(ResourceKind.PLUGIN, "arduino-accessories")
+
+
+def ensure_device_authorized_for(device: Dict[str, Any], action: Action, resource: Resource) -> None:
+    """Autoriza una acción de dispositivo sobre un recurso ya resuelto, con el
+    mismo principal (operador, scope transitorio). Lanza DeviceActionDenied
+    si la política deniega."""
     if not authorize(principal_for_device(device, resource), action, resource):
         raise DeviceActionDenied("Permiso insuficiente")
 
