@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.22 |
+| Versión del SDD | 0.23 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -884,7 +884,7 @@ decide en este documento.
 | S-6 | Moonraker accesible sin autenticación en la LAN. | MEDIUM (despliegue) | `OPEN` |
 | S-7 | NOPAL sin TLS en `0.0.0.0`. | LOW en LAN / HIGH si se expone | `OPEN` (mitigación documentada en README) |
 | S-8 | Autorización inconsistente entre canales y rutas equivalentes; la consola permite saltarse restricciones específicas (D3-1…D3-6, §18.4). | HIGH | `OPEN` — política decidida (ADR-006); pendiente de implementar (§18.10) |
-| S-9 | Un dispositivo TUNA-Screen emparejado ejecuta cualquier acción declarada sin rol ni alcance (incluidas temperatura, consola y potencia de láser/husillo). | HIGH | `OPEN` — decidido Operator + scope (D3-Q5); pendiente de implementar |
+| S-9 | Un dispositivo TUNA-Screen emparejado ejecuta cualquier acción declarada sin rol ni alcance (incluidas temperatura, consola y potencia de láser/husillo). | HIGH | `PARTIAL` — `dispatch_action` ya trata al dispositivo como operador: las acciones de admin (consola, macros, potencia láser/husillo, configuración) se deniegan. Falta el scope: hasta que se persista, el dispositivo puede actuar sobre cualquier máquina con acciones de operador |
 | **S-10** | **Stored XSS potencial en archivos servidos desde `/uploads/{path}`**: la biblioteca acepta cualquier extensión y `GET /uploads/{path}` (`backend/main.py`, `protected_upload`) entrega el archivo con `FileResponse`, **en línea** (sin `Content-Disposition: attachment`), con el tipo deducido de la extensión (p. ej. `text/html`, `image/svg+xml`) y sin cabeceras `Content-Security-Policy` ni `X-Content-Type-Options`, **desde el mismo origen que el panel**. Un archivo con contenido activo —un HTML, o un SVG que incluya script— podría ejecutarse en la sesión de quien lo abra directamente en el navegador. No todo SVG es un riesgo: depende de su contenido y de cómo se abra (como documento, no como `<img>`). **Independiente de S-1**: S-1 impide escribir fuera de `uploads/`, pero no controla qué contenido se sirve desde ahí. No se ha demostrado explotación. Requiere analizar la política de entrega de archivos (tipos permitidos, descarga forzada, cabeceras, origen separado). Nota: `.svg` es un formato legítimo de la biblioteca (láser/CNC), por lo que una lista blanca de extensiones por sí sola no lo resuelve. | MEDIUM | `OPEN` |
 | **D-7** | **Emparejamiento TUNA-Screen**: `POST /api/tunascreen/pair/confirm` es anónimo por diseño y acepta un código de **6 dígitos** con vigencia de **5 minutos**, **sin límite de intentos**; un código válido entrega un **token permanente** con el que el dispositivo controla máquinas (S-9). Además, `GET /api/tunascreen/info` (anónimo) indica si hay un emparejamiento abierto. | HIGH | `OPEN` — refuerzo **decidido** (D3-Q6: un solo uso, expiración, límite de intentos, invalidación tras canje, no reutilización, token independiente); forma de implementación `PROPOSED` |
 | **D-8** | **`/plugins-static`**: monta el directorio `plugins/` completo sin autenticación. Se confirmó acceso anónimo al código fuente del backend de los plugins y a su carpeta `.git`. Hoy los repositorios de plugins son públicos, por lo que la exposición actual es baja; el riesgo es que cualquier archivo que un plugin o una persona coloque dentro de `plugins/` (datos, credenciales de firmware) quedaría publicado. | MEDIUM | `OPEN` — decidido: solo frontend público (D3-Q10); pendiente de implementar |
@@ -1049,6 +1049,13 @@ consola de Marlin y GRBL.
 valida existencia, conexión, `actions` y `capabilities`, pero **no quién la
 pide**. Acciones restringidas a admin en el panel (temperatura de Klipper,
 bobina activa) son libres para cualquier dispositivo emparejado.
+
+> **Estado (v0.23)** — `dispatch_action` ya consulta la Authorization Policy
+> con el dispositivo como principal (operador): consola, macros y potencia
+> láser/husillo quedan denegadas desde TUNA-Screen. **Parcial**: sin scope
+> persistido, el dispositivo sigue pudiendo usar acciones de operador sobre
+> cualquier máquina. La bobina activa (`/api/tunascreen/materials/active`) no
+> pasa por `dispatch_action` y no está migrada.
 
 **D3-4 — Potencia de láser/husillo.** IA: prohibido por diseño (con test que lo
 verifica). Panel: posible para operador vía consola. TUNA-Screen: `M3/M4 S…`
@@ -1250,7 +1257,7 @@ y se evoluciona hacia:
                          Driver
 ```
 
-**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción) (§18.8).
+**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador PARCIAL (scope transitorio) (§18.8).
 
 Infraestructura implementada (`backend/services/authorization_policy.py`):
 `Principal` (anónimo, usuario admin/operador, dispositivo TUNA-Screen con perfil
@@ -1313,7 +1320,7 @@ Enforcement del panel de Klipper — **primer cambio real de permisos** (CURRENT
 | `printer_config` | `POST /api/printers/{port}/config-files/content` (se autoriza antes de validar la ruta y de escribir) | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
 | `restart_klipper` | `POST /api/printers/{port}/restart` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
 | `firmware_restart` | `POST /api/printers/{port}/firmware-restart` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
-| Mismas acciones por TUNA-Screen | `dispatch_action` | — | ⏳ `NOT STARTED` |
+| Mismas acciones por TUNA-Screen | `dispatch_action`: `send_console_command` y `run_macro` denegadas a dispositivos; `set_temperature` permitida (operador, scope transitorio) | — | ✅ admin denegadas · ⚠️ operador PARTIAL |
 | Mismas acciones por IA | `ai_actions` (`preheat_machine` sigue en admin) | — | ⏳ `NOT STARTED` |
 
 El recurso es `Resource(PRINTER, "klipper:<port>")`, construido por un único helper (`klipper_resource`, en `backend/api/console.py`). La política se consulta antes de enviar cualquier G-code o macro. Fuera de lo migrado: lectura de consola, listado de macros y lectura de archivos de configuración (`GET /config-files`, `GET /config-files/content`; sin acción en la política) y el resto de rutas de Klipper. No hay otra ruta del panel que haga firmware restart; enviarlo como G-code por consola o macro ya es solo admin. El frontend no oculta al operador los controles de consola, macros, edición de `printer.cfg`, reinicio ni firmware restart: ahora le responden 403 "Permiso insuficiente".
@@ -1347,6 +1354,17 @@ Enforcement del panel GRBL / láser / CNC — cambio de permisos (CURRENT → TA
 La normalización reproduce cómo lee GRBL: bytes realtime extraídos de cualquier posición, varias líneas por petición (`\n`/`\r`), comentarios `(...)` y `;` descartados, espacios ignorados, mayúsculas y varias palabras por bloque. Una petición mixta (p. ej. `G0 X10` + `M3 S1000`) exige todas sus acciones: el operador recibe 403 y no se envía nada. Esto **cierra el bypass de potencia/husillo y de settings `$`** por esta ruta. Compatibilidad: el frontend no cambió; los botones de husillo y de disparo de prueba del láser siguen visibles para el operador y ahora le responden 403.
 
 El recurso es `Resource(LASER | CNC, "laser:<host>")` según el `kind` del registro (helper `_laser_resource` en `backend/api/laser.py`); si se omite `host` se usa el host activo, como antes. La autorización ocurre antes del chequeo de trabajo en curso (409). Fuera de este bloque: encuadre (`job/frame`), air assist / refrigerante, borrar y formatear SD, biblioteca y descubrimiento. El frontend no oculta el editor de settings `$` al operador: ahora le responde 403.
+
+Enforcement de TUNA-Screen (`dispatch_action`) — **PARCIAL** por decisión del propietario (2026-10-03):
+
+| Acciones | Estado |
+|---|---|
+| Admin: `send_console_command`, `run_macro`, `set_laser_power`, `set_spindle` (y cualquier otra de admin que llegue a `dispatch_action`: `printer_config`, `grbl_settings`, `firmware_restart`, `restart_klipper`, `delete_sd_file`…) | ✅ `IMPLEMENTED` — TARGET ENFORCED: denegadas al dispositivo antes de llegar al driver, aunque el recurso esté en el scope |
+| Operador: `pause`, `resume`, `cancel`, `home`, `move`, `extrude`, `set_temperature`, `set_fan`, `set_speed_factor`, `set_flow_factor`, `set_z_offset`, `set_air_assist`, `set_coolant`, `set_work_zero` | ⚠️ PARTIAL — pasan por la política (rol y permiso de dispositivo), pero con scope transitorio = el recurso pedido: todavía no se limita por máquina |
+| Persistencia del scope | ⏳ `NOT STARTED` (punto de integración: `tunascreen_service.device_scope`) |
+| Emparejamiento reforzado (D3-Q6) | ⏳ `NOT STARTED` |
+
+El principal sale solo de la identidad del token (`Principal.tuna_device`, perfil fijo operador); un `role` en la petición o en el registro se ignora. El recurso usa el tipo y el id normalizado de la máquina (mismas claves que el panel). Un DENY responde 403 "Permiso insuficiente"; una acción fuera del vocabulario o una máquina inexistente conservan su 400. **Rutas de TUNA-Screen fuera de `dispatch_action`** (no migradas, posibles bypasses): `POST /api/tunascreen/materials/active` (asigna la bobina activa; `assign_active_spool`), `POST /api/tunascreen/accessories/{id}/power` y `POST /api/tunascreen/accessory-scenes/{id}/run` (plugin de accesorios). La consola (`GET …/machine/{id}/console`) y las cámaras son de lectura. El WebSocket solo empuja estado.
 
 Lineamientos para la migración del enforcement (`PROPOSED`; hasta ahora aplicados solo en la ruta migrada):
 
@@ -1400,7 +1418,9 @@ CURRENT (matriz §18.3)
    ↓    (bloque CURRENT = TARGET completo; sin cambio visible) + consola de Marlin
    ↓    (operador → admin) y 6 de Klipper
    ↓    (cambios reales de permisos: temperatura, consola, macros, printer.cfg, reinicio, firmware restart)
-   ↓  migración de TUNA-Screen (scope de dispositivo + refuerzo del emparejamiento)
+   ↓  migración de TUNA-Screen — ⏳ EN CURSO (PARCIAL): dispatch_action con política;
+   ↓    acciones de admin denegadas; scope transitorio = recurso pedido; pendientes:
+   ↓    persistencia del scope y refuerzo del emparejamiento
    ↓  migración de la IA (Action.role derivado de la política)
    ↓  migración de plugins (convención configurar/usar)
    ↓  eliminación de bypasses (consola, macros con G-code arbitrario, /plugins-static)
@@ -1428,7 +1448,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **1069 tests, 0 fallos** (~85–90 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command`, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **1099 tests, 0 fallos** (~85 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro), contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1463,6 +1483,7 @@ Reglas:
 | Cambio de permisos de Klipper: `firmware_restart` (admin; el operador nunca llega al servicio) | 6 |
 | Cambio de permisos de la consola de Marlin (admin; sin bypass de M104/M140/M109/M190 ni M3/M4/M5 para el operador) | 15 |
 | Cambio de permisos GRBL: `/api/laser/console` y `grbl_settings` (admin; recurso láser/CNC según el registro; autorización antes del 409 de trabajo en curso; sin M3/M4/M5 ni `$` para el operador por esas rutas) | 30 |
+| Enforcement de TUNA-Screen en `dispatch_action`: acciones de admin denegadas sin llegar al driver, acciones de operador permitidas, rol no elevable desde la petición, recurso igual al del panel, orden token → política → servicio, semántica de scope | 30 |
 | Separación de `/api/laser/command`: clasificador (comandos reales del panel, tipo de máquina, peticiones mixtas, comentarios, realtime) y ruta (operación normal del operador intacta; 26 intentos de bypass denegados; todas las acciones autorizadas antes de enviar) | 72 |
 
 **Fixtures**: `isolated_printer_registries` (autouse) redirige a `tmp_path`
@@ -1686,7 +1707,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 
 ### ADR-006 — Centralización de autorización por acción
 
-- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador PARCIAL (scope transitorio) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
 
 - **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
   - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
@@ -1917,3 +1938,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.20 | 2026-10-03 | **Cambio real de permisos, consola del panel de Marlin**: `POST /api/marlin-printers/console` (`send_console_command`) pasa de operador a **admin** y consulta la Authorization Policy antes de enviar nada. Cierra el bypass de consola del panel de Marlin (M104/M140 y M3/M4). D3-1 y D3-2 quedan resueltos en los paneles de Klipper y Marlin; siguen abiertos la consola de GRBL, TUNA-Screen e IA. Rutas migradas: 19. Suite: 967 tests, 0 fallos (15 nuevos). |
 | 0.21 | 2026-10-03 | **Bloque privilegiado GRBL (cambio real de permisos)**: `POST /api/laser/console` (`send_console_command`) y `POST /api/laser/settings` (`grbl_settings`) pasan de operador a **admin**, con recurso láser/CNC según el registro y autorización antes del 409. `set_laser_power` y `set_spindle` no tienen ruta propia (NOT PRESENT). `POST /api/laser/command` queda **NOT COVERED**: ruta genérica usada para operación normal y para M3/M4, así que **el bypass de potencia/husillo sigue abierto** y requiere una decisión. `POST /api/laser/host` sin tocar (D4). Rutas migradas: 21. Suite: 997 tests, 0 fallos (30 nuevos). |
 | 0.22 | 2026-10-03 | **Separación de `POST /api/laser/command` (ruta de acciones mixtas)**: un clasificador (`backend/services/laser_command_classifier.py`) descompone el comando como lo lee GRBL (realtime en cualquier posición, varias líneas, comentarios, espacios, mayúsculas, varias palabras por bloque) y la ruta autoriza todas sus acciones antes de enviarlo. Operación normal sigue siendo de operador; `M3`/`M4`/`M5` y palabra `S` → `set_laser_power`/`set_spindle` (admin); `$…=…` → `grbl_settings` (admin); lo no reconocido → consola (admin). `$X` y overrides de potencia: NOT COVERED, sin cambio. **Bypass de potencia/husillo y de settings del panel GRBL: cerrado.** Frontend sin cambios. D4 sigue `OPEN`. Rutas migradas: 22. Suite: 1069 tests, 0 fallos (72 nuevos). |
+| 0.23 | 2026-10-03 | **Primer enforcement de TUNA-Screen (PARCIAL)**: `dispatch_action` consulta la Authorization Policy con el dispositivo como `Principal(TUNA_DEVICE, operador)` antes de cualquier servicio. Las acciones de admin (consola, macros, potencia láser/husillo y cualquier otra de admin) quedan denegadas: `IMPLEMENTED — TARGET ENFORCED`. Las de operador pasan por la política con un scope transitorio igual al recurso pedido (decisión del propietario: no hay persistencia de scope), así que no se limita por máquina: PARTIAL. Un DENY responde 403. Test existente actualizado: `run_macro` desde un dispositivo ahora se deniega antes de validar el nombre (la validación se prueba aparte). Bypasses reportados: `materials/active`, accesorios y escenas. Pairing y persistencia del scope: `NOT STARTED`. Suite: 1099 tests, 0 fallos (30 nuevos). |

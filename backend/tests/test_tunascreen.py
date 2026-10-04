@@ -14,6 +14,10 @@ async def _async_value(value):
     return value
 
 
+# Dispositivo emparejado de prueba (lo que devuelve resolve_device para un token).
+TEST_DEVICE = {"device_id": "tuna_test", "name": "Tablet de prueba"}
+
+
 @pytest.fixture(autouse=True)
 def _quiet_brands(monkeypatch):
     """list_machines() barre las 6 marcas -- sin esto, cualquier test de
@@ -350,7 +354,7 @@ class TestDispatchAction:
             "job": {"state": "idle", "filename": None, "progress": None, "current_layer": None, "total_layer": None},
         }])
         with pytest.raises(ValueError, match="no soportada"):
-            await tunascreen_service.dispatch_action("bambu:01S00A1", "home", {})
+            await tunascreen_service.dispatch_action("bambu:01S00A1", "home", {}, device=TEST_DEVICE)
 
     async def test_pause_dispatches_to_klipper_service(self, monkeypatch):
         monkeypatch.setattr(klipper_service, "get_all_printers_status", lambda host=None: [{
@@ -363,7 +367,7 @@ class TestDispatchAction:
             return True
         monkeypatch.setattr(klipper_service, "pause_printer_print", _pause)
 
-        result = await tunascreen_service.dispatch_action("klipper:7125", "pause", {})
+        result = await tunascreen_service.dispatch_action("klipper:7125", "pause", {}, device=TEST_DEVICE)
         assert result == {"success": True}
         assert called["port"] == 7125
 
@@ -382,7 +386,7 @@ class TestDispatchAction:
         result = await tunascreen_service.dispatch_action(
             "klipper:7125",
             "move",
-            {"axis": "X", "distance": 5, "feed": 1200},
+            {"axis": "X", "distance": 5, "feed": 1200}, device=TEST_DEVICE
         )
         assert result == {"success": True}
         assert called["port"] == 7125
@@ -401,7 +405,7 @@ class TestDispatchAction:
         monkeypatch.setattr(klipper_service, "send_console_command", _must_not_run)
 
         with pytest.raises(ValueError, match="fuera de línea"):
-            await tunascreen_service.dispatch_action("klipper:7125", "home", {})
+            await tunascreen_service.dispatch_action("klipper:7125", "home", {}, device=TEST_DEVICE)
 
     @pytest.mark.parametrize(
         ("action", "params", "expected"),
@@ -426,20 +430,27 @@ class TestDispatchAction:
             lambda port, command: called.update(port=port, command=command) or True,
         )
 
-        result = await tunascreen_service.dispatch_action("klipper:7125", action, params)
+        result = await tunascreen_service.dispatch_action("klipper:7125", action, params, device=TEST_DEVICE)
 
         assert result == {"success": True}
         assert called == {"port": 7125, "command": expected}
 
-    async def test_macro_name_is_validated_before_dispatch(self, monkeypatch):
+    async def test_macro_denied_to_device_before_validation(self, monkeypatch):
+        """ADR-006 (C-1): run_macro es de admin; un dispositivo queda denegado
+        antes incluso de validar el nombre del macro."""
         monkeypatch.setattr(klipper_service, "get_all_printers_status", lambda host=None: [{
             "name": "ET4-AC", "port": 7125, "status": "online",
             "data": {"extruder": {}, "heater_bed": {}}, "job": {},
         }])
-        with pytest.raises(ValueError, match="Macro inv"):
+        with pytest.raises(tunascreen_service.DeviceActionDenied):
             await tunascreen_service.dispatch_action(
-                "klipper:7125", "run_macro", {"macro": "SAFE_MACRO\nM112"}
+                "klipper:7125", "run_macro", {"macro": "SAFE_MACRO\nM112"}, device=TEST_DEVICE
             )
+
+    def test_macro_name_validation(self):
+        with pytest.raises(ValueError, match="Macro inv"):
+            tunascreen_service._macro_param({"macro": "SAFE_MACRO\nM112"})
+        assert tunascreen_service._macro_param({"macro": "safe_macro"}) == "SAFE_MACRO"
 
     async def test_klipper_macros_are_exposed_only_for_supported_machine(self, monkeypatch):
         monkeypatch.setattr(klipper_service, "get_all_printers_status", lambda host=None: [{
@@ -465,12 +476,12 @@ class TestDispatchAction:
             await tunascreen_service.dispatch_action(
                 "klipper:7125",
                 "move",
-                {"axis": "A", "distance": 5},
+                {"axis": "A", "distance": 5}, device=TEST_DEVICE
             )
 
     async def test_unknown_machine_rejected(self):
         with pytest.raises(ValueError, match="no encontrada"):
-            await tunascreen_service.dispatch_action("klipper:9999", "pause", {})
+            await tunascreen_service.dispatch_action("klipper:9999", "pause", {}, device=TEST_DEVICE)
 
 
 def _klipper_status(online: bool):
@@ -531,7 +542,7 @@ class TestMachineCacheIsolation:
         _forbid_klipper_commands(monkeypatch)
 
         with pytest.raises(ValueError, match="fuera de línea"):
-            await tunascreen_service.dispatch_action("klipper:7125", "home", {})
+            await tunascreen_service.dispatch_action("klipper:7125", "home", {}, device=TEST_DEVICE)
 
 
 class TestWebSocket:

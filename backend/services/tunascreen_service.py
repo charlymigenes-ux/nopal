@@ -33,6 +33,7 @@ from backend.services import (
     laser_service,
     marlin_printer_service,
 )
+from backend.services.authorization_policy import Action, Principal, Resource, ResourceKind, authorize
 from backend.services.plugin_loader_service import get_loaded_plugin_module
 
 logger = logging.getLogger(__name__)
@@ -868,11 +869,55 @@ def _split_machine_id(machine_id: str) -> tuple:
     return brand, raw_id
 
 
-async def dispatch_action(machine_id: str, action: str, params: Dict[str, Any]) -> Dict[str, Any]:
+class DeviceActionDenied(PermissionError):
+    """La Authorization Policy denegó la acción al dispositivo. El endpoint la
+    traduce a 403 sin exponer detalles de la política."""
+
+
+_MACHINE_TYPE_KIND = {"printer": ResourceKind.PRINTER, "laser": ResourceKind.LASER, "cnc": ResourceKind.CNC}
+_ACTION_NAMES = {a.value for a in Action}
+
+
+def machine_resource(machine: Dict[str, Any]) -> Resource:
+    """Recurso de la Authorization Policy para una máquina del modelo
+    normalizado: tipo según `type` e id normalizado (`driver:raw_id`). Las
+    claves coinciden con las del panel (p. ej. `printer:klipper:7125`,
+    `laser:laser:<host>`, `cnc:laser:<host>`)."""
+    return Resource(_MACHINE_TYPE_KIND.get(machine.get("type"), ResourceKind.MACHINE), machine["id"])
+
+
+def device_scope(device: Dict[str, Any], resource: Resource) -> Set[str]:
+    """Punto de integración del scope de un dispositivo TUNA-Screen (D3-Q5).
+
+    TRANSITORIO: el scope todavía no se persiste. Por decisión del propietario
+    (2026-10-03, enforcement parcial) se usa como scope el propio recurso
+    pedido: la política sigue evaluando rol y si la acción está permitida a
+    dispositivos (las de admin se deniegan siempre), pero no limita por
+    máquina. Cuando exista la persistencia, devolver aquí el scope guardado."""
+    return {resource.key}
+
+
+def principal_for_device(device: Dict[str, Any], resource: Resource) -> Principal:
+    """Principal de un dispositivo: perfil fijo operador (Principal.tuna_device),
+    a partir solo de la identidad del token; nada de la petición puede
+    cambiar su rol."""
+    return Principal.tuna_device(device["device_id"], device_scope(device, resource))
+
+
+async def dispatch_action(
+    machine_id: str, action: str, params: Dict[str, Any], *, device: Dict[str, Any]
+) -> Dict[str, Any]:
     brand, raw_id = _split_machine_id(machine_id)
+    if action not in _ACTION_NAMES:
+        raise ValueError("Acción no soportada para esta máquina")
     machine = await get_machine(machine_id)
     if machine is None:
         raise ValueError("Máquina no encontrada")
+    # ADR-006: la autorización va antes de cualquier otra comprobación y de
+    # llamar a un servicio o driver.
+    resource = machine_resource(machine)
+    if not authorize(principal_for_device(device, resource), Action(action), resource):
+        raise DeviceActionDenied("Permiso insuficiente")
     if not machine.get("online"):
         raise ValueError("La máquina está fuera de línea")
     if action not in machine.get("actions", []):

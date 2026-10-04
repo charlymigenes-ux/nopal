@@ -219,12 +219,14 @@ async def tunascreen_action(payload: Dict[str, Any], device: dict = Depends(requ
     if not machine_id or not action:
         raise HTTPException(status_code=400, detail="Faltan machine_id/action")
     try:
-        result = await tunascreen_service.dispatch_action(machine_id, action, params)
+        result = await tunascreen_service.dispatch_action(machine_id, action, params, device=device)
         return {
             "success": bool(result.get("success")),
             "action": action,
             "machine_id": machine_id,
         }
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
