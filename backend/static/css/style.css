@@ -12436,6 +12436,36 @@ body.light .sidebar-order-select {
     color: var(--text-muted);
 }
 
+/* Scope de un dispositivo TUNA-Screen: máquinas y plugins autorizados. */
+.tunascreen-scope-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0;
+}
+
+.tunascreen-scope-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+}
+
+.tunascreen-scope-heading {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.tunascreen-scope-note,
+.tunascreen-device-scope {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.tunascreen-device-scope-editor {
+    padding: 8px 0 4px;
+}
+
 .device-status-pill {
     font-size: 0.72rem;
     font-weight: 700;

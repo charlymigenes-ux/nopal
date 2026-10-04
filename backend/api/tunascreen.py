@@ -1,9 +1,8 @@
 import asyncio
-import json
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 
 from backend.auth_deps import require_role
@@ -43,16 +42,51 @@ async def tunascreen_info():
 
 
 @router.post("/api/tunascreen/pair/start")
-async def tunascreen_pair_start(user: dict = Depends(require_role("admin"))):
+async def tunascreen_pair_start(
+    payload: Optional[Dict[str, Any]] = Body(default=None),
+    user: dict = Depends(require_role("admin")),
+):
     """Solo un admin logueado en la web de NOPAL puede generar el código --
     el código en sí es la credencial que después usa el dispositivo nuevo,
-    que todavía no tiene ninguna forma de autenticarse."""
-    return tunascreen_service.generate_pairing_code()
+    que todavía no tiene ninguna forma de autenticarse.
+
+    `scope` (opcional): los recursos que el admin autoriza al dispositivo que
+    canjee el código. Omitido = vacío (sin acceso), nunca "todo"."""
+    try:
+        scope = await tunascreen_service.validate_scope_resources((payload or {}).get("scope", []))
+        return tunascreen_service.generate_pairing_code(scope=scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/api/tunascreen/devices")
 async def tunascreen_devices(user: dict = Depends(require_role("admin"))):
     return {"devices": tunascreen_service.list_paired_devices()}
+
+
+@router.get("/api/tunascreen/scope-options")
+async def tunascreen_scope_options(user: dict = Depends(require_role("admin"))):
+    """Recursos asignables al scope de un dispositivo: máquinas con identidad
+    estable y plugins instalados."""
+    return await tunascreen_service.scope_options()
+
+
+@router.put("/api/tunascreen/devices/{device_id}/scope")
+async def tunascreen_device_scope(
+    device_id: str,
+    payload: Dict[str, Any] = Body(...),
+    user: dict = Depends(require_role("admin")),
+):
+    """Reemplaza el scope de un dispositivo (solo admin). Se valida completo
+    antes de guardar; ante cualquier entrada inválida no se escribe nada."""
+    try:
+        scope = await tunascreen_service.validate_scope_resources(payload.get("scope"))
+        device = tunascreen_service.set_device_scope(device_id, scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if device is None:
+        raise HTTPException(status_code=404, detail="Dispositivo no encontrado")
+    return device
 
 
 @router.delete("/api/tunascreen/devices/{device_id}")
@@ -76,7 +110,7 @@ async def tunascreen_pair_confirm(payload: Dict[str, Any]):
 async def tunascreen_machines(device: dict = Depends(require_device_token)):
     return {
         "api_version": tunascreen_service.API_VERSION,
-        "machines": await tunascreen_service.list_machines(),
+        "machines": await tunascreen_service.list_machines_for(device),
     }
 
 
@@ -94,13 +128,14 @@ async def tunascreen_config(device: dict = Depends(require_device_token)):
             "api_version": tunascreen_service.API_VERSION,
         },
         "websocket_path": "/ws/tunascreen",
-        "machines": await tunascreen_service.list_machines(),
+        "machines": await tunascreen_service.list_machines_for(device),
     }
 
 
 @router.get("/api/tunascreen/machine/{machine_id}")
 async def tunascreen_machine_detail(machine_id: str, device: dict = Depends(require_device_token)):
-    machine = await tunascreen_service.get_machine(machine_id)
+    # Fuera del scope = inexistente (mismo 404).
+    machine = await tunascreen_service.get_machine_for(device, machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="Máquina no encontrada")
     return machine
@@ -109,7 +144,7 @@ async def tunascreen_machine_detail(machine_id: str, device: dict = Depends(requ
 @router.get("/api/tunascreen/machine/{machine_id}/macros")
 async def tunascreen_machine_macros(machine_id: str, device: dict = Depends(require_device_token)):
     try:
-        return {"macros": await tunascreen_service.get_machine_macros(machine_id)}
+        return {"macros": await tunascreen_service.get_machine_macros(machine_id, device)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -121,7 +156,7 @@ async def tunascreen_machine_console(
     device: dict = Depends(require_device_token),
 ):
     try:
-        return {"messages": await tunascreen_service.get_machine_console(machine_id, count)}
+        return {"messages": await tunascreen_service.get_machine_console(machine_id, device, count)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -134,7 +169,7 @@ async def tunascreen_camera_stream(
 ):
     """MJPEG de una webcam vinculada, autenticado con token TUNA-Screen."""
     try:
-        queue, usb_module = await tunascreen_service.subscribe_camera_stream(camera_id)
+        queue, usb_module = await tunascreen_service.subscribe_camera_stream(camera_id, device)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Cámara USB vinculada no encontrada") from exc
     except RuntimeError as exc:
@@ -167,7 +202,14 @@ async def tunascreen_camera_stream(
 
 @router.get("/api/tunascreen/materials")
 async def tunascreen_materials(device: dict = Depends(require_device_token)):
-    return await tunascreen_service.get_materials_snapshot()
+    # Spoolman requiere `plugin:spoolman` en el scope (use_plugin).
+    try:
+        tunascreen_service.ensure_device_authorized_for(
+            device, Action.USE_PLUGIN, tunascreen_service.SPOOLMAN_PLUGIN_RESOURCE
+        )
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
+    return await tunascreen_service.get_materials_snapshot(device)
 
 
 @router.post("/api/tunascreen/materials/active")
@@ -177,7 +219,12 @@ async def tunascreen_set_active_material(
 ):
     machine_id = str(payload.get("machine_id") or "")
     try:
-        # ADR-006: se autoriza antes de tocar el material activo.
+        # ADR-006: se autoriza antes de tocar el material activo. Hacen falta
+        # la máquina Y `plugin:spoolman` en el scope; la política sigue siendo
+        # assign_active_spool sobre la máquina.
+        tunascreen_service.ensure_device_authorized_for(
+            device, Action.USE_PLUGIN, tunascreen_service.SPOOLMAN_PLUGIN_RESOURCE
+        )
         await tunascreen_service.ensure_device_authorized(device, Action.ASSIGN_ACTIVE_SPOOL, machine_id)
         return await tunascreen_service.set_active_material(machine_id, payload.get("spool_id"))
     except tunascreen_service.DeviceActionDenied as exc:
@@ -188,6 +235,13 @@ async def tunascreen_set_active_material(
 
 @router.get("/api/tunascreen/accessories")
 async def tunascreen_accessories(device: dict = Depends(require_device_token)):
+    # Inventario de accesorios: `plugin:arduino-accessories` en el scope.
+    try:
+        tunascreen_service.ensure_device_authorized_for(
+            device, Action.USE_PLUGIN, tunascreen_service.ACCESSORIES_PLUGIN_RESOURCE
+        )
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     return await tunascreen_service.get_accessories_snapshot()
 
 
@@ -260,16 +314,14 @@ async def tunascreen_ws(websocket: WebSocket):
         return
 
     await websocket.accept()
-    tunascreen_service.register_connection(websocket)
     try:
         # Snapshot inmediato -- no esperar el próximo tick del broadcaster
-        # (hasta 2s) para la primera pintada de pantalla.
-        machines = await tunascreen_service.list_machines()
-        await websocket.send_text(json.dumps({
-            "type": "machines",
-            "api_version": tunascreen_service.API_VERSION,
-            "machines": machines,
-        }))
+        # (hasta 2s) para la primera pintada de pantalla. Ya filtrado por el
+        # scope; la conexión queda asociada al dispositivo para los ciclos
+        # siguientes (que revalidan registro y scope).
+        payload = tunascreen_service.machines_payload(await tunascreen_service.list_machines_for(device))
+        await websocket.send_text(payload)
+        tunascreen_service.register_connection(websocket, device["device_id"], payload)
         while True:
             # Canal de solo push por ahora -- igual hay que leer para
             # detectar la desconexión del cliente.

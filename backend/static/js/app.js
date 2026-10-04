@@ -20219,6 +20219,9 @@ function renderUsersList(users) {
 // ── Configuración > TUNA-Screen ──
 
 let tunascreenCodeCountdownTimer = null;
+// Recursos asignables al scope de un dispositivo (solo máquinas con identidad
+// estable y plugins instalados; ver GET /api/tunascreen/scope-options).
+let tunascreenScopeOptions = { machines: [], plugins: [] };
 
 async function loadTunascreenSettings() {
     const card = document.getElementById('tunascreen-settings-card');
@@ -20235,7 +20238,57 @@ async function loadTunascreenSettings() {
         card.dataset.bound = '1';
         document.getElementById('tunascreen-generate-code-btn')?.addEventListener('click', handleTunascreenGenerateCode);
     }
+    await loadTunascreenScopeOptions();
     loadTunascreenDevices();
+}
+
+async function loadTunascreenScopeOptions() {
+    try {
+        const response = await fetch('/api/tunascreen/scope-options');
+        if (!response.ok) throw new Error();
+        tunascreenScopeOptions = await response.json();
+    } catch (error) {
+        console.error(error);
+        tunascreenScopeOptions = { machines: [], plugins: [] };
+        appAlert(t('tunascreenScopeLoadError'), '', 'danger');
+    }
+    const picker = document.getElementById('tunascreen-pair-scope');
+    if (picker) {
+        picker.innerHTML = `
+            <span class="tunascreen-scope-heading">${escapeHtml(t('tunascreenScopeTitle'))}</span>
+            ${renderTunascreenScopeChecks([])}
+            <span class="tunascreen-scope-note">${escapeHtml(t('tunascreenScopeNote'))}</span>`;
+    }
+}
+
+// Casillas de máquinas y plugins. Una clave guardada que ya no se ofrece (por
+// ejemplo, una máquina que hoy no aparece) se muestra marcada con su clave,
+// para que guardar no la quite sin que el admin lo vea.
+function renderTunascreenScopeChecks(selected) {
+    const chosen = new Set(selected);
+    const offered = new Set([...tunascreenScopeOptions.machines, ...tunascreenScopeOptions.plugins].map(o => o.key));
+    const extra = selected.filter(key => !offered.has(key)).map(key => ({ key, name: key }));
+    const group = (title, items) => items.length ? `
+        <span class="tunascreen-scope-heading">${escapeHtml(title)}</span>
+        <div class="tunascreen-scope-group">
+            ${items.map(item => `
+                <label class="gcode-viewer-check">
+                    <input type="checkbox" value="${escapeHtml(item.key)}"${chosen.has(item.key) ? ' checked' : ''}>
+                    <span>${escapeHtml(item.name)}</span>
+                </label>`).join('')}
+        </div>` : '';
+    return group(t('tunascreenScopeMachines'), [...tunascreenScopeOptions.machines, ...extra.filter(i => !i.key.startsWith('plugin:'))])
+        + group(t('tunascreenScopePlugins'), [...tunascreenScopeOptions.plugins, ...extra.filter(i => i.key.startsWith('plugin:'))]);
+}
+
+function selectedTunascreenScope(container) {
+    return [...container.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
+}
+
+function tunascreenScopeLabel(scope) {
+    if (!scope || !scope.length) return t('tunascreenScopeNone');
+    const names = new Map([...tunascreenScopeOptions.machines, ...tunascreenScopeOptions.plugins].map(o => [o.key, o.name]));
+    return t('tunascreenScopeSummary').replace('{list}', scope.map(key => names.get(key) || key).join(', '));
 }
 
 async function loadTunascreenDevices() {
@@ -20254,13 +20307,18 @@ async function loadTunascreenDevices() {
 
 async function handleTunascreenGenerateCode() {
     try {
-        const response = await fetch('/api/tunascreen/pair/start', { method: 'POST' });
-        if (!response.ok) throw new Error();
-        const data = await response.json();
+        const picker = document.getElementById('tunascreen-pair-scope');
+        const response = await fetch('/api/tunascreen/pair/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scope: picker ? selectedTunascreenScope(picker) : [] }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || '');
         showTunascreenCode(data.code, data.expires_in);
     } catch (error) {
         console.error(error);
-        appAlert(t('tunascreenGenerateError'), '', 'danger');
+        appAlert(error.message || t('tunascreenGenerateError'), '', 'danger');
     }
 }
 
@@ -20306,12 +20364,44 @@ function renderTunascreenDevicesList(devices) {
             <div class="usb-port-item-info">
                 <strong>${escapeHtml(device.name)}</strong>
                 <span>${device.last_seen ? escapeHtml(t('tunascreenLastSeen').replace('{date}', new Date(device.last_seen * 1000).toLocaleString())) : escapeHtml(t('tunascreenNeverConnected'))}</span>
+                <span class="tunascreen-device-scope">${escapeHtml(tunascreenScopeLabel(device.scope))}</span>
+                <div class="tunascreen-device-scope-editor" hidden>
+                    <div class="tunascreen-scope-picker">${renderTunascreenScopeChecks(device.scope || [])}</div>
+                    <button type="button" class="btn-file-action tunascreen-device-scope-save-btn" data-id="${escapeHtml(device.device_id)}">${escapeHtml(t('tunascreenScopeSave'))}</button>
+                </div>
             </div>
+            <button type="button" class="btn-file-action tunascreen-device-scope-btn" title="${escapeHtml(t('tunascreenScopeEdit'))}">${escapeHtml(t('tunascreenScopeEdit'))}</button>
             <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger tunascreen-device-revoke-btn" data-id="${escapeHtml(device.device_id)}" title="${escapeHtml(t('tunascreenRevoke'))}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </div>
     `).join('');
+
+    container.querySelectorAll('.tunascreen-device-scope-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const editor = btn.closest('.usb-port-item')?.querySelector('.tunascreen-device-scope-editor');
+            if (editor) editor.hidden = !editor.hidden;
+        });
+    });
+
+    container.querySelectorAll('.tunascreen-device-scope-save-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const editor = btn.closest('.tunascreen-device-scope-editor');
+            try {
+                const response = await fetch(`/api/tunascreen/devices/${encodeURIComponent(btn.dataset.id)}/scope`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scope: selectedTunascreenScope(editor) }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || '');
+                loadTunascreenDevices();
+            } catch (error) {
+                console.error(error);
+                appAlert(error.message || t('tunascreenScopeSaveError'), '', 'danger');
+            }
+        });
+    });
 
     container.querySelectorAll('.tunascreen-device-revoke-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
