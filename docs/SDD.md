@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.24 |
+| Versión del SDD | 0.25 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -1054,8 +1054,8 @@ bobina activa) son libres para cualquier dispositivo emparejado.
 > con el dispositivo como principal (operador): consola, macros y potencia
 > láser/husillo quedan denegadas desde TUNA-Screen. **Parcial**: sin scope
 > persistido, el dispositivo sigue pudiendo usar acciones de operador sobre
-> cualquier máquina. La bobina activa (`/api/tunascreen/materials/active`) no
-> pasa por `dispatch_action` y no está migrada.
+> cualquier máquina. La bobina activa (`/api/tunascreen/materials/active`) ya
+> pasa por la política (`assign_active_spool`, v0.25).
 
 **D3-4 — Potencia de láser/husillo.** IA: prohibido por diseño (con test que lo
 verifica). Panel: posible para operador vía consola. TUNA-Screen: `M3/M4 S…`
@@ -1257,7 +1257,7 @@ y se evoluciona hacia:
                          Driver
 ```
 
-**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador PARCIAL (scope transitorio) (§18.8).
+**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador y bobina activa (`materials/active`) PARCIAL (scope transitorio) (§18.8).
 
 Infraestructura implementada (`backend/services/authorization_policy.py`):
 `Principal` (anónimo, usuario admin/operador, dispositivo TUNA-Screen con perfil
@@ -1360,11 +1360,12 @@ Enforcement de TUNA-Screen (`dispatch_action`) — **PARCIAL** por decisión del
 | Acciones | Estado |
 |---|---|
 | Admin: `send_console_command`, `run_macro`, `set_laser_power`, `set_spindle` (y cualquier otra de admin que llegue a `dispatch_action`: `printer_config`, `grbl_settings`, `firmware_restart`, `restart_klipper`, `delete_sd_file`…) | ✅ `IMPLEMENTED` — TARGET ENFORCED: denegadas al dispositivo antes de llegar al driver, aunque el recurso esté en el scope |
+| `assign_active_spool` (`POST /api/tunascreen/materials/active`) | ✅ `IMPLEMENTED` — TARGET ENFORCED en rol y permiso de dispositivo (operador); el límite por máquina sigue TRANSITORIO, igual que en `dispatch_action` |
 | Operador: `pause`, `resume`, `cancel`, `home`, `move`, `extrude`, `set_temperature`, `set_fan`, `set_speed_factor`, `set_flow_factor`, `set_z_offset`, `set_air_assist`, `set_coolant`, `set_work_zero` | ⚠️ PARTIAL — pasan por la política (rol y permiso de dispositivo), pero con scope transitorio = el recurso pedido: todavía no se limita por máquina |
 | Persistencia del scope | ⏳ `NOT STARTED` (punto de integración: `tunascreen_service.device_scope`) |
 | Emparejamiento reforzado (D3-Q6) | ✅ `IMPLEMENTED` (código temporal, de un solo uso, con vencimiento y límite de intentos; `/info` sin `pairing_open`) |
 
-El principal sale solo de la identidad del token (`Principal.tuna_device`, perfil fijo operador); un `role` en la petición o en el registro se ignora. El recurso usa el tipo y el id normalizado de la máquina (mismas claves que el panel). Un DENY responde 403 "Permiso insuficiente"; una acción fuera del vocabulario o una máquina inexistente conservan su 400. **Rutas de TUNA-Screen fuera de `dispatch_action`** (no migradas, posibles bypasses): `POST /api/tunascreen/materials/active` (asigna la bobina activa; `assign_active_spool`), `POST /api/tunascreen/accessories/{id}/power` y `POST /api/tunascreen/accessory-scenes/{id}/run` (plugin de accesorios). La consola (`GET …/machine/{id}/console`) y las cámaras son de lectura. El WebSocket solo empuja estado.
+El principal sale solo de la identidad del token (`Principal.tuna_device`, perfil fijo operador); un `role` en la petición o en el registro se ignora. El recurso usa el tipo y el id normalizado de la máquina (mismas claves que el panel). Un DENY responde 403 "Permiso insuficiente"; una acción fuera del vocabulario o una máquina inexistente conservan su 400. **Bobina activa:** `POST /api/tunascreen/materials/active` autoriza `assign_active_spool` con `ensure_device_authorized` (mismo principal, mismo recurso y mismo scope transitorio que `dispatch_action`) antes de llamar a `set_active_material`; si la máquina no está en el modelo normalizado el recurso es `machine:<id>`, y sin `machine_id` se deniega (403). Otros llamadores que asignan la bobina no son de TUNA-Screen: `ai_actions` (`assign_spool`, sigue en admin, canal IA sin migrar) y el router del plugin Spoolman (panel, admin). **Rutas de TUNA-Screen sin migrar** (posibles bypasses): `POST /api/tunascreen/accessories/{id}/power` y `POST /api/tunascreen/accessory-scenes/{id}/run` (plugin de accesorios). La consola (`GET …/machine/{id}/console`) y las cámaras son de lectura. El WebSocket solo empuja estado.
 
 Lineamientos para la migración del enforcement (`PROPOSED`; hasta ahora aplicados solo en la ruta migrada):
 
@@ -1420,7 +1421,8 @@ CURRENT (matriz §18.3)
    ↓    (cambios reales de permisos: temperatura, consola, macros, printer.cfg, reinicio, firmware restart)
    ↓  migración de TUNA-Screen — ⏳ EN CURSO (PARCIAL): dispatch_action con política;
    ↓    acciones de admin denegadas; scope transitorio = recurso pedido;
-   ↓    emparejamiento reforzado ✅ (D3-Q6); pendiente: persistencia del scope
+   ↓    emparejamiento reforzado ✅ (D3-Q6); bobina activa con política ✅;
+   ↓    pendientes: persistencia del scope y accesorios/escenas (plugin)
    ↓  migración de la IA (Action.role derivado de la política)
    ↓  migración de plugins (convención configurar/usar)
    ↓  eliminación de bypasses (consola, macros con G-code arbitrario, /plugins-static)
@@ -1448,7 +1450,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **1116 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **1125 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado + 9 de la bobina activa de TUNA-Screen, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1483,6 +1485,7 @@ Reglas:
 | Cambio de permisos de Klipper: `firmware_restart` (admin; el operador nunca llega al servicio) | 6 |
 | Cambio de permisos de la consola de Marlin (admin; sin bypass de M104/M140/M109/M190 ni M3/M4/M5 para el operador) | 15 |
 | Cambio de permisos GRBL: `/api/laser/console` y `grbl_settings` (admin; recurso láser/CNC según el registro; autorización antes del 409 de trabajo en curso; sin M3/M4/M5 ni `$` para el operador por esas rutas) | 30 |
+| Bobina activa de TUNA-Screen (`assign_active_spool`): dispositivo permitido, anónimo y token inválido 401, DENY forzado sin servicio, principal/acción/recurso y orden, máquina desconocida, `machine_id` ausente (403, antes daba 500), errores del servicio intactos | 9 |
 | Emparejamiento reforzado de TUNA-Screen: código válido, vencido, incorrecto, reutilizado, límite de intentos (incluso el correcto queda bloqueado), vencimiento e intentos independientes, canje concurrente (8 hilos → 1 token), `/info` sin `pairing_open`, tokens existentes intactos, logs sin código ni token | 17 |
 | Enforcement de TUNA-Screen en `dispatch_action`: acciones de admin denegadas sin llegar al driver, acciones de operador permitidas, rol no elevable desde la petición, recurso igual al del panel, orden token → política → servicio, semántica de scope | 30 |
 | Separación de `/api/laser/command`: clasificador (comandos reales del panel, tipo de máquina, peticiones mixtas, comentarios, realtime) y ruta (operación normal del operador intacta; 26 intentos de bypass denegados; todas las acciones autorizadas antes de enviar) | 72 |
@@ -1708,7 +1711,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 
 ### ADR-006 — Centralización de autorización por acción
 
-- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador PARCIAL (scope transitorio) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador y bobina activa (`materials/active`) PARCIAL (scope transitorio) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
 
 - **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
   - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
@@ -1941,3 +1944,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.22 | 2026-10-03 | **Separación de `POST /api/laser/command` (ruta de acciones mixtas)**: un clasificador (`backend/services/laser_command_classifier.py`) descompone el comando como lo lee GRBL (realtime en cualquier posición, varias líneas, comentarios, espacios, mayúsculas, varias palabras por bloque) y la ruta autoriza todas sus acciones antes de enviarlo. Operación normal sigue siendo de operador; `M3`/`M4`/`M5` y palabra `S` → `set_laser_power`/`set_spindle` (admin); `$…=…` → `grbl_settings` (admin); lo no reconocido → consola (admin). `$X` y overrides de potencia: NOT COVERED, sin cambio. **Bypass de potencia/husillo y de settings del panel GRBL: cerrado.** Frontend sin cambios. D4 sigue `OPEN`. Rutas migradas: 22. Suite: 1069 tests, 0 fallos (72 nuevos). |
 | 0.23 | 2026-10-03 | **Primer enforcement de TUNA-Screen (PARCIAL)**: `dispatch_action` consulta la Authorization Policy con el dispositivo como `Principal(TUNA_DEVICE, operador)` antes de cualquier servicio. Las acciones de admin (consola, macros, potencia láser/husillo y cualquier otra de admin) quedan denegadas: `IMPLEMENTED — TARGET ENFORCED`. Las de operador pasan por la política con un scope transitorio igual al recurso pedido (decisión del propietario: no hay persistencia de scope), así que no se limita por máquina: PARTIAL. Un DENY responde 403. Test existente actualizado: `run_macro` desde un dispositivo ahora se deniega antes de validar el nombre (la validación se prueba aparte). Bypasses reportados: `materials/active`, accesorios y escenas. Pairing y persistencia del scope: `NOT STARTED`. Suite: 1099 tests, 0 fallos (30 nuevos). |
 | 0.24 | 2026-10-03 | **Emparejamiento de TUNA-Screen reforzado (D3-Q6 `IMPLEMENTED`)**: vencimiento con reloj monotónico, canje atómico bajo lock (un solo uso, no reutilizable), límite de 5 intentos fallidos por ventana que invalida todos los códigos vigentes, errores genéricos, logs sin código ni token, y `GET /api/tunascreen/info` sin `pairing_open` (la app Android solo lo deserializa con valor por omisión). D-7 → `FIXED`. Tokens ya emitidos sin cambios. Persistencia del scope: `NOT STARTED`. Suite: 1116 tests, 0 fallos (17 nuevos). |
+| 0.25 | 2026-10-03 | **Bobina activa de TUNA-Screen con Authorization Policy**: `POST /api/tunascreen/materials/active` autoriza `assign_active_spool` (operador) con el mismo principal, recurso y scope transitorio que `dispatch_action` antes de `set_active_material`, que no cambió. Permiso funcional sin cambios; un DENY responde 403. Corregido un defecto de `device_scope`: un recurso sin id producía un scope `{None}` y un 500; ahora es un scope vacío y la política deniega (403). Otros llamadores que asignan bobina (IA, plugin Spoolman) no son de TUNA-Screen. Persistencia del scope: `NOT STARTED`. Suite: 1125 tests, 0 fallos (9 nuevos). |

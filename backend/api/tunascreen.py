@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.auth_deps import require_role
 from backend.services import tunascreen_service
+from backend.services.authorization_policy import Action
 from backend.utils import get_app_version
 
 logger = logging.getLogger(__name__)
@@ -174,11 +175,13 @@ async def tunascreen_set_active_material(
     payload: Dict[str, Any],
     device: dict = Depends(require_device_token),
 ):
+    machine_id = str(payload.get("machine_id") or "")
     try:
-        return await tunascreen_service.set_active_material(
-            str(payload.get("machine_id") or ""),
-            payload.get("spool_id"),
-        )
+        # ADR-006: se autoriza antes de tocar el material activo.
+        await tunascreen_service.ensure_device_authorized(device, Action.ASSIGN_ACTIVE_SPOOL, machine_id)
+        return await tunascreen_service.set_active_material(machine_id, payload.get("spool_id"))
+    except tunascreen_service.DeviceActionDenied as exc:
+        raise HTTPException(status_code=403, detail="Permiso insuficiente") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

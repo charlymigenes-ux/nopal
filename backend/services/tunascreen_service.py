@@ -929,8 +929,9 @@ def device_scope(device: Dict[str, Any], resource: Resource) -> Set[str]:
     (2026-10-03, enforcement parcial) se usa como scope el propio recurso
     pedido: la política sigue evaluando rol y si la acción está permitida a
     dispositivos (las de admin se deniegan siempre), pero no limita por
-    máquina. Cuando exista la persistencia, devolver aquí el scope guardado."""
-    return {resource.key}
+    máquina. Cuando exista la persistencia, devolver aquí el scope guardado.
+    Un recurso sin id no tiene clave: scope vacío y la política deniega."""
+    return {resource.key} if resource.key else set()
 
 
 def principal_for_device(device: Dict[str, Any], resource: Resource) -> Principal:
@@ -938,6 +939,18 @@ def principal_for_device(device: Dict[str, Any], resource: Resource) -> Principa
     a partir solo de la identidad del token; nada de la petición puede
     cambiar su rol."""
     return Principal.tuna_device(device["device_id"], device_scope(device, resource))
+
+
+async def ensure_device_authorized(device: Dict[str, Any], action: Action, machine_id: str) -> None:
+    """Autoriza una acción de dispositivo sobre una máquina fuera de
+    dispatch_action (p. ej. asignar la bobina activa). Mismo principal (scope
+    transitorio) y mismo recurso que dispatch_action; si la máquina no está
+    en el modelo normalizado, el recurso queda como `machine:<id>` (tipo
+    desconocido). Lanza DeviceActionDenied si la política deniega."""
+    machine = await get_machine(machine_id) if machine_id else None
+    resource = machine_resource(machine) if machine else Resource(ResourceKind.MACHINE, machine_id or None)
+    if not authorize(principal_for_device(device, resource), action, resource):
+        raise DeviceActionDenied("Permiso insuficiente")
 
 
 async def dispatch_action(
