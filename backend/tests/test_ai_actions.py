@@ -8,6 +8,7 @@ no se ejecute sin confirmación humana.
 import pytest
 
 from backend.services import ai_actions
+from backend.services.authorization_policy import Action as PolicyAction
 
 
 # Verbos que encienden algo que corta o quema. Si alguien agrega una acción
@@ -35,10 +36,12 @@ def test_cada_accion_declara_riesgo_y_rol_validos():
         assert accion.role in ("any", "admin"), accion.name
 
 
-def test_precalentar_es_admin_como_en_el_panel():
-    """set_temperature_target_endpoint es require_role('admin'); la IA no
-    puede ser más permisiva que la interfaz."""
-    assert ai_actions.ACTIONS["preheat_machine"].role == "admin"
+def test_precalentar_es_set_temperature_de_operador():
+    """ADR-006 (D3-Q1): precalentar es set_temperature, de operador en todos
+    los canales (antes la IA lo copiaba como admin). Sigue exigiendo
+    confirmación: el riesgo no es permiso."""
+    assert ai_actions.ACTIONS["preheat_machine"].policy_actions == (PolicyAction.SET_TEMPERATURE,)
+    assert ai_actions.ACTIONS["preheat_machine"].role == "any"
     assert ai_actions.ACTIONS["preheat_machine"].risk == "confirm"
 
 
@@ -46,15 +49,17 @@ def test_el_catalogo_depende_del_rol():
     """Un operador no debe ver siquiera lo que no podría hacer."""
     admin = {a.name for a in ai_actions.get_actions("admin")}
     operador = {a.name for a in ai_actions.get_actions("operador")}
-    assert "preheat_machine" in admin
-    assert "preheat_machine" not in operador
+    assert {"create_scene", "update_scene"} <= admin
+    assert not {"create_scene", "update_scene"} & operador
+    assert {"preheat_machine", "assign_spool"} <= operador  # ADR-006: ahora de operador
     assert operador < admin
 
 
-async def test_un_operador_no_puede_precalentar_ni_forzandolo():
-    """Aunque el modelo pida la acción directamente, el rol se revalida."""
+async def test_un_operador_no_puede_crear_escenas_ni_forzandolo():
+    """Aunque el modelo pida la acción directamente, la política se revalida
+    al ejecutar (configure_plugin es de admin)."""
     with pytest.raises(ai_actions.ActionError, match="permiso"):
-        await ai_actions.execute("preheat_machine", {"machine_id": "x", "nozzle": 200}, "operador")
+        await ai_actions.execute("create_scene", {"name": "x", "actions": []}, "operador")
 
 
 async def test_una_accion_inexistente_falla_limpio():
@@ -102,9 +107,11 @@ async def test_precalentar_exige_alguna_temperatura(monkeypatch):
         await ai_actions.execute("preheat_machine", {"machine_id": "nopal-i3"}, "admin")
 
 
-def test_asignar_carrete_es_admin_como_en_el_panel():
-    """set_active_spool_endpoint (plugin de Materiales) es require_role('admin')."""
-    assert ai_actions.ACTIONS["assign_spool"].role == "admin"
+def test_asignar_carrete_es_assign_active_spool_de_operador():
+    """ADR-006 (C-3): asignar la bobina activa es de operador en todos los
+    canales (antes la IA lo copiaba como admin del plugin de Materiales)."""
+    assert ai_actions.ACTIONS["assign_spool"].policy_actions == (PolicyAction.ASSIGN_ACTIVE_SPOOL,)
+    assert ai_actions.ACTIONS["assign_spool"].role == "any"
 
 
 async def test_asignar_carrete_solo_en_klipper(monkeypatch):

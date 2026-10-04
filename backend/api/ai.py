@@ -231,10 +231,12 @@ async def list_ai_tools_endpoint(user: dict = Depends(require_auth)):
 
     Sirve de documentación viva y para auditar qué puede consultar la IA.
     """
+    actions_enabled = bool(ai_config_service.get_config().get("actions_enabled"))
     return {
         "tools": [
             {"name": tool.name, "description": tool.description, "parameters": tool.parameters}
-            for tool in ai_tools.get_exposed_tools()
+            for tool in ai_tools.get_exposed_tools(
+                role=user["role"], user_id=user.get("user_id"), actions_enabled=actions_enabled)
         ]
     }
 
@@ -249,12 +251,18 @@ async def call_ai_tool_endpoint(
 
     Existe para poder verificar los datos que vería la IA sin depender de
     que haya un servidor de IA conectado, y para depurar una respuesta
-    dudosa. Son las mismas funciones de solo lectura, así que no habilita
-    nada que el usuario no pudiera ver ya en el panel.
+    dudosa. Las del core son de solo lectura; las de plugins pasan por la
+    Authorization Policy con ESTE usuario, igual que desde el agente.
     """
-    result = await ai_tools.call_tool(tool_name, arguments or {})
+    actions_enabled = bool(ai_config_service.get_config().get("actions_enabled"))
+    result = await ai_tools.call_tool(
+        tool_name, arguments or {},
+        role=user["role"], user_id=user.get("user_id"), actions_enabled=actions_enabled,
+    )
     if isinstance(result, dict) and result.get("error") == "unknown_tool":
         raise HTTPException(status_code=404, detail=f"No existe la herramienta '{tool_name}'")
+    if isinstance(result, dict) and result.get("error") in ("not_authorized", "actions_disabled"):
+        raise HTTPException(status_code=403, detail=result["detail"])
     return result
 
 
@@ -310,7 +318,7 @@ async def list_ai_actions_endpoint(user: dict = Depends(require_auth)):
         "enabled": bool(ai_config_service.get_config().get("actions_enabled")),
         "actions": [
             {"name": a.name, "description": a.description, "risk": a.risk, "role": a.role}
-            for a in ai_actions.get_actions(user["role"])
+            for a in ai_actions.get_actions(user["role"], user.get("user_id"))
         ],
     }
 
@@ -321,7 +329,7 @@ async def confirm_ai_action_endpoint(token: str, user: dict = Depends(require_au
     if not ai_config_service.get_config().get("actions_enabled"):
         raise HTTPException(status_code=403, detail="Las acciones de la IA están desactivadas")
     try:
-        return await ai_actions.confirm(token, user["role"], user["username"])
+        return await ai_actions.confirm(token, user["role"], user["username"], user.get("user_id"))
     except ai_actions.ActionError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -347,6 +355,7 @@ async def ask_ai_endpoint(
             payload.get("conversation_id"),
             role=user["role"],
             username=user["username"],
+            user_id=user.get("user_id"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

@@ -14,7 +14,7 @@ import logging
 import sys
 import types
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional, Tuple
 
 from fastapi import FastAPI
 
@@ -94,13 +94,19 @@ def _load_plugin_router(plugin_id: str, manifest: dict) -> Optional[Any]:
     return router
 
 
-def get_plugin_ai_tools() -> list:
-    """Herramientas de IA que los plugins cargados declaran por su cuenta.
+def get_plugin_ai_tools() -> List[Tuple[str, Any]]:
+    """Herramientas de IA que los plugins cargados declaran por su cuenta,
+    como pares `(plugin_id, herramienta)`.
 
     Punto de extensión para que un plugin exponga sus datos a NOPAL
     Intelligence sin que el core tenga que conocerlo. Mismo espíritu que
     `router`: si el módulo de entrada del plugin define `AI_TOOLS`, se toma;
     si no, no pasa nada.
+
+    El `plugin_id` lo deduce el core del paquete donde se cargó el módulo
+    (`nopal_plugins.<id>`), comparado contra los plugins instalados: el plugin
+    no lo declara, así que no puede hacerse pasar por otro. Un módulo que no
+    corresponda a un plugin instalado se omite.
 
     Cada elemento debe ser un `backend.services.ai_tools.Tool`. Se importa
     perezosamente para no crear una dependencia circular ni obligar a los
@@ -109,15 +115,20 @@ def get_plugin_ai_tools() -> list:
     Un plugin que declare algo inválido se salta con una advertencia, igual
     que un backend roto: nunca debe tumbar la capa de IA del resto.
     """
-    tools = []
+    by_package = {plugin_id.replace("-", "_"): plugin_id for plugin_id in installer.read_installed_state()}
+    tools: List[Tuple[str, Any]] = []
     for module_name, module in list(sys.modules.items()):
         if not module_name.startswith(f"{NAMESPACE_PACKAGE}."):
             continue
         declaradas = getattr(module, "AI_TOOLS", None)
         if not declaradas:
             continue
+        plugin_id = by_package.get(module_name.split(".")[1])
+        if plugin_id is None:
+            logger.warning(f"[{module_name}] declara AI_TOOLS pero no es un plugin instalado, se omite")
+            continue
         try:
-            tools.extend(list(declaradas))
+            tools.extend((plugin_id, tool) for tool in list(declaradas))
         except TypeError:
             logger.warning(f"[{module_name}] AI_TOOLS no es iterable, se omite")
     return tools

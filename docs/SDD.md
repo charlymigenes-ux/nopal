@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.26 |
+| Versión del SDD | 0.29 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -125,7 +125,7 @@ Todos están derivados de cómo está construido el código hoy.
 | P5 | **Datos observados, nunca inventados.** Valor desconocido = `null` / `"unknown"`. | Mapeos de estado de Elegoo/Bambu; comentarios explícitos en `tunascreen_service`. |
 | P6 | **Extensibilidad por plugins, sin bloquear el core.** Un plugin roto no tumba NOPAL. | `plugin_loader_service._load_plugin_router` captura y registra. |
 | P7 | **IA desacoplada del proveedor y opcional.** Apagada no contacta nada. | `AIProvider` (ABC), `ai_config_service`, import perezoso de httpx. |
-| P8 | **La IA no escala privilegios.** Cada acción copia el rol del endpoint equivalente. | `ai_actions.Action.role`; acciones `confirm` requieren confirmación humana. |
+| P8 | **La IA no escala privilegios.** Cada acción declara su acción canónica y la Authorization Policy decide con el usuario real (v0.27; antes copiaba a mano el rol del endpoint). | `ai_actions.execute` → `authorize`; `Action.role` derivado (deprecated); acciones `confirm` requieren confirmación humana. |
 | P9 | **Testeable sin hardware.** | Transportes simulados; fixture `isolated_printer_registries`. |
 | P10 | **Evolución incremental.** Ningún cambio rompe una ruta que use el frontend. | Patrón aplicado en `PrinterRegistrationError` (agrega `error_code` sin cambiar `detail`). |
 
@@ -675,7 +675,7 @@ toca un archivo compartido; no hay una capa común para llamadas a la API.
 | Estado instalado | `data/plugins/installed.json` (`version`, `enabled`, `installed_at`), escritura atómica. Lo lee el servicio (no el router) para que el loader lo use antes de que exista cualquier router. |
 | Manifiesto | `nopal-plugin.json`: `schema_version`, `id`, `name`, `version`, `publisher`, `category`, `description`, `permissions`, `compatibility`, `frontend {script, style, section}`, `backend {entry}` (opcional). |
 | Carga | Al arrancar, para cada plugin habilitado: valida que `backend.entry` esté dentro de su carpeta; lo importa con `importlib` como paquete `nopal_plugins.<id>` (los imports relativos funcionan); registra su variable `router` con `app.include_router`. Falla → warning y se omite. |
-| Puntos de extensión | `router` (endpoints), `AI_TOOLS` (herramientas para la IA, `get_plugin_ai_tools`), lectura opcional por el core vía `get_loaded_plugin_module` (cámaras, accesorios, Spoolman en dashboard/notificaciones/TUNA-Screen). |
+| Puntos de extensión | `router` (endpoints), `AI_TOOLS` (herramientas para la IA, `get_plugin_ai_tools`; desde v0.28 cada una declara `policy_action` y se autoriza con la política, §18.8), lectura opcional por el core vía `get_loaded_plugin_module` (cámaras, accesorios, Spoolman en dashboard/notificaciones/TUNA-Screen). |
 | Estáticos | `/plugins-static` monta `plugins/` completo. |
 | Configuración y datos | Cada plugin guarda sus JSON (en la raíz: `spoolman_*.json`, `pricing_config.json`, `quotes_registry.json`, `camera_registry.json`, `accessory_registry.json`…; o en `data/`). |
 | Dependencias Python | Las de plugins están en el `requirements.txt` del core (p. ej. `xhtml2pdf`, `esptool`). |
@@ -711,7 +711,7 @@ Documentación detallada existente: `docs/NOPAL_INTELLIGENCE.md`.
 | `ai_router` | Clasifica la pregunta y elige nivel/modelo |
 | `ai_agent` | Orquesta: perfil, loop nativo de herramientas o modo contexto, conversación |
 | `ai_tools` | Herramientas de **solo lectura** (estado del taller, máquinas, temperaturas, trabajos, eventos del log, biblioteca, materiales, plugins, accesorios, cámaras) + herramientas declaradas por plugins |
-| `ai_actions` | Acciones físicas, **registro separado**: interruptor propio (apagado por omisión), `role` por acción copiado del endpoint equivalente, riesgo `low` (directo) o `confirm` (token pendiente, TTL 300 s, en memoria). No existe acción para arrancar láser/CNC |
+| `ai_actions` | Acciones físicas, **registro separado**: interruptor propio (apagado por omisión), acción canónica de la Authorization Policy por herramienta (v0.27; antes `role` copiado del endpoint equivalente), riesgo `low` (directo) o `confirm` (token pendiente, TTL 300 s, en memoria). No existe acción para arrancar láser/CNC |
 | `ai_conversations_service` | Historial (`ai_conversations.json`, escritura atómica) |
 
 ### 14.2 Flujo confirmado
@@ -937,7 +937,7 @@ Coexisten **seis mecanismos paralelos**:
 | `require_role("admin")` | `backend/auth_deps.py:25` | Rol exactamente `admin` (403 si no) |
 | `require_device_token` | `backend/api/tunascreen.py:18` | Token de dispositivo válido; **sin rol** |
 | Auth manual del WebSocket | `backend/api/tunascreen.py:232-241` | Token en la cabecera antes de `accept()`; cierra con 4401 |
-| Rol por acción de IA | `backend/services/ai_actions.py` (`Action.role`, `risk`) | `admin` o `any`, copiado a mano del endpoint equivalente; `confirm` exige confirmación humana |
+| Rol por acción de IA | `backend/services/ai_actions.py` (`Action.role`, `risk`) | `admin` o `any`, copiado a mano del endpoint equivalente; `confirm` exige confirmación humana. **v0.27:** reemplazado por la Authorization Policy (§18.8); `Action.role` queda derivado y no autoriza |
 | Autorización propia de cada plugin | `plugins/<id>/backend/router.py` | Cada plugin elige `require_auth` o `require_role("admin")` |
 
 Complementos: límite de login (5 fallos/IP/300 s, en memoria), protección del
@@ -1027,6 +1027,9 @@ Marlin  (panel)  → OPERATOR   backend/api/marlin_printers.py:231
 TUNA-Screen      → sin rol    tunascreen_service._dispatch_klipper / _dispatch_marlin
 IA               → ADMIN      ai_actions "preheat_machine" (copiado de status.py)
 ```
+
+> **Estado (v0.27)** — Klipper (panel), TUNA-Screen e IA ya consultan la
+> Authorization Policy: `set_temperature` es de operador en los tres canales.
 
 **D3-2 — La consola salta restricciones específicas.**
 
@@ -1137,7 +1140,7 @@ la migración tendrá que aplicar:
 | Capacidad | CURRENT | TARGET |
 |---|---|---|
 | Temperatura Klipper (panel) | Admin | Operator — ✅ **aplicado** (`POST /api/system/temperature-target`) |
-| Temperatura vía IA (`preheat_machine`) | Admin | Operator |
+| Temperatura vía IA (`preheat_machine`) | Admin | Operator — ✅ **aplicado** (`ai_actions`, v0.27) |
 | Temperatura vía TUNA-Screen | cualquier dispositivo | Operator + scope |
 | Consola Klipper / Marlin / GRBL (panel) | Operator | **Admin** — ✅ aplicado en Klipper (`POST /api/console/command`) y en Marlin (`POST /api/marlin-printers/console`); GRBL: ✅ `POST /api/laser/console` aplicado y ✅ `POST /api/laser/command` clasificada por acción (lo no reconocido es consola, admin) |
 | Macros Klipper (panel) | Operator | **Admin** — ✅ aplicado (`POST /api/macros/run`) |
@@ -1151,7 +1154,7 @@ la migración tendrá que aplicar:
 | Macros vía TUNA-Screen (`run_macro`) | cualquier dispositivo | **❌** |
 | Reiniciar Klipper (`/printer/restart`) | Operator | **Admin** — ✅ aplicado (`POST /api/printers/{port}/restart`) |
 | Bobina activa (panel, plugin Spoolman) | Admin | **Operator** |
-| Bobina activa vía IA (`assign_spool`) | Admin | **Operator** |
+| Bobina activa vía IA (`assign_spool`) | Admin | **Operator** — ✅ **aplicado** (`ai_actions`, v0.27) |
 | Bobina activa vía TUNA-Screen (`materials/active`) | cualquier dispositivo | Operator + scope |
 | Degradar al último Admin / importar respaldo de usuarios sin admin | permitido | **prohibido** — ✅ ya aplicado (C-6 `IMPLEMENTED`, `033b8f3`) |
 | Conversaciones IA ajenas | cualquier usuario | **❌** (privadas) |
@@ -1258,7 +1261,7 @@ y se evoluciona hacia:
                          Driver
 ```
 
-**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador, bobina activa (`materials/active`), accesorios y escenas (`use_plugin` sobre `plugin:arduino-accessories`) PARCIAL (scope transitorio) (§18.8).
+**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador, bobina activa (`materials/active`), accesorios y escenas (`use_plugin` sobre `plugin:arduino-accessories`) PARCIAL (scope transitorio); y el canal IA (`ai_actions`, 11 acciones con la política; `preheat_machine` y `assign_spool` admin → operador; `set_machine_alerts` cualquier usuario → admin) (§18.8).
 
 Infraestructura implementada (`backend/services/authorization_policy.py`):
 `Principal` (anónimo, usuario admin/operador, dispositivo TUNA-Screen con perfil
@@ -1322,7 +1325,7 @@ Enforcement del panel de Klipper — **primer cambio real de permisos** (CURRENT
 | `restart_klipper` | `POST /api/printers/{port}/restart` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
 | `firmware_restart` | `POST /api/printers/{port}/firmware-restart` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
 | Mismas acciones por TUNA-Screen | `dispatch_action`: `send_console_command` y `run_macro` denegadas a dispositivos; `set_temperature` permitida (operador, scope transitorio) | — | ✅ admin denegadas · ⚠️ operador PARTIAL |
-| Mismas acciones por IA | `ai_actions` (`preheat_machine` sigue en admin) | — | ⏳ `NOT STARTED` |
+| Mismas acciones por IA | `ai_actions`: `preheat_machine` → `set_temperature` (admin → **operador**); la IA no tiene herramientas de consola ni macros | — | ✅ `IMPLEMENTED` — TARGET ENFORCED (v0.27) |
 
 El recurso es `Resource(PRINTER, "klipper:<port>")`, construido por un único helper (`klipper_resource`, en `backend/api/console.py`). La política se consulta antes de enviar cualquier G-code o macro. Fuera de lo migrado: lectura de consola, listado de macros y lectura de archivos de configuración (`GET /config-files`, `GET /config-files/content`; sin acción en la política) y el resto de rutas de Klipper. No hay otra ruta del panel que haga firmware restart; enviarlo como G-code por consola o macro ya es solo admin. El frontend no oculta al operador los controles de consola, macros, edición de `printer.cfg`, reinicio ni firmware restart: ahora le responden 403 "Permiso insuficiente".
 
@@ -1380,7 +1383,7 @@ Lineamientos para la migración del enforcement (`PROPOSED`; hasta ahora aplicad
    por todos los canales:
    - **panel**: dependencia FastAPI por acción en los routers existentes, sin cambiar rutas;
    - **TUNA-Screen**: dentro de `dispatch_action`, antes de despachar;
-   - **IA**: `Action.role` se deriva de la misma tabla en vez de copiarse a mano;
+   - **IA**: `ai_actions.execute` consulta la política con el usuario y el recurso reales (✅ v0.27); `Action.role` ya no autoriza: se deriva de la tabla;
    - **plugins**: la misma función expuesta como punto de extensión.
 
 **TUNA-Screen como principal** (D3-Q5, `ACCEPTED`):
@@ -1398,6 +1401,48 @@ TUNA-01   role = operator   scope = printer_01, laser_01
 El dispositivo **no** es un tercer rol humano. Formato de almacenamiento,
 edición del scope y valor por omisión para los tokens ya emitidos: `PROPOSED`,
 a definir en la implementación.
+
+**Enforcement del canal IA** (v0.27) — **AI Authorization: `IMPLEMENTED`** para las 11 acciones físicas/operativas de `ai_actions`. **Conversation ownership: `NOT STARTED`** (tarea separada; no se mezcla con acciones físicas).
+
+Cada `ai_actions.Action` declara `policy_actions` (acciones canónicas) y `resource`. `execute(name, arguments, role, user_id)` sigue este orden: acción conocida → datos obligatorios → recurso (resolver la máquina es solo lectura; el servicio la recibe ya resuelta) → `authorize(Principal.user(user_id, rol), acción, recurso)` → servicio. El principal sale del usuario que devuelve `require_auth` (rol releído en cada request; `admin`/`operador`); los argumentos de la herramienta se filtran por el esquema y no pueden elevar el rol. Un DENY responde con el mismo texto de siempre ("Tu cuenta no tiene permiso para esta acción"), sin rol requerido, acción interna ni recurso, y no ejecuta nada. El catálogo que ve el modelo (y `GET /api/ai/actions`) se filtra con la misma política.
+
+| Acción IA | Acción de la política | Recurso | CURRENT | TARGET | Tipo |
+|---|---|---|---|---|---|
+| `preheat_machine` | `set_temperature` | máquina (`printer:klipper:<port>`) | admin | operador | **PERMISSION CHANGE** (D3-Q1) |
+| `assign_spool` | `assign_active_spool` | máquina | admin | operador | **PERMISSION CHANGE** (C-3) |
+| `control_print` | `pause` / `resume` / `cancel` según `action` (si no se puede elegir, se exigen las tres) | máquina | cualquier usuario | operador | ENFORCEMENT ONLY |
+| `queue_file` | `start_job` (encolar no arranca el trabajo; la política no tiene acción "encolar" y es la más cercana, mismo requisito) | máquina (`printer:…`, `laser:laser:<host>`, `cnc:laser:<host>`) | cualquier usuario | operador | ENFORCEMENT ONLY |
+| `set_accessory_power`, `activate_scene` | `use_plugin` | `plugin:arduino-accessories` | cualquier usuario | operador | ENFORCEMENT ONLY |
+| `create_scene`, `update_scene` | `configure_plugin` | `plugin:arduino-accessories` | admin | admin | ENFORCEMENT ONLY |
+| `send_matrix_announcement`, `run_matrix_rule` | `use_plugin` | `plugin:matriz-led` | cualquier usuario | operador | ENFORCEMENT ONLY |
+| `set_machine_alerts` | `configure_plugin` (persiste la configuración de alertas por máquina de la Matriz LED: `save_machine_alerts` reescribe el archivo y cambia lo que la matriz hará sola en cada cambio de estado) | `plugin:matriz-led` | cualquier usuario | **admin** | **PERMISSION CHANGE** (D3-Q9, v0.29) |
+
+"Cualquier usuario" = `role="any"`, es decir cualquier sesión válida; con los dos roles reales equivale a operador. Un rol desconocido o vacío ahora se deniega (antes `any` lo dejaba pasar). El panel del plugin Matriz LED todavía permite esa misma configuración a cualquier usuario (`require_auth`): el panel de plugins no se migró, así que ahí sigue la diferencia CURRENT ≠ TARGET.
+
+**Riesgo ≠ permiso.** `risk` no cambió en ninguna acción. Flujo: política (¿puede?) → riesgo (¿confirmó?) → servicio. Antes de dejar una acción `confirm` pendiente se consulta la política (`ensure_can_request`, sin recurso: para un usuario el recurso no cambia la decisión); al confirmar, `execute` vuelve a autorizar con el rol de ese momento y con el recurso, así que una degradación entre pedir y confirmar se respeta.
+
+**`Action.role`: DEPRECATED, conservado como propiedad derivada.** Ya no se declara ni autoriza; se calcula de `POLICY` ("admin" si alguna de sus acciones exige admin, si no "any") solo para no cambiar la forma de `GET /api/ai/actions`. No hay segunda fuente de verdad. Se puede eliminar cuando ningún consumidor lea ese campo (hoy `app.js` no lo usa). El docstring de `authorization_policy.py` todavía dice que `Action.role` manda: queda desactualizado porque este bloque no modifica la política.
+
+**Sin cobertura (NOT COVERED):** las herramientas de lectura de `ai_tools` (estado, temperaturas, trabajos, biblioteca, materiales, cámaras, accesorios, Matriz LED, eventos y errores) siguen protegidas solo por `require_auth` en `/api/ai/ask`; la política no tiene acción de lectura equivalente (`view_status` es por máquina y `read_logs` no cubre todo) y no se inventa una en esta fase. Usar la IA (`use_ai`) tampoco se consulta todavía.
+
+**Bypasses del canal IA:**
+
+| Camino | Estado |
+|---|---|
+| Herramientas de `ai_actions` hacia servicios/hardware | **CLOSED** (todas pasan por la política) |
+| Confirmación de una acción pendiente (`POST /api/ai/actions/{token}/confirm`) | **CLOSED** (reautoriza al ejecutar) |
+| G-code libre, consola, macros, potencia láser/husillo, mover ejes por IA | **NOT FOUND** (no existen herramientas; test de registro) |
+| `AI_TOOLS` declaradas por plugins (`plugin_loader_service.get_plugin_ai_tools` → `ai_tools.call_tool`) | **CLOSED** (v0.28): autorizadas con la política y el usuario autenticado, en el agente y en `POST /api/ai/tools/{name}`; ver abajo |
+| Modo contexto del agente | **NOT FOUND** (no ejecuta herramientas) |
+
+**Herramientas de plugins (`AI_TOOLS`)** (v0.28) — auditadas y cerradas. Ningún plugin instalado declara `AI_TOOLS` hoy, así que **no hay herramientas de plugin migradas ni permitidas en esta instalación**; lo que cambió es el contrato del punto de extensión:
+
+- Cada `ai_tools.Tool` de un plugin declara `policy_action` (el `Enum` canónico, no su texto): `use_plugin` (operador) o `configure_plugin` (admin), y `read_only` (por omisión `True`). Sin `policy_action`, con cualquier otra acción (temperatura, movimiento, consola, potencia, configuración de máquina, reinicios, archivos, sistema, usuarios…) o con parámetros de identidad (`role`, `user_id`, `user`, `username`, `principal`, `scope`), la herramienta **no se registra** (DENY / NOT AUTHORIZED hasta que exista una definición explícita). Tampoco puede tomar el nombre de una herramienta del core ni de una acción de `ai_actions`.
+- El recurso lo asigna el core: `Resource(PLUGIN, <plugin_id>)`, con el id deducido del paquete donde se cargó el módulo (`nopal_plugins.<id>`) contra los plugins instalados; `get_plugin_ai_tools()` devuelve pares `(plugin_id, herramienta)`. El plugin no elige su recurso.
+- `call_tool(name, arguments, *, role, user_id, actions_enabled)`: para una herramienta de plugin construye `Principal.user(user_id, rol)` con el usuario autenticado que pasa quien llama (agente o ruta), nunca con argumentos del modelo ni atributos del `Tool`. Sin usuario, sin rol válido o con DENY → `not_authorized` y la herramienta no se ejecuta. Después de la política, una herramienta que cambia estado (`read_only=False` o `configure_plugin`) exige `actions_enabled`. `POST /api/ai/tools/{name}` traduce ambos errores a 403.
+- El catálogo (`get_exposed_tools`, `GET /api/ai/tools`, esquema del agente) solo ofrece las herramientas de plugin que ese usuario podría ejecutar; sin usuario no ofrece ninguna. El modo contexto llama herramientas sin usuario y solo del core, así que no gana permisos por esta vía.
+- Las herramientas de plugin no tienen flujo de confirmación (`risk`): eso sigue siendo exclusivo de `ai_actions`. El handler no recibe la identidad del usuario (ningún plugin la necesita hoy).
+- Límite del modelo de confianza: el código de un plugin corre dentro del proceso de NOPAL, así que el control garantiza la identidad y la decisión de la política, no que el plugin clasifique honestamente su herramienta ni que no llame a servicios por su cuenta. Fuera de alcance.
 
 ### 18.9 Principio: la consola es una acción privilegiada (`ACCEPTED`, D3-Q2)
 
@@ -1429,7 +1474,10 @@ CURRENT (matriz §18.3)
    ↓    accesorios y escenas con política ✅ (recurso: plugin completo);
    ↓    pendientes: persistencia del scope (y con ella el scope por
    ↓    accesorio/escena: ResourceKind.ACCESSORY/SCENE, FUTURE)
-   ↓  migración de la IA (Action.role derivado de la política)
+   ↓  migración de la IA — ✅ IMPLEMENTADA (acciones físicas): ai_actions consulta
+   ↓    la política con usuario y recurso reales; Action.role derivado (deprecated);
+   ↓    AI_TOOLS de plugins con política ✅ (v0.28); lecturas del core de
+   ↓    ai_tools sin cubrir; ownership de conversaciones: NOT STARTED
    ↓  migración de plugins (convención configurar/usar)
    ↓  eliminación de bypasses (consola, macros con G-code arbitrario, /plugins-static)
 TARGET (matriz §18.6)
@@ -1456,7 +1504,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **1142 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado + 9 de la bobina activa de TUNA-Screen + 17 de accesorios y escenas de TUNA-Screen, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **1261 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado + 9 de la bobina activa de TUNA-Screen + 17 de accesorios y escenas de TUNA-Screen + 65 de autorización del canal IA + 52 de las herramientas de IA de plugins + 2 netos de `set_machine_alerts` como `configure_plugin`, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1717,7 +1765,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 
 ### ADR-006 — Centralización de autorización por acción
 
-- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador, bobina activa (`materials/active`), accesorios y escenas (`use_plugin` sobre `plugin:arduino-accessories`) PARCIAL (scope transitorio) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción); y TUNA-Screen (`dispatch_action`): acciones de admin denegadas a dispositivos, acciones de operador, bobina activa (`materials/active`), accesorios y escenas (`use_plugin` sobre `plugin:arduino-accessories`) PARCIAL (scope transitorio); y el canal IA (`ai_actions`, 11 acciones con la política; `preheat_machine` y `assign_spool` admin → operador; `set_machine_alerts` cualquier usuario → admin) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
 
 - **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
   - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
@@ -1952,3 +2000,6 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.24 | 2026-10-03 | **Emparejamiento de TUNA-Screen reforzado (D3-Q6 `IMPLEMENTED`)**: vencimiento con reloj monotónico, canje atómico bajo lock (un solo uso, no reutilizable), límite de 5 intentos fallidos por ventana que invalida todos los códigos vigentes, errores genéricos, logs sin código ni token, y `GET /api/tunascreen/info` sin `pairing_open` (la app Android solo lo deserializa con valor por omisión). D-7 → `FIXED`. Tokens ya emitidos sin cambios. Persistencia del scope: `NOT STARTED`. Suite: 1116 tests, 0 fallos (17 nuevos). |
 | 0.25 | 2026-10-03 | **Bobina activa de TUNA-Screen con Authorization Policy**: `POST /api/tunascreen/materials/active` autoriza `assign_active_spool` (operador) con el mismo principal, recurso y scope transitorio que `dispatch_action` antes de `set_active_material`, que no cambió. Permiso funcional sin cambios; un DENY responde 403. Corregido un defecto de `device_scope`: un recurso sin id producía un scope `{None}` y un 500; ahora es un scope vacío y la política deniega (403). Otros llamadores que asignan bobina (IA, plugin Spoolman) no son de TUNA-Screen. Persistencia del scope: `NOT STARTED`. Suite: 1125 tests, 0 fallos (9 nuevos). |
 | 0.26 | 2026-10-03 | **Accesorios y escenas de TUNA-Screen con Authorization Policy**: `POST /api/tunascreen/accessories/{id}/power` y `POST /api/tunascreen/accessory-scenes/{id}/run` autorizan `use_plugin` (operador) sobre `Resource(PLUGIN, "arduino-accessories")` con el principal TUNA (scope transitorio) antes del servicio: `IMPLEMENTED — TARGET ENFORCED`. CURRENT = TARGET, respuestas y errores sin cambios; un DENY responde 403. Cierra el bypass de política reportado en v0.23. Nuevo helper `ensure_device_authorized_for` (recurso ya resuelto); `ensure_device_authorized` lo reutiliza. `ResourceKind.ACCESSORY/SCENE`: NOT IMPLEMENTED (FUTURE). Persistencia del scope: `NOT STARTED`. IA y panel del plugin sin migrar. Suite: 1142 tests, 0 fallos (17 nuevos). |
+| 0.27 | 2026-10-03 | **Canal IA con Authorization Policy**: las 11 acciones de `ai_actions` declaran su acción canónica y recurso; `execute` autoriza con `Principal.user(user_id, rol)` del usuario autenticado y el recurso real (máquina con las claves del panel, o el plugin) antes del servicio; el catálogo se filtra con la política. **Cambios de permiso** (ADR-006): `preheat_machine` (`set_temperature`, D3-Q1) y `assign_spool` (`assign_active_spool`, C-3) pasan de admin a operador. El resto es solo enforcement. `risk` sin cambios: la política se consulta antes de dejar una acción pendiente y otra vez al confirmar. `Action.role`: deprecated, derivado de la política. Un rol desconocido ahora se deniega. NOT COVERED: lecturas de `ai_tools`, `use_ai`. Bypass latente reportado: `AI_TOOLS` de plugins. 4 tests existentes actualizados para el nuevo permiso (no eliminados). Conversation ownership: `NOT STARTED`. Suite: 1207 tests, 0 fallos (65 nuevos). |
+| 0.28 | 2026-10-03 | **`AI_TOOLS` de plugins con Authorization Policy**: cerrado el bypass latente `get_plugin_ai_tools()` → `ai_tools.call_tool()`. Cada herramienta de plugin declara `policy_action` (`use_plugin` o `configure_plugin`, solo el Enum canónico); sin declarar, con otra acción o con parámetros de identidad no se registra. Recurso `plugin:<id>` asignado por el core (id deducido del paquete cargado). Identidad del usuario autenticado en el agente y en `POST /api/ai/tools/{name}` (403 ante DENY); las que cambian estado exigen `actions_enabled`; el catálogo se filtra por usuario. Ningún plugin instalado declara `AI_TOOLS`. 3 tests existentes adaptados al nuevo contrato. Conversation ownership: `NOT STARTED`. Suite: 1259 tests, 0 fallos (52 nuevos). |
+| 0.29 | 2026-10-03 | **Correcciones finales de la fase IA**: `set_machine_alerts` pasa de `use_plugin` a **`configure_plugin`** (admin), porque persiste la configuración de alertas por máquina de la Matriz LED (D3-Q9). Cambio de permiso en el canal IA: cualquier usuario → admin; el panel del plugin no se migró. `docs/NOPAL_INTELLIGENCE.md` describe el contrato actual de `AI_TOOLS`. Suite: 1261 tests, 0 fallos. |
