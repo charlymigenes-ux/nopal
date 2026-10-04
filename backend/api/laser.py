@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from backend.auth_deps import ensure_authorized, require_auth, require_role
 from backend.services.authorization_policy import Action, Resource, ResourceKind
+from backend.services.laser_command_classifier import classify_laser_command
 from backend.services import printer_profiles
 from backend.services.gcode_bounds import bounds_for_file
 from backend.services.laser_service import (
@@ -246,6 +247,14 @@ JOB_ACTIVE_MESSAGE = "Hay un grabado en curso en este láser -- esperá a que te
 async def laser_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Envía un comando GRBL suelto (jog, $H, $X, etc.)."""
     target = host or get_active_host()
+    # ADR-006: ruta genérica de acciones mixtas. El comando se descompone en
+    # las acciones que contiene (ver laser_command_classifier) y se autorizan
+    # TODAS antes de enviar nada: p. ej. M3/M4 → set_laser_power/set_spindle
+    # (admin) aunque vaya junto a un movimiento (operador). Las partes NOT
+    # COVERED ($X, overrides de potencia) solo exigen la sesión, como antes.
+    resource = _laser_resource(target)
+    for action in sorted(classify_laser_command(command, resource.kind).actions, key=lambda a: a.value):
+        ensure_authorized(user, action, resource)
     if job_active(target):
         raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
     await ensure_listener_ready(target)

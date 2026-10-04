@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.21 |
+| Versión del SDD | 0.22 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -1055,14 +1055,11 @@ verifica). Panel: posible para operador vía consola. TUNA-Screen: `M3/M4 S…`
 directo con cualquier token. En CNC arranca el husillo; en láser con `$32=0`
 puede disparar el haz sin movimiento.
 
-> **Estado (v0.21)** — En el panel GRBL, la consola `POST /api/laser/console`
-> y los settings `$` ya son de admin. **El bypass de potencia/husillo sigue
-> abierto** por `POST /api/laser/command`: es una ruta genérica que el panel
-> usa para operación normal del operador (jog, `$H`, `$X`, cero de trabajo,
-> M8/M9) y también para M3/M4 (disparo de prueba del láser, control del
-> husillo), así que no corresponde a una sola acción de la política. Cerrarlo
-> requiere decidir cómo se separa esa ruta (ver §18.8). TUNA-Screen sigue sin
-> rol.
+> **Estado (v0.22)** — En el panel GRBL, la consola, los settings `$` y la
+> potencia/husillo son de admin en todas las rutas, incluida la genérica
+> `POST /api/laser/command`, que ahora se clasifica por acción (§18.8). **El
+> bypass de potencia/husillo del panel queda cerrado.** Siguen abiertos:
+> TUNA-Screen (`set_laser_power`/`set_spindle` con cualquier token) e IA.
 
 **D3-5 — Configuración de máquina más débil que lo administrativo.** Dar de
 alta una impresora o formatear una SD exige admin, pero editar `printer.cfg`,
@@ -1134,12 +1131,12 @@ la migración tendrá que aplicar:
 | Temperatura Klipper (panel) | Admin | Operator — ✅ **aplicado** (`POST /api/system/temperature-target`) |
 | Temperatura vía IA (`preheat_machine`) | Admin | Operator |
 | Temperatura vía TUNA-Screen | cualquier dispositivo | Operator + scope |
-| Consola Klipper / Marlin / GRBL (panel) | Operator | **Admin** — ✅ aplicado en Klipper (`POST /api/console/command`) y en Marlin (`POST /api/marlin-printers/console`); GRBL: ✅ `POST /api/laser/console` aplicado, pero ⚠️ `POST /api/laser/command` (ruta genérica, ver §18.8) sigue aceptando comandos arbitrarios del operador |
+| Consola Klipper / Marlin / GRBL (panel) | Operator | **Admin** — ✅ aplicado en Klipper (`POST /api/console/command`) y en Marlin (`POST /api/marlin-printers/console`); GRBL: ✅ `POST /api/laser/console` aplicado y ✅ `POST /api/laser/command` clasificada por acción (lo no reconocido es consola, admin) |
 | Macros Klipper (panel) | Operator | **Admin** — ✅ aplicado (`POST /api/macros/run`) |
 | Consola vía TUNA-Screen | cualquier dispositivo | **❌** |
 | Potencia láser/husillo vía TUNA-Screen | cualquier dispositivo | **❌** |
-| Potencia láser/husillo vía consola (panel) | Operator | **Admin** (consecuencia de D3-Q2) — ✅ cerrado en `POST /api/laser/console`; ⚠️ **sigue abierto** por `POST /api/laser/command`, que el propio panel usa para M3/M4 (disparo de prueba, husillo) |
-| `printer.cfg`, `$` de GRBL, firmware restart | Operator | **Admin** — ✅ `printer.cfg` y firmware restart aplicados en Klipper (`POST /api/printers/{port}/config-files/content`, `POST /api/printers/{port}/firmware-restart`); `$` de GRBL ✅ aplicado (`POST /api/laser/settings`); ⚠️ un `$n=…` también puede enviarse por `POST /api/laser/command` |
+| Potencia láser/husillo vía consola (panel) | Operator | **Admin** (consecuencia de D3-Q2) — ✅ cerrado en `POST /api/laser/console` y en `POST /api/laser/command` (M3/M4/M5 y palabra `S` clasificados como `set_laser_power`/`set_spindle`) |
+| `printer.cfg`, `$` de GRBL, firmware restart | Operator | **Admin** — ✅ `printer.cfg` y firmware restart aplicados en Klipper (`POST /api/printers/{port}/config-files/content`, `POST /api/printers/{port}/firmware-restart`); `$` de GRBL ✅ aplicado (`POST /api/laser/settings`, y `$…=…` por `POST /api/laser/command`) |
 | Borrar en SD | Operator | **Admin** |
 | Configurar cotizador | Operator | **Admin** (D3-Q9) |
 | Macros Klipper (panel) | Operator | **Admin** |
@@ -1199,7 +1196,7 @@ está implementado todavía:
 | Scope de TUNA-Screen | ✅ (Operator + scope) | ⏳ almacenamiento y edición `PROPOSED` |
 | Emparejamiento reforzado | ✅ (requisitos) | ⏳ forma exacta `PROPOSED` |
 | Regla del último Admin (C-6) | ✅ | ✅ **`IMPLEMENTED`** (`033b8f3`): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado. Archivos: `backend/services/auth_service.py`, `backend/services/config_backup_service.py`, `backend/tests/test_last_admin.py` (20 tests) |
-| Authorization Policy (infraestructura) | ✅ | ✅ **`IMPLEMENTED`** — `backend/services/authorization_policy.py` (matriz TARGET, 42 acciones, `authorize()`, fail-closed, scope validado por `kind:id`, `POLICY` inmutable); **enforcement: `STARTED`** — rutas migradas: 12 de Marlin (CURRENT = TARGET), la consola de Marlin (operador → admin), 6 de Klipper con la matriz TARGET ya aplicada (`set_temperature`, `send_console_command`, `run_macro`, `printer_config`, `restart_klipper`, `firmware_restart`) y 2 de GRBL (`/api/laser/console`, `grbl_settings`); el resto sigue con los mecanismos CURRENT |
+| Authorization Policy (infraestructura) | ✅ | ✅ **`IMPLEMENTED`** — `backend/services/authorization_policy.py` (matriz TARGET, 42 acciones, `authorize()`, fail-closed, scope validado por `kind:id`, `POLICY` inmutable); **enforcement: `STARTED`** — rutas migradas: 12 de Marlin (CURRENT = TARGET), la consola de Marlin (operador → admin), 6 de Klipper con la matriz TARGET ya aplicada (`set_temperature`, `send_console_command`, `run_macro`, `printer_config`, `restart_klipper`, `firmware_restart`) y 3 de GRBL (`/api/laser/console`, `grbl_settings`, `/api/laser/command` clasificada por acción); el resto sigue con los mecanismos CURRENT |
 
 ### 18.8 Arquitectura de autorización (`ACCEPTED` como principio; implementación `PROPOSED`)
 
@@ -1253,7 +1250,7 @@ y se evoluciona hacia:
                          Driver
 ```
 
-**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 21 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 2 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console` y `grbl_settings`, operador → admin) (§18.8).
+**Estado de ADR-006**: POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción) (§18.8).
 
 Infraestructura implementada (`backend/services/authorization_policy.py`):
 `Principal` (anónimo, usuario admin/operador, dispositivo TUNA-Screen con perfil
@@ -1327,10 +1324,27 @@ Enforcement del panel GRBL / láser / CNC — cambio de permisos (CURRENT → TA
 |---|---|---|---|
 | `send_console_command` | `POST /api/laser/console` (el frontend no la usa; su consola envía por `/api/laser/command`) | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
 | `grbl_settings` | `POST /api/laser/settings` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
-| `set_laser_power` | — (no hay ruta propia; el panel envía M3/M4 por `/api/laser/command`) | — | NOT PRESENT |
-| `set_spindle` | — (ídem) | — | NOT PRESENT |
-| Comando genérico | `POST /api/laser/command`: jog, `$H`, `$X`, soft reset, overrides, cero de trabajo, palpado, M8/M9 **y M3/M4**. No corresponde a una sola acción | operador | ⚠️ NOT COVERED — bypass de potencia/husillo y de `$` abierto |
+| `set_laser_power` / `set_spindle` | Sin ruta propia: el panel los envía por `POST /api/laser/command`, donde ahora se clasifican (`M3`/`M4`/`M5` o palabra `S`) | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
+| Comando genérico (acciones mixtas) | `POST /api/laser/command`: el comando se descompone en acciones (`backend/services/laser_command_classifier.py`) y se autorizan **todas** antes de enviarlo | mixto (ver abajo) | ✅ `IMPLEMENTED` |
 | Host láser activo | `POST /api/laser/host` (depende de D4) | operador | ⏳ `NOT STARTED` |
+
+**Separación de `POST /api/laser/command`** (frontend sin cambios; la ruta sigue siendo el transporte):
+
+| Parte del comando | Acción | TARGET |
+|---|---|---|
+| `G0`/`G1`/`G2`/`G3`, `G53`, modales (`G90`, `G91`, `G20`, `G21`…), palpado `G38.x`, jog `$J=` | `move` | operador |
+| `$H`, `$HX…`, `G28`, `G30` | `home` | operador |
+| `G10`, `G92`, `G92.1`, `G54`–`G59` | `set_work_zero` | operador |
+| `M7`/`M8`/`M9` y toggles realtime `0xA0`/`0xA1` | `set_air_assist` (láser) / `set_coolant` (CNC) | operador |
+| `?` · `!` · `~` · `0x18` (soft reset) · `0x84` · `0x85` | `view_status` · `pause` · `resume` · `cancel` · `pause` · `move` | operador |
+| Overrides de avance y rápidos (`0x90`–`0x97`) | `set_speed_factor` | operador |
+| `$$`, `$#`, `$G`, `$I`, `$N` (lectura) | `view_status` | operador |
+| `M3`/`M4`/`M5`, cualquier palabra `S` | `set_laser_power` (láser) / `set_spindle` (CNC) | **admin** |
+| `$…=…` (settings, `$RST=`, `$Nn=`) | `grbl_settings` | **admin** |
+| Cualquier otra cosa (códigos no reconocidos, `T`, `M6`, `M106`, `G4`, `G28.1`, bytes realtime desconocidos…) | `send_console_command` | **admin** (fail-closed) |
+| `$X` (desbloqueo) · overrides de husillo/potencia (`0x99`–`0x9E`) | NOT COVERED — sin acción en la política; solo sesión, sin cambio de permisos | — |
+
+La normalización reproduce cómo lee GRBL: bytes realtime extraídos de cualquier posición, varias líneas por petición (`\n`/`\r`), comentarios `(...)` y `;` descartados, espacios ignorados, mayúsculas y varias palabras por bloque. Una petición mixta (p. ej. `G0 X10` + `M3 S1000`) exige todas sus acciones: el operador recibe 403 y no se envía nada. Esto **cierra el bypass de potencia/husillo y de settings `$`** por esta ruta. Compatibilidad: el frontend no cambió; los botones de husillo y de disparo de prueba del láser siguen visibles para el operador y ahora le responden 403.
 
 El recurso es `Resource(LASER | CNC, "laser:<host>")` según el `kind` del registro (helper `_laser_resource` en `backend/api/laser.py`); si se omite `host` se usa el host activo, como antes. La autorización ocurre antes del chequeo de trabajo en curso (409). Fuera de este bloque: encuadre (`job/frame`), air assist / refrigerante, borrar y formatear SD, biblioteca y descubrimiento. El frontend no oculta el editor de settings `$` al operador: ahora le responde 403.
 
@@ -1414,7 +1428,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **997 tests, 0 fallos** (~60–95 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **1069 tests, 0 fallos** (~85–90 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command`, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1449,6 +1463,7 @@ Reglas:
 | Cambio de permisos de Klipper: `firmware_restart` (admin; el operador nunca llega al servicio) | 6 |
 | Cambio de permisos de la consola de Marlin (admin; sin bypass de M104/M140/M109/M190 ni M3/M4/M5 para el operador) | 15 |
 | Cambio de permisos GRBL: `/api/laser/console` y `grbl_settings` (admin; recurso láser/CNC según el registro; autorización antes del 409 de trabajo en curso; sin M3/M4/M5 ni `$` para el operador por esas rutas) | 30 |
+| Separación de `/api/laser/command`: clasificador (comandos reales del panel, tipo de máquina, peticiones mixtas, comentarios, realtime) y ruta (operación normal del operador intacta; 26 intentos de bypass denegados; todas las acciones autorizadas antes de enviar) | 72 |
 
 **Fixtures**: `isolated_printer_registries` (autouse) redirige a `tmp_path`
 los registros de Bambu, Elegoo, FlashForge, Marlin, TUNA-Screen, plugins,
@@ -1671,7 +1686,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 
 ### ADR-006 — Centralización de autorización por acción
 
-- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 21 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 2 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console` y `grbl_settings`, operador → admin) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
+- **Estado**: `ACCEPTED` (2026-10-03, decisión del propietario de NOPAL). POLICY `ACCEPTED` · INFRASTRUCTURE `IMPLEMENTED` (`backend/services/authorization_policy.py`) · ENFORCEMENT MIGRATION `STARTED` — 22 rutas migradas: 12 de Marlin con CURRENT = TARGET, 1 de Marlin con cambio de permisos (consola, operador → admin), 6 del panel de Klipper con **cambio deliberado de permisos** (`set_temperature` admin → operador; `send_console_command`, `run_macro`, `printer_config`, `restart_klipper` y `firmware_restart` operador → admin) y 3 del panel GRBL con cambio de permisos (`send_console_command` en `/api/laser/console`, `grbl_settings`, y la ruta genérica `/api/laser/command` clasificada por acción) (§18.8). **C-6: `IMPLEMENTED`** (`033b8f3`); C-1…C-5 y D3-Q1…Q12: pendientes.
 
 - **Contexto**: la auditoría D3 (§18.1–18.5) mostró que la autorización depende del endpoint, del driver y del canal, no de la acción:
   - **permisos distintos por driver**: fijar temperatura exige Admin en Klipper (`/api/system/temperature-target`) y Operator en Marlin (`/api/marlin-printers/temperature-target`);
@@ -1901,3 +1916,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.19 | 2026-10-03 | **Tercer cambio real de permisos (CURRENT → TARGET), Klipper**: `POST /api/printers/{port}/firmware-restart` (`firmware_restart`) pasa de operador a **admin** y consulta la Authorization Policy antes de reiniciar. No existe otra ruta del panel con el mismo efecto. Rutas migradas: 18. Suite: 952 tests, 0 fallos (6 nuevos). |
 | 0.20 | 2026-10-03 | **Cambio real de permisos, consola del panel de Marlin**: `POST /api/marlin-printers/console` (`send_console_command`) pasa de operador a **admin** y consulta la Authorization Policy antes de enviar nada. Cierra el bypass de consola del panel de Marlin (M104/M140 y M3/M4). D3-1 y D3-2 quedan resueltos en los paneles de Klipper y Marlin; siguen abiertos la consola de GRBL, TUNA-Screen e IA. Rutas migradas: 19. Suite: 967 tests, 0 fallos (15 nuevos). |
 | 0.21 | 2026-10-03 | **Bloque privilegiado GRBL (cambio real de permisos)**: `POST /api/laser/console` (`send_console_command`) y `POST /api/laser/settings` (`grbl_settings`) pasan de operador a **admin**, con recurso láser/CNC según el registro y autorización antes del 409. `set_laser_power` y `set_spindle` no tienen ruta propia (NOT PRESENT). `POST /api/laser/command` queda **NOT COVERED**: ruta genérica usada para operación normal y para M3/M4, así que **el bypass de potencia/husillo sigue abierto** y requiere una decisión. `POST /api/laser/host` sin tocar (D4). Rutas migradas: 21. Suite: 997 tests, 0 fallos (30 nuevos). |
+| 0.22 | 2026-10-03 | **Separación de `POST /api/laser/command` (ruta de acciones mixtas)**: un clasificador (`backend/services/laser_command_classifier.py`) descompone el comando como lo lee GRBL (realtime en cualquier posición, varias líneas, comentarios, espacios, mayúsculas, varias palabras por bloque) y la ruta autoriza todas sus acciones antes de enviarlo. Operación normal sigue siendo de operador; `M3`/`M4`/`M5` y palabra `S` → `set_laser_power`/`set_spindle` (admin); `$…=…` → `grbl_settings` (admin); lo no reconocido → consola (admin). `$X` y overrides de potencia: NOT COVERED, sin cambio. **Bypass de potencia/husillo y de settings del panel GRBL: cerrado.** Frontend sin cambios. D4 sigue `OPEN`. Rutas migradas: 22. Suite: 1069 tests, 0 fallos (72 nuevos). |

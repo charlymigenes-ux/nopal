@@ -3,9 +3,8 @@
 - POST /api/laser/console  → send_console_command: operador → ADMIN
 - POST /api/laser/settings → grbl_settings:        operador → ADMIN
 
-Fuera de este bloque (ver SDD): POST /api/laser/command, ruta genérica que el
-panel usa tanto para operación normal (jog, $H, $X, cero de trabajo, M8/M9)
-como para potencia/husillo (M3/M4); no corresponde a una sola acción.
+POST /api/laser/command (ruta genérica de acciones mixtas) se cubre aparte,
+en test_laser_command_enforcement.py.
 """
 
 import pytest
