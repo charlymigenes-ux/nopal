@@ -5,7 +5,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from backend.auth_deps import require_auth, require_role
+from backend.auth_deps import ensure_authorized, require_auth, require_role
+from backend.services.authorization_policy import Action, Resource, ResourceKind
 from backend.services import printer_profiles
 from backend.services.gcode_bounds import bounds_for_file
 from backend.services.laser_service import (
@@ -61,6 +62,16 @@ from backend.services.laser_service import (
 from backend.utils import safe_section_path
 
 router = APIRouter()
+
+
+def _laser_resource(host: str) -> Resource:
+    """Recurso de la Authorization Policy (ADR-006) para un láser/CNC: el id
+    normalizado de la máquina (`laser:<host>`, el mismo del modelo de
+    TUNA-Screen) con el tipo según el `kind` del registro (CNC o láser; un
+    host sin registrar se trata como láser)."""
+    entry = next((e for e in get_registered_lasers() if e.get("host") == host), None)
+    kind = ResourceKind.CNC if (entry or {}).get("kind") == "cnc" else ResourceKind.LASER
+    return Resource(kind, f"laser:{host}")
 
 
 @router.get("/api/laser/host")
@@ -384,6 +395,9 @@ async def laser_console_endpoint(host: Optional[str] = None, count: int = 100, u
 async def laser_console_command_endpoint(command: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Envía un comando desde la consola del láser."""
     target = host or get_active_host()
+    # ADR-006 (D3-Q2): consola / G-code arbitrario solo admin. Antes, cualquier
+    # usuario autenticado. Se autoriza antes de enviar nada.
+    ensure_authorized(user, Action.SEND_CONSOLE_COMMAND, _laser_resource(target))
     if job_active(target):
         raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
     success = await send_console_command(target, command)
@@ -403,6 +417,9 @@ async def laser_settings_endpoint(host: Optional[str] = None, user: dict = Depen
 async def laser_settings_update_endpoint(key: str = Form(...), value: str = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
     """Actualiza un parámetro $$ individual."""
     target = host or get_active_host()
+    # ADR-006 (D3-Q4): los settings $ de GRBL son configuración física; solo
+    # admin. Antes, cualquier usuario autenticado. Se autoriza antes de escribir.
+    ensure_authorized(user, Action.GRBL_SETTINGS, _laser_resource(target))
     if job_active(target):
         raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
     result = await set_grbl_setting(target, key, value)
