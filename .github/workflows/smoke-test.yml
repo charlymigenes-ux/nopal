@@ -9,12 +9,20 @@ on:
 jobs:
   smoke-test:
     runs-on: ubuntu-latest
+    # 3.9 es la versión mínima soportada (issue #22 / PR #24: Qidi Q2, MKS Pi
+    # y otros equipos con Debian Bullseye). Sin fail-fast: si una versión
+    # falla, la otra termina igual y se ve cuál es.
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11"]
+    name: smoke-test (Python ${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       # requirements-dev.txt incluye requirements.txt (-r) más pytest,
       # pytest-asyncio y httpx -- un solo paso de instalación para los tests
