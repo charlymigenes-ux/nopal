@@ -9905,6 +9905,176 @@ body.light .theme-option-icon-btn:hover {
     min-height: 260px;
 }
 
+/* Barra de filtros del visor avanzado (componente, archivo, búsqueda, nivel,
+   pausa). Todo hace wrap para no desbordar a ancho de teléfono. */
+.system-log-toolbar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 10px;
+    min-width: 0;
+}
+
+.system-log-control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.system-log-control-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.system-log-control .settings-select {
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.system-log-toolbar-row {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.system-log-toolbar-row .option-switch {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.system-log-pause-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.system-log-pause-btn.is-paused {
+    color: var(--status-warn);
+    border-color: var(--status-warn);
+}
+
+.system-log-pause-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.system-log-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    min-height: 1em;
+}
+
+.system-log-status-notice {
+    color: var(--status-warn);
+}
+
+.system-log-status-error {
+    color: var(--status-danger);
+}
+
+.system-log-viewer {
+    overflow-x: hidden;
+}
+
+.system-log-entry {
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    min-width: 0;
+}
+
+.system-log-entry-head {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.system-log-tag {
+    font-size: 0.72rem;
+    padding: 0 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.system-log-entry-info .system-log-tag-level {
+    color: var(--status-info);
+    border-color: var(--status-info);
+}
+
+.system-log-entry.console-line-level-warning .system-log-tag-level,
+.system-log-entry.console-line-level-warning .console-line-message {
+    color: var(--status-warn);
+    border-color: var(--status-warn);
+}
+
+.system-log-entry.console-line-level-error .system-log-tag-level,
+.system-log-entry.console-line-level-error .console-line-message {
+    color: var(--status-danger);
+    border-color: var(--status-danger);
+}
+
+.system-log-entry-debug .console-line-message {
+    color: var(--text-muted);
+}
+
+.system-log-entry .console-line-message {
+    flex: 1 1 16rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.system-log-entry-repeated .console-line-message {
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.system-log-detail {
+    flex-basis: 100%;
+    min-width: 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.system-log-detail summary {
+    cursor: pointer;
+}
+
+.system-log-detail pre {
+    margin: 4px 0 0;
+    padding: 8px 10px;
+    border-left: 2px solid var(--border);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text);
+    font-family: inherit;
+}
+
+.system-log-empty {
+    margin: auto;
+    padding: 24px 0;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+@media (max-width: 600px) {
+    .modal-content.system-logs-modal-content {
+        padding: 20px 16px;
+    }
+}
+
 /* ── Modal "Control del sistema" (servicios systemd + host): mismo lenguaje
    visual verde/glass oscuro que ya usan la Galería de plugins (.plugin-card,
    línea ~4566) y las fichas de Ayuda (#help-modules-groups .help-card, línea

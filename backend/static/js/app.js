@@ -19094,44 +19094,346 @@ const usbClassifyProfileSwitch = createOptionSwitch('usb-classify-profile-switch
 const deviceRenameProfileSwitch = createOptionSwitch('device-rename-profile-switch', null);
 const usbClassifyFirmwareSwitch = createOptionSwitch('usb-classify-firmware-switch', null);
 const deviceRenameFirmwareSwitch = createOptionSwitch('device-rename-firmware-switch', null);
-const systemLogLevelSwitch = createOptionSwitch('system-log-level-switch', () => renderSystemLogs());
+const systemLogLevelSwitch = createOptionSwitch('system-log-level-switch', () => loadSystemLogs());
 
 // ── Visor de logs del sistema (Configuración) ──
-let systemLogPollInterval = null;
+// Carga completa al abrir o al cambiar un filtro; después, sondeo incremental
+// cada 5 s desde el cursor que devuelve el servidor (solo el archivo actual).
+// Los archivos rotados no cambian, así que ahí no hay sondeo.
+const SYSTEM_LOG_POLL_MS = 5000;
+const SYSTEM_LOG_FULL_LIMIT = 500;
+const SYSTEM_LOG_INCREMENTAL_LIMIT = 1000;
+const SYSTEM_LOG_MAX_DOM_ENTRIES = 1000;
+const SYSTEM_LOG_SEARCH_DEBOUNCE_MS = 400;
+const SYSTEM_LOG_SCROLL_STICK_PX = 40;
+const SYSTEM_LOG_LEVEL_TAG_KEYS = {
+    INFO: 'systemLogsLevelTagInfo',
+    WARNING: 'systemLogsLevelTagWarning',
+    ERROR: 'systemLogsLevelTagError',
+    CRITICAL: 'systemLogsLevelTagCritical',
+    DEBUG: 'systemLogsLevelTagDebug',
+};
 
-async function renderSystemLogs() {
-    const viewer = document.getElementById('system-log-viewer');
-    if (!viewer) return;
+let systemLogPollInterval = null;
+let systemLogPaused = false;
+let systemLogCursor = null;
+// Parámetros de filtro de la última carga completa: el sondeo los reutiliza
+// para que el cursor siempre corresponda a los mismos filtros.
+let systemLogActiveParams = '';
+let systemLogSelectedFile = 0;
+// Sube con cada carga completa (y al cerrar) para descartar respuestas viejas.
+let systemLogGeneration = 0;
+let systemLogFullLoadPending = false;
+let systemLogPollInFlight = false;
+let systemLogSearchTimer = null;
+let systemLogScanLimited = false;
+let systemLogGap = false;
+let systemLogError = '';
+
+function systemLogEls() {
+    return {
+        viewer: document.getElementById('system-log-viewer'),
+        status: document.getElementById('system-log-status'),
+        componentSelect: document.getElementById('system-log-component-select'),
+        fileSelect: document.getElementById('system-log-file-select'),
+        searchInput: document.getElementById('system-log-search-input'),
+        pauseBtn: document.getElementById('system-log-pause-btn'),
+        pauseLabel: document.getElementById('system-log-pause-label'),
+    };
+}
+
+function systemLogFilterParams() {
+    const { componentSelect, searchInput } = systemLogEls();
+    const params = new URLSearchParams();
+    params.set('file', String(systemLogSelectedFile));
+    const component = componentSelect?.value || '';
+    if (component) params.set('component', component);
     const level = systemLogLevelSwitch.getValue();
-    const query = level && level !== 'all' ? `&level=${encodeURIComponent(level)}` : '';
+    if (level && level !== 'all') params.set('level', level);
+    const query = (searchInput?.value || '').trim().slice(0, 200);
+    if (query) params.set('q', query);
+    return params;
+}
+
+function systemLogComponentLabel(component) {
+    if (!component) return t('systemLogsComponentOther');
+    const key = LOGS_CONFIG_COMPONENT_NAME_KEYS[component];
+    return key ? t(key) : component;
+}
+
+function renderSystemLogComponentOptions() {
+    const { componentSelect } = systemLogEls();
+    if (!componentSelect) return;
+    const current = componentSelect.value || '';
+    const options = [`<option value="">${escapeHtml(t('systemLogsComponentAll'))}</option>`];
+    Object.keys(LOGS_CONFIG_COMPONENT_NAME_KEYS).forEach(id => {
+        options.push(`<option value="${escapeHtml(id)}">${escapeHtml(systemLogComponentLabel(id))}</option>`);
+    });
+    componentSelect.innerHTML = options.join('');
+    componentSelect.value = LOGS_CONFIG_COMPONENT_NAME_KEYS[current] ? current : '';
+}
+
+function systemLogFileLabel(file) {
+    const index = Number(file?.index) || 0;
+    let label;
+    if (index === 0) label = t('systemLogsFileCurrent');
+    else if (index === 1) label = t('systemLogsFilePrevious');
+    else label = t('systemLogsFilePreviousN').replace('{n}', String(index));
+    const modified = String(file?.modified || '');
+    return modified ? `${label} · ${modified.slice(0, 16).replace('T', ' ')}` : label;
+}
+
+function renderSystemLogFileOptions(files) {
+    const { fileSelect } = systemLogEls();
+    if (!fileSelect) return;
+    const list = Array.isArray(files) && files.length ? files : [{ index: 0 }];
+    if (!list.some(file => Number(file.index) === 0)) list.unshift({ index: 0 });
+    fileSelect.innerHTML = list.map(file => {
+        const index = Number(file.index) || 0;
+        return `<option value="${index}">${escapeHtml(systemLogFileLabel(file))}</option>`;
+    }).join('');
+    const hasSelected = list.some(file => Number(file.index) === systemLogSelectedFile);
+    fileSelect.value = String(hasSelected ? systemLogSelectedFile : 0);
+}
+
+function systemLogEntryHtml(entry) {
+    const level = String(entry?.level || '').toUpperCase();
+    let levelClass = 'system-log-entry-info';
+    if (level === 'ERROR' || level === 'CRITICAL') levelClass = 'console-line-level-error';
+    else if (level === 'WARNING') levelClass = 'console-line-level-warning';
+    else if (level === 'DEBUG') levelClass = 'system-log-entry-debug';
+    const time = String(entry?.time || '');
+    const shortTime = time.includes(' ') ? time.split(' ').pop() : time;
+    const levelKey = SYSTEM_LOG_LEVEL_TAG_KEYS[level];
+    const levelLabel = levelKey ? t(levelKey) : level;
+    const source = String(entry?.source || '');
+    const message = String(entry?.message ?? '');
+    const repeatedClass = message.startsWith('[repetido]') ? ' system-log-entry-repeated' : '';
+    const detail = String(entry?.detail || '');
+    const detailHtml = detail
+        ? `<details class="system-log-detail"><summary>${escapeHtml(t('systemLogsDetailToggle'))}</summary><pre>${escapeHtml(detail)}</pre></details>`
+        : '';
+    return `<div class="console-line system-log-entry ${levelClass}${repeatedClass}">`
+        + '<span class="system-log-entry-head">'
+        + `<span class="console-line-time" title="${escapeHtml(time)}">${escapeHtml(shortTime)}</span>`
+        + `<span class="system-log-tag system-log-tag-level">${escapeHtml(levelLabel)}</span>`
+        + `<span class="system-log-tag system-log-tag-component"${source ? ` title="${escapeHtml(source)}"` : ''}>${escapeHtml(systemLogComponentLabel(entry?.component))}</span>`
+        + '</span>'
+        + `<span class="console-line-message">${escapeHtml(message)}</span>`
+        + detailHtml
+        + '</div>';
+}
+
+function systemLogEntryCount() {
+    const { viewer } = systemLogEls();
+    return viewer ? viewer.querySelectorAll('.system-log-entry').length : 0;
+}
+
+function systemLogTrimDom() {
+    const { viewer } = systemLogEls();
+    if (!viewer) return;
+    const entries = viewer.querySelectorAll('.system-log-entry');
+    const excess = entries.length - SYSTEM_LOG_MAX_DOM_ENTRIES;
+    for (let i = 0; i < excess; i++) entries[i].remove();
+}
+
+function systemLogShowEmptyIfNeeded() {
+    const { viewer } = systemLogEls();
+    if (!viewer || systemLogEntryCount() > 0 || viewer.querySelector('.system-log-empty')) return;
+    viewer.innerHTML = `<div class="system-log-empty">${escapeHtml(t('systemLogsEmpty'))}</div>`;
+}
+
+function systemLogReplaceEntries(entries) {
+    const { viewer } = systemLogEls();
+    if (!viewer) return;
+    const list = Array.isArray(entries) ? entries.slice(-SYSTEM_LOG_MAX_DOM_ENTRIES) : [];
+    viewer.innerHTML = list.map(systemLogEntryHtml).join('');
+    systemLogShowEmptyIfNeeded();
+    viewer.scrollTop = viewer.scrollHeight;
+}
+
+function systemLogAppendEntries(entries) {
+    const { viewer } = systemLogEls();
+    if (!viewer || !Array.isArray(entries) || !entries.length) return;
+    // Solo seguir al fondo si el usuario ya estaba ahí; si subió a leer, no moverlo.
+    const wasAtBottom = viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight <= SYSTEM_LOG_SCROLL_STICK_PX;
+    viewer.querySelector('.system-log-empty')?.remove();
+    viewer.insertAdjacentHTML('beforeend', entries.map(systemLogEntryHtml).join(''));
+    systemLogTrimDom();
+    if (wasAtBottom) viewer.scrollTop = viewer.scrollHeight;
+}
+
+function renderSystemLogStatus() {
+    const { status } = systemLogEls();
+    if (!status) return;
+    const count = systemLogEntryCount();
+    const parts = [`<span class="system-log-status-count">${escapeHtml(count === 1 ? t('systemLogsEventCountOne') : t('systemLogsEventCount').replace('{count}', count.toLocaleString()))}</span>`];
+    if (systemLogScanLimited) parts.push(`<span class="system-log-status-notice">${escapeHtml(t('systemLogsScanLimited'))}</span>`);
+    if (systemLogGap) parts.push(`<span class="system-log-status-notice">${escapeHtml(t('systemLogsGap'))}</span>`);
+    if (systemLogError) parts.push(`<span class="system-log-status-error">${escapeHtml(systemLogError)}</span>`);
+    status.innerHTML = parts.join('');
+}
+
+function updateSystemLogPauseButton() {
+    const { pauseBtn, pauseLabel } = systemLogEls();
+    if (!pauseBtn) return;
+    const rotated = systemLogSelectedFile !== 0;
+    pauseBtn.disabled = rotated;
+    pauseBtn.setAttribute('aria-pressed', systemLogPaused ? 'true' : 'false');
+    pauseBtn.classList.toggle('is-paused', systemLogPaused);
+    pauseBtn.title = rotated ? t('systemLogsPauseNotApplicable') : '';
+    if (pauseLabel) pauseLabel.textContent = systemLogPaused ? t('systemLogsPaused') : t('systemLogsLive');
+}
+
+function systemLogErrorText(response, data) {
+    const detail = typeof data?.detail === 'string' ? data.detail : '';
+    return detail ? `${t('systemLogsLoadError')}: ${detail}` : `${t('systemLogsLoadError')} (HTTP ${response.status})`;
+}
+
+function applySystemLogFull(data) {
+    systemLogCursor = data?.cursor || null;
+    systemLogScanLimited = !!data?.scan_limited;
+    systemLogGap = false;
+    systemLogError = '';
+    if (Array.isArray(data?.files)) renderSystemLogFileOptions(data.files);
+    systemLogReplaceEntries(data?.entries);
+    renderSystemLogStatus();
+}
+
+// Carga completa con los filtros actuales. También corre en pausa: es una
+// acción del usuario, no el refresco automático.
+async function loadSystemLogs() {
+    const { viewer } = systemLogEls();
+    if (!viewer) return;
+    clearTimeout(systemLogSearchTimer);
+    systemLogSearchTimer = null;
+    const generation = ++systemLogGeneration;
+    systemLogFullLoadPending = true;
+    const params = systemLogFilterParams();
+    const activeParams = params.toString();
+    params.set('limit', String(SYSTEM_LOG_FULL_LIMIT));
     try {
-        const response = await fetch(`/api/logs?lines=500${query}`);
-        const data = await response.json();
-        viewer.innerHTML = (data.lines || []).map(line => {
-            let levelClass = '';
-            if (/\bERROR\b/.test(line)) levelClass = 'console-line-level-error';
-            else if (/\bWARNING\b/.test(line)) levelClass = 'console-line-level-warning';
-            return `<div class="console-line ${levelClass}"><span class="console-line-message">${escapeHtml(line)}</span></div>`;
-        }).join('');
-        viewer.scrollTop = viewer.scrollHeight;
+        const response = await fetch(`/api/logs?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (generation !== systemLogGeneration) return;
+        if (response.status === 404 && systemLogSelectedFile !== 0) {
+            // El archivo rotado ya no existe: volver al registro actual.
+            systemLogSelectedFile = 0;
+            const { fileSelect } = systemLogEls();
+            if (fileSelect) fileSelect.value = '0';
+            updateSystemLogPauseButton();
+            startSystemLogPolling();
+            loadSystemLogs();
+            return;
+        }
+        if (!response.ok) {
+            systemLogError = systemLogErrorText(response, data);
+            renderSystemLogStatus();
+            return;
+        }
+        systemLogActiveParams = activeParams;
+        applySystemLogFull(data);
     } catch (error) {
         console.error(error);
+    } finally {
+        if (generation === systemLogGeneration) systemLogFullLoadPending = false;
     }
 }
 
-document.getElementById('system-log-refresh-btn')?.addEventListener('click', renderSystemLogs);
+// Sondeo incremental desde el cursor guardado (solo registro actual, sin pausa).
+async function pollSystemLogs() {
+    if (!systemLogsModal || !systemLogsModal.classList.contains('active')) {
+        stopSystemLogPolling();
+        return;
+    }
+    if (systemLogPaused || systemLogSelectedFile !== 0) return;
+    if (systemLogPollInFlight || systemLogFullLoadPending) return;
+    if (!systemLogCursor) {
+        loadSystemLogs();
+        return;
+    }
+    const generation = systemLogGeneration;
+    const params = new URLSearchParams(systemLogActiveParams);
+    params.set('limit', String(SYSTEM_LOG_INCREMENTAL_LIMIT));
+    params.set('after', String(systemLogCursor.offset));
+    params.set('file_id', String(systemLogCursor.file_id));
+    systemLogPollInFlight = true;
+    try {
+        const response = await fetch(`/api/logs?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (generation !== systemLogGeneration) return;
+        if (!response.ok) {
+            console.error(systemLogErrorText(response, data));
+            return;
+        }
+        if (data.reset) {
+            // El archivo rotó: lo recibido es una carga completa nueva.
+            applySystemLogFull(data);
+            return;
+        }
+        if (data.cursor) systemLogCursor = data.cursor;
+        systemLogError = '';
+        if (data.gap) {
+            // Hubo más eventos que el límite: lo recibido es la cola más reciente.
+            systemLogGap = true;
+            systemLogReplaceEntries(data.entries);
+        } else {
+            systemLogAppendEntries(data.entries);
+        }
+        renderSystemLogStatus();
+    } catch (error) {
+        console.error(error);
+    } finally {
+        systemLogPollInFlight = false;
+    }
+}
 
 function startSystemLogPolling() {
-    renderSystemLogs();
     stopSystemLogPolling();
-    // Un log no necesita el ritmo de 600ms/4s usado en otros lados — 15s
-    // alcanza de sobra para un panel de diagnóstico que se refresca a pedido.
-    systemLogPollInterval = setInterval(renderSystemLogs, 15000);
+    if (systemLogPaused || systemLogSelectedFile !== 0) return;
+    systemLogPollInterval = setInterval(pollSystemLogs, SYSTEM_LOG_POLL_MS);
 }
 
 function stopSystemLogPolling() {
     if (systemLogPollInterval) { clearInterval(systemLogPollInterval); systemLogPollInterval = null; }
 }
+
+function toggleSystemLogPause() {
+    if (systemLogSelectedFile !== 0) return;
+    systemLogPaused = !systemLogPaused;
+    updateSystemLogPauseButton();
+    if (systemLogPaused) {
+        stopSystemLogPolling();
+        return;
+    }
+    startSystemLogPolling();
+    if (systemLogCursor) pollSystemLogs();
+    else loadSystemLogs();
+}
+
+(() => {
+    const { componentSelect, fileSelect, searchInput, pauseBtn } = systemLogEls();
+    componentSelect?.addEventListener('change', () => loadSystemLogs());
+    fileSelect?.addEventListener('change', () => {
+        systemLogSelectedFile = Number(fileSelect.value) || 0;
+        systemLogCursor = null;
+        updateSystemLogPauseButton();
+        if (systemLogSelectedFile === 0) startSystemLogPolling();
+        else stopSystemLogPolling();
+        loadSystemLogs();
+    });
+    searchInput?.addEventListener('input', () => {
+        clearTimeout(systemLogSearchTimer);
+        systemLogSearchTimer = setTimeout(() => loadSystemLogs(), SYSTEM_LOG_SEARCH_DEBOUNCE_MS);
+    });
+    searchInput?.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            loadSystemLogs();
+        }
+    });
+    pauseBtn?.addEventListener('click', toggleSystemLogPause);
+})();
 
 const systemLogsModal = document.getElementById('system-logs-modal');
 const systemLogsModalBackdrop = document.getElementById('system-logs-modal-backdrop');
@@ -19140,12 +19442,22 @@ const systemLogOpenBtn = document.getElementById('system-log-open-btn');
 
 function openSystemLogsModal() {
     if (systemLogsModal) systemLogsModal.classList.add('active');
+    systemLogPaused = false;
+    systemLogCursor = null;
+    renderSystemLogComponentOptions();
+    updateSystemLogPauseButton();
+    loadSystemLogs();
     startSystemLogPolling();
 }
 
 function closeSystemLogsModal() {
     if (systemLogsModal) systemLogsModal.classList.remove('active');
     stopSystemLogPolling();
+    clearTimeout(systemLogSearchTimer);
+    systemLogSearchTimer = null;
+    // Descarta cualquier respuesta en vuelo.
+    systemLogGeneration++;
+    systemLogFullLoadPending = false;
 }
 
 if (systemLogOpenBtn) systemLogOpenBtn.addEventListener('click', openSystemLogsModal);

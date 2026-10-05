@@ -4003,21 +4003,37 @@
                 <h2 data-i18n="systemLogs">Logs del sistema</h2>
             </div>
             <p data-i18n="systemLogsDescription">Registro persistente de NOPAL (conexiones, trabajos, errores) — se guarda en logs/nopal.log con rotación automática.</p>
-            <div class="settings-field">
-                <div class="option-switch" id="system-log-level-switch">
-                    <button type="button" class="option-switch-btn active" data-value="all" data-i18n="systemLogsLevelAll">Todo</button>
-                    <button type="button" class="option-switch-btn" data-value="INFO" data-i18n="systemLogsLevelInfo">Info</button>
-                    <button type="button" class="option-switch-btn" data-value="WARNING" data-i18n="systemLogsLevelWarning">Avisos</button>
-                    <button type="button" class="option-switch-btn" data-value="ERROR" data-i18n="systemLogsLevelError">Errores</button>
+            <div class="system-log-toolbar">
+                <label class="system-log-control">
+                    <span class="system-log-control-label" data-i18n="systemLogsComponentLabel">Componente</span>
+                    <select class="settings-select" id="system-log-component-select">
+                        <option value="" data-i18n="systemLogsComponentAll">Todos los componentes</option>
+                    </select>
+                </label>
+                <label class="system-log-control">
+                    <span class="system-log-control-label" data-i18n="systemLogsFileLabel">Archivo</span>
+                    <select class="settings-select" id="system-log-file-select">
+                        <option value="0" data-i18n="systemLogsFileCurrent">Registro actual</option>
+                    </select>
+                </label>
+                <label class="system-log-control system-log-control-search">
+                    <span class="system-log-control-label" data-i18n="systemLogsSearchLabel">Buscar</span>
+                    <input type="search" class="settings-select" id="system-log-search-input" maxlength="200" autocomplete="off" data-i18n-placeholder="systemLogsSearchPlaceholder" placeholder="Buscar en el registro…">
+                </label>
+                <div class="system-log-toolbar-row">
+                    <div class="option-switch" id="system-log-level-switch">
+                        <button type="button" class="option-switch-btn active" data-value="all" data-i18n="systemLogsLevelAll">Todo</button>
+                        <button type="button" class="option-switch-btn" data-value="INFO" data-i18n="systemLogsLevelInfo">Info</button>
+                        <button type="button" class="option-switch-btn" data-value="WARNING" data-i18n="systemLogsLevelWarning">Avisos</button>
+                        <button type="button" class="option-switch-btn" data-value="ERROR" data-i18n="systemLogsLevelError">Errores</button>
+                    </div>
+                    <button type="button" class="btn-file-action system-log-pause-btn" id="system-log-pause-btn" aria-pressed="false">
+                        <span id="system-log-pause-label">▶ Actualizando</span>
+                    </button>
                 </div>
             </div>
-            <div class="console-log" id="system-log-viewer"></div>
-            <div class="updates-actions">
-                <button type="button" class="btn-file-action" id="system-log-refresh-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                    <span data-i18n="systemLogsRefresh">Refrescar</span>
-                </button>
-            </div>
+            <div class="system-log-status" id="system-log-status" aria-live="polite"></div>
+            <div class="console-log system-log-viewer" id="system-log-viewer"></div>
         </div>
     </div>
 
