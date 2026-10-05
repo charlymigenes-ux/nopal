@@ -153,7 +153,7 @@ def test_lectura_de_eventos_del_log(tmp_path, monkeypatch):
         "2026-08-11 10:00:09 WARNING  [backend.services.laser_service] TTS 55 PRO sin responder\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(ai_tools, "LOG_FILE", str(log))
+    monkeypatch.setattr(ai_tools, "current_log_file", lambda: str(log))
 
     todos = ai_tools._read_recent_events(30, None)
     assert len(todos) == 3  # la línea basura se ignora
@@ -168,7 +168,7 @@ def test_lectura_de_eventos_del_log(tmp_path, monkeypatch):
 
 
 def test_log_inexistente_no_rompe(tmp_path, monkeypatch):
-    monkeypatch.setattr(ai_tools, "LOG_FILE", str(tmp_path / "no-existe.log"))
+    monkeypatch.setattr(ai_tools, "current_log_file", lambda: str(tmp_path / "no-existe.log"))
     assert ai_tools._read_recent_events(10, None) == []
 
 

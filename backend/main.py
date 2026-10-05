@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -12,15 +11,6 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from backend.errors import PrinterRegistrationError
 
-from backend.config import (
-    LOG_BACKUP_COUNT,
-    LOG_DATE_FORMAT,
-    LOG_DIR,
-    LOG_FILE,
-    LOG_FORMAT,
-    LOG_LEVEL,
-    LOG_MAX_BYTES,
-)
 from backend.api.models import router as models_router
 from backend.api.status import router as status_router
 from backend.api.upload import router as upload_router
@@ -41,29 +31,24 @@ from backend.api.tunascreen import router as tunascreen_router
 from backend.api.devices import router as devices_router
 from backend.api.ai import router as ai_router
 from backend.api.config_backup import router as config_backup_router
+from backend.api.logging_config import router as logging_config_router
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
 from backend.services.laser_service import set_main_event_loop
 from backend.services.marlin_printer_service import set_main_event_loop as set_marlin_printer_event_loop
 from backend.services.plugin_loader_service import load_installed_plugin_routers
-from backend.services import tunascreen_service
+from backend.services import logging_config_service, tunascreen_service
 from backend.utils import get_app_version
 
 # Log a archivo (con rotación) + consola — antes NOPAL no persistía nada,
 # solo klipper_service.py llamaba a logger.warning/info sin ningún handler
 # configurado, así que se perdía apenas se cerraba la terminal. Se configura
 # antes de instanciar FastAPI para capturar también lo que pase durante el
-# arranque de la app.
-os.makedirs(LOG_DIR, exist_ok=True)
-_file_handler = RotatingFileHandler(
-    LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8"
-)
-_formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
-_file_handler.setFormatter(_formatter)
-_console_handler = logging.StreamHandler()
-_console_handler.setFormatter(_formatter)
-logging.basicConfig(level=LOG_LEVEL, handlers=[_file_handler, _console_handler])
+# arranque de la app. Fuentes, repetidos, carpeta, rotación y copia a consola
+# salen de logging_config.json (Configuración → Registro) y se pueden cambiar
+# en caliente; ver logging_config_service.
+logging_config_service.apply_config()
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +119,7 @@ app.include_router(devices_router)
 # comportamiento del resto de NOPAL. Ver backend/services/ai_config_service.py.
 app.include_router(ai_router)
 app.include_router(config_backup_router)
+app.include_router(logging_config_router)
 
 
 @app.on_event("startup")
@@ -153,6 +139,8 @@ async def _load_plugin_routers():
 @app.on_event("shutdown")
 async def _log_shutdown():
     logger.info("NOPAL detenido")
+    # Resúmenes de mensajes repetidos que estaban contando: no se pierden.
+    logging_config_service.flush_repeats()
 
 
 @app.on_event("startup")

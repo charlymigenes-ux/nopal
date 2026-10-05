@@ -2860,6 +2860,110 @@
                                 </button>
                             </div>
                         </div>
+                        <!-- Configuración → Registro: "simple primero, técnico después".
+                             Arriba el nivel general y los componentes con nombres de producto;
+                             los nombres técnicos (loggers) solo aparecen dentro de
+                             "Configuración avanzada". Cualquier sesión puede verla; solo un
+                             admin puede guardar (PUT /api/logs/config, ver loadLogsConfigSettings). -->
+                        <div class="settings-card card-collapsible" id="logs-config-settings-card" data-settings-module="logsConfig">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="logsConfigTitle">Registro</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="logsConfigDescription">Controla cuánto detalle guarda NOPAL. Los cambios se aplican al instante al guardar.</p>
+                            <p class="logs-config-readonly" id="logs-config-readonly" hidden>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                <span data-i18n="logsConfigReadOnly">Solo un administrador puede cambiar esta configuración.</span>
+                            </p>
+
+                            <!-- 1. Nivel general: tarjetas de opción (radio-cards), las pinta renderLogsConfigLevels -->
+                            <section class="logs-config-section">
+                                <h3 class="logs-config-section-title" id="logs-config-level-title" data-i18n="logsConfigLevelTitle">Nivel de registro</h3>
+                                <div class="logs-config-levels" id="logs-config-levels" role="radiogroup" aria-labelledby="logs-config-level-title"></div>
+                            </section>
+
+                            <!-- 2. Componentes: ajuste opcional por área de NOPAL -->
+                            <section class="logs-config-section" id="logs-config-components-section">
+                                <h3 class="logs-config-section-title" data-i18n="logsConfigComponentsTitle">Componentes</h3>
+                                <p class="logs-config-section-text" data-i18n="logsConfigComponentsDescription">Normalmente basta con el nivel general. Ajusta un componente solo si necesitas más o menos detalle de esa parte.</p>
+                                <div class="logs-config-components" id="logs-config-components"></div>
+                            </section>
+
+                            <!-- 3. Almacenamiento -->
+                            <section class="logs-config-section">
+                                <h3 class="logs-config-section-title" data-i18n="logsConfigStorageTitle">Almacenamiento</h3>
+                                <div class="logs-config-storage-grid">
+                                    <label class="logs-config-field" for="logs-config-backup-count">
+                                        <span class="logs-config-field-label" data-i18n="logsConfigBackupCount">Conservar registros</span>
+                                        <span class="logs-config-input-group">
+                                            <input type="number" id="logs-config-backup-count" class="ai-text-input" step="1" inputmode="numeric">
+                                            <span class="logs-config-input-suffix" data-i18n="logsConfigBackupSuffix">archivos</span>
+                                        </span>
+                                    </label>
+                                    <label class="logs-config-field" for="logs-config-max-mb">
+                                        <span class="logs-config-field-label" data-i18n="logsConfigMaxSize">Tamaño máximo</span>
+                                        <span class="logs-config-input-group">
+                                            <input type="number" id="logs-config-max-mb" class="ai-text-input" step="0.25" inputmode="decimal">
+                                            <span class="logs-config-input-suffix" data-i18n="logsConfigMaxSizeSuffix">MB por archivo</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="logs-config-toggle-row">
+                                    <div class="logs-config-toggle-label">
+                                        <span data-i18n="logsConfigDedup">Agrupar mensajes repetidos</span>
+                                        <small data-i18n="logsConfigDedupHint">Evita que un mismo problema llene el registro.</small>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="logs-config-dedup">
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="logs-config-toggle-row">
+                                    <div class="logs-config-toggle-label">
+                                        <span data-i18n="logsConfigConsole">Guardar también en el registro del sistema</span>
+                                        <small data-i18n="logsConfigConsoleHint">Permite consultar los registros desde el sistema operativo.</small>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="logs-config-console">
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </div>
+                            </section>
+
+                            <!-- 4. Configuración avanzada (plegada): aquí, y solo aquí, se ven
+                                 la carpeta, la ruta del archivo y los nombres técnicos. -->
+                            <details class="ai-advanced logs-config-advanced" id="logs-config-advanced">
+                                <summary data-i18n="logsConfigAdvancedTitle">Configuración avanzada</summary>
+                                <p class="logs-config-section-text" data-i18n="logsConfigAdvancedDescription">Estas opciones están destinadas a diagnóstico y soporte técnico.</p>
+                                <div class="ai-settings-fields logs-config-advanced-fields">
+                                    <label class="ai-field">
+                                        <span data-i18n="logsConfigFolder">Carpeta</span>
+                                        <input type="text" id="logs-config-folder" class="ai-text-input" autocomplete="off" spellcheck="false">
+                                        <small class="ai-field-hint" id="logs-config-folder-hint"></small>
+                                    </label>
+                                    <div class="logs-config-datum">
+                                        <span class="logs-config-datum-label" data-i18n="logsConfigCurrentFile">Archivo actual</span>
+                                        <code class="logs-config-mono" id="logs-config-log-file"></code>
+                                    </div>
+                                    <div class="logs-config-sources-block">
+                                        <span class="logs-config-datum-label" data-i18n="logsConfigSourcesTitle">Fuentes técnicas</span>
+                                        <div class="logs-config-sources" id="logs-config-sources"></div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <!-- 5. Guardar (no hay guardado automático) -->
+                            <div class="ai-settings-actions logs-config-actions">
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="logs-config-save-btn">
+                                    <span data-i18n="logsConfigSaveButton">Guardar ajustes</span>
+                                </button>
+                            </div>
+                        </div>
                         <div class="settings-card card-collapsible" id="users-settings-card" hidden data-settings-module="users">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">

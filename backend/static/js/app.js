@@ -5328,6 +5328,7 @@ const SETTINGS_MODULE_DEFS = [
     { key: 'about', labelKey: 'aboutTitle', iconSvg: SETTINGS_MODULE_ICON_ABOUT },
     { key: 'updates', labelKey: 'updates', iconSvg: SETTINGS_MODULE_ICON_UPDATES },
     { key: 'logs', labelKey: 'systemLogs', iconSvg: SETTINGS_MODULE_ICON_LOGS },
+    { key: 'logsConfig', labelKey: 'logsConfigTitle', iconSvg: SETTINGS_MODULE_ICON_GENERAL },
     { key: 'users', labelKey: 'usersTitle', iconSvg: SETTINGS_MODULE_ICON_USERS },
     { key: 'devices', labelKey: 'devicesTitle', iconSvg: SETTINGS_MODULE_ICON_DEVICES },
     { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
@@ -17992,6 +17993,7 @@ function switchSection(sectionName) {
         renderGamepadBadge();
         loadUsersSettings();
         loadTunascreenSettings();
+        loadLogsConfigSettings();
         applySettingsModulesLayout();
         // Solo la lista de registradas (GET local, sin costo) — el escaneo
         // UDP de red queda para cuando el usuario aprieta "Actualizar", igual
@@ -20435,6 +20437,426 @@ function renderUsersList(users) {
             }
         });
     });
+}
+
+// ── Configuración > Registro ──
+// GET /api/logs/config lo puede leer cualquier sesión; el PUT es solo admin
+// (el backend responde 403 a un operador). Por eso la tarjeta se muestra a
+// todos, pero a quien no es admin se le pinta en solo lectura.
+//
+// Diseño "simple primero, técnico después": el nivel general y los
+// componentes llevan nombres de producto; los nombres de loggers solo se
+// muestran dentro de "Configuración avanzada".
+
+const LOGS_CONFIG_BYTES_PER_MB = 1024 * 1024;
+// Nivel general → [clave del nombre, clave de la descripción].
+const LOGS_CONFIG_LEVEL_KEYS = {
+    basic: ['logsConfigLevelBasic', 'logsConfigLevelBasicDesc'],
+    normal: ['logsConfigLevelNormal', 'logsConfigLevelNormalDesc'],
+    detailed: ['logsConfigLevelDetailed', 'logsConfigLevelDetailedDesc'],
+    diagnostic: ['logsConfigLevelDiagnostic', 'logsConfigLevelDiagnosticDesc'],
+};
+const LOGS_CONFIG_RECOMMENDED_LEVEL = 'normal';
+// Estados por componente (los que entiende el PUT en `components`).
+const LOGS_CONFIG_COMPONENT_STATE_KEYS = {
+    inherit: 'logsConfigComponentStateInherit',
+    info: 'logsConfigComponentStateInfo',
+    warnings: 'logsConfigComponentStateWarnings',
+    errors: 'logsConfigComponentStateErrors',
+    silenced: 'logsConfigComponentStateSilenced',
+    custom: 'logsConfigComponentStateCustom',
+};
+// Estados técnicos por fuente (lista de la configuración avanzada).
+const LOGS_CONFIG_STATE_LABEL_KEYS = {
+    normal: 'logsConfigStateNormal',
+    warnings: 'logsConfigStateWarnings',
+    errors: 'logsConfigStateErrors',
+    silenced: 'logsConfigStateSilenced',
+};
+// Fuentes sin componente: se agrupan según su grupo técnico.
+const LOGS_CONFIG_OTHER_GROUP_KEYS = {
+    nopal: 'logsConfigOtherNopal',
+    plugins: 'logsConfigOtherPlugins',
+    libraries: 'logsConfigOtherLibraries',
+};
+// Íconos de componente: SVG de trazo simple, como el resto del panel.
+const LOGS_CONFIG_COMPONENT_ICONS = {
+    system: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    printers: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+    laser: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    led_matrix: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>',
+    ai: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>',
+    tunascreen: '<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>',
+    cameras: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+    accessories: '<rect x="1" y="5" width="22" height="14" rx="7"/><circle cx="16" cy="12" r="3"/>',
+    materials: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
+    plugins: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    network: '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+};
+const LOGS_CONFIG_COMPONENT_ICON_FALLBACK = '<circle cx="12" cy="12" r="9"/>';
+// Componente → clave de su nombre amigable.
+const LOGS_CONFIG_COMPONENT_NAME_KEYS = {
+    system: 'logsConfigComponentSystem',
+    printers: 'logsConfigComponentPrinters',
+    laser: 'logsConfigComponentLaser',
+    led_matrix: 'logsConfigComponentLedMatrix',
+    ai: 'logsConfigComponentAi',
+    tunascreen: 'logsConfigComponentTunascreen',
+    cameras: 'logsConfigComponentCameras',
+    accessories: 'logsConfigComponentAccessories',
+    materials: 'logsConfigComponentMaterials',
+    plugins: 'logsConfigComponentPlugins',
+    network: 'logsConfigComponentNetwork',
+};
+const LOGS_CONFIG_CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+const LOGS_CONFIG_STAR_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+
+// Última respuesta del servidor: el PUT se arma a partir de su `config`
+// para conservar intactas las claves que esta tarjeta no edita.
+let logsConfigData = null;
+// Nivel general elegido en las tarjetas (aún sin guardar).
+let logsConfigSelectedLevel = null;
+
+function logsConfigCanEdit() {
+    return currentAuthUser?.role === 'admin';
+}
+
+// Megabytes legibles (máximo 2 decimales, sin ceros de sobra).
+function logsConfigBytesToMb(bytes) {
+    return Math.round((Number(bytes) / LOGS_CONFIG_BYTES_PER_MB) * 100) / 100;
+}
+
+function logsConfigComponentName(id) {
+    return LOGS_CONFIG_COMPONENT_NAME_KEYS[id] ? t(LOGS_CONFIG_COMPONENT_NAME_KEYS[id]) : id;
+}
+
+async function loadLogsConfigSettings() {
+    const card = document.getElementById('logs-config-settings-card');
+    if (!card) return;
+    // Los eventos se bindean una sola vez: este loader se vuelve a llamar
+    // cada vez que se entra a Configuración (ver switchSection). Se delegan
+    // en contenedores fijos porque su contenido se re-pinta.
+    if (!card.dataset.bound) {
+        card.dataset.bound = '1';
+        document.getElementById('logs-config-save-btn')?.addEventListener('click', saveLogsConfigSettings);
+        const levels = document.getElementById('logs-config-levels');
+        levels?.addEventListener('click', event => {
+            const option = event.target.closest('.logs-config-level');
+            if (option && !option.disabled) selectLogsConfigLevel(option.dataset.level, false);
+        });
+        // Enter/Espacio ya disparan el click en un <button>; las flechas
+        // mueven la selección como en un grupo de radios nativo.
+        levels?.addEventListener('keydown', event => {
+            const keys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
+            if (!keys.includes(event.key)) return;
+            const options = [...levels.querySelectorAll('.logs-config-level:not([disabled])')];
+            const current = options.indexOf(document.activeElement);
+            if (current < 0 || !options.length) return;
+            event.preventDefault();
+            const step = (event.key === 'ArrowRight' || event.key === 'ArrowDown') ? 1 : -1;
+            const next = options[(current + step + options.length) % options.length];
+            selectLogsConfigLevel(next.dataset.level, true);
+        });
+        document.getElementById('logs-config-components')?.addEventListener('change', event => {
+            const select = event.target.closest('.logs-config-component-state');
+            if (select) updateLogsConfigComponentTile(select);
+        });
+    }
+    try {
+        const data = await aiFetchJson('/api/logs/config');
+        renderLogsConfigSettings(data);
+    } catch (error) {
+        console.error(error);
+        const levels = document.getElementById('logs-config-levels');
+        if (levels) levels.innerHTML = `<div class="empty-state-small">${escapeHtml(t('logsConfigLoadError'))}</div>`;
+    }
+}
+
+function selectLogsConfigLevel(level, focus) {
+    if (!level) return;
+    logsConfigSelectedLevel = level;
+    document.querySelectorAll('#logs-config-levels .logs-config-level').forEach(option => {
+        const active = option.dataset.level === level;
+        option.classList.toggle('is-active', active);
+        option.setAttribute('aria-checked', active ? 'true' : 'false');
+        if (active && focus) option.focus();
+    });
+}
+
+function renderLogsConfigLevels(data, canEdit) {
+    const container = document.getElementById('logs-config-levels');
+    if (!container) return;
+    const levels = Array.isArray(data?.levels) && data.levels.length ? data.levels : Object.keys(LOGS_CONFIG_LEVEL_KEYS);
+    const current = data?.level || data?.config?.level || LOGS_CONFIG_RECOMMENDED_LEVEL;
+    logsConfigSelectedLevel = current;
+    container.setAttribute('aria-disabled', canEdit ? 'false' : 'true');
+    container.innerHTML = levels.map(level => {
+        const [nameKey, descKey] = LOGS_CONFIG_LEVEL_KEYS[level] || [];
+        const name = nameKey ? t(nameKey) : level;
+        const desc = descKey ? t(descKey) : '';
+        const active = level === current;
+        const badge = level === LOGS_CONFIG_RECOMMENDED_LEVEL
+            ? `<span class="logs-config-level-badge">${LOGS_CONFIG_STAR_SVG}${escapeHtml(t('logsConfigRecommended'))}</span>`
+            : '';
+        return `<button type="button" class="logs-config-level${active ? ' is-active' : ''}" role="radio"
+                aria-checked="${active ? 'true' : 'false'}" data-level="${escapeHtml(level)}"${canEdit ? '' : ' disabled'}>
+            <span class="logs-config-level-check">${LOGS_CONFIG_CHECK_SVG}</span>
+            <span class="logs-config-level-name">${escapeHtml(name)}</span>
+            ${desc ? `<span class="logs-config-level-desc">${escapeHtml(desc)}</span>` : ''}
+            ${badge}
+        </button>`;
+    }).join('');
+}
+
+function renderLogsConfigComponents(data, canEdit) {
+    const section = document.getElementById('logs-config-components-section');
+    const container = document.getElementById('logs-config-components');
+    if (!container) return;
+    const components = Array.isArray(data?.components) ? data.components : [];
+    if (section) section.hidden = components.length === 0;
+    const baseStates = Array.isArray(data?.component_states) && data.component_states.length
+        ? data.component_states
+        : ['inherit', 'info', 'warnings', 'errors', 'silenced'];
+    container.innerHTML = components.map(component => {
+        // "Personalizado" (o un estado que esta versión no conoce) solo se
+        // ofrece si llegó así, para no cambiarlo sin querer.
+        const options = baseStates.includes(component.state) ? baseStates : [...baseStates, component.state];
+        const optionsHtml = options.map(state => {
+            const label = LOGS_CONFIG_COMPONENT_STATE_KEYS[state] ? t(LOGS_CONFIG_COMPONENT_STATE_KEYS[state]) : state;
+            return `<option value="${escapeHtml(state)}"${state === component.state ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
+        const name = logsConfigComponentName(component.id);
+        const icon = LOGS_CONFIG_COMPONENT_ICONS[component.id] || LOGS_CONFIG_COMPONENT_ICON_FALLBACK;
+        const selectId = `logs-config-component-${escapeHtml(component.id)}`;
+        const hint = component.id === 'led_matrix'
+            ? `<small class="logs-config-component-hint" data-hint-for="errors" hidden>${escapeHtml(t('logsConfigLedMatrixHint'))}</small>`
+            : '';
+        return `<div class="logs-config-component" data-component="${escapeHtml(component.id)}">
+            <div class="logs-config-component-main">
+                <span class="logs-config-component-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">${icon}</svg></span>
+                <label class="logs-config-component-name" for="${selectId}">${escapeHtml(name)}</label>
+                <select class="settings-select logs-config-component-state" id="${selectId}"
+                        data-component="${escapeHtml(component.id)}" data-original="${escapeHtml(component.state)}"${canEdit ? '' : ' disabled'}>${optionsHtml}</select>
+            </div>
+            ${hint}
+        </div>`;
+    }).join('');
+    container.querySelectorAll('.logs-config-component-state').forEach(updateLogsConfigComponentTile);
+}
+
+// Resalta (sutil) los componentes que no heredan y muestra la ayuda que
+// depende del estado (p. ej. Matriz LED en "Errores").
+function updateLogsConfigComponentTile(select) {
+    const tile = select.closest('.logs-config-component');
+    if (!tile) return;
+    tile.classList.toggle('is-overridden', select.value !== 'inherit');
+    tile.querySelectorAll('.logs-config-component-hint').forEach(hint => {
+        hint.hidden = hint.dataset.hintFor !== select.value;
+    });
+}
+
+function renderLogsConfigSources(data, canEdit) {
+    const list = document.getElementById('logs-config-sources');
+    if (!list) return;
+    const states = Array.isArray(data?.states) && data.states.length ? data.states : Object.keys(LOGS_CONFIG_STATE_LABEL_KEYS);
+    const groups = Array.isArray(data?.groups) && data.groups.length ? data.groups : Object.keys(LOGS_CONFIG_OTHER_GROUP_KEYS);
+    const sources = Array.isArray(data?.sources) ? data.sources : [];
+    if (!sources.length) {
+        list.innerHTML = `<div class="empty-state-small">${escapeHtml(t('logsConfigNoSources'))}</div>`;
+        return;
+    }
+    // Orden: primero las de cada componente (en el orden de la tarjeta),
+    // luego las demás agrupadas por su grupo técnico.
+    const componentOrder = (Array.isArray(data?.components) ? data.components : []).map(c => c.id);
+    const rank = src => {
+        if (src.component) {
+            const idx = componentOrder.indexOf(src.component);
+            return idx >= 0 ? idx : componentOrder.length;
+        }
+        const groupIdx = groups.indexOf(src.group);
+        return componentOrder.length + 1 + (groupIdx >= 0 ? groupIdx : groups.length);
+    };
+    const sorted = sources
+        .map((src, index) => ({ src, index }))
+        .sort((a, b) => (rank(a.src) - rank(b.src)) || (a.index - b.index))
+        .map(item => item.src);
+    list.innerHTML = sorted.map(src => {
+        const friendly = src.component
+            ? logsConfigComponentName(src.component)
+            : (LOGS_CONFIG_OTHER_GROUP_KEYS[src.group] ? t(LOGS_CONFIG_OTHER_GROUP_KEYS[src.group]) : src.group);
+        // Si el servidor reporta un estado que esta versión no conoce, se
+        // agrega tal cual para no cambiarlo sin querer.
+        const options = states.includes(src.state) ? states : [...states, src.state];
+        const optionsHtml = options.map(state => {
+            const label = LOGS_CONFIG_STATE_LABEL_KEYS[state] ? t(LOGS_CONFIG_STATE_LABEL_KEYS[state])
+                : (LOGS_CONFIG_COMPONENT_STATE_KEYS[state] ? t(LOGS_CONFIG_COMPONENT_STATE_KEYS[state]) : state);
+            return `<option value="${escapeHtml(state)}"${state === src.state ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
+        return `<div class="logs-config-source-row">
+            <span class="logs-config-source-text">
+                <span class="logs-config-source-friendly">${escapeHtml(friendly)}</span>
+                <span class="logs-config-source-name logs-config-mono" title="${escapeHtml(src.name)}">${escapeHtml(src.name)}</span>
+            </span>
+            <select class="settings-select logs-config-source-state" aria-label="${escapeHtml(`${friendly} · ${src.name}`)}"
+                    data-source-name="${escapeHtml(src.name)}" data-component="${escapeHtml(src.component || '')}"
+                    data-original="${escapeHtml(src.state)}"${canEdit ? '' : ' disabled'}>${optionsHtml}</select>
+        </div>`;
+    }).join('');
+}
+
+function renderLogsConfigSettings(data) {
+    logsConfigData = data || null;
+    const config = data?.config || {};
+    const limits = data?.limits || {};
+    const canEdit = logsConfigCanEdit();
+
+    renderLogsConfigLevels(data, canEdit);
+    renderLogsConfigComponents(data, canEdit);
+    renderLogsConfigSources(data, canEdit);
+
+    // Almacenamiento
+    const [minBackups, maxBackups] = Array.isArray(limits.backup_count) ? limits.backup_count : [null, null];
+    const backupInput = document.getElementById('logs-config-backup-count');
+    if (backupInput) {
+        backupInput.value = config.backup_count ?? '';
+        if (minBackups != null) backupInput.min = minBackups;
+        if (maxBackups != null) backupInput.max = maxBackups;
+        backupInput.disabled = !canEdit;
+    }
+    const [minBytes, maxBytes] = Array.isArray(limits.max_bytes) ? limits.max_bytes : [null, null];
+    const mbInput = document.getElementById('logs-config-max-mb');
+    if (mbInput) {
+        mbInput.value = config.max_bytes != null ? logsConfigBytesToMb(config.max_bytes) : '';
+        if (minBytes != null) mbInput.min = logsConfigBytesToMb(minBytes);
+        if (maxBytes != null) mbInput.max = logsConfigBytesToMb(maxBytes);
+        mbInput.disabled = !canEdit;
+    }
+    const dedupCheck = document.getElementById('logs-config-dedup');
+    if (dedupCheck) {
+        dedupCheck.checked = config.dedup?.enabled !== false;
+        dedupCheck.disabled = !canEdit;
+    }
+    const consoleCheck = document.getElementById('logs-config-console');
+    if (consoleCheck) {
+        consoleCheck.checked = !!config.console;
+        consoleCheck.disabled = !canEdit;
+    }
+
+    // Configuración avanzada
+    const folderInput = document.getElementById('logs-config-folder');
+    if (folderInput) {
+        folderInput.value = config.folder ?? '';
+        folderInput.disabled = !canEdit;
+    }
+    const folderHint = document.getElementById('logs-config-folder-hint');
+    if (folderHint) folderHint.textContent = t('logsConfigFolderHint').replace('{base}', limits.folder_base || 'logs');
+    const logFile = document.getElementById('logs-config-log-file');
+    if (logFile) logFile.textContent = data?.log_file || '—';
+
+    const card = document.getElementById('logs-config-settings-card');
+    card?.classList.toggle('is-readonly', !canEdit);
+    const readOnlyNote = document.getElementById('logs-config-readonly');
+    if (readOnlyNote) readOnlyNote.hidden = canEdit;
+    const saveBtn = document.getElementById('logs-config-save-btn');
+    if (saveBtn) saveBtn.hidden = !canEdit;
+}
+
+// Arma el cuerpo del PUT: la `config` completa tal como vino del servidor,
+// reemplazando solo lo que la tarjeta edita. El backend aplica primero
+// `sources` y luego `components` encima.
+function buildLogsConfigPayload() {
+    const original = logsConfigData?.config || {};
+    const payload = JSON.parse(JSON.stringify(original));
+    const limits = logsConfigData?.limits || {};
+
+    payload.level = logsConfigSelectedLevel || original.level;
+
+    // Fuentes técnicas: se parte de las ya configuradas que no aparecen en
+    // la lista (para no borrarlas sin querer) y se sobreescriben con los
+    // selectores. Solo van las que no están en "normal" (normal = heredar).
+    const sources = {};
+    Object.entries(original.sources || {}).forEach(([name, state]) => {
+        if (state !== 'normal') sources[name] = state;
+    });
+    // Componentes cuyas fuentes se tocaron en la lista técnica.
+    const touchedComponents = new Set();
+    document.querySelectorAll('#logs-config-sources .logs-config-source-state').forEach(select => {
+        const name = select.dataset.sourceName;
+        if (!name) return;
+        if (select.value === 'normal') delete sources[name];
+        else sources[name] = select.value;
+        if (select.dataset.component && select.value !== select.dataset.original) {
+            touchedComponents.add(select.dataset.component);
+        }
+    });
+    payload.sources = sources;
+
+    // Componentes: un cambio del usuario aquí gana. Si no se cambió pero sí
+    // se tocaron sus fuentes en la lista técnica, se manda "custom" para que
+    // el backend respete esa mezcla en lugar de pisarla.
+    const components = {};
+    document.querySelectorAll('#logs-config-components .logs-config-component-state').forEach(select => {
+        const id = select.dataset.component;
+        if (!id) return;
+        const changed = select.value !== select.dataset.original;
+        components[id] = (!changed && touchedComponents.has(id)) ? 'custom' : select.value;
+    });
+    payload.components = components;
+
+    // Almacenamiento
+    const backups = Number(document.getElementById('logs-config-backup-count')?.value);
+    const [minBackups, maxBackups] = Array.isArray(limits.backup_count) ? limits.backup_count : [null, null];
+    if (!Number.isInteger(backups)
+        || (minBackups != null && backups < minBackups)
+        || (maxBackups != null && backups > maxBackups)) {
+        throw new Error(t('logsConfigInvalidBackupCount')
+            .replace('{min}', minBackups ?? 0).replace('{max}', maxBackups ?? '∞'));
+    }
+    payload.backup_count = backups;
+
+    const [minBytes, maxBytes] = Array.isArray(limits.max_bytes) ? limits.max_bytes : [null, null];
+    const sizeError = () => new Error(t('logsConfigInvalidMaxSize')
+        .replace('{min}', minBytes != null ? logsConfigBytesToMb(minBytes) : 0)
+        .replace('{max}', maxBytes != null ? logsConfigBytesToMb(maxBytes) : '∞'));
+    const mb = parseFloat(document.getElementById('logs-config-max-mb')?.value);
+    if (!Number.isFinite(mb)) throw sizeError();
+    // Si el valor mostrado no cambió, se manda el original en bytes para no
+    // introducir diferencias por redondeo.
+    payload.max_bytes = (original.max_bytes != null && mb === logsConfigBytesToMb(original.max_bytes))
+        ? original.max_bytes
+        : Math.round(mb * LOGS_CONFIG_BYTES_PER_MB);
+    if ((minBytes != null && payload.max_bytes < minBytes) || (maxBytes != null && payload.max_bytes > maxBytes)) {
+        throw sizeError();
+    }
+
+    // Repetidos: solo se edita el interruptor; la ventana se conserva.
+    payload.dedup = { ...(original.dedup || {}), enabled: !!document.getElementById('logs-config-dedup')?.checked };
+    payload.console = !!document.getElementById('logs-config-console')?.checked;
+
+    // Avanzado
+    payload.folder = (document.getElementById('logs-config-folder')?.value || '').trim();
+    return payload;
+}
+
+async function saveLogsConfigSettings() {
+    if (!logsConfigCanEdit() || !logsConfigData) return;
+    const button = document.getElementById('logs-config-save-btn');
+    if (button) button.disabled = true;
+    try {
+        const payload = buildLogsConfigPayload();
+        const data = await aiFetchJson('/api/logs/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        renderLogsConfigSettings(data);
+        showToast(t('logsConfigSaved'), 'success');
+    } catch (error) {
+        // El `detail` del servidor ya viene en español; se muestra tal cual.
+        showToast(error.message || t('logsConfigSaveError'), 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
 }
 
 // ── Configuración > TUNA-Screen ──

@@ -34,7 +34,7 @@ import os
 import re
 from typing import Any, Callable, Dict, List, Optional
 
-from backend.config import LOG_FILE
+from backend.services.logging_config_service import current_log_file, source_threshold
 from backend.services.bambu_service import get_registered_printers_with_status as get_bambu_printers
 from backend.services.dashboard_service import get_dashboard_summary
 from backend.services.elegoo_service import get_registered_printers_with_status as get_elegoo_printers
@@ -345,10 +345,11 @@ async def get_recent_errors() -> Dict[str, Any]:
 
 
 def _read_recent_events(limit: int, level: Optional[str]) -> List[Dict[str, Any]]:
-    if not os.path.isfile(LOG_FILE):
+    log_file = current_log_file()
+    if not os.path.isfile(log_file):
         return []
     try:
-        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as handle:
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as handle:
             lines = handle.readlines()
     except OSError:
         return []
@@ -363,6 +364,12 @@ def _read_recent_events(limit: int, level: Optional[str]) -> List[Dict[str, Any]
             continue
         event = match.groupdict()
         if wanted and event["level"] != wanted:
+            continue
+        # Fuentes silenciadas (o con nivel mínimo más alto) en Configuración →
+        # Registro: tampoco se muestran sus líneas viejas, escritas antes del
+        # cambio, que siguen en el archivo hasta rotar.
+        level_value = logging.getLevelName(event["level"])
+        if isinstance(level_value, int) and level_value < source_threshold(event["source"]):
             continue
         events.append(event)
         if len(events) >= limit:

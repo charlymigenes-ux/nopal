@@ -17264,6 +17264,249 @@ body.light .laser-fire-btn-wide {
 .ai-test-result[data-tone="error"] { color: var(--status-danger); }
 .ai-test-result[data-tone="pending"] { color: var(--text-faint); }
 
+/* --- Configuración > Registro ---
+   "Simple primero, técnico después": nivel general en tarjetas de opción,
+   componentes en rejilla, almacenamiento y, plegado, lo técnico. Solo
+   variables del tema (acento, superficies, bordes, textos). */
+.logs-config-readonly {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-soft);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+}
+.logs-config-readonly[hidden] { display: none; }
+.settings-card .logs-config-readonly { margin-bottom: 14px; color: var(--text-soft); }
+.logs-config-section { margin-top: 18px; }
+.logs-config-section[hidden] { display: none; }
+.logs-config-section-title {
+    margin: 0 0 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-strong);
+}
+.settings-card p.logs-config-section-text { margin: 0 0 10px; font-size: 0.78rem; }
+
+/* 1. Nivel: tarjetas de opción tipo radio */
+.logs-config-levels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+}
+.logs-config-level {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    text-align: left;
+    padding: 14px 14px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-raised);
+    color: var(--text-strong);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.logs-config-level:hover:not(:disabled) { border-color: var(--border-control); }
+.logs-config-level:focus-visible {
+    outline: 2px solid var(--accent-fill);
+    outline-offset: 2px;
+}
+.logs-config-level.is-active {
+    border-color: var(--accent-fill);
+    background: rgba(var(--accent-rgb), 0.08);
+    box-shadow: 0 0 0 1px var(--accent-fill) inset;
+}
+.logs-config-level:disabled { cursor: not-allowed; }
+.logs-config-level:disabled:not(.is-active) { opacity: 0.6; }
+.logs-config-level-check {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-control);
+    color: transparent;
+}
+.logs-config-level.is-active .logs-config-level-check {
+    background: var(--accent-fill);
+    border-color: var(--accent-fill);
+    color: var(--accent-on);
+}
+.logs-config-level-name {
+    font-size: 0.92rem;
+    font-weight: 700;
+    padding-right: 28px;
+}
+.logs-config-level-desc {
+    font-size: 0.76rem;
+    line-height: 1.4;
+    color: var(--text-soft);
+}
+.logs-config-level-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--accent-ink);
+    background: rgba(var(--accent-rgb), 0.12);
+    border: 1px solid rgba(var(--accent-rgb), 0.35);
+}
+
+/* 2. Componentes: 2 columnas en escritorio, 1 en móvil */
+.logs-config-components {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.logs-config-component {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-raised);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+/* Distinto de "Heredar": acento sutil */
+.logs-config-component.is-overridden {
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.05);
+}
+.logs-config-component-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+.logs-config-component-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: var(--text-soft);
+}
+.logs-config-component.is-overridden .logs-config-component-icon { color: var(--accent-ink); }
+.logs-config-component-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--text-strong);
+}
+.logs-config-component-hint {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    padding-left: 28px;
+}
+.logs-config-component-hint[hidden] { display: none; }
+
+/* Selectores compactos (componentes y fuentes técnicas) */
+.logs-config-component-state.settings-select,
+.logs-config-source-state.settings-select {
+    width: auto;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    border-radius: var(--radius-sm);
+    border-color: var(--border-control);
+    background: var(--surface-sunken);
+    color: var(--text-strong);
+}
+.logs-config-component-state.settings-select { flex: 0 0 auto; max-width: 150px; }
+.logs-config-component-state.settings-select:focus-visible,
+.logs-config-source-state.settings-select:focus-visible {
+    outline: 2px solid var(--accent-fill);
+    outline-offset: 1px;
+}
+.logs-config-component-state.settings-select:disabled,
+.logs-config-source-state.settings-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* 3. Almacenamiento */
+.logs-config-storage-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 6px;
+}
+.logs-config-field { display: flex; flex-direction: column; gap: 6px; }
+.logs-config-field-label { font-size: 0.82rem; font-weight: 600; color: var(--text-strong); }
+.logs-config-input-group { display: flex; align-items: center; gap: 8px; }
+.logs-config-input-group .ai-text-input { width: 110px; flex: 0 0 auto; }
+.logs-config-input-suffix { font-size: 0.8rem; color: var(--text-soft); }
+.logs-config-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border-subtle);
+}
+.logs-config-toggle-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.logs-config-toggle-label span { font-size: 0.84rem; font-weight: 600; color: var(--text-strong); }
+.logs-config-toggle-label small { font-size: 0.74rem; color: var(--text-faint); }
+.logs-config-toggle-row .settings-switch { flex-shrink: 0; }
+#logs-config-settings-card .settings-switch input:disabled + .switch-slider { opacity: 0.55; cursor: not-allowed; }
+
+/* 4. Configuración avanzada (plegada) */
+.logs-config-advanced {
+    margin-top: 16px;
+    padding: 4px 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+}
+.logs-config-advanced[open] { padding-bottom: 14px; }
+.logs-config-advanced-fields { margin-top: 4px; }
+.logs-config-datum { display: flex; flex-direction: column; gap: 4px; }
+.logs-config-datum-label { font-size: 0.85rem; font-weight: 600; color: var(--text-strong); }
+.logs-config-mono {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.74rem;
+    color: var(--text-soft);
+    overflow-wrap: anywhere;
+}
+.logs-config-sources-block { display: flex; flex-direction: column; gap: 6px; }
+.logs-config-sources { display: flex; flex-direction: column; }
+.logs-config-source-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.logs-config-source-row:last-child { border-bottom: none; }
+.logs-config-source-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.logs-config-source-friendly { font-size: 0.82rem; font-weight: 600; color: var(--text-strong); }
+.logs-config-source-state.settings-select { flex: 0 0 auto; max-width: 200px; }
+
+/* 5. Guardar */
+.logs-config-actions { margin-top: 16px; justify-content: flex-end; }
+
+@media (max-width: 640px) {
+    .logs-config-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .logs-config-components,
+    .logs-config-storage-grid { grid-template-columns: 1fr; }
+    .logs-config-source-row { flex-wrap: wrap; }
+    .logs-config-source-state.settings-select { max-width: none; width: 100%; }
+}
+@media (max-width: 400px) {
+    .logs-config-levels { grid-template-columns: 1fr; }
+}
+
 /* ===========================================================================
    MODO IA
    ---------------------------------------------------------------------------

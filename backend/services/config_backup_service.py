@@ -55,6 +55,9 @@ GROUPS: Dict[str, Dict[str, Any]] = {
         "sensitive": False,
     },
     "laser_cnc": {"label": "Láser y CNC", "files": ["laser_registry.json"], "sensitive": False},
+    # Configuración → Registro (fuentes, repetidos, rotación). Al importarla
+    # se aplica en el siguiente arranque de NOPAL.
+    "logging": {"label": "Registro (logs)", "files": ["logging_config.json"], "sensitive": False},
     "accessories": {
         "label": "Accesorios y placas",
         "files": ["accessory_registry.json", "arduino_boards_config.json"],

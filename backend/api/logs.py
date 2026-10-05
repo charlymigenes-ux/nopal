@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from backend.auth_deps import require_auth
-from backend.config import LOG_FILE
+from backend.services.logging_config_service import current_log_file
 
 router = APIRouter()
 
@@ -13,7 +13,8 @@ async def get_logs(lines: int = 500, level: str = "", user: dict = Depends(requi
     con el tope de 5MB por rotación (ver config.py) esto es cuestión de
     milisegundos, no hace falta un tail-seek más elaborado."""
     try:
-        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+        # Ruta vigente: la carpeta se configura en Configuración → Registro.
+        with open(current_log_file(), "r", encoding="utf-8", errors="ignore") as f:
             all_lines = f.readlines()
     except FileNotFoundError:
         return {"lines": []}
