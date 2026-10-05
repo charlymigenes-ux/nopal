@@ -8376,17 +8376,14 @@ function renderPrinters(printersInput) {
         });
     });
 
-    // Ir a la sección completa (Láser o CNC) primero fija ese host como el
-    // "activo" -- es lo mismo que hacía la ficha vieja al hacer clic.
-    const irASeccionDeLaser = async (host, kind) => {
-        try {
-            const formData = new FormData();
-            formData.append('host', host);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-        } catch (error) {
-            console.error(error);
-        }
-        switchSection(kind === 'cnc' ? 'cnc' : 'laser');
+    // Ir a la sección completa (Láser o CNC) primero deja esa máquina como la
+    // seleccionada de SU sección en este navegador (por su id interno), así la
+    // sección abre directo en ella. Ya no se toca ningún "host activo" en el
+    // servidor.
+    const irASeccionDeLaser = (machineId, host, kind) => {
+        const section = kind === 'cnc' ? 'cnc' : 'laser';
+        rememberSectionMachine(section, machineId, host);
+        switchSection(section);
     };
 
     columnsRoot.querySelectorAll('.dev-card[data-laser-host]').forEach(card => {
@@ -8394,6 +8391,7 @@ function renderPrinters(printersInput) {
         boundLaserCards.add(card);
         const host = card.dataset.laserHost;
         const kind = card.dataset.laserKind;
+        const machineId = card.dataset.machineUid || '';
 
         // Delegación en la ficha, no un listener por botón. El interior de
         // la ficha se reescribe cuando se monta el visor de cámara encima, y
@@ -8440,10 +8438,10 @@ function renderPrinters(printersInput) {
             }
             // Detalles (y cualquier otra acción sin manejo propio) lleva
             // a la sección completa, que es donde vive el resto.
-            await irASeccionDeLaser(host, kind);
+            irASeccionDeLaser(machineId, host, kind);
         });
 
-        card.addEventListener('click', () => irASeccionDeLaser(host, kind));
+        card.addEventListener('click', () => irASeccionDeLaser(machineId, host, kind));
     });
 
     columnsRoot.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
@@ -11140,8 +11138,13 @@ function renderLaserStatus(data) {
 }
 
 async function refreshLaserStatus() {
+    const host = getSectionHost('laser');
+    if (!host) {
+        renderLaserStatus(null);
+        return;
+    }
     try {
-        const response = await fetch('/api/laser/status');
+        const response = await fetch(`/api/laser/status?host=${encodeURIComponent(host)}`);
         const data = await response.json();
         renderLaserStatus(data);
     } catch (error) {
@@ -11190,6 +11193,11 @@ function formatLaserJobDuration(ms) {
     return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
 }
 
+// Host del trabajo que muestra la ficha de trabajo de la sección Láser (puede
+// ser el de otro láser con un corte en curso, ver refreshLaserJob): pausar,
+// reanudar y cancelar desde esa ficha actúan sobre ESA máquina.
+let laserJobDisplayedHost = '';
+
 function renderLaserJob(job, jobHost) {
     // El panel de trabajo activo (ficha "Movimiento del cabezal") es la
     // única fuente de controles/progreso — antes había una segunda copia
@@ -11219,6 +11227,7 @@ function renderLaserJob(job, jobHost) {
     // solo se avisa si la transición a error ocurrió mientras ya se estaba
     // viendo ese mismo láser en esta sesión.
     const host = jobHost || document.getElementById('laser-host-select')?.value || '';
+    laserJobDisplayedHost = host;
     const previousStateForHost = laserJobHostLastState.get(host);
     if (state === 'error' && previousStateForHost && previousStateForHost !== 'error') {
         appAlert(job?.error || t('laserJobErrorGeneric'), t('laserJobErrorTitle'), 'danger');
@@ -11358,9 +11367,11 @@ async function refreshLaserJob() {
             return;
         }
 
-        const response = await fetch('/api/laser/job/status');
+        const host = getSectionHost('laser');
+        if (!host) return;
+        const response = await fetch(`/api/laser/job/status?host=${encodeURIComponent(host)}`);
         const data = await response.json();
-        renderLaserJob(data);
+        renderLaserJob(data, host);
     } catch (error) {
         console.error(error);
     }
@@ -11442,7 +11453,10 @@ function renderLaserQueue(queue) {
                     if (!confirmed) return;
                     try {
                         const formData = new FormData();
+                        const host = getSectionHost('laser');
+                        if (!host) throw new Error(t('laserNoMachineSelected'));
                         formData.append('id', id);
+                        formData.append('host', host);
                         const response = await fetch('/api/laser/queue/start', { method: 'POST', body: formData });
                         if (!response.ok) {
                             const data = await response.json().catch(() => ({}));
@@ -11510,8 +11524,13 @@ function renderLaserBoardInfo(info) {
 }
 
 async function loadLaserBoardInfo() {
+    const host = getSectionHost('laser');
+    if (!host) {
+        renderLaserBoardInfo(null);
+        return;
+    }
     try {
-        const response = await fetch('/api/laser/info');
+        const response = await fetch(`/api/laser/info?host=${encodeURIComponent(host)}`);
         if (!response.ok) throw new Error('No se pudo cargar la información de la placa');
         const info = await response.json();
         renderLaserBoardInfo(info);
@@ -11522,6 +11541,101 @@ async function loadLaserBoardInfo() {
 }
 
 let laserHostOptions = [];
+
+// ── Máquina seleccionada por sección (Láser / CNC) ──
+// El servidor ya no guarda un "host activo" global: cada petición de láser o
+// CNC lleva el host de su propia máquina. Cada sección recuerda SU máquina en
+// este navegador por el id interno del registro (`mch_...`), que no cambia
+// aunque la máquina cambie de IP o de puerto USB; el host que se manda al
+// backend siempre se resuelve de ese id contra el registro actual.
+const LASER_SECTION_MACHINE_KEYS = {
+    laser: { idKey: 'lastLaserMachineId', legacyHostKey: 'lastLaserHost', selectId: 'laser-host-select' },
+    cnc: { idKey: 'lastCncMachineId', legacyHostKey: 'lastCncHost', selectId: 'cnc-host-select' },
+};
+
+// Registro completo (incluye máquinas sin conexión), para resolver la clave
+// vieja por host aunque esa máquina no esté en línea ahora mismo.
+let laserRegistryEntries = [];
+let laserRegistryLoaded = false;
+
+function readLaserMachinePref(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (error) {
+        return null;
+    }
+}
+
+function writeLaserMachinePref(key, value) {
+    try {
+        if (value) localStorage.setItem(key, value);
+        else localStorage.removeItem(key);
+    } catch (error) {
+        // Sin almacenamiento local (ventana privada, etc.): la selección
+        // solo dura mientras la página esté abierta.
+    }
+}
+
+function laserDeviceInSection(device, section) {
+    const kind = (device && device.kind) || 'laser';
+    return section === 'cnc' ? kind === 'cnc' : kind !== 'cnc';
+}
+
+// Compatibilidad: antes se guardaba el HOST (lastLaserHost / lastCncHost). Se
+// traduce una sola vez al id interno buscando ese host en el registro y la
+// clave vieja se borra. Solo se intenta con el registro ya cargado, para no
+// perder la preferencia si la carga falló.
+function migrateLegacySectionMachine(section) {
+    const keys = LASER_SECTION_MACHINE_KEYS[section];
+    const legacyHost = readLaserMachinePref(keys.legacyHostKey);
+    if (!legacyHost || !laserRegistryLoaded) return;
+    if (!readLaserMachinePref(keys.idKey)) {
+        const match = laserRegistryEntries.find(entry => entry.id && entry.host === legacyHost && laserDeviceInSection(entry, section));
+        if (match) writeLaserMachinePref(keys.idKey, match.id);
+    }
+    writeLaserMachinePref(keys.legacyHostKey, null);
+}
+
+// Máquina (de laserHostOptions) que le toca a la sección: la guardada por id
+// o, si ya no existe, la primera de ese tipo (null si no hay ninguna).
+function getSectionMachine(section) {
+    migrateLegacySectionMachine(section);
+    const devices = laserHostOptions.filter(device => laserDeviceInSection(device, section));
+    const savedId = readLaserMachinePref(LASER_SECTION_MACHINE_KEYS[section].idKey);
+    return (savedId && devices.find(device => device.id === savedId)) || devices[0] || null;
+}
+
+// Host ACTUAL de la máquina seleccionada en la sección ('' si no hay). El
+// selector de la sección ya se pinta con esa máquina (y refleja lo que el
+// usuario elija en esta pestaña); si aún está vacío se resuelve del registro.
+function getSectionHost(section) {
+    const selected = document.getElementById(LASER_SECTION_MACHINE_KEYS[section].selectId)?.value || '';
+    if (selected) return selected;
+    return getSectionMachine(section)?.host || '';
+}
+
+// Recuerda la máquina de la sección por su id interno. Si no se conoce el id
+// (p. ej. una placa encontrada por escaneo y sin registrar) no se guarda nada.
+function rememberSectionMachine(section, machineId, host) {
+    let id = machineId || '';
+    if (!id && host) {
+        const device = laserHostOptions.find(item => item.host === host)
+            || laserRegistryEntries.find(item => item.host === host);
+        id = device?.id || '';
+    }
+    if (!id) return;
+    writeLaserMachinePref(LASER_SECTION_MACHINE_KEYS[section].idKey, id);
+    writeLaserMachinePref(LASER_SECTION_MACHINE_KEYS[section].legacyHostKey, null);
+}
+
+// Las funciones compartidas (comandos, jog, home) que no reciben host usan el
+// de la sección que está a la vista: CNC si #cnc-section está activa, si no
+// la de Láser. '' si ninguna de las dos está activa o no hay máquina.
+function getActiveSectionLaserHost() {
+    if (document.getElementById('cnc-section')?.classList.contains('active')) return getSectionHost('cnc');
+    if (document.getElementById('laser-section')?.classList.contains('active')) return getSectionHost('laser');
+    return '';
+}
 
 function laserConnectionModeLabel(host) {
     if (!host) return '';
@@ -11554,7 +11668,7 @@ function renderLaserHostOptions(activeHost) {
     const selectEl = document.getElementById('laser-host-select');
     if (!selectEl) return;
     let laserDevices = laserHostOptions.filter(device => (device.kind || 'laser') !== 'cnc');
-    if (!laserDevices.some(device => device.host === activeHost)) {
+    if (activeHost && !laserDevices.some(device => device.host === activeHost)) {
         laserDevices = [{ host: activeHost, hostname: '' }, ...laserDevices];
     }
     selectEl.innerHTML = laserDevices.map(device => {
@@ -11562,7 +11676,7 @@ function renderLaserHostOptions(activeHost) {
         const color = getDeviceKindColor(device.kind || 'laser');
         return `<option value="${escapeHtml(device.host)}" style="color:${color}">${escapeHtml(label)}</option>`;
     }).join('');
-    selectEl.value = activeHost;
+    selectEl.value = activeHost || '';
     const modeEl = document.getElementById('laser-connection-mode');
     if (modeEl) modeEl.textContent = laserConnectionModeLabel(activeHost);
     applyLaserMachineKindUI(activeHost);
@@ -12052,6 +12166,20 @@ async function frameQueuedLaserJob() {
     }
 }
 
+// Pausar/reanudar/cancelar del gamepad estando en la sección CNC: van a la
+// máquina seleccionada en CNC.
+async function handleCncGamepadJobAction(action) {
+    const host = getSectionHost('cnc');
+    if (!host) return;
+    if (action === 'cancel' && !(await appConfirm(t('laserCancelConfirm'), t('laserCancel')))) return;
+    try {
+        await sendLaserJobControl(action, host);
+    } catch (error) {
+        console.error(error);
+    }
+    refreshCncJobFooter();
+}
+
 // activeKind: 'laser' | 'cnc' — resuelto por pollLaserGamepad() según qué
 // sección esté activa. Las acciones kind:'laser' (frame) no hacen nada en
 // CNC (no tienen equivalente real); no hay acciones kind:'cnc' además de
@@ -12065,9 +12193,10 @@ function runLaserGamepadAction(actionId, activeKind) {
         case 'jogRight': gamepadJog('X', 1, activeKind); break;
         case 'jogZUp': if (inCnc) gamepadJog('Z', 1, activeKind); break;
         case 'jogZDown': if (inCnc) gamepadJog('Z', -1, activeKind); break;
-        case 'pause': handleLaserPause(); break;
-        case 'resume': handleLaserResume(); break;
-        case 'cancel': handleLaserCancel(); break;
+        // En CNC van a la máquina seleccionada en CNC, no a la del láser.
+        case 'pause': if (inCnc) handleCncGamepadJobAction('pause'); else handleLaserPause(); break;
+        case 'resume': if (inCnc) handleCncGamepadJobAction('resume'); else handleLaserResume(); break;
+        case 'cancel': if (inCnc) handleCncGamepadJobAction('cancel'); else handleLaserCancel(); break;
         case 'toggleTool': gamepadToggleTool(activeKind); break;
         case 'goToOrigin': gamepadGoToOrigin(activeKind); break;
         case 'setOrigin': gamepadSetOrigin(activeKind); break;
@@ -12255,22 +12384,23 @@ document.getElementById('laser-gamepad-reset-btn')?.addEventListener('click', as
 
 async function loadLaserHostSelector() {
     try {
-        const [hostResponse, registryResponse] = await Promise.all([
-            fetch('/api/laser/host'),
-            fetch('/api/laser/registry/status'),
-        ]);
-        const hostData = await hostResponse.json();
+        const registryResponse = await fetch('/api/laser/registry/status');
         const registryData = await registryResponse.json();
         const registryEntries = registryData.lasers || [];
         const registryHosts = new Set(registryEntries.map(entry => entry.host));
+        laserRegistryEntries = registryEntries;
+        laserRegistryLoaded = true;
 
         // Descarta restos de escaneos anteriores que ya no están registrados,
         // para que el selector no acumule dispositivos fantasma indefinidamente.
-        laserHostOptions = laserHostOptions.filter(device => registryHosts.has(device.host) || device.host === hostData.host);
+        // (se conserva la que esté elegida ahora mismo en el selector de Láser).
+        const selectedLaserHost = document.getElementById('laser-host-select')?.value || '';
+        laserHostOptions = laserHostOptions.filter(device => registryHosts.has(device.host) || device.host === selectedLaserHost);
 
         registryEntries.forEach(entry => {
             const existing = laserHostOptions.find(device => device.host === entry.host);
             if (existing) {
+                existing.id = entry.id || null;
                 existing.hostname = entry.name;
                 existing.kind = entry.kind || 'laser';
                 existing.workArea = entry.work_area || null;
@@ -12279,6 +12409,7 @@ async function loadLaserHostSelector() {
                 existing.online = entry.online;
             } else {
                 laserHostOptions.push({
+                    id: entry.id || null,
                     host: entry.host,
                     hostname: entry.name,
                     kind: entry.kind || 'laser',
@@ -12295,7 +12426,7 @@ async function loadLaserHostSelector() {
         // ya cubre ver/quitar las que están sin conexión.
         laserHostOptions = laserHostOptions.filter(device => device.online !== false);
 
-        renderLaserHostOptions(hostData.host);
+        renderLaserHostOptions(getSectionMachine('laser')?.host || '');
     } catch (error) {
         console.error(error);
     }
@@ -12307,10 +12438,12 @@ async function scanLaserNetwork() {
     try {
         const response = await fetch('/api/laser/scan');
         const data = await response.json();
-        laserHostOptions = data.devices || [];
-        const hostResponse = await fetch('/api/laser/host');
-        const hostData = await hostResponse.json();
-        renderLaserHostOptions(hostData.host);
+        const currentHost = getSectionHost('laser');
+        // El escaneo no trae el id interno ni el tipo de las placas ya
+        // registradas: se conservan de lo que ya se conocía por host.
+        const previous = new Map(laserHostOptions.map(device => [device.host, device]));
+        laserHostOptions = (data.devices || []).map(device => ({ ...(previous.get(device.host) || {}), ...device }));
+        renderLaserHostOptions(currentHost);
     } catch (error) {
         console.error(error);
     } finally {
@@ -12322,10 +12455,9 @@ const laserHostSelect = document.getElementById('laser-host-select');
 if (laserHostSelect) {
     laserHostSelect.addEventListener('change', async () => {
         try {
-            const formData = new FormData();
-            formData.append('host', laserHostSelect.value);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-            localStorage.setItem('lastLaserHost', laserHostSelect.value);
+            // La selección vive solo en este navegador (por id interno); el
+            // servidor ya no tiene un "host activo" que cambiar.
+            rememberSectionMachine('laser', null, laserHostSelect.value);
             // renderLaserHostOptions (no solo applyLaserMachineKindUI) porque
             // también actualiza el título de "Consola Láser de: X" y el mapa
             // de área de trabajo — si no, ambos quedan pegados a la máquina
@@ -12365,8 +12497,12 @@ function renderLaserConsoleLog(messages) {
 
 async function refreshLaserConsole() {
     try {
-        const host = document.getElementById('laser-host-select')?.value;
-        const url = `/api/laser/console?count=150${host ? `&host=${encodeURIComponent(host)}` : ''}`;
+        const host = getSectionHost('laser');
+        if (!host) {
+            renderLaserConsoleLog([]);
+            return;
+        }
+        const url = `/api/laser/console?count=150&host=${encodeURIComponent(host)}`;
         const response = await fetch(url);
         const data = await response.json();
         renderLaserConsoleLog(data.messages || []);
@@ -12493,7 +12629,10 @@ function renderLaserSettings(settings, firmware) {
             const value = input.value.trim();
             const item = input.closest('.laser-settings-item');
             try {
+                const host = getSectionHost('laser');
+                if (!host) throw new Error(t('laserNoMachineSelected'));
                 const formData = new FormData();
+                formData.append('host', host);
                 formData.append('key', key);
                 formData.append('value', value);
                 const response = await fetch('/api/laser/settings', { method: 'POST', body: formData });
@@ -12514,10 +12653,16 @@ function renderLaserSettings(settings, firmware) {
 }
 
 async function loadLaserSettings() {
+    const host = getSectionHost('laser');
+    if (!host) {
+        renderLaserSettings([]);
+        return;
+    }
     try {
+        const hostQuery = `?host=${encodeURIComponent(host)}`;
         const [settingsResponse, statusResponse] = await Promise.all([
-            fetch('/api/laser/settings'),
-            fetch('/api/laser/status'),
+            fetch(`/api/laser/settings${hostQuery}`),
+            fetch(`/api/laser/status${hostQuery}`),
         ]);
         if (!settingsResponse.ok) throw new Error('No se pudo cargar la configuración');
         const data = await settingsResponse.json();
@@ -12535,14 +12680,15 @@ if (laserSettingsReloadBtn) laserSettingsReloadBtn.addEventListener('click', loa
 async function loadLaserNameField() {
     const input = document.getElementById('laser-name-input');
     if (!input) return;
+    const host = getSectionHost('laser');
+    if (!host) {
+        input.value = '';
+        return;
+    }
     try {
-        const [hostResponse, registryResponse] = await Promise.all([
-            fetch('/api/laser/host'),
-            fetch('/api/laser/registry'),
-        ]);
-        const hostData = await hostResponse.json();
+        const registryResponse = await fetch('/api/laser/registry');
         const registryData = await registryResponse.json();
-        const entry = (registryData.lasers || []).find(item => item.host === hostData.host);
+        const entry = (registryData.lasers || []).find(item => item.host === host);
         input.value = entry ? entry.name : '';
     } catch (error) {
         console.error(error);
@@ -12555,13 +12701,13 @@ if (laserNameSaveBtn) {
         const input = document.getElementById('laser-name-input');
         const name = input?.value.trim();
         if (!name) return;
+        const host = getSectionHost('laser');
+        if (!host) return;
         try {
-            const hostResponse = await fetch('/api/laser/host');
-            const hostData = await hostResponse.json();
             const formData = new FormData();
-            formData.append('host', hostData.host);
+            formData.append('host', host);
             formData.append('name', name);
-            formData.append('transport', hostData.host.startsWith('usb:') ? 'usb' : 'network');
+            formData.append('transport', host.startsWith('usb:') ? 'usb' : 'network');
             await fetch('/api/laser/registry', { method: 'POST', body: formData });
             showToast(t('laserNameSaved'));
             loadLaserHostSelector();
@@ -12796,7 +12942,10 @@ function renderSdRows(entries) {
             closeAllSdRowMenus();
             if (!(await appConfirm(t('laserSdDeleteConfirm'), t('delete')))) return;
             try {
+                const host = getSectionHost('laser');
+                if (!host) throw new Error(t('laserNoMachineSelected'));
                 const formData = new FormData();
+                formData.append('host', host);
                 formData.append('path', sdCurrentPath);
                 formData.append('name', name);
                 formData.append('is_dir', isDir ? 'true' : 'false');
@@ -12851,12 +13000,14 @@ async function startSdFilePrint(name) {
     if (!confirmed) return;
 
     try {
-        const hostResponse = await fetch('/api/laser/host');
-        const hostData = await hostResponse.json();
-        const activeHost = hostData.host;
+        // Se fija la máquina al confirmar: las copias siguientes van a la
+        // misma placa aunque el usuario cambie de selección mientras tanto.
+        const activeHost = getSectionHost('laser');
+        if (!activeHost) throw new Error(t('laserNoMachineSelected'));
 
         for (let i = 0; i < copies; i++) {
             const formData = new FormData();
+            formData.append('host', activeHost);
             formData.append('path', sdCurrentPath);
             formData.append('name', name);
             const response = await fetch('/api/laser/sd/run', { method: 'POST', body: formData });
@@ -12880,9 +13031,14 @@ async function loadSdFolder(path) {
     sdCurrentPath = path;
     renderSdBreadcrumb(path);
     const listEl = document.getElementById('laser-sd-list');
+    const host = getSectionHost('laser');
+    if (!host) {
+        if (listEl) listEl.innerHTML = `<div class="empty-state-small">${t('laserNoMachineSelected')}</div>`;
+        return;
+    }
     if (listEl) listEl.innerHTML = `<div class="empty-state-small empty-state-small-loading"><span class="mini-spinner"></span>${t('laserSdLoading')}</div>`;
     try {
-        const response = await fetch(`/api/laser/sd/files?path=${encodeURIComponent(path)}`);
+        const response = await fetch(`/api/laser/sd/files?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`);
         const data = await response.json();
         if (data.status && data.status !== 'Ok') {
             listEl.innerHTML = `<div class="empty-state-small">${escapeHtml(data.message || t('laserSdError'))}</div>`;
@@ -12925,8 +13081,13 @@ async function checkSdAvailability() {
     // laser_sd_format_endpoint, esto no es la única traba).
     const formatBtn = document.getElementById('laser-sd-format-btn');
     if (formatBtn) formatBtn.hidden = currentAuthUser?.role !== 'admin';
+    const host = getSectionHost('laser');
+    if (!host) {
+        setLaserMemoryTabAvailable(false);
+        return;
+    }
     try {
-        const response = await fetch('/api/laser/sd/available');
+        const response = await fetch(`/api/laser/sd/available?host=${encodeURIComponent(host)}`);
         const data = await response.json();
         setLaserMemoryTabAvailable(!!data.available);
         if (data.available) {
@@ -13016,9 +13177,16 @@ if (laserSdFormatBtn) {
             if (typed !== null) appAlert(t('laserSdFormatConfirmMismatch'), '', 'danger');
             return;
         }
+        const host = getSectionHost('laser');
+        if (!host) {
+            appAlert(t('laserNoMachineSelected'), '', 'danger');
+            return;
+        }
         laserSdFormatBtn.disabled = true;
         try {
-            const response = await fetch('/api/laser/sd/format', { method: 'POST' });
+            const formData = new FormData();
+            formData.append('host', host);
+            const response = await fetch('/api/laser/sd/format', { method: 'POST', body: formData });
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
                 throw new Error(data.detail || t('laserSdError'));
@@ -13041,7 +13209,10 @@ if (laserSdNewFolderBtn) {
         const name = prompt(t('laserSdNewFolderPrompt'));
         if (!name || !name.trim()) return;
         try {
+            const host = getSectionHost('laser');
+            if (!host) throw new Error(t('laserNoMachineSelected'));
             const formData = new FormData();
+            formData.append('host', host);
             formData.append('path', sdCurrentPath);
             formData.append('name', name.trim());
             const response = await fetch('/api/laser/sd/folder', { method: 'POST', body: formData });
@@ -13112,7 +13283,10 @@ if (laserSdUploadInput) {
         if (progressLabel) progressLabel.textContent = '0%';
 
         try {
+            const host = getSectionHost('laser');
+            if (!host) throw new Error(t('laserNoMachineSelected'));
             const formData = new FormData();
+            formData.append('host', host);
             formData.append('path', sdCurrentPath);
             formData.append('file', file);
             const response = await fetch('/api/laser/sd/upload', { method: 'POST', body: formData });
@@ -13220,13 +13394,17 @@ document.getElementById('laser-sd-library-send-btn')?.addEventListener('click', 
 
     let lastName = null;
     let hadError = false;
+    // Todo el lote va a la misma placa, aunque cambie la selección a media subida.
+    const sdLibraryHost = getSectionHost('laser');
     for (let i = 0; i < checked.length; i++) {
         const name = checked[i].dataset.libraryName;
         if (progressLabel) progressLabel.textContent = t('laserSdLibraryProgressOf').replace('{name}', name).replace('{i}', i + 1).replace('{n}', checked.length);
         if (progressFill) progressFill.style.width = '0%';
         if (progressPct) progressPct.textContent = '0%';
         try {
+            if (!sdLibraryHost) throw new Error(t('laserNoMachineSelected'));
             const formData = new FormData();
+            formData.append('host', sdLibraryHost);
             formData.append('gcode_path', checked[i].dataset.libraryPath);
             formData.append('sd_path', sdCurrentPath);
             const response = await fetch('/api/laser/sd/upload-from-library', { method: 'POST', body: formData });
@@ -13260,16 +13438,31 @@ document.getElementById('laser-sd-library-send-btn')?.addEventListener('click', 
 
 async function loadLaserSection() {
     await loadLaserHostSelector();
-    const resolvedHost = await ensureSectionHost(kind => kind !== 'cnc', 'lastLaserHost');
+    const resolvedHost = ensureSectionHost('laser');
     if (resolvedHost) renderLaserHostOptions(resolvedHost);
     loadLaserBoardInfo();
     startLaserPolling();
     checkSdAvailability();
 }
 
+// Pausar/reanudar/cancelar de la ficha de trabajo de Láser: van a la máquina
+// del trabajo que muestra la ficha (laserJobDisplayedHost) o, si aún no hay
+// ninguno pintado, a la máquina seleccionada en Láser. Sin máquina no se
+// manda nada.
+function laserJobControlHost() {
+    return laserJobDisplayedHost || getSectionHost('laser');
+}
+
+async function sendLaserJobControl(action, host) {
+    if (!host) return;
+    const formData = new FormData();
+    formData.append('host', host);
+    await fetch(`/api/laser/job/${action}`, { method: 'POST', body: formData });
+}
+
 async function handleLaserPause() {
     try {
-        await fetch('/api/laser/job/pause', { method: 'POST' });
+        await sendLaserJobControl('pause', laserJobControlHost());
         refreshLaserJob();
     } catch (error) {
         console.error(error);
@@ -13278,7 +13471,7 @@ async function handleLaserPause() {
 
 async function handleLaserResume() {
     try {
-        await fetch('/api/laser/job/resume', { method: 'POST' });
+        await sendLaserJobControl('resume', laserJobControlHost());
         refreshLaserJob();
     } catch (error) {
         console.error(error);
@@ -13286,9 +13479,11 @@ async function handleLaserResume() {
 }
 
 async function handleLaserCancel() {
+    const host = laserJobControlHost();
+    if (!host) return;
     if (!(await appConfirm(t('laserCancelConfirm'), t('laserCancel')))) return;
     try {
-        await fetch('/api/laser/job/cancel', { method: 'POST' });
+        await sendLaserJobControl('cancel', host);
         refreshLaserJob();
     } catch (error) {
         console.error(error);
@@ -13299,11 +13494,18 @@ document.getElementById('laser-pause-btn-panel')?.addEventListener('click', hand
 document.getElementById('laser-resume-btn-panel')?.addEventListener('click', handleLaserResume);
 document.getElementById('laser-cancel-btn-panel')?.addEventListener('click', handleLaserCancel);
 
+// Sin `host` explícito se usa la máquina de la sección a la vista (Láser o
+// CNC). Si no hay ninguna, no se manda nada.
 async function sendLaserRawCommand(command, host) {
+    const targetHost = host || getActiveSectionLaserHost();
+    if (!targetHost) {
+        appAlert(t('laserNoMachineSelected'), '', 'warning');
+        return false;
+    }
     try {
         const formData = new FormData();
         formData.append('command', command);
-        if (host) formData.append('host', host);
+        formData.append('host', targetHost);
         const response = await fetch('/api/laser/command', { method: 'POST', body: formData });
         if (!response.ok) {
             // El backend manda 409 con un detail claro cuando hay un grabado
@@ -13367,12 +13569,14 @@ document.querySelectorAll('#laser-move-to-form input').forEach((input) => {
 // o G91/G1/G90 Marlin) según el firmware registrado para `host`, así el
 // frontend deja de construir G-code de jog a mano (ver services/laser_service.py::jog).
 async function sendLaserJog(axis, distance, feed, host) {
+    const targetHost = host || getActiveSectionLaserHost();
+    if (!targetHost) return false;
     try {
         const formData = new FormData();
         formData.append('axis', axis);
         formData.append('distance', distance);
         formData.append('feed', feed);
-        if (host) formData.append('host', host);
+        formData.append('host', targetHost);
         const response = await fetch('/api/laser/jog', { method: 'POST', body: formData });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
@@ -13395,9 +13599,11 @@ async function sendLaserJogMoves(moves, feed, host) {
 }
 
 async function sendLaserHome(host, axes) {
+    const targetHost = host || getActiveSectionLaserHost();
+    if (!targetHost) return false;
     try {
         const formData = new FormData();
-        if (host) formData.append('host', host);
+        formData.append('host', targetHost);
         if (axes) formData.append('axes', axes);
         const response = await fetch('/api/laser/home', { method: 'POST', body: formData });
         return response.ok;
@@ -13699,28 +13905,12 @@ let cncStatusPollInterval = null;
 let cncSlowPollInterval = null;
 let cncRapidPercent = 100;
 
-// Cada sección (Láser/CNC) recuerda su propio último dispositivo activo,
-// aunque el backend solo mantenga UNA conexión real a la vez (el ESP32 solo
-// acepta un cliente WebSocket) — al entrar a una sección, la reconectamos al
-// dispositivo de su propio tipo, sin tocar nada si ya está en el correcto.
-async function ensureSectionHost(kindPredicate, lastHostKey) {
-    const devices = laserHostOptions.filter(device => kindPredicate(device.kind || 'laser'));
-    if (!devices.length) return null;
-    const remembered = localStorage.getItem(lastHostKey);
-    const target = devices.find(device => device.host === remembered) || devices[0];
-    try {
-        const currentResponse = await fetch('/api/laser/host');
-        const current = await currentResponse.json();
-        if (current.host !== target.host) {
-            const formData = new FormData();
-            formData.append('host', target.host);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-        }
-    } catch (error) {
-        console.error(error);
-    }
-    localStorage.setItem(lastHostKey, target.host);
-    return target.host;
+// Cada sección (Láser/CNC) recuerda su propia máquina en este navegador (ver
+// getSectionMachine). El backend mantiene una conexión por máquina, así que al
+// entrar a una sección no hay nada que reconectar en el servidor: solo se
+// resuelve qué máquina mostrar y a cuál mandarle cada petición.
+function ensureSectionHost(section) {
+    return getSectionMachine(section)?.host || null;
 }
 
 function renderCncHostOptions(activeHost) {
@@ -13781,8 +13971,10 @@ function renderCncQueue(queue) {
                 if (btn.dataset.action === 'play') {
                     try {
                         const formData = new FormData();
+                        const host = getSectionHost('cnc');
+                        if (!host) throw new Error(t('laserNoMachineSelected'));
                         formData.append('id', id);
-                        formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+                        formData.append('host', host);
                         const response = await fetch('/api/laser/queue/start', { method: 'POST', body: formData });
                         if (!response.ok) {
                             const data = await response.json().catch(() => ({}));
@@ -14179,7 +14371,7 @@ function initCncViewerTabs() {
 async function loadCncSection() {
     initCncViewerTabs();
     await loadLaserHostSelector();
-    const resolvedHost = await ensureSectionHost(kind => kind === 'cnc', 'lastCncHost');
+    const resolvedHost = ensureSectionHost('cnc');
     renderCncHostOptions(resolvedHost);
     refreshCncStatus();
     refreshCncParserState();
@@ -14203,10 +14395,9 @@ const cncHostSelect = document.getElementById('cnc-host-select');
 if (cncHostSelect) {
     cncHostSelect.addEventListener('change', async () => {
         try {
-            const formData = new FormData();
-            formData.append('host', cncHostSelect.value);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-            localStorage.setItem('lastCncHost', cncHostSelect.value);
+            // La selección vive solo en este navegador (por id interno); el
+            // servidor ya no tiene un "host activo" que cambiar.
+            rememberSectionMachine('cnc', null, cncHostSelect.value);
             const activeDevice = laserHostOptions.find(device => device.host === cncHostSelect.value);
             applyCncMachineProfile(activeDevice?.machineProfile);
             refreshCncStatus();
@@ -14226,8 +14417,9 @@ function setCncPinActive(pinKey, active) {
 async function refreshCncStatus() {
     const host = document.getElementById('cnc-host-select')?.value;
     try {
-        const response = await fetch(`/api/laser/status${host ? `?host=${encodeURIComponent(host)}` : ''}`);
-        const data = await response.json();
+        // Sin máquina CNC seleccionada no se consulta nada: se pinta como sin conexión.
+        const response = host ? await fetch(`/api/laser/status?host=${encodeURIComponent(host)}`) : null;
+        const data = response ? await response.json() : { connected: false };
 
         const statePills = [document.getElementById('cnc-state-pill'), document.getElementById('cnc-wizard-state-pill')].filter(Boolean);
         const dot = document.getElementById('cnc-footer-dot');
@@ -14315,8 +14507,9 @@ async function refreshCncStatus() {
 
 async function refreshCncParserState() {
     const host = document.getElementById('cnc-host-select')?.value;
+    if (!host) return;
     try {
-        const response = await fetch(`/api/laser/parser-state${host ? `?host=${encodeURIComponent(host)}` : ''}`);
+        const response = await fetch(`/api/laser/parser-state?host=${encodeURIComponent(host)}`);
         if (!response.ok) return;
         const data = await response.json();
         const wcsSelect = document.getElementById('cnc-wcs-select');
@@ -14333,8 +14526,10 @@ async function refreshCncParserState() {
 }
 
 async function refreshCncJobFooter() {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     try {
-        const response = await fetch('/api/laser/job/status');
+        const response = await fetch(`/api/laser/job/status?host=${encodeURIComponent(host)}`);
         const job = await response.json();
         const filenameEl = document.getElementById('cnc-job-filename');
         if (filenameEl) filenameEl.textContent = job?.filename || '—';
@@ -14378,8 +14573,10 @@ document.getElementById('cnc-footer-stop-btn')?.addEventListener('click', async 
 });
 
 document.getElementById('cnc-run-btn')?.addEventListener('click', async () => {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     const formData = new FormData();
-    formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', host);
     try {
         await fetch('/api/laser/job/resume', { method: 'POST', body: formData });
     } catch (error) {
@@ -14389,8 +14586,10 @@ document.getElementById('cnc-run-btn')?.addEventListener('click', async () => {
 });
 
 document.getElementById('cnc-pause-btn')?.addEventListener('click', async () => {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     const formData = new FormData();
-    formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', host);
     try {
         await fetch('/api/laser/job/pause', { method: 'POST', body: formData });
     } catch (error) {
@@ -14400,15 +14599,17 @@ document.getElementById('cnc-pause-btn')?.addEventListener('click', async () => 
 });
 
 document.getElementById('cnc-park-btn')?.addEventListener('click', async () => {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     const formData = new FormData();
-    formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', host);
     try {
         await fetch('/api/laser/job/pause', { method: 'POST', body: formData });
     } catch (error) {
         console.error(error);
     }
     // Se aleja un poco de la pieza en Z al estacionar, además de pausar.
-    await sendLaserJog('Z', 10, 500);
+    await sendLaserJog('Z', 10, 500, host);
     refreshCncStatus();
     refreshCncJobFooter();
 });
@@ -14463,9 +14664,14 @@ document.getElementById('cnc-zero-z-btn')?.addEventListener('click', async () =>
 // Compartido entre el botón "Correr" de la tabla ARCHIVOS y el paso final
 // del asistente guiado, para no duplicar la lógica de arrancar un trabajo.
 async function startCncJob(path, host) {
+    const targetHost = host || getSectionHost('cnc');
+    if (!targetHost) {
+        appAlert(t('laserNoMachineSelected'), '', 'warning');
+        return;
+    }
     const formData = new FormData();
     formData.append('path', path);
-    formData.append('host', host || document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', targetHost);
     try {
         await fetch('/api/laser/job/start', { method: 'POST', body: formData });
         showToast(t('cncJobStarted'));
@@ -15065,7 +15271,7 @@ if (laserHomeBtn) {
         if (isLaserHomeConfirmEnabled()) {
             if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
         }
-        await sendLaserHome();
+        await sendLaserHome(getSectionHost('laser'));
         clearLaserBedMapTrace();
         refreshLaserStatus();
     });
@@ -15077,7 +15283,7 @@ if (cncHomeBtn) {
         if (isLaserHomeConfirmEnabled()) {
             if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
         }
-        await sendLaserHome();
+        await sendLaserHome(getSectionHost('cnc'));
         refreshCncStatus();
     });
 }

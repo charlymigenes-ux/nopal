@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.33 |
+| Versión del SDD | 0.34 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -551,13 +551,21 @@ Ver §10.
 
 | Modelo | Evidencia |
 |---|---|
-| **Host activo (legacy)** | Variable global `_active_host`, inicializada con `DEFAULT_LASER_HOST = "192.168.0.61"` (`laser_service.py:22`). `GET/POST /api/laser/host` lee y cambia ese host global (POST lo permite cualquier usuario autenticado). Unas 8 funciones de servicio usan `host=DEFAULT_LASER_HOST` como valor por omisión. `_get_local_subnet()` cae a la subred de esa IP si no puede detectar la propia. |
+| ~~**Host activo (legacy)**~~ | **Retirado (D4, v0.34).** Era una variable global `_active_host` (inicializada con la IP fija `192.168.0.61`), compartida por todas las sesiones; `GET/POST /api/laser/host` la leía y cambiaba y toda ruta sin `host` actuaba sobre ella. Ver §10.2 y D-11. |
 | **Multi-host (actual)** | `laser_registry.json` con varias máquinas; endpoints como `/api/laser/registry/status` y `/api/laser/jobs/active` operan sobre todas; TUNA-Screen e IA usan el host explícito. |
 
-**Deuda arquitectónica**: dos modelos de selección conviven. Una llamada que
-omita `host` actúa sobre el "host activo" global, compartido entre todos los
-usuarios conectados. Retirarlo es `OPEN` (decisión D4): hace falta verificar
-qué partes de `app.js` siguen dependiendo de `/api/laser/host`.
+**D4 cerrada (v0.34): solo queda el modelo multi-host.** Ya no existe el "host
+activo" global ni `/api/laser/host`. Las 25 rutas de láser que caían a él
+exigen `host` (query en GET, formulario en POST); sin él responden **400**
+"Falta indicar el láser o la CNC (host)" antes de autorizar, leer archivos o
+tocar ninguna máquina (fail-closed). El servicio ya no tiene host por
+omisión (`DEFAULT_LASER_HOST` → `FALLBACK_SCAN_SUBNET`, solo para adivinar la
+subred del escaneo). El panel guarda la máquina elegida **por sección**
+(Láser, CNC) en el navegador, por id interno (`lastLaserMachineId`,
+`lastCncMachineId`; las claves viejas por host se migran una vez) y la
+resuelve al host actual con el registro; ninguna llamada sale sin `host`.
+Lo que hace una sesión ya no puede mover a qué máquina van las órdenes de
+otra.
 
 ---
 
@@ -890,7 +898,7 @@ decide en este documento.
 | **D-8** | **`/plugins-static`**: monta el directorio `plugins/` completo sin autenticación. Se confirmó acceso anónimo al código fuente del backend de los plugins y a su carpeta `.git`. Hoy los repositorios de plugins son públicos, por lo que la exposición actual es baja; el riesgo es que cualquier archivo que un plugin o una persona coloque dentro de `plugins/` (datos, credenciales de firmware) quedaría publicado. | MEDIUM | `OPEN` — decidido: solo frontend público (D3-Q10); pendiente de implementar |
 | **D-9** | **Conversaciones de IA sin propietario**: cualquier usuario autenticado podía listar, leer, continuar, renombrar o borrar conversaciones de otros usuarios. Solo borrar *todas* exigía admin. | MEDIUM | ✅ `FIXED` (v0.31): conversaciones privadas por usuario (D3-Q8), ver §18.8 "Conversaciones de IA" |
 | **D-10** | **Último administrador**: `delete_user` impide borrar al último admin, pero `update_user` permite **degradar** su rol a `operador` (`backend/services/auth_service.py:111-128`), lo que dejaría la instalación sin administrador. La importación de un respaldo del grupo `users` podía además reemplazar `auth_users.json` por una lista sin ningún admin. | MEDIUM | **`FIXED`** por C-6 (`IMPLEMENTED`, `033b8f3`): `auth_service.has_admin()` usado por `delete_user`, `update_user` y la importación del grupo `users` de respaldos; la comprobación se hace antes de modificar o escribir el estado. Tests: `backend/tests/test_last_admin.py` |
-| **D-11** | **Host láser activo global**: `POST /api/laser/host` (cualquier usuario autenticado) cambia el host por omisión compartido por todas las sesiones (§10.2). | MEDIUM | `OPEN` (ligado a la decisión D4 de §25) |
+| **D-11** | **Host láser activo global**: `POST /api/laser/host` (cualquier usuario autenticado) cambiaba el host por omisión compartido por todas las sesiones (§10.2). | MEDIUM | ✅ `FIXED` (v0.34, D4): mecanismo retirado; cada petición indica su host |
 
 > **Nota de publicación**: el repositorio es público. Este documento ya está
 > publicado en `dev-main` junto con la corrección de S-1 (`6fc0aec`), pero
@@ -991,7 +999,7 @@ Fuera de routers: `/` (pública), `/uploads/*` y `/view/*` (sesión), montajes
 | **Config. de máquina** | Cambiar settings `$` de GRBL | ❌ | ✅ | ✅ | — |
 | Láser/CNC | Ver estado, jog, home, iniciar/pausar/cancelar trabajo, encuadre, cola | ❌ | ✅ | ✅ | ⚠️ (pause/resume/cancel/home/move) |
 | Láser/CNC | Potencia láser / husillo (M3/M4) | ❌ | ✅ (vía consola) | ✅ | ✅ (`set_laser_power`/`set_spindle`) |
-| Láser/CNC | Cambiar el host activo global | ❌ | ✅ | ✅ | — |
+| Láser/CNC | ~~Cambiar el host activo global~~ (retirado en v0.34, D4) | — | — | — | — |
 | Láser/CNC | SD: subir, borrar, crear carpeta | ❌ | ✅ | ✅ | — |
 | Láser/CNC | Formatear SD | ❌ | ❌ | ✅ | — |
 | Biblioteca | Ver, descargar, miniaturas; subir, renombrar, mover, **borrar**, carpetas | ❌ | ✅ | ✅ | — |
@@ -1193,7 +1201,7 @@ política inicial no nombraba; decididos por el propietario como parte de D3:
 | C-6 | Último administrador | **Regla de seguridad: NOPAL nunca debe quedar sin al menos un Admin.** Aplica a eliminar usuario, cambiar rol, degradar un administrador, auto-degradación y cualquier operación equivalente | Antes de C-6, `delete_user` protegía al último Admin pero `update_user` permitía degradarlo y la importación de respaldos podía dejar cero admins (D-10): una instalación sin Admin no puede gestionar usuarios, plugins, sistema ni recuperarse sin editar archivos a mano. **`IMPLEMENTED`** (`033b8f3`) |
 
 Sigue fuera de D3 y `OPEN`: el **host láser global** (`POST /api/laser/host`),
-que depende de D4 (retirar el mecanismo o asignarle una acción).
+que depende de D4 (retirar el mecanismo o asignarle una acción). **Resuelto (v0.34): retirado, sin acción nueva en la política.**
 
 **Política vs. implementación** — todo lo anterior es política decidida; nada
 está implementado todavía:
@@ -1337,7 +1345,7 @@ Enforcement del panel GRBL / láser / CNC — cambio de permisos (CURRENT → TA
 | `grbl_settings` | `POST /api/laser/settings` | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
 | `set_laser_power` / `set_spindle` | Sin ruta propia: el panel los envía por `POST /api/laser/command`, donde ahora se clasifican (`M3`/`M4`/`M5` o palabra `S`) | operador → **admin** | ✅ `IMPLEMENTED` — TARGET ENFORCED |
 | Comando genérico (acciones mixtas) | `POST /api/laser/command`: el comando se descompone en acciones (`backend/services/laser_command_classifier.py`) y se autorizan **todas** antes de enviarlo | mixto (ver abajo) | ✅ `IMPLEMENTED` |
-| Host láser activo | `POST /api/laser/host` (depende de D4) | operador | ⏳ `NOT STARTED` |
+| Host láser activo | `POST /api/laser/host` | — | ✅ retirado (D4, v0.34) |
 
 **Separación de `POST /api/laser/command`** (frontend sin cambios; la ruta sigue siendo el transporte):
 
@@ -1555,7 +1563,7 @@ Reglas:
 
 ### 19.1 Existing coverage (`CURRENT`)
 
-- **1476 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado + 9 de la bobina activa de TUNA-Screen + 17 de accesorios y escenas de TUNA-Screen + 65 de autorización del canal IA + 52 de las herramientas de IA de plugins + 2 netos de `set_machine_alerts` como `configure_plugin` + 24 de regresión del entorno aislado de tests + 68 de privacidad de conversaciones (D-9) + 63 del scope persistente de TUNA-Screen + 60 de la identidad estable de máquinas, contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
+- **1507 tests, 0 fallos** (~65 s local), `pytest` + `pytest-asyncio` (`asyncio_mode=auto`), `testpaths=backend/tests`. (513 de la auditoría + 20 de regresión de S-1 + 20 de C-6 + 257 de la Authorization Policy + 8 del enforcement de Marlin `set_temperature` + 24 del enforcement de Marlin `pause`/`resume`/`cancel` + 9 del enforcement de Marlin `start_job` + 8 del enforcement de Marlin `home` + 30 del bloque seguro de Marlin (`move`, `view_status`) + 20 de las variantes SD de `start_job` + 3 de regresión del aislamiento de la caché de TUNA-Screen + 19 del cambio de permisos de Klipper (temperatura, consola, macros) + 15 del cambio de permisos de configuración de Klipper (`printer_config`, `restart_klipper`) + 6 de `firmware_restart` de Klipper + 15 de la consola de Marlin + 30 del bloque privilegiado de GRBL + 72 de la separación de `/api/laser/command` + 30 del enforcement de TUNA-Screen (29 de autorización y 1 de validación de nombres de macro) + 17 del emparejamiento reforzado + 9 de la bobina activa de TUNA-Screen + 17 de accesorios y escenas de TUNA-Screen + 65 de autorización del canal IA + 52 de las herramientas de IA de plugins + 2 netos de `set_machine_alerts` como `configure_plugin` + 24 de regresión del entorno aislado de tests + 68 de privacidad de conversaciones (D-9) + 63 del scope persistente de TUNA-Screen + 60 de la identidad estable de máquinas + 31 del retiro del host láser activo (D4), contando casos parametrizados. El CI #58 ejecutó 533: es anterior a C-6 y a la política.)
 - La suite también pasa completa en un checkout limpio (sin `plugins/`, `data/`, `uploads/` ni JSON locales): no requiere hardware, servicios ni variables de entorno.
 - 12 warnings: deprecación de `on_event`.
 - Sin hardware: transportes simulados (MQTT, serie, MKS TCP, HTTP).
@@ -1888,7 +1896,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 | D1 | ¿Soportar Moonraker remoto? | Registro de Klipper, ids, ADR-004 | `OPEN` |
 | D2 | ¿API para consumidores externos o solo panel + TUNA-Screen? | Versionado, API keys, ADR-005 | `OPEN` |
 | D3 | Matriz de autorización: ¿qué puede hacer cada principal? (D3-Q1…D3-Q12) | Seguridad, IA, TUNA-Screen, plugins | **`CERRADO`** — ADR-006 `ACCEPTED`; política en §18.6–18.7; implementación pendiente (§18.10) |
-| D4 | ¿Eliminar el host activo del láser? | Endpoints `/api/laser/host`, valores por omisión, frontend | `OPEN` |
+| D4 | ¿Eliminar el host activo del láser? | Endpoints `/api/laser/host`, valores por omisión, frontend | ✅ `CERRADO` (v0.34): retirado; ruta sin `host` → 400; selección del panel por sección y por id interno (§10.2) |
 | D5 | ¿Tags / categorías / metadatos de biblioteca? ¿Cuándo? | Fase 9, posible necesidad de SQLite | `OPEN` |
 | D6 | ¿Dependencias de plugins separadas del core? | `requirements.txt`, instalador de plugins | `OPEN` |
 | D7 | ¿Migración futura a SQLite? | Persistencia, ADR-003 | `DECISION PENDING` |
@@ -1965,7 +1973,7 @@ mismo vocabulario de acciones; la secuencia de migración de ADR-006 está en §
 | ADR-006: regla del último Admin (C-6) — **`IMPLEMENTED`** (`033b8f3`) | Gestión de usuarios e importación de respaldos | Solo bloquea operaciones que dejarían la instalación sin Admin; respaldos con admin se importan igual | Ninguna | Revertir el commit |
 | ADR-006: conversaciones privadas (D3-Q8) | IA, `ai_conversations.json` | Las conversaciones existentes no tienen propietario | **Resuelto (v0.31):** no se asignan a nadie; quedan invisibles e intocables para todos (Admin incluido) y solo las borra el borrado global (C-4) | Se conservan físicamente, sin reescribir |
 | ADR-006: `/plugins-static` solo frontend (D3-Q10) | Frontend de plugins | Los recursos de `frontend/` deben seguir servidos | Verificar que ningún plugin cargue archivos fuera de `frontend/` | Revertir el montaje |
-| Retirar host activo del láser (D4) | `/api/laser/host`, frontend | **Rompe** llamadas sin `host` | Marcar `DEPRECATED`, migrar frontend, retirar después | Restaurar endpoint |
+| Retirar host activo del láser (D4) | `/api/laser/host`, frontend | **Rompe** llamadas sin `host` | Marcar `DEPRECATED`, migrar frontend, retirar después | Restaurar endpoint | **Hecho en v0.34 en un solo cambio**: no había consumidores externos (TUNA-Screen, IA y plugins mandan `host` explícito) y el frontend se sirve desde el mismo servidor.
 | Klipper remoto (D1) | Registro, ids | Ids locales preservados (requisito) | Sin registro → comportamiento actual | Borrar registro → comportamiento actual |
 | SQLite (D7) | Persistencia de la parte que se migre | JSON intacto para configuración | Importador único desde JSON | Conservar JSON hasta validar |
 | Módulos ES en frontend | `app.js` | Sin cambio de rutas | Una sección por vez | Revertir la sección |
@@ -2060,3 +2068,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.31 | 2026-10-03 | **D-9: conversaciones de IA privadas por usuario** (D3-Q8, C-4). `owner_user_id` = `user_id` autenticado; leer, continuar, renombrar y borrar con la Authorization Policy (`read_/rename_/delete_conversation`, `owner_only`); listado solo propio; ajena = inexistente (404 idéntico; en `ask`, conversación nueva propia sin historial ajeno). Borrado global con `clear_all_conversations` (admin). 24 conversaciones antiguas sin propietario: invisibles e intocables, conservadas. Recorte de 50 por propietario. Conversaciones excluidas de los respaldos generales. Confirmaciones pendientes ligadas a `user_id`. `test_ai_conversations.py` adaptado (identidad explícita). Suite: 1353 tests, 0 fallos (68 nuevos). |
 | 0.32 | 2026-10-04 | **Scope persistente de TUNA-Screen** (S-9 `FIXED`): `scope` en `tunascreen_devices.json` (claves `kind:id`, fail-closed); solo identidades estables (Klipper, Bambu, Elegoo, FlashForge, plugins); Marlin USB y láser/CNC quedan fuera de todo scope. Admin asigna el scope al emparejar y lo edita (`PUT /api/tunascreen/devices/{id}/scope`, `GET /api/tunascreen/scope-options`). Lecturas, detalle, macros, consola, cámaras (por `stream_url` de máquinas del scope), Spoolman (`plugin:spoolman`; `links` filtrados), accesorios y WebSocket (por dispositivo, revalidado cada ciclo, 4401 al revocar, cambio de scope sin reconectar) filtrados; fuera del scope = inexistente. Dispositivo existente migrado a `scope: []`. Tests existentes adaptados con scope explícito (láser/CNC ahora inalcanzables desde TUNA). Suite: 1416 tests, 0 fallos (63 nuevos). |
 | 0.33 | 2026-10-04 | **Identidad estable de máquinas** (estrategia A): id interno inmutable `mch_<16 hex>` en los registros de Marlin y láser/CNC; ids canónicos `marlin:<id>`/`laser:<id>` en TUNA-Screen, IA, recursos del panel, notificaciones, dashboard, historial, cámaras y reglas LED. Anclas solo para reencontrar: `location` USB, MAC del ARP del servidor y Chip ID de `[ESP420]` como dato complementario. Regla de conflicto: ancla ambigua o que no coincide → conflicto/fuera de línea, nunca reasignación; MAC ausente → fuera de línea, no alta nueva. Corrige el bug de la autocorrección USB que reescribía el id. Scope de TUNA-Screen reabierto para Marlin y láser/CNC solo por id interno con identidad `stable`. Migración con respaldo (`scripts/migrate_machine_identity.py`, simulación por omisión; referencias sin contraparte descartadas). Suite: 1476 tests, 0 fallos (60 nuevos). |
+| 0.34 | 2026-10-04 | **D4: retiro del host láser activo** (D-11 `FIXED`). Se eliminan `_active_host`, `GET/POST /api/laser/host` y los valores por omisión `DEFAULT_LASER_HOST`. Las 25 rutas de láser que caían al host global exigen `host`; sin él, 400 antes de autorizar, leer archivos o tocar una máquina. El panel guarda la máquina elegida por sección (Láser/CNC) en el navegador, por id interno, y manda `host` en todas las llamadas. 2 tests existentes adaptados (el que verificaba el respaldo al host global ahora verifica el 400). Suite: 1507 tests, 0 fallos (31 nuevos). |

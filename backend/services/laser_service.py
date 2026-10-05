@@ -19,7 +19,10 @@ from backend.services import machine_identity, marlin_driver
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LASER_HOST = "192.168.0.61"
+# Solo para adivinar la subred a escanear si no se puede detectar la propia.
+# No es un láser por omisión: D4 retiró el "host activo" global, cada
+# operación recibe su host explícito.
+FALLBACK_SCAN_SUBNET = "192.168.0"
 HTTP_TIMEOUT = 4
 WS_PORT = 81
 REGISTRY_PATH = "laser_registry.json"
@@ -27,18 +30,6 @@ HISTORY_PATH = "laser_history.json"
 HISTORY_MAX_ENTRIES = 200
 
 STATUS_RE = re.compile(r"<(?P<state>\w+)(?::\d+)?\|(?P<fields>[^>]*)>")
-
-_active_host = DEFAULT_LASER_HOST
-
-
-def get_active_host() -> str:
-    return _active_host
-
-
-def set_active_host(host: str):
-    global _active_host
-    _active_host = host
-
 
 def _is_usb_host(host: str) -> bool:
     return host.startswith("usb:")
@@ -399,7 +390,7 @@ def _get_local_subnet() -> str:
             local_ip = sock.getsockname()[0]
         return ".".join(local_ip.split(".")[:3])
     except Exception:
-        return ".".join(DEFAULT_LASER_HOST.split(".")[:3])
+        return FALLBACK_SCAN_SUBNET
 
 
 def _parse_esp420_response(text: str) -> Dict[str, str]:
@@ -851,7 +842,7 @@ def _parse_grbl_status_line(line: str) -> Optional[Dict[str, Any]]:
     return result
 
 
-def get_board_info(host: str = DEFAULT_LASER_HOST) -> Dict[str, Any]:
+def get_board_info(host: str) -> Dict[str, Any]:
     """Info de la placa: por red, comando [ESP420] (chip, firmware, red...);
     por USB, los datos del descriptor serie (chip, VID:PID, descripción)."""
     if _is_usb_host(host):
@@ -1259,7 +1250,7 @@ def _ensure_serial_listener(host: str, baud: int = 115200):
     thread.start()
 
 
-def ensure_listener(host: str = DEFAULT_LASER_HOST):
+def ensure_listener(host: str):
     """Garantiza que exista una única conexión persistente hacia `host`
     (websocket para placas de red, hilo de lectura serie para USB)."""
     if _is_usb_host(host):
@@ -1268,7 +1259,7 @@ def ensure_listener(host: str = DEFAULT_LASER_HOST):
         _ensure_ws_listener(host)
 
 
-async def ensure_listener_ready(host: str = DEFAULT_LASER_HOST, timeout: float = 5.0):
+async def ensure_listener_ready(host: str, timeout: float = 5.0):
     """Como `ensure_listener`, pero espera a que la conexión esté realmente
     establecida antes de continuar (evita perder las primeras líneas de la
     respuesta a un comando enviado justo después)."""
@@ -1306,7 +1297,7 @@ def _marlin_transport_for(host: str) -> marlin_driver.MarlinTransport:
     )
 
 
-def get_console_buffer(host: str = DEFAULT_LASER_HOST, count: int = 100) -> List[Dict[str, Any]]:
+def get_console_buffer(host: str, count: int = 100) -> List[Dict[str, Any]]:
     messages = list(_console_buffers.get(host, []))
     return messages[-count:]
 
@@ -1317,7 +1308,7 @@ async def send_console_command(host: str, command: str) -> bool:
     return await loop.run_in_executor(None, send_raw_command, host, command)
 
 
-async def get_status(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+async def get_status(host: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
     if _firmware_for_host(host) == "marlin":
         return await _get_marlin_status(host, timeout)
     return await _get_grbl_status(host, timeout)
@@ -1382,7 +1373,7 @@ GCODE_PARSER_STATE_RE = re.compile(r"\[GC:(?P<words>[^\]]*)\]")
 WORK_COORDINATE_SYSTEMS = {"G54", "G55", "G56", "G57", "G58", "G59"}
 
 
-async def get_parser_state(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+async def get_parser_state(host: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
     """Dispara '$G' y espera la línea de estado del parser GRBL, ej.
     '[GC:G0 G54 G17 G21 G90 G94 M5 M9 T0 F0 S0]' — de ahí se saca el sistema
     de coordenadas activo (G54/G55/...) para mostrarlo en la ficha CNC.
@@ -1418,7 +1409,7 @@ async def get_parser_state(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0)
     return None
 
 
-async def get_grbl_settings(host: str = DEFAULT_LASER_HOST, timeout: float = 5.0) -> List[Dict[str, str]]:
+async def get_grbl_settings(host: str, timeout: float = 5.0) -> List[Dict[str, str]]:
     """Obtiene los parámetros $$ actuales de la placa.
 
     Marlin no tiene este protocolo (su volcado M503 es texto libre, no pares
