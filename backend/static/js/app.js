@@ -9924,11 +9924,16 @@ async function loadRegistryDevices() {
         ]);
         const data = await response.json();
         let chips = new Map();
+        // id de máquina (`laser:<id interno>`) -> host ACTUAL. El id ya no
+        // contiene la dirección (identidad estable): no se puede derivar
+        // quitándole el prefijo.
+        let hostsById = new Map();
         try {
             const laserData = laserResponse ? await laserResponse.json() : null;
             chips = new Map((laserData?.lasers || []).map(l => [l.host, l.chip || '']));
-        } catch (_) { /* sin datos de chip: el popup mostrará un guion */ }
-        renderRegistryDevices(data.machines || [], chips);
+            hostsById = new Map((laserData?.lasers || []).filter(l => l.id).map(l => [`laser:${l.id}`, l.host]));
+        } catch (_) { /* sin datos del registro: sin botones de editar/desvincular */ }
+        renderRegistryDevices(data.machines || [], chips, hostsById);
     } catch (error) {
         console.error(error);
     }
@@ -9947,7 +9952,7 @@ function deviceDriverBadgeLabel(driver) {
     return brandLabels[driver] || driver;
 }
 
-function renderRegistryDevices(machines, chips = new Map()) {
+function renderRegistryDevices(machines, chips = new Map(), hostsById = new Map()) {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
     if (!machines.length) {
@@ -9959,8 +9964,10 @@ function renderRegistryDevices(machines, chips = new Map()) {
         // de NOPAL puede tocar (/api/laser/registry). Una impresora Klipper
         // se administra desde su propia tarjeta, y poner acá un botón que
         // pegara al endpoint equivocado sería peor que no tenerlo.
-        const esGrbl = machine.driver === 'grbl';
-        const host = String(machine.id || '').replace(/^laser:/, '');
+        const host = hostsById.get(machine.id) || '';
+        // Sin host conocido no hay botones: editar o desvincular con una
+        // dirección equivocada crearía o tocaría otro registro.
+        const esGrbl = machine.driver === 'grbl' && Boolean(host);
         const nombre = machine.name || machine.id;
         // La píldora de estado va DENTRO del grupo de la derecha: el item es
         // flex con space-between, y dejarla suelta la empujaría al centro.
@@ -11686,8 +11693,10 @@ function renderLaserHostOptions(activeHost) {
         consoleNameEl.textContent = (device && device.hostname) || laserHostLabel(activeHost) || '—';
     }
     renderLaserBedMap(activeHost);
+    // La cámara se vincula por el id interno de la máquina, no por el host.
     const cameraContainer = document.getElementById('laser-modal-camera');
-    if (cameraContainer && activeHost) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'laser', deviceId: activeHost });
+    const activeId = laserDevices.find(item => item.host === activeHost)?.id;
+    if (cameraContainer && activeId) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'laser', deviceId: activeId });
 }
 
 let laserBedMapWorkArea = null;
@@ -13928,7 +13937,8 @@ function renderCncHostOptions(activeHost) {
     const activeDevice = cncDevices.find(device => device.host === resolvedHost);
     applyCncMachineProfile(activeDevice?.machineProfile);
     const cameraContainer = document.getElementById('cnc-modal-camera');
-    if (cameraContainer && resolvedHost) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'cnc', deviceId: resolvedHost });
+    // La cámara se vincula por el id interno de la máquina, no por el host.
+    if (cameraContainer && activeDevice?.id) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'cnc', deviceId: activeDevice.id });
 }
 
 // La cola de trabajos es compartida entre láser y CNC a nivel de backend (un
@@ -17109,8 +17119,9 @@ async function openMarlinPrinterModal(device) {
     if (nameEl) nameEl.textContent = (entry && entry.name) || device;
     document.getElementById('marlin-printer-modal')?.classList.add('active');
 
+    // La cámara se vincula por el id interno de la impresora, no por la ruta USB.
     const cameraContainer = document.getElementById('marlin-printer-modal-camera');
-    if (cameraContainer) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'marlin', deviceId: device });
+    if (cameraContainer && entry?.id) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'marlin', deviceId: entry.id });
 
     await renderMarlinPrintCardShell(device);
 
