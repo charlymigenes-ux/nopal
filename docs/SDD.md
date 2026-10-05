@@ -259,7 +259,7 @@ El único WebSocket servidor→cliente es el de TUNA-Screen.
 
 | # | La documentación dice | El código hace | Fuente |
 |---|---|---|---|
-| C1 | README: requiere "Python 3.9+" | `backend/api/plugins.py:50` usa `str \| None` en una firma evaluada en ejecución → requiere **3.10+**. CI usa 3.11; desarrollo 3.13. | README, código |
+| C1 | README: requiere "Python 3.9+" | **Sin contradicción (corregido): Python 3.9 es la versión mínima soportada por NOPAL** (issue #22 / PR #24: Debian Bullseye, p. ej. Qidi Q2 y MKS Pi). El `str \| None` de `backend/api/plugins.py:50` no exige 3.10: el archivo tiene `from __future__ import annotations` y no es una ruta ni un modelo que FastAPI/Pydantic evalúen. CI prueba 3.9 y 3.11; desarrollo 3.13. | README, `requirements.txt`, CI, código |
 | C2 | CLAUDE.md: el fixture de tests aísla "every brand's `REGISTRY_PATH`" | No aísla `laser_service.REGISTRY_PATH` / `HISTORY_PATH` (ni `auth_users.json`, `scheduled_prints.json`, `temperature_presets.json`). `test_tunascreen.py` aísla el láser localmente y lo comenta. | `conftest.py` |
 | C3 | CLAUDE.md: plugins "`arduino-accessories`, `camera-viewer`, `cotizador`" | El catálogo tiene 10; esta instancia tiene 8 instalados. | `plugin_catalog.json`, `data/plugins/installed.json` |
 | C4 | CLAUDE.md y README: las marcas "no se unifican detrás de una abstracción compartida" | Los **transportes** no se unifican (cierto), pero `tunascreen_service` **sí** normaliza todas las marcas a un modelo común con capacidades y acciones (el propio README lo describe en otra sección). | `tunascreen_service.py` |
