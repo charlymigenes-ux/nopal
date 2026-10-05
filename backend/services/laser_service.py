@@ -792,6 +792,17 @@ def _parse_grbl_status_line(line: str) -> Optional[Dict[str, Any]]:
         "speed": speed,
     }
 
+    # Mientras corre un archivo de la SD, la placa agrega "SD:<porcentaje>,
+    # <archivo>" (Report.cpp de Grbl_Esp32/FluidNC). Es la señal fiable de
+    # que el archivo sigue corriendo y su avance real.
+    if "SD" in fields:
+        percent, _, sd_file = fields["SD"].partition(",")
+        try:
+            result["sd_percent"] = max(0.0, min(100.0, float(percent)))
+            result["sd_file"] = sd_file
+        except ValueError:
+            pass
+
     if "WCO" in fields:
         parts = fields["WCO"].split(",")
         if len(parts) >= 3:
@@ -1645,6 +1656,13 @@ async def _run_sd_job(job: LaserJob):
     run_seen = False
     waited_for_run = 0.0
     RUN_TIMEOUT = 20  # segundos máximos esperando que la placa arranque el archivo
+    # La placa puede reportar Idle un instante a mitad del archivo (p. ej.
+    # mientras lee el siguiente bloque de la SD y el planificador se vacía):
+    # una sola lectura Idle cerraba el trabajo en falso (confirmado en vivo
+    # con la TTS-55 Pro: "completado" a los 39 s y la placa siguió grabando).
+    # Sin el campo SD, el Idle se confirma en varias lecturas seguidas.
+    IDLE_CONFIRM_POLLS = 3
+    idle_polls = 0
 
     try:
         while True:
@@ -1667,13 +1685,24 @@ async def _run_sd_job(job: LaserJob):
                     job.state = "error"
                     job.error_message = "La placa reportó una alarma"
                     return
-                if state_value == "run":
+                sd_busy = status.get("sd_percent") is not None
+                if sd_busy:
+                    # Avance real (0-100): current/total en esa escala para
+                    # que panel, IA y TUNA-Screen muestren el porcentaje.
+                    job.total = 100
+                    job.current = int(status["sd_percent"])
+                if state_value == "run" or sd_busy:
                     run_seen = True
+                    idle_polls = 0
                 elif state_value == "idle":
                     if run_seen:
-                        job.state = "completed"
-                        return
-                    if waited_for_run >= RUN_TIMEOUT:
+                        idle_polls += 1
+                        if idle_polls >= IDLE_CONFIRM_POLLS:
+                            if job.total:
+                                job.current = job.total
+                            job.state = "completed"
+                            return
+                    elif waited_for_run >= RUN_TIMEOUT:
                         job.state = "error"
                         job.error_message = (
                             "La placa nunca inició el archivo (revisa el nombre/ruta en la SD)"
@@ -1782,13 +1811,19 @@ async def get_job_status(host: str) -> Dict[str, Any]:
 
     status = await get_status(host, timeout=1.5)
     external_state = _external_job_state(status.get("state") if status else None)
+    sd_percent = (status or {}).get("sd_percent")
+    if external_state is None and sd_percent is not None:
+        # Corriendo un archivo de la SD aunque el estado diga Idle un instante.
+        external_state = "running"
     if external_state is not None:
+        # Un archivo de la SD que NOPAL no sigue (p. ej. tras reiniciar el
+        # servidor) sí trae nombre y avance en el propio estado de la placa.
         return {
-            "filename": "",
+            "filename": (status or {}).get("sd_file", "") if sd_percent is not None else "",
             "source": "external",
             "state": external_state,
-            "current": 0,
-            "total": 0,
+            "current": int(sd_percent) if sd_percent is not None else 0,
+            "total": 100 if sd_percent is not None else 0,
             "error": None,
         }
     return {"filename": "", "source": "", "state": "idle", "current": 0, "total": 0, "error": None}
@@ -1808,6 +1843,25 @@ def get_active_job_hosts() -> List[Dict[str, Any]]:
         for host, job in _jobs.items()
         if job.state in ("running", "paused")
     ]
+
+
+async def get_active_laser_jobs(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Trabajos en curso de todos los láseres/CNC de `entries` (registro con
+    `online`): los propios (en memoria) y, para los que están en línea sin
+    trabajo propio, el que reporte la placa -- un trabajo "externo", p. ej.
+    un archivo de la SD que NOPAL dejó de seguir tras reiniciarse, que trae
+    nombre y avance (ver get_job_status). Sin esto, el dashboard y la IA
+    decían que no había nada corriendo mientras la placa grababa."""
+    own = get_active_job_hosts()
+    tracked = {job["host"] for job in own}
+    candidates = [e["host"] for e in entries if e.get("online") and e.get("host") and e["host"] not in tracked]
+    results = await asyncio.gather(*(get_job_status(host) for host in candidates), return_exceptions=True)
+    external = [
+        {**job, "host": host}
+        for host, job in zip(candidates, results)
+        if isinstance(job, dict) and job.get("state") in ("running", "paused")
+    ]
+    return own + external
 
 
 def get_laser_jobs_with_errors() -> List[Dict[str, Any]]:

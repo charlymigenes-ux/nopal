@@ -581,6 +581,11 @@ class TestConsumers:
         monkeypatch.setattr(ai_tools, "get_elegoo_printers", lambda: [])
         monkeypatch.setattr(ai_tools, "get_registered_lasers_status", lasers)
 
+        async def no_jobs(entries):
+            return []
+
+        monkeypatch.setattr(ai_tools, "get_active_laser_jobs", no_jobs)
+
         machines = await ai_tools._collect_machines()
 
         assert [m["id"] for m in machines] == [f"marlin:{UID_M}", f"laser:{UID_L}"]  # sin id: fuera

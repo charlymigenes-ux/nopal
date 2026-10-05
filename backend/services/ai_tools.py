@@ -44,7 +44,7 @@ from backend.services.klipper_service import (
     get_printer_status,
     get_temperature_snapshot,
 )
-from backend.services.laser_service import get_registered_lasers_status, get_status as get_laser_status
+from backend.services.laser_service import get_active_laser_jobs, get_registered_lasers_status, get_status as get_laser_status
 from backend.services.marlin_printer_service import get_registered_printers_with_status as get_marlin_printers
 from backend.services.notification_service import get_notifications
 from backend.services.authorization_policy import (
@@ -160,6 +160,10 @@ async def _collect_machines() -> List[Dict[str, Any]]:
             "details": printer,
         })
 
+    # Trabajo en curso por láser (propio o el que reporte la placa): antes
+    # quedaba en None y la IA nunca sabía si un láser estaba trabajando.
+    laser_jobs = {job["host"]: job for job in await get_active_laser_jobs(lasers)}
+
     for device in lasers:
         kind = "cnc" if device.get("kind") == "cnc" else "laser"
         if not is_machine_uid(device.get("id")):
@@ -172,7 +176,7 @@ async def _collect_machines() -> List[Dict[str, Any]]:
             "brand": device.get("firmware") or "grbl",
             "online": bool(device.get("online")),
             "state": device.get("state"),
-            "job": None,
+            "job": laser_jobs.get(device.get("host")),
             "details": device,
         })
 
