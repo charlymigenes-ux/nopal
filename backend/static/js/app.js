@@ -20865,6 +20865,14 @@ let tunascreenCodeCountdownTimer = null;
 // Recursos asignables al scope de un dispositivo (solo máquinas con identidad
 // estable y plugins instalados; ver GET /api/tunascreen/scope-options).
 let tunascreenScopeOptions = { machines: [], plugins: [] };
+// Ícono de cada plugin (campo `icon` de GET /api/plugins) por id de plugin.
+let tunascreenPluginIcons = new Map();
+
+const TUNASCREEN_MACHINE_ICONS = { printer: PANEL_ICON_PRINTER, laser: PANEL_ICON_LASER, cnc: PANEL_ICON_CNC };
+const TUNASCREEN_CHECK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const TUNASCREEN_DEVICE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+// Etiquetas de acceso visibles antes del "+N" en la tarjeta del dispositivo.
+const TUNASCREEN_VISIBLE_TAGS = 3;
 
 async function loadTunascreenSettings() {
     const card = document.getElementById('tunascreen-settings-card');
@@ -20880,6 +20888,17 @@ async function loadTunascreenSettings() {
     if (!card.dataset.bound) {
         card.dataset.bound = '1';
         document.getElementById('tunascreen-generate-code-btn')?.addEventListener('click', handleTunascreenGenerateCode);
+        // El menú de tres puntos de cada dispositivo se cierra al hacer clic
+        // fuera o con Escape. Va en document una sola vez porque la lista se
+        // vuelve a pintar completa en cada recarga.
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.tunascreen-device-menu-wrap')) closeTunascreenDeviceMenus(false);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && document.querySelector('.tunascreen-device-menu:not([hidden])')) {
+                closeTunascreenDeviceMenus(true);
+            }
+        });
     }
     await loadTunascreenScopeOptions();
     loadTunascreenDevices();
@@ -20895,43 +20914,110 @@ async function loadTunascreenScopeOptions() {
         tunascreenScopeOptions = { machines: [], plugins: [] };
         appAlert(t('tunascreenScopeLoadError'), '', 'danger');
     }
+    if ((tunascreenScopeOptions.plugins || []).length) await loadTunascreenPluginIcons();
     const picker = document.getElementById('tunascreen-pair-scope');
     if (picker) {
         picker.innerHTML = `
-            <span class="tunascreen-scope-heading">${escapeHtml(t('tunascreenScopeTitle'))}</span>
+            <div class="tunascreen-scope-title">
+                <span class="tunascreen-scope-title-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </span>
+                <h3>${escapeHtml(t('tunascreenScopeTitle'))}</h3>
+            </div>
             ${renderTunascreenScopeChecks([])}
-            <span class="tunascreen-scope-note">${escapeHtml(t('tunascreenScopeNote'))}</span>`;
+            <div class="tunascreen-scope-note" role="note">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>${escapeHtml(t('tunascreenScopeNote'))}</span>
+            </div>`;
     }
 }
 
-// Casillas de máquinas y plugins. Una clave guardada que ya no se ofrece (por
-// ejemplo, una máquina que hoy no aparece) se muestra marcada con su clave,
-// para que guardar no la quite sin que el admin lo vea.
+// Reutiliza el catálogo que ya cargó la galería de plugins; si todavía no se
+// abrió, lo pide una vez. Si falla, los chips usan el ícono genérico.
+async function loadTunascreenPluginIcons() {
+    let list = pluginsCatalog;
+    if (!list.length) {
+        try {
+            const response = await fetch('/api/plugins');
+            list = response.ok ? ((await response.json()).plugins || []) : [];
+        } catch (error) {
+            console.error(error);
+            list = [];
+        }
+    }
+    tunascreenPluginIcons = new Map(list.map(plugin => [plugin.id, plugin.icon]));
+}
+
+// Ícono por tipo de máquina. Una clave guardada que ya no se ofrece no trae
+// `type`, así que se toma del prefijo de la clave ("printer:…", "laser:…").
+function tunascreenMachineIcon(item) {
+    const type = item.type || String(item.key).split(':')[0];
+    return TUNASCREEN_MACHINE_ICONS[type] || PANEL_ICON_PRINTER;
+}
+
+// Casillas de máquinas (tarjetas) y plugins (chips). Cada opción conserva un
+// <input type="checkbox"> real, oculto solo visualmente, para que
+// selectedTunascreenScope y los lectores de pantalla sigan leyendo el estado
+// de ahí. Una clave guardada que ya no se ofrece (por ejemplo, una máquina que
+// hoy no aparece) se muestra marcada con su clave, para que guardar no la
+// quite sin que el admin lo vea.
 function renderTunascreenScopeChecks(selected) {
     const chosen = new Set(selected);
     const offered = new Set([...tunascreenScopeOptions.machines, ...tunascreenScopeOptions.plugins].map(o => o.key));
     const extra = selected.filter(key => !offered.has(key)).map(key => ({ key, name: key }));
-    const group = (title, items) => items.length ? `
-        <span class="tunascreen-scope-heading">${escapeHtml(title)}</span>
-        <div class="tunascreen-scope-group">
-            ${items.map(item => `
-                <label class="gcode-viewer-check">
-                    <input type="checkbox" value="${escapeHtml(item.key)}"${chosen.has(item.key) ? ' checked' : ''}>
-                    <span>${escapeHtml(item.name)}</span>
+    const machines = [...tunascreenScopeOptions.machines, ...extra.filter(i => !i.key.startsWith('plugin:'))];
+    const plugins = [...tunascreenScopeOptions.plugins, ...extra.filter(i => i.key.startsWith('plugin:'))];
+    const input = item => `<input type="checkbox" class="tunascreen-option-input" value="${escapeHtml(item.key)}"${chosen.has(item.key) ? ' checked' : ''}>`;
+
+    const machinesHtml = machines.length ? `
+        <span class="tunascreen-scope-heading">${escapeHtml(t('tunascreenScopeMachines'))}</span>
+        <div class="tunascreen-machine-grid">
+            ${machines.map(item => `
+                <label class="tunascreen-machine-option">
+                    ${input(item)}
+                    <span class="tunascreen-machine-icon" aria-hidden="true">${tunascreenMachineIcon(item)}</span>
+                    <span class="tunascreen-machine-name">${escapeHtml(item.name)}</span>
+                    <span class="tunascreen-option-check" aria-hidden="true">${TUNASCREEN_CHECK_ICON}</span>
                 </label>`).join('')}
         </div>` : '';
-    return group(t('tunascreenScopeMachines'), [...tunascreenScopeOptions.machines, ...extra.filter(i => !i.key.startsWith('plugin:'))])
-        + group(t('tunascreenScopePlugins'), [...tunascreenScopeOptions.plugins, ...extra.filter(i => i.key.startsWith('plugin:'))]);
+    const pluginsHtml = plugins.length ? `
+        <span class="tunascreen-scope-heading tunascreen-scope-heading-minor">${escapeHtml(t('tunascreenScopePlugins'))}</span>
+        <div class="tunascreen-plugin-chips">
+            ${plugins.map(item => `
+                <label class="tunascreen-plugin-chip">
+                    ${input(item)}
+                    <span class="tunascreen-plugin-chip-icon" aria-hidden="true">${pluginIconSvg(tunascreenPluginIcons.get(item.key.slice('plugin:'.length)), 14)}</span>
+                    <span class="tunascreen-plugin-chip-name">${escapeHtml(item.name)}</span>
+                    <span class="tunascreen-option-check" aria-hidden="true">${TUNASCREEN_CHECK_ICON}</span>
+                </label>`).join('')}
+        </div>` : '';
+    return machinesHtml + pluginsHtml;
 }
 
 function selectedTunascreenScope(container) {
     return [...container.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
 }
 
-function tunascreenScopeLabel(scope) {
-    if (!scope || !scope.length) return t('tunascreenScopeNone');
+// Etiquetas "Acceso" de un dispositivo: las primeras TUNASCREEN_VISIBLE_TAGS
+// a la vista y el resto oculto detrás de un "+N" (N = total - visibles).
+function renderTunascreenAccessTags(scope) {
+    if (!scope || !scope.length) return `<span class="tunascreen-tag-empty">${escapeHtml(t('tunascreenScopeNone'))}</span>`;
     const names = new Map([...tunascreenScopeOptions.machines, ...tunascreenScopeOptions.plugins].map(o => [o.key, o.name]));
-    return t('tunascreenScopeSummary').replace('{list}', scope.map(key => names.get(key) || key).join(', '));
+    const tags = scope.map((key, index) => `<span class="tunascreen-tag"${index >= TUNASCREEN_VISIBLE_TAGS ? ' hidden' : ''}>${escapeHtml(names.get(key) || key)}</span>`).join('');
+    const hiddenCount = scope.length - TUNASCREEN_VISIBLE_TAGS;
+    const more = hiddenCount > 0
+        ? `<button type="button" class="tunascreen-tag tunascreen-tag-more" aria-expanded="false" aria-label="${escapeHtml(t('tunascreenAccessMore').replace('{count}', hiddenCount))}">+${hiddenCount}</button>`
+        : '';
+    return tags + more;
+}
+
+function closeTunascreenDeviceMenus(restoreFocus) {
+    document.querySelectorAll('.tunascreen-device-menu-btn[aria-expanded="true"]').forEach(btn => {
+        btn.setAttribute('aria-expanded', 'false');
+        const menu = btn.parentElement?.querySelector('.tunascreen-device-menu');
+        if (menu) menu.hidden = true;
+        if (restoreFocus) btn.focus();
+    });
 }
 
 async function loadTunascreenDevices() {
@@ -21002,28 +21088,87 @@ function renderTunascreenDevicesList(devices) {
         return;
     }
 
-    container.innerHTML = devices.map(device => `
-        <div class="usb-port-item" data-id="${escapeHtml(device.device_id)}">
-            <div class="usb-port-item-info">
-                <strong>${escapeHtml(device.name)}</strong>
-                <span>${device.last_seen ? escapeHtml(t('tunascreenLastSeen').replace('{date}', new Date(device.last_seen * 1000).toLocaleString())) : escapeHtml(t('tunascreenNeverConnected'))}</span>
-                <span class="tunascreen-device-scope">${escapeHtml(tunascreenScopeLabel(device.scope))}</span>
-                <div class="tunascreen-device-scope-editor" hidden>
-                    <div class="tunascreen-scope-picker">${renderTunascreenScopeChecks(device.scope || [])}</div>
-                    <button type="button" class="btn-file-action tunascreen-device-scope-save-btn" data-id="${escapeHtml(device.device_id)}">${escapeHtml(t('tunascreenScopeSave'))}</button>
+    // Sin indicador de "en línea": GET /api/tunascreen/devices no informa si
+    // el dispositivo está conectado ahora, solo su última conexión.
+    container.innerHTML = devices.map((device, index) => `
+        <article class="tunascreen-device" data-id="${escapeHtml(device.device_id)}">
+            <div class="tunascreen-device-main">
+                <div class="tunascreen-device-head">
+                    <span class="tunascreen-device-icon" aria-hidden="true">${TUNASCREEN_DEVICE_ICON}</span>
+                    <div class="tunascreen-device-text">
+                        <strong class="tunascreen-device-name">${escapeHtml(device.name)}</strong>
+                        <span class="tunascreen-device-seen">${device.last_seen ? escapeHtml(t('tunascreenLastSeen').replace('{date}', new Date(device.last_seen * 1000).toLocaleString())) : escapeHtml(t('tunascreenNeverConnected'))}</span>
+                    </div>
+                </div>
+                <div class="tunascreen-device-access">
+                    <span class="tunascreen-device-access-label">${escapeHtml(t('tunascreenAccessLabel'))}</span>
+                    <div class="tunascreen-device-tags" tabindex="-1">${renderTunascreenAccessTags(device.scope)}</div>
                 </div>
             </div>
-            <button type="button" class="btn-file-action tunascreen-device-scope-btn" title="${escapeHtml(t('tunascreenScopeEdit'))}">${escapeHtml(t('tunascreenScopeEdit'))}</button>
-            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger tunascreen-device-revoke-btn" data-id="${escapeHtml(device.device_id)}" title="${escapeHtml(t('tunascreenRevoke'))}">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-        </div>
+            <div class="tunascreen-device-actions">
+                <button type="button" class="btn-file-action tunascreen-device-scope-btn" aria-expanded="false" aria-controls="tunascreen-scope-editor-${index}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    <span>${escapeHtml(t('tunascreenScopeEdit'))}</span>
+                </button>
+                <div class="tunascreen-device-menu-wrap">
+                    <button type="button" class="tunascreen-device-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="tunascreen-device-menu-${index}" aria-label="${escapeHtml(t('tunascreenDeviceMenu'))}" title="${escapeHtml(t('tunascreenDeviceMenu'))}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+                    </button>
+                    <div class="tunascreen-device-menu" id="tunascreen-device-menu-${index}" role="menu" hidden>
+                        <button type="button" role="menuitem" class="tunascreen-device-menu-item tunascreen-device-revoke-btn" data-id="${escapeHtml(device.device_id)}">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            <span>${escapeHtml(t('tunascreenRevoke'))}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="tunascreen-device-scope-editor" id="tunascreen-scope-editor-${index}" hidden>
+                <div class="tunascreen-scope-picker">${renderTunascreenScopeChecks(device.scope || [])}</div>
+                <button type="button" class="btn-file-action btn-file-action-accent tunascreen-device-scope-save-btn" data-id="${escapeHtml(device.device_id)}">${escapeHtml(t('tunascreenScopeSave'))}</button>
+            </div>
+        </article>
     `).join('');
 
     container.querySelectorAll('.tunascreen-device-scope-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const editor = btn.closest('.usb-port-item')?.querySelector('.tunascreen-device-scope-editor');
-            if (editor) editor.hidden = !editor.hidden;
+            const editor = btn.closest('.tunascreen-device')?.querySelector('.tunascreen-device-scope-editor');
+            if (!editor) return;
+            editor.hidden = !editor.hidden;
+            btn.setAttribute('aria-expanded', String(!editor.hidden));
+        });
+    });
+
+    // "+N": despliega en el mismo lugar las etiquetas ocultas y desaparece;
+    // el foco pasa al contenedor de etiquetas para no perderse en <body>.
+    container.querySelectorAll('.tunascreen-tag-more').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tags = btn.closest('.tunascreen-device-tags');
+            if (!tags) return;
+            tags.querySelectorAll('.tunascreen-tag[hidden]').forEach(tag => { tag.hidden = false; });
+            btn.remove();
+            tags.focus();
+        });
+    });
+
+    container.querySelectorAll('.tunascreen-device-menu-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const menu = btn.parentElement?.querySelector('.tunascreen-device-menu');
+            if (!menu) return;
+            const willOpen = menu.hidden;
+            closeTunascreenDeviceMenus(false);
+            if (!willOpen) return;
+            menu.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            menu.querySelector('[role="menuitem"]')?.focus();
+        });
+        // Si el foco sale del menú con Tab, el menú se cierra solo.
+        btn.parentElement?.addEventListener('focusout', event => {
+            if (event.currentTarget.contains(event.relatedTarget)) return;
+            const menu = event.currentTarget.querySelector('.tunascreen-device-menu');
+            if (event.relatedTarget && menu && !menu.hidden) {
+                menu.hidden = true;
+                btn.setAttribute('aria-expanded', 'false');
+            }
         });
     });
 
@@ -21048,6 +21193,7 @@ function renderTunascreenDevicesList(devices) {
 
     container.querySelectorAll('.tunascreen-device-revoke-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
+            closeTunascreenDeviceMenus(false);
             if (!(await appConfirm(t('tunascreenRevokeConfirm'), t('tunascreenRevoke')))) return;
             try {
                 const response = await fetch(`/api/tunascreen/devices/${encodeURIComponent(btn.dataset.id)}`, { method: 'DELETE' });

@@ -3012,17 +3012,24 @@
                                 </button>
                             </div>
                             <p data-i18n="tunascreenDescription">Emparejá tablets/teléfonos con la app TUNA-Screen para controlar tus máquinas como pantalla dedicada o consola de taller.</p>
-                            <div class="tunascreen-scope-picker" id="tunascreen-pair-scope"></div>
-                            <button type="button" class="btn-file-action" id="tunascreen-generate-code-btn">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2" ry="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-                                <span data-i18n="tunascreenGenerateCode">Generar código de emparejamiento</span>
-                            </button>
-                            <div class="tunascreen-code-display" id="tunascreen-code-display" hidden>
-                                <span class="tunascreen-code-value" id="tunascreen-code-value"></span>
-                                <span class="tunascreen-code-expiry" id="tunascreen-code-expiry"></span>
-                            </div>
-                            <h3 class="tunascreen-devices-title" data-i18n="tunascreenDevicesTitle">Dispositivos emparejados</h3>
-                            <div class="usb-ports-list" id="tunascreen-devices-list"></div>
+                            <!-- Bloque 1: qué puede controlar el próximo dispositivo y su código. -->
+                            <section class="tunascreen-section tunascreen-pair-section">
+                                <div class="tunascreen-scope-picker" id="tunascreen-pair-scope"></div>
+                                <button type="button" class="btn-file-action btn-file-action-accent tunascreen-generate-btn" id="tunascreen-generate-code-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2" ry="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                                    <span data-i18n="tunascreenGenerateCode">Generar código de emparejamiento</span>
+                                    <svg class="tunascreen-generate-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                </button>
+                                <div class="tunascreen-code-display" id="tunascreen-code-display" hidden>
+                                    <span class="tunascreen-code-value" id="tunascreen-code-value"></span>
+                                    <span class="tunascreen-code-expiry" id="tunascreen-code-expiry"></span>
+                                </div>
+                            </section>
+                            <!-- Bloque 2: dispositivos ya emparejados. -->
+                            <section class="tunascreen-section tunascreen-devices-section">
+                                <h3 class="tunascreen-devices-title" data-i18n="tunascreenDevicesTitle">Dispositivos emparejados</h3>
+                                <div class="tunascreen-devices-list" id="tunascreen-devices-list"></div>
+                            </section>
                         </div>
                         <div class="settings-card card-collapsible usb-ports-settings-card" data-settings-module="devices">
                             <div class="card-header-std">
