@@ -155,13 +155,13 @@ MACHINE = "machine"
 
 
 def machine_resource(machine: Dict[str, Any]) -> Resource:
-    """Recurso de una máquina del modelo de ai_tools. El láser y la CNC usan
-    el id de su registro (`laser:<host>`), igual que `_laser_resource` del
-    panel; ai_tools nombra a la CNC `cnc:<host>`, pero es la misma placa."""
+    """Recurso de una máquina del modelo de ai_tools. Marlin, láser y CNC usan
+    su id canónico por id interno (`marlin:<id>`, `laser:<id>`), el mismo que
+    el panel y TUNA-Screen (identidad estable de máquinas)."""
     kind = machine.get("kind")
     if kind in ("laser", "cnc"):
-        host = str(machine["id"]).split(":", 1)[1]
-        return Resource(ResourceKind.CNC if kind == "cnc" else ResourceKind.LASER, f"laser:{host}")
+        # `laser:<id interno>`: misma clave que el panel y TUNA-Screen.
+        return Resource(ResourceKind.CNC if kind == "cnc" else ResourceKind.LASER, str(machine["id"]))
     return Resource(ResourceKind.PRINTER, str(machine["id"]))
 
 

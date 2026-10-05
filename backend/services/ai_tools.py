@@ -13,13 +13,13 @@ por esta vía nunca.
 
 Identidad de máquina
 --------------------
-NOPAL no tiene un id único global de máquina: cada marca identifica lo suyo
-a su manera (Klipper por puerto de Moonraker, Marlin por dispositivo serie,
-Elegoo por mainboard_id, FlashForge por número de serie, Bambu por id,
-láser/CNC por host). Acá se construye un id compuesto y estable
-`<tipo>:<id-nativo>` — por ejemplo `klipper:7125` o `laser:192.168.0.61` —
-y además se acepta el nombre visible ("TTS 55 PRO") porque es lo que el
-usuario va a escribir en su pregunta.
+Cada marca identifica lo suyo a su manera (Klipper por puerto de Moonraker,
+Elegoo por mainboard_id, FlashForge por número de serie, Bambu por id);
+Marlin y láser/CNC usan el id interno que les asigna NOPAL (`mch_…`, ver
+machine_identity), no su ruta USB ni su IP, que cambian. Acá se construye un
+id compuesto y estable `<tipo>:<id-nativo>` — por ejemplo `klipper:7125` o
+`laser:mch_…` — y además se acepta el nombre visible ("TTS 55 PRO") o la
+dirección actual porque es lo que el usuario va a escribir en su pregunta.
 
 Todo lo que devuelven estas funciones es dato real medido por NOPAL o por
 sus integraciones. Cuando algo no se puede saber se devuelve
@@ -54,6 +54,7 @@ from backend.services.authorization_policy import (
     ResourceKind,
     authorize,
 )
+from backend.services.machine_identity import is_machine_uid
 from backend.services.plugin_loader_service import get_loaded_plugin_module
 
 logger = logging.getLogger(__name__)
@@ -108,8 +109,12 @@ async def _collect_machines() -> List[Dict[str, Any]]:
         })
 
     for printer in marlin:
+        # Id canónico por id interno (identidad estable), no por la ruta USB;
+        # sin id interno la máquina no se expone (fail-closed).
+        if not is_machine_uid(printer.get("id")):
+            continue
         machines.append({
-            "id": f"marlin:{printer.get('device')}",
+            "id": f"marlin:{printer['id']}",
             "name": printer.get("name") or printer.get("device"),
             "kind": "printer",
             "brand": "marlin",
@@ -157,8 +162,11 @@ async def _collect_machines() -> List[Dict[str, Any]]:
 
     for device in lasers:
         kind = "cnc" if device.get("kind") == "cnc" else "laser"
+        if not is_machine_uid(device.get("id")):
+            continue
         machines.append({
-            "id": f"{kind}:{device.get('host')}",
+            # Láser y CNC comparten el driver `laser`; el tipo va en `kind`.
+            "id": f"laser:{device['id']}",
             "name": device.get("name") or device.get("host"),
             "kind": kind,
             "brand": device.get("firmware") or "grbl",
@@ -173,8 +181,10 @@ async def _collect_machines() -> List[Dict[str, Any]]:
 
 def _resolve_machine(machines: List[Dict[str, Any]], machine_id: str) -> Optional[Dict[str, Any]]:
     """Acepta el id compuesto (`klipper:7125`), el id nativo suelto
-    (`7125`, `192.168.0.61`) o el nombre visible — el usuario pregunta por
-    "ET4-WE", no por "elegoo:0a1b2c"."""
+    (`7125`), la dirección actual de una Marlin o un láser (`192.168.0.61`,
+    `/dev/ttyUSB0`) o el nombre visible — el usuario pregunta por "ET4-WE",
+    no por "elegoo:0a1b2c". La dirección solo sirve para encontrar la máquina
+    hoy; el id que se devuelve es siempre el interno."""
     needle = (machine_id or "").strip().lower()
     if not needle:
         return None
@@ -186,7 +196,8 @@ def _resolve_machine(machines: List[Dict[str, Any]], machine_id: str) -> Optiona
             return machine
     for machine in machines:
         native = str(machine["id"]).split(":", 1)[-1].lower()
-        if native == needle:
+        details = machine.get("details") or {}
+        if needle in (native, str(details.get("host") or "").lower(), str(details.get("device") or "").lower()):
             return machine
     return None
 
@@ -408,8 +419,8 @@ async def get_grbl_status(machine_id: str) -> Dict[str, Any]:
             **_unavailable("El dispositivo no responde, no se puede consultar su estado GRBL"),
         }
 
-    host = str(machine["id"]).split(":", 1)[1]
-    status = await get_laser_status(host)
+    host = (machine.get("details") or {}).get("host")
+    status = await get_laser_status(host) if host else None
     if status is None:
         return {
             "machine_id": machine["id"],

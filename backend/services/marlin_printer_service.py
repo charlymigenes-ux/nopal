@@ -15,7 +15,7 @@ import time
 from collections import deque
 from typing import Any, Callable, Dict, List, Optional
 
-from backend.services import marlin_driver, mks_wifi_transport
+from backend.services import machine_identity, marlin_driver, mks_wifi_transport
 
 logger = logging.getLogger(__name__)
 
@@ -40,24 +40,53 @@ def _take_cached_probe_firmware_info(device: str, baud: int) -> Optional[Dict[st
 
 # ── Registro de impresoras conocidas (persistido) ──
 
+# Campos calculados en cada lectura de estado; nunca se persisten.
+_TRANSIENT_FIELDS = ("online", "identity")
+
+
 def _load_registry() -> List[Dict[str, Any]]:
+    """Cada entrada lleva su id interno inmutable (`id`, ver
+    machine_identity): a las de antes se les asigna uno al leerlas, una sola
+    vez, y se guarda."""
     try:
         with open(REGISTRY_PATH, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+            entries = json.load(handle)
     except (OSError, json.JSONDecodeError):
         return []
+    if not isinstance(entries, list):
+        return []
+    entries = [e for e in entries if isinstance(e, dict)]
+    if machine_identity.ensure_uids(entries):
+        _save_registry(entries)
+    return entries
 
 
 def _save_registry(entries: List[Dict[str, Any]]):
+    clean = [{k: v for k, v in e.items() if k not in _TRANSIENT_FIELDS} for e in entries]
     try:
         with open(REGISTRY_PATH, "w", encoding="utf-8") as handle:
-            json.dump(entries, handle, indent=2)
+            json.dump(clean, handle, indent=2)
     except OSError:
         pass
 
 
 def get_registered_printers() -> List[Dict[str, Any]]:
     return _load_registry()
+
+
+def get_printer_by_uid(uid: str) -> Optional[Dict[str, Any]]:
+    """Entrada del registro por su id interno (None si no existe). Es la única
+    forma de pasar de un id canónico `marlin:<id>` a la ruta actual."""
+    if not machine_identity.is_machine_uid(uid):
+        return None
+    return next((e for e in _load_registry() if e.get("id") == uid), None)
+
+
+def printer_identity_state(entry: Dict[str, Any], entries: List[Dict[str, Any]]) -> str:
+    """USB: anclada por `location`. MKS WiFi todavía no tiene ancla de red
+    (sin MAC): identidad `missing`, igual que un láser de red sin MAC."""
+    is_network = entry.get("transport") == "mks_wifi" or str(entry.get("device", "")).startswith("tcp://")
+    return machine_identity.identity_state(entry, entries, "network" if is_network else "usb")
 
 
 def _probe_marlin_sync(device: str, baud: int = 115200, timeout: float = 3.0) -> bool:
@@ -271,7 +300,7 @@ def get_registered_printers_with_status() -> List[Dict[str, Any]]:
             online = device in _serial_connections or mks_wifi_transport.is_reachable(device)
         else:
             online = not entry.get("conflict") and os.path.exists(device)
-        result.append({**entry, "online": online})
+        result.append({**entry, "online": online, "identity": printer_identity_state(entry, entries)})
     return result
 
 
@@ -298,6 +327,10 @@ def register_printer(
     entries = [e for e in _load_registry() if e.get("device") != device]
     existing = next((e for e in _load_registry() if e.get("device") == device), None)
     entry = {
+        # Id interno inmutable: se conserva en cada edición; uno nuevo solo
+        # para una impresora nueva.
+        "id": existing["id"] if existing and machine_identity.is_machine_uid(existing.get("id"))
+        else machine_identity.new_machine_uid(),
         "device": device,
         "name": name,
         "baud": baud,

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 import backend.services.ai_config_service as ai_config_service
 import backend.services.gcode_bounds as gcode_bounds
+import backend.services.machine_identity as machine_identity
 import backend.services.ai_conversations_service as ai_conversations_service
 import backend.services.bambu_service as bambu_service
 import backend.services.elegoo_service as elegoo_service
@@ -88,6 +89,10 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     monkeypatch.setattr(flashforge_service, "REGISTRY_PATH", str(tmp_path / "flashforge_printer_registry.json"))
     monkeypatch.setattr(marlin_printer_service, "REGISTRY_PATH", str(tmp_path / "marlin_printer_registry.json"))
     monkeypatch.setattr(tunascreen_service, "REGISTRY_PATH", str(tmp_path / "tunascreen_devices.json"))
+    # ARP del servidor (/proc/net/arp): sin esto, la identidad por MAC de los
+    # tests dependería de qué hay en la red de quien los corre. Vacío salvo
+    # que un test escriba su propio ARP simulado.
+    monkeypatch.setattr(machine_identity, "ARP_PATH", str(tmp_path / "arp"))
     # Plugins: aísla tanto la carpeta de clones (plugins/) como el estado de
     # instalación (data/plugins/installed.json) -- sin esto, instalar/
     # desinstalar un plugin en un test haría un `git clone` real y tocaría

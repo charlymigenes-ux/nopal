@@ -15,7 +15,7 @@ import requests
 import websockets
 from requests_toolbelt.multipart.encoder import MultipartEncoder, MultipartEncoderMonitor
 
-from backend.services import marlin_driver
+from backend.services import machine_identity, marlin_driver
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +50,32 @@ def _usb_device(host: str) -> str:
 
 # ── Registro de placas conocidas (persistido) ──
 
+# Campos calculados en cada lectura de estado; nunca se persisten.
+_TRANSIENT_FIELDS = ("online", "identity", "anchor_unverified")
+
+
 def _load_registry() -> List[Dict[str, Any]]:
+    """Cada entrada lleva su id interno inmutable (`id`, ver
+    machine_identity): a las de antes se les asigna uno al leerlas, una sola
+    vez, y se guarda."""
     try:
         with open(REGISTRY_PATH, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+            entries = json.load(handle)
     except (OSError, json.JSONDecodeError):
         return []
+    if not isinstance(entries, list):
+        return []
+    entries = [e for e in entries if isinstance(e, dict)]
+    if machine_identity.ensure_uids(entries):
+        _save_registry(entries)
+    return entries
 
 
 def _save_registry(entries: List[Dict[str, Any]]):
+    clean = [{k: v for k, v in e.items() if k not in _TRANSIENT_FIELDS} for e in entries]
     try:
         with open(REGISTRY_PATH, "w", encoding="utf-8") as handle:
-            json.dump(entries, handle, indent=2)
+            json.dump(clean, handle, indent=2)
     except OSError:
         pass
 
@@ -70,7 +84,28 @@ def get_registered_lasers() -> List[Dict[str, Any]]:
     return _load_registry()
 
 
+def _is_network_entry(entry: Dict[str, Any]) -> bool:
+    return not _is_usb_host(str(entry.get("host", "")))
+
+
+def get_laser_by_uid(uid: str) -> Optional[Dict[str, Any]]:
+    """Entrada del registro por su id interno (None si no existe). Es la única
+    forma de pasar de un id canónico `laser:<id>` a la dirección actual."""
+    if not machine_identity.is_machine_uid(uid):
+        return None
+    return next((e for e in _load_registry() if e.get("id") == uid), None)
+
+
+def laser_identity_state(entry: Dict[str, Any], entries: List[Dict[str, Any]]) -> str:
+    kind = "usb" if _is_usb_host(str(entry.get("host", ""))) else "network"
+    return machine_identity.identity_state(entry, entries, kind)
+
+
 def _registry_entry_online(entry: Dict[str, Any], network_probe_results: Dict[str, bool]) -> bool:
+    if entry.get("anchor_unverified"):
+        # Tiene MAC guardada pero no aparece en el ARP del servidor: no se
+        # puede confirmar que en esa IP siga la misma placa (fail-closed).
+        return False
     if entry.get("conflict"):
         # Hay algo respondiendo en ese puerto, pero la reconciliación no
         # pudo confirmar que sigue siendo la misma placa — se reporta
@@ -163,16 +198,27 @@ def get_registered_lasers_with_status(timeout: float = 1.0) -> List[Dict[str, An
     entries = _reconcile_usb_entries(_load_registry())
     network_hosts = [e["host"] for e in entries if not _is_usb_host(e.get("host", ""))]
 
-    probe_results: Dict[str, bool] = {}
+    probes: Dict[str, Optional[Dict[str, Any]]] = {}
     if network_hosts:
         with ThreadPoolExecutor(max_workers=min(len(network_hosts), 20)) as executor:
-            for host, reachable in executor.map(
-                lambda h: (h, _probe_host(h, timeout) is not None), network_hosts
-            ):
-                probe_results[host] = reachable
+            for host, probe in executor.map(lambda h: (h, _probe_host(h, timeout)), network_hosts):
+                probes[host] = probe
+    probe_results = {host: probe is not None for host, probe in probes.items()}
+
+    # Identidad: el sondeo de arriba llena el ARP del servidor; con eso se
+    # verifica (y, si cambió la IP, se reencuentra) cada máquina anclada por
+    # MAC. Nunca se reasigna una máquina a otro id.
+    if machine_identity.reconcile_network_anchors(
+        entries, machine_identity.read_arp_table(), probes, _is_network_entry
+    ):
+        _save_registry(entries)
 
     return [
-        {**entry, "online": _registry_entry_online(entry, probe_results)}
+        {
+            **entry,
+            "online": _registry_entry_online(entry, probe_results),
+            "identity": laser_identity_state(entry, entries),
+        }
         for entry in entries
     ]
 
@@ -213,8 +259,12 @@ def record_laser_job_history(job: "LaserJob"):
     """Guarda el resultado final de un trabajo (completado, cancelado o con
     error) en el historial persistente, más reciente primero."""
     entries = _load_history()
+    machine = next((e for e in _load_registry() if e.get("host") == job.host), None)
     entry = {
         "host": job.host,
+        # Vínculo estable a la máquina (id interno); `host` queda solo como
+        # dato de la dirección que tenía al cortar.
+        "machine_id": f"laser:{machine['id']}" if machine else None,
         "filename": job.filename,
         "source": job.source,
         "state": job.state,
@@ -256,6 +306,10 @@ def register_laser(
     entries = [e for e in _load_registry() if e.get("host") != host]
     existing = next((e for e in _load_registry() if e.get("host") == host), None)
     entry = {
+        # Id interno inmutable: se conserva en cada edición; uno nuevo solo
+        # para una máquina nueva.
+        "id": existing["id"] if existing and machine_identity.is_machine_uid(existing.get("id"))
+        else machine_identity.new_machine_uid(),
         "host": host,
         "name": name,
         "transport": transport,
@@ -297,6 +351,15 @@ def register_laser(
     if firmware not in ("fluidnc", "marlin"):
         firmware = None
     entry["firmware"] = firmware or (existing.get("firmware") if existing else None) or "fluidnc"
+
+    # Anclas de red (MAC del ARP y, como dato complementario, Chip ID de
+    # [ESP420]): se conservan las existentes; solo se capturan si faltan.
+    if not _is_usb_host(host):
+        for field in ("mac", "chip_id"):
+            if existing and existing.get(field):
+                entry[field] = existing[field]
+        if not entry.get("mac"):
+            entry.update(capture_network_anchor(host))
 
     entries.append(entry)
     _save_registry(entries)
@@ -391,12 +454,29 @@ def _probe_host(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
             "host": ip,
             "hostname": info.get("Hostname", ""),
             "firmware": info.get("Firmware") or info.get("FW version", ""),
+            # 16 bits de la MAC: dato complementario de ancla, nunca un id.
+            "chip_id": info.get("Chip ID", ""),
         }
     except requests.exceptions.RequestException as e:
         # DEBUG y no WARNING: un escaneo de red sondea hasta 254 IPs y que la
         # mayoría no responda es el caso normal, no un problema real.
         logger.debug(f"Sondeo de {ip} sin respuesta: {e}")
         return None
+
+
+def capture_network_anchor(host: str, timeout: float = 1.5) -> Dict[str, Any]:
+    """Anclas de una placa por red en este momento: `chip_id` de [ESP420]
+    (consulta de solo lectura) y la `mac` que el ARP del servidor tiene para
+    esa IP tras contactarla. Lo que no se pueda obtener se omite: sin MAC la
+    máquina queda sin identidad estable (fuera del scope de TUNA-Screen)."""
+    anchor: Dict[str, Any] = {}
+    probe = _probe_host(host, timeout)
+    if probe and probe.get("chip_id"):
+        anchor["chip_id"] = probe["chip_id"]
+    mac = machine_identity.read_arp_table().get(host)
+    if mac:
+        anchor["mac"] = mac
+    return anchor
 
 
 def _scan_network_sync(timeout: float = 0.4, max_workers: int = 60) -> List[Dict[str, Any]]:

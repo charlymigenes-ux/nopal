@@ -212,13 +212,16 @@ def _active_jobs(
             })
 
     marlin_names = {entry.get("device"): entry.get("name") for entry in marlin_registry}
+    # device_type/device_id vinculan la cámara del trabajo: por id interno
+    # (identidad estable), no por la ruta USB que cambia al renumerar.
+    marlin_uids = {entry.get("device"): entry.get("id") for entry in marlin_registry}
     for job in marlin_jobs:
         total = job.get("total") or 0
         current = job.get("current") or 0
         jobs.append({
             "machine_type": "printer",
             "device_type": "marlin",
-            "device_id": job.get("device"),
+            "device_id": marlin_uids.get(job.get("device")),
             "name": marlin_names.get(job.get("device")) or job.get("device"),
             "filename": job.get("filename"),
             "state": job.get("state"),
@@ -237,7 +240,7 @@ def _active_jobs(
         jobs.append({
             "machine_type": kind,
             "device_type": kind,
-            "device_id": job.get("host"),
+            "device_id": entry.get("id"),
             "name": entry.get("name") or job.get("host"),
             "filename": job.get("filename"),
             "state": job.get("state"),

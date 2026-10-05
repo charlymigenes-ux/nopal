@@ -6292,9 +6292,9 @@ async function refreshDashboardLaserCard() {
             try {
                 const response = await fetch(`/api/laser/status?host=${encodeURIComponent(laser.host)}`);
                 const status = await response.json();
-                return { host: laser.host, status, kind: laser.kind || 'laser' };
+                return { id: laser.id, host: laser.host, status, kind: laser.kind || 'laser' };
             } catch (error) {
-                return { host: laser.host, status: { connected: false }, kind: laser.kind || 'laser' };
+                return { id: laser.id, host: laser.host, status: { connected: false }, kind: laser.kind || 'laser' };
             }
         }));
         dashboardLaserDevicesLoadError = false;
@@ -6714,15 +6714,17 @@ function machineLedCardIdentity(card) {
     const name = (card.querySelector('.printer-name') || card.querySelector('.dev-card-name'))
         ?.textContent?.trim() || 'Máquina';
     if (card.dataset.port) return { type: 'klipper', id: card.dataset.port, name };
-    if (card.dataset.marlinDevice) return { type: 'marlin', id: card.dataset.marlinDevice, name };
+    // Marlin y láser/CNC: por id interno (identidad estable), no por la ruta
+    // USB ni la IP. Sin id interno no hay regla LED (fail-closed).
+    if (card.dataset.marlinDevice) return card.dataset.machineUid ? { type: 'marlin', id: card.dataset.machineUid, name } : null;
     if (card.dataset.elegooId) return { type: 'elegoo', id: card.dataset.elegooId, name };
     if (card.dataset.flashforgeId) return { type: 'flashforge', id: card.dataset.flashforgeId, name };
     if (card.dataset.bambuId) return { type: 'bambu', id: card.dataset.bambuId, name };
-    if (card.dataset.laserHost) return {
+    if (card.dataset.laserHost) return card.dataset.machineUid ? {
         type: card.classList.contains('printer-card-type-cnc') ? 'cnc' : 'laser',
-        id: card.dataset.laserHost,
+        id: card.dataset.machineUid,
         name,
-    };
+    } : null;
     return null;
 }
 
@@ -7696,14 +7698,16 @@ function laserDeviceState(status) {
 }
 
 function laserDeviceModel(entry, jobsByHost) {
-    const { host, status, kind } = entry;
+    const { id, host, status, kind } = entry;
     const state = laserDeviceState(status);
     const enLinea = state !== 'offline';
     const enTrabajo = deviceIsBusy(state);
     const esCnc = kind === 'cnc';
     const nombre = laserHostLabel(host) || (esCnc ? t('cnc') : t('laser'));
     const job = laserActiveJobFor(host, jobsByHost);
-    const claveCamara = `${esCnc ? 'cnc' : 'laser'}:${host}`;
+    // La cámara se vincula por el id interno de la máquina (estable), no por
+    // el host: una IP o ruta USB que cambia no debe mover la cámara a otra.
+    const claveCamara = id ? `${esCnc ? 'cnc' : 'laser'}:${id}` : null;
 
     const etiquetas = {
         offline: t('offline'), printing: t('printing'), paused: t('paused'),
@@ -7782,7 +7786,7 @@ function laserDeviceModel(entry, jobsByHost) {
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         waves: deviceStateThermalWave(state, host),
-        dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}"`,
+        dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}" data-machine-uid="${escapeHtml(id || '')}"`,
     };
 }
 
@@ -15585,7 +15589,7 @@ function marlinPrinterCardHtml(printer, status) {
     // sigue mostrando el estado real sin conexión.
     const illustrationState = visualState === 'offline' ? 'idle' : visualState;
     return `
-        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}" data-heat-progress="${heatProgress ?? ''}">
+        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}" data-machine-uid="${escapeHtml(printer.id || '')}" data-heat-progress="${heatProgress ?? ''}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
             <div class="printer-card-top">
                 <div>

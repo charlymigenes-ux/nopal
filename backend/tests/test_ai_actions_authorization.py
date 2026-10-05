@@ -22,15 +22,17 @@ from backend.services.authorization_policy import (
     Action as PolicyAction, AuthorizationResult, Decision, PrincipalKind, Reason, ResourceKind, Role,
 )
 
-LASER_HOST = "192.168.0.61"
-CNC_HOST = "192.168.0.63"
+MARLIN_UID = "mch_00000000000000a1"
+LASER_UID = "mch_00000000000000a2"
+CNC_UID = "mch_00000000000000a3"
 
 # Mismo formato que ai_tools._collect_machines (sin red).
 MACHINES = {
     "ET4": {"id": "klipper:7125", "name": "ET4", "kind": "printer", "brand": "klipper"},
-    "i3": {"id": "marlin:/dev/ttyUSB0", "name": "i3", "kind": "printer", "brand": "marlin"},
-    "TTS": {"id": f"laser:{LASER_HOST}", "name": "TTS", "kind": "laser", "brand": "grbl"},
-    "CNC": {"id": f"cnc:{CNC_HOST}", "name": "CNC", "kind": "cnc", "brand": "grbl"},
+    # Marlin y láser/CNC: id canónico por id interno (identidad estable).
+    "i3": {"id": f"marlin:{MARLIN_UID}", "name": "i3", "kind": "printer", "brand": "marlin"},
+    "TTS": {"id": f"laser:{LASER_UID}", "name": "TTS", "kind": "laser", "brand": "grbl"},
+    "CNC": {"id": f"laser:{CNC_UID}", "name": "CNC", "kind": "cnc", "brand": "grbl"},
 }
 
 # (acción IA, argumentos, acción de la política, clave del recurso)
@@ -176,9 +178,9 @@ class TestDenyAndPrincipal:
 class TestResources:
     @pytest.mark.parametrize("machine, kind, key", [
         ("ET4", ResourceKind.PRINTER, "printer:klipper:7125"),
-        ("i3", ResourceKind.PRINTER, "printer:marlin:/dev/ttyUSB0"),
-        ("TTS", ResourceKind.LASER, f"laser:laser:{LASER_HOST}"),
-        ("CNC", ResourceKind.CNC, f"cnc:laser:{CNC_HOST}"),
+        ("i3", ResourceKind.PRINTER, f"printer:marlin:{MARLIN_UID}"),
+        ("TTS", ResourceKind.LASER, f"laser:laser:{LASER_UID}"),
+        ("CNC", ResourceKind.CNC, f"cnc:laser:{CNC_UID}"),
     ])
     async def test_machine_resource_matches_panel_keys(self, log, machine, kind, key):
         await ai_actions.execute("queue_file", {"machine_id": machine, "path": "a.gcode"}, "operador", "u-op")

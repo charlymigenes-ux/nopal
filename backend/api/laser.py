@@ -67,12 +67,14 @@ router = APIRouter()
 
 def _laser_resource(host: str) -> Resource:
     """Recurso de la Authorization Policy (ADR-006) para un láser/CNC: el id
-    normalizado de la máquina (`laser:<host>`, el mismo del modelo de
-    TUNA-Screen) con el tipo según el `kind` del registro (CNC o láser; un
-    host sin registrar se trata como láser)."""
+    canónico de la máquina (`laser:<id interno>`, el mismo del modelo de
+    TUNA-Screen y de la IA; identidad estable de máquinas) con el tipo según
+    el `kind` del registro. El panel sigue direccionando por `host` (la
+    dirección actual); un host sin registrar no tiene id interno y se rotula
+    por su dirección (para un usuario el recurso no cambia la decisión)."""
     entry = next((e for e in get_registered_lasers() if e.get("host") == host), None)
     kind = ResourceKind.CNC if (entry or {}).get("kind") == "cnc" else ResourceKind.LASER
-    return Resource(kind, f"laser:{host}")
+    return Resource(kind, f"laser:{(entry or {}).get('id') or host}")
 
 
 @router.get("/api/laser/host")

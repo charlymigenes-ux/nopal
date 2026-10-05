@@ -42,9 +42,13 @@ router = APIRouter()
 
 def _marlin_resource(device: str) -> Resource:
     """Recurso de la Authorization Policy (ADR-006) para una impresora Marlin:
-    el id normalizado de la máquina (`marlin:<device>`, el mismo del modelo de
-    TUNA-Screen). Única construcción para todas las rutas migradas."""
-    return Resource(ResourceKind.PRINTER, f"marlin:{device}")
+    el id canónico de la máquina (`marlin:<id interno>`, el mismo del modelo
+    de TUNA-Screen y de la IA; identidad estable de máquinas). Las rutas del
+    panel siguen direccionando por `device` (la ruta actual); uno sin
+    registrar no tiene id interno y se rotula por su ruta (para un usuario el
+    recurso no cambia la decisión). Única construcción para las rutas migradas."""
+    entry = next((e for e in get_registered_printers() if e.get("device") == device), None)
+    return Resource(ResourceKind.PRINTER, f"marlin:{(entry or {}).get('id') or device}")
 
 
 @router.get("/api/marlin-printers/profiles")

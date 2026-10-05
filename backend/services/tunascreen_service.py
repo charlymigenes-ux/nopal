@@ -31,6 +31,7 @@ from backend.services import (
     flashforge_service,
     klipper_service,
     laser_service,
+    machine_identity,
     marlin_printer_service,
     plugin_installer_service,
 )
@@ -695,9 +696,14 @@ async def _marlin_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     online = registered_online and status is not None
     hotend = (status or {}).get("extruder") or {}
     bed = (status or {}).get("heater_bed") or {}
-    camera_capabilities, camera = _camera_fields("marlin", device)
+    uid = entry["id"]
+    # La cámara se vincula por el id interno (estable), no por la ruta USB.
+    camera_capabilities, camera = _camera_fields("marlin", uid)
     return {
-        "id": f"marlin:{device}",
+        "id": f"marlin:{uid}",
+        # stable | missing | conflict (ver machine_identity): solo `stable`
+        # puede entrar al scope de un dispositivo.
+        "identity": entry.get("identity"),
         "name": entry.get("name") or device,
         "type": "printer",
         "driver": "marlin",
@@ -775,10 +781,12 @@ async def _laser_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     # bound_device.type de una cámara vinculada a láser/CNC es "laser" o
     # "cnc" (no un prefijo compartido) -- mismo `kind` que ya resolvimos
     # arriba, ver dashboard_service._active_jobs() para la misma convención.
-    camera_capabilities, camera = _camera_fields(kind, host)
+    uid = entry["id"]
+    camera_capabilities, camera = _camera_fields(kind, uid)
 
     return {
-        "id": f"laser:{host}",
+        "id": f"laser:{uid}",
+        "identity": entry.get("identity"),
         "name": entry.get("name") or host,
         "type": kind,
         "driver": "grbl",
@@ -859,11 +867,14 @@ async def _collect_machines() -> List[Dict[str, Any]]:
         machines.extend(_cached_driver("marlin"))
     else:
         for entry in marlin_entries:
+            if not machine_identity.is_machine_uid(entry.get("id")):
+                logger.warning("Marlin %s sin id interno; no se expone a TUNA-Screen", entry.get("device"))
+                continue
             try:
                 machines.append(await _marlin_machine(entry))
             except Exception as exc:
                 logger.warning("No se pudo actualizar Marlin %s: %s", entry.get("device"), exc)
-                machine_id = f"marlin:{entry.get('device')}"
+                machine_id = f"marlin:{entry.get('id')}"
                 previous = next((m for m in _machines_cache if m.get("id") == machine_id), None)
                 if previous:
                     machines.append(previous)
@@ -874,11 +885,14 @@ async def _collect_machines() -> List[Dict[str, Any]]:
         machines.extend(_cached_driver("grbl"))
     else:
         for entry in laser_entries:
+            if not machine_identity.is_machine_uid(entry.get("id")):
+                logger.warning("GRBL %s sin id interno; no se expone a TUNA-Screen", entry.get("host"))
+                continue
             try:
                 machines.append(await _laser_machine(entry))
             except Exception as exc:
                 logger.warning("No se pudo actualizar GRBL %s: %s", entry.get("host"), exc)
-                machine_id = f"laser:{entry.get('host')}"
+                machine_id = f"laser:{entry.get('id')}"
                 previous = next((m for m in _machines_cache if m.get("id") == machine_id), None)
                 if previous:
                     machines.append(previous)
@@ -1007,14 +1021,23 @@ def machine_resource(machine: Dict[str, Any]) -> Resource:
 # Cada dispositivo guarda en el registro `scope`: lista de claves canónicas
 # `kind:id` (las mismas que valida la Authorization Policy). Solo recursos con
 # identidad ESTABLE: una clave que mañana pudiera nombrar otra máquina física
-# no puede autorizar nada. Marlin (`/dev/ttyUSBx`, se renumera) y GRBL/láser
-# (IP por DHCP, o `usb:/dev/...` que laser_service reescribe al renumerar)
-# quedan fuera hasta tener una identidad estable.
+# no puede autorizar nada. Marlin y GRBL/láser/CNC entran SOLO por su id
+# interno (`printer:marlin:mch_…`, `laser:laser:mch_…`, `cnc:laser:mch_…`,
+# ver machine_identity) y solo mientras su ancla esté estable (sin conflicto);
+# sus direcciones (`/dev/ttyUSBx`, IP, `usb:/dev/…`) nunca.
 STABLE_PRINTER_DRIVERS = ("klipper", "bambu", "elegoo", "flashforge")
 UNSTABLE_SCOPE_ERROR = (
-    "Esa máquina no tiene una identidad estable (Marlin por USB o láser/CNC por IP o USB) "
-    "y todavía no se puede asignar a un dispositivo TUNA-Screen"
+    "Esa máquina no tiene una identidad estable (una dirección USB o IP no es un id) "
+    "y no se puede asignar a un dispositivo TUNA-Screen"
 )
+
+
+def machine_identity_ok(machine: Dict[str, Any]) -> bool:
+    """Marlin y GRBL traen `identity`; solo `stable` puede autorizarse a un
+    dispositivo (un ancla en conflicto o sin ancla la deja fuera, aunque su
+    clave siga en el scope). Las demás marcas no lo traen: su id ya es del
+    fabricante."""
+    return machine.get("identity", machine_identity.IDENTITY_STABLE) == machine_identity.IDENTITY_STABLE
 
 
 def _scope_key_error(key: Any) -> Optional[str]:
@@ -1033,14 +1056,16 @@ def _scope_key_error(key: Any) -> Optional[str]:
         if not sep or not raw:
             return f"Entrada de scope inválida: {key}"
         if driver == "marlin":
-            return UNSTABLE_SCOPE_ERROR
+            # Solo por id interno (`mch_…`); la ruta /dev/… nunca.
+            return None if machine_identity.is_machine_uid(raw) else UNSTABLE_SCOPE_ERROR
         if driver not in STABLE_PRINTER_DRIVERS:
             return f"Entrada de scope inválida: {key}"
         if driver == "klipper" and not (raw.isdigit() and 0 < int(raw) < 65536):
             return f"Entrada de scope inválida: {key}"
         return None
     if kind in (ResourceKind.LASER.value, ResourceKind.CNC.value):
-        return UNSTABLE_SCOPE_ERROR
+        driver, _, raw = rest.partition(":")
+        return None if driver == "laser" and machine_identity.is_machine_uid(raw) else UNSTABLE_SCOPE_ERROR
     # Formas no canónicas de máquinas inestables (`marlin:/dev/…`, `laser:<ip>`).
     if kind in ("marlin", "laser"):
         return UNSTABLE_SCOPE_ERROR
@@ -1067,7 +1092,7 @@ async def validate_scope_resources(scope: Any) -> List[str]:
     tiene que existir hoy (una máquina que TUNA-Screen conoce o un plugin
     instalado)."""
     validated = validate_scope(scope)
-    machine_keys = {machine_resource(m).key for m in await list_machines()}
+    machine_keys = {machine_resource(m).key for m in await list_machines() if machine_identity_ok(m)}
     installed = set(plugin_installer_service.read_installed_state())
     for key in validated:
         kind, _, rest = key.partition(":")
@@ -1083,7 +1108,7 @@ async def scope_options() -> Dict[str, Any]:
     machines = []
     for machine in await list_machines():
         key = machine_resource(machine).key
-        if key and _scope_key_error(key) is None:
+        if key and _scope_key_error(key) is None and machine_identity_ok(machine):
             machines.append({"key": key, "name": machine.get("name") or machine["id"], "type": machine.get("type")})
     plugins = [{"key": f"plugin:{plugin_id}", "name": plugin_id}
                for plugin_id in sorted(plugin_installer_service.read_installed_state())]
@@ -1113,6 +1138,8 @@ def principal_for_device(device: Dict[str, Any], resource: Optional[Resource] = 
 
 
 def can_view_machine(device: Dict[str, Any], machine: Dict[str, Any]) -> bool:
+    if not machine_identity_ok(machine):
+        return False
     resource = machine_resource(machine)
     return bool(authorize(principal_for_device(device), Action.VIEW_STATUS, resource))
 
@@ -1187,7 +1214,11 @@ async def dispatch_action(
     if brand == "klipper":
         return await _dispatch_klipper(int(raw_id), action, params)
     if brand == "marlin":
-        return await _dispatch_marlin(raw_id, action, params)
+        # El id de TUNA-Screen es el interno; la ruta /dev/… se resuelve aquí.
+        entry = marlin_printer_service.get_printer_by_uid(raw_id)
+        if entry is None:
+            raise ValueError("Máquina no encontrada")
+        return await _dispatch_marlin(entry["device"], action, params)
     if brand == "bambu":
         return _dispatch_bambu(raw_id, action)
     if brand == "elegoo":
@@ -1195,7 +1226,10 @@ async def dispatch_action(
     if brand == "flashforge":
         return _dispatch_flashforge(raw_id, action)
     if brand == "laser":
-        return await _dispatch_laser(raw_id, action, params)
+        entry = laser_service.get_laser_by_uid(raw_id)
+        if entry is None:
+            raise ValueError("Máquina no encontrada")
+        return await _dispatch_laser(entry["host"], action, params)
     raise ValueError(f"Marca desconocida: {brand}")
 
 

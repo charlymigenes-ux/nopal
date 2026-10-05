@@ -329,7 +329,8 @@ class TestListMachinesShape:
 
     async def test_cnc_machine_gets_cnc_capabilities_not_laser(self, monkeypatch):
         async def _lasers():
-            return [{"host": "192.168.1.60", "name": "Router CNC", "kind": "cnc", "online": True}]
+            return [{"id": "mch_00000000000000c1", "host": "192.168.1.60", "name": "Router CNC",
+                     "kind": "cnc", "online": True, "identity": "stable"}]
         monkeypatch.setattr(laser_service, "get_registered_lasers_status", _lasers)
 
         async def _status(host, timeout=3.0):
@@ -342,7 +343,9 @@ class TestListMachinesShape:
         machines = await tunascreen_service.list_machines()
         assert len(machines) == 1
         machine = machines[0]
-        assert machine["id"] == "laser:192.168.1.60"
+        # Id canónico por id interno, no por la IP (identidad estable).
+        assert machine["id"] == "laser:mch_00000000000000c1"
+        assert machine["identity"] == "stable"
         assert machine["type"] == "cnc"
         assert "spindle" in machine["capabilities"]
         assert "laser_power" not in machine["capabilities"]
