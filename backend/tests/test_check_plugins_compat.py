@@ -149,6 +149,16 @@ def test_missing_environment_tool_is_infra(tmp_path, monkeypatch):
     assert result.status == compat.INFRA and "node" in result.detail
 
 
+def test_tool_required_by_backend_is_detected(tmp_path):
+    """Caso real: camera-viewer llama a ffmpeg desde su backend; sin ffmpeg en
+    el entorno un test suyo falla, y eso no es incompatibilidad del plugin."""
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "timelapse.py").write_text('FFMPEG_BIN = "ffmpeg"\n')
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_contrato.py").write_text(TEST_NODE)
+    assert compat.required_tools(tmp_path) == ["ffmpeg", "node"]
+
+
 def test_corrupt_manifest_is_compat(tmp_path):
     repo = make_repo(tmp_path, "roto", {compat.MANIFEST: "{no es json", "frontend/x.js": "1;"})
     assert check(tmp_path, repo, "roto").status == compat.COMPAT

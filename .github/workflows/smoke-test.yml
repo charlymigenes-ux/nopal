@@ -74,7 +74,7 @@ jobs:
   # un plugin roto no pone en rojo smoke-test. Prueba la punta de la rama por
   # defecto de cada repo_url (lo que instala la Galería) y anota el SHA
   # probado. COMPAT hace fallar el job; INFRA (repo inaccesible tras 3
-  # intentos) queda como aviso. Lógica en scripts/check_plugins_compat.py.
+  # intentos o herramienta ausente) queda como aviso. Lógica en scripts/check_plugins_compat.py.
   plugins-compat:
     name: plugins-compat (Python 3.9)
     runs-on: ubuntu-latest
@@ -89,6 +89,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      # camera-viewer usa ffmpeg (timelapse y cámaras USB), como en una
+      # instalación real.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       # Mismas dependencias que NOPAL. pypixelcolor lo pide matriz-led aparte
       # (su README: `pip install pypixelcolor`, sin versión fija): se instala

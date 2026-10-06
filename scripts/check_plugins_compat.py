@@ -46,9 +46,10 @@ OUTPUT_TAIL = 25
 
 PASS, COMPAT, INFRA, NA = "PASS", "COMPAT", "INFRA", "N/A"
 
-# Herramientas externas que piden los tests de un plugin, detectadas en su
-# código de tests. Si falta, es el entorno (INFRA), no el plugin.
-_TOOL_PATTERNS = {"node": re.compile(r"""["']node["']""")}
+# Herramientas externas que pide un plugin (Node para sus tests de contrato,
+# ffmpeg para las cámaras), detectadas en su código de tests y de backend. Si
+# falta, es el entorno (INFRA), no el plugin.
+_TOOL_PATTERNS = {tool: re.compile(rf"""["']{tool}["']""") for tool in ("node", "ffmpeg")}
 
 # Carga con el mismo camino que el arranque de NOPAL. Corre en un proceso
 # aparte, con PLUGINS_DIR y el estado de instalación apuntando al directorio
@@ -140,7 +141,7 @@ def classify(plugin_dir: Path, manifest: dict) -> str:
 
 def required_tools(plugin_dir: Path) -> List[str]:
     tools = set()
-    for path in (plugin_dir / "tests").rglob("*.py"):
+    for path in [*(plugin_dir / "tests").rglob("*.py"), *(plugin_dir / "backend").rglob("*.py")]:
         text = path.read_text(encoding="utf-8", errors="replace")
         tools.update(tool for tool, pattern in _TOOL_PATTERNS.items() if pattern.search(text))
     return sorted(tools)
@@ -209,7 +210,7 @@ def check_plugin(entry: Dict[str, str], workdir: Path, core_root: Path,
         missing = [tool for tool in required_tools(plugin_dir) if shutil.which(tool) is None]
         if missing:
             result.status = INFRA
-            result.detail = f"falta en el entorno: {', '.join(missing)} (lo piden sus tests)"
+            result.detail = f"falta en el entorno: {', '.join(missing)} (la usa el plugin)"
             return result
         ok, output = run_tests(plugin_dir, core_root, run=run)
         result.checks.append(f"tests: {_summary_line(output) or ('ok' if ok else 'fallaron')}")
