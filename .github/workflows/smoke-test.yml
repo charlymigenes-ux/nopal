@@ -5,6 +5,11 @@ on:
     branches: [main, dev-main]
   pull_request:
     branches: [main]
+  # Semanal (lunes 09:17 UTC): los plugins son repos aparte y cambian sin que
+  # NOPAL haga push; también corre smoke-test, sin cambios en su definición.
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
 
 jobs:
   smoke-test:
@@ -64,3 +69,36 @@ jobs:
       - name: Stop server
         if: always()
         run: kill $(cat server.pid) 2>/dev/null || true
+
+  # Plugins del catálogo en Python 3.9 (versión mínima de NOPAL). Check propio:
+  # un plugin roto no pone en rojo smoke-test. Prueba la punta de la rama por
+  # defecto de cada repo_url (lo que instala la Galería) y anota el SHA
+  # probado. COMPAT hace fallar el job; INFRA (repo inaccesible tras 3
+  # intentos) queda como aviso. Lógica en scripts/check_plugins_compat.py.
+  plugins-compat:
+    name: plugins-compat (Python 3.9)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      # Los tests de contrato de font-library y svg-toolkit usan `node --check`.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Mismas dependencias que NOPAL. pypixelcolor lo pide matriz-led aparte
+      # (su README: `pip install pypixelcolor`, sin versión fija): se instala
+      # igual que lo haría un usuario.
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install pypixelcolor
+
+      - name: Check plugins
+        run: |
+          python --version
+          python scripts/check_plugins_compat.py --workdir "$RUNNER_TEMP/nopal-plugins"

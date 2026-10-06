@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.39 |
+| Versión del SDD | 0.40 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -1644,6 +1644,14 @@ Verificado en GitHub Actions: ejecución #58 (`37126493980`, push a `dev-main`,
 2026-10-03) — Python 3.11.16, `collected 533 items`, **533 passed**, smoke test
 correcto, job en verde. (Localmente se usa Python 3.13.)
 
+**Plugins en Python 3.9 (`plugins-compat`, v0.40).** NOPAL soporta Python 3.9 como mínimo (C1). Un segundo job del mismo workflow, con check propio, vigila los plugins del catálogo en Python 3.9 (`scripts/check_plugins_compat.py`):
+
+- Prueba lo que instalaría un usuario nuevo desde la Galería: la **punta de la rama por defecto** de cada `repo_url` de `backend/plugin_catalog.json`, sin fijar versiones, y registra en el resumen del run el **SHA realmente probado** y la versión del manifiesto.
+- Por plugin: suite propia con `NOPAL_CORE_ROOT` (A: con backend; T: contrato del frontend, con Node), carga con el cargador real de NOPAL (`load_installed_plugin_routers`; A y C) o N/A si es solo frontend (D).
+- Corre en `push`/`pull_request` (igual que `smoke-test`), cada semana (`schedule`, lunes 09:17 UTC) y a mano (`workflow_dispatch`).
+- **COMPAT** (test fallido, router que no carga, error de importación) hace fallar el check. **INFRA** (repo inaccesible tras 3 intentos o herramienta del entorno ausente) **no equivale a incompatibilidad**: queda como aviso y no falla el check.
+- **Primera ejecución real (2026-10-05, Python 3.9.25): `matriz-led` → COMPAT, pendiente de decisión.** Depende de `pypixelcolor` (no está en `requirements.txt`; su README pide instalarla aparte, sin versión fija). La librería se instala en 3.9 (declara `Requires-Python >=3.9`) pero falla al importarse: `TypeError` por `AckPolicy | None` en `pypixelcolor/lib/transport/send_plan.py`, en todas sus versiones (0.1.0–0.5.0). El fallo está dentro de `pypixelcolor`, no en NOPAL ni en el código de matriz-led: el plugin carga (26 rutas) y fallan 11 de sus 85 tests (envío de texto e imágenes a la pantalla). El detector lo reporta como COMPAT y el check queda en rojo; no hay excepción para este plugin.
+
 ### 19.2 Problemas conocidos
 
 - ~~El fixture no aísla `laser_service.REGISTRY_PATH`/`HISTORY_PATH`, `auth_users.json`, `scheduled_prints.json`, `temperature_presets.json` (C2)~~ — **mitigado** (v0.30): esas rutas relativas resuelven al sandbox de la sesión, nunca a los archivos reales. Siguen compartidas entre tests de una misma sesión (no hay aislamiento por test para ellas).
@@ -2090,3 +2098,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.37 | 2026-10-05 | **Registro (logs), Fase A**: nivel general (Básico/Normal/Detallado/Diagnóstico) y componentes funcionales como capa de producto sobre las fuentes técnicas; `logging_config_service` + `logging_config.json` (respaldo no sensible). Niveles por fuente (logger, por prefijo; NOPAL/Plugins/Librerías desde los loggers reales), `pypixelcolor` en "Solo errores" por omisión; agrupación de mensajes repetidos (fuente + nivel + mensaje, ventana de 10 min, primera aparición siempre escrita, resumen con fuente y nivel); carpeta limitada a `logs/`, tamaño, cantidad de archivos y copia a consola/journal (solo el StreamHandler de NOPAL). Aplicación al arrancar y en caliente. `GET /api/logs/config` (sesión) y `PUT /api/logs/config` (`system_control`, admin). Eventos recientes oculta fuentes silenciadas, también en líneas viejas. Tarjeta en Configuración. 2 tests existentes adaptados (la ruta del log ya no es una constante). Suite: 1585 tests, 0 fallos (63 nuevos). |
 | 0.38 | 2026-10-05 | **Ficha TUNA-Screen rediseñada** (solo UI/UX, sin cambios de lógica, endpoints ni datos): máquinas como tarjetas seleccionables con el ícono de su tipo; plugins como chips secundarios con el ícono del catálogo; aviso informativo discreto, con el texto corregido (desde la identidad estable sí se asignan Marlin y láser/CNC con identidad estable); "Generar código de emparejamiento" como acción principal; dispositivos emparejados con nombre, última conexión, acceso en etiquetas (3 visibles + "+N" calculado), "Editar acceso" y un menú de tres puntos con "Quitar dispositivo". No se muestra un estado "en línea": el backend no lo informa. Responsive sin desborde horizontal. |
 | 0.39 | 2026-10-05 | **Registro (logs), Fase B — visor avanzado**: `log_viewer_service` y `GET /api/logs` extendido (componente, nivel, búsqueda en el servidor, archivos rotados por índice, límite de eventos y tope de 8 MB de lectura por petición, refresco incremental con cursor, `reset` al rotar y `gap` al exceder el límite); fuentes que hoy no se escribirían, ocultas. Consola del sistema: componentes amigables, búsqueda, selector de archivo, pausa/reanudar sin perder eventos, detalle plegable y responsive. Respuesta: `entries` en lugar de `lines` (sin otros consumidores). Suite: 1621 tests, 0 fallos (36 nuevos). |
+| 0.40 | 2026-10-05 | **Plugins en Python 3.9**: job `plugins-compat` (check propio) en el workflow de CI con `scripts/check_plugins_compat.py`: punta de la rama por defecto de cada `repo_url` del catálogo, SHA y versión probados en el resumen, suite propia / cargador real / N/A según el plugin, COMPAT falla el check e INFRA solo avisa; disparadores semanal y manual añadidos al workflow. 19 tests nuevos (sin red). |
