@@ -1,25 +1,30 @@
-from fastapi import APIRouter, Depends
+"""Consola del sistema: lectura del registro de NOPAL (ver log_viewer_service).
+
+Lectura para cualquier sesión (operador incluido), igual que antes.
+"""
+
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.auth_deps import require_auth
-from backend.config import LOG_FILE
+from backend.services import log_viewer_service
 
 router = APIRouter()
 
 
-@router.get("/api/logs")
-async def get_logs(lines: int = 500, level: str = "", user: dict = Depends(require_auth)):
-    """Últimas N líneas del log de NOPAL, opcionalmente filtradas por nivel
-    (INFO/WARNING/ERROR/DEBUG). Lee el archivo entero y recorta al final —
-    con el tope de 5MB por rotación (ver config.py) esto es cuestión de
-    milisegundos, no hace falta un tail-seek más elaborado."""
+@router.get("/api/logs")  # def (no async): la lectura de archivo corre en el pool de hilos
+def get_logs(file: int = 0, component: str = "", level: str = "", q: str = "",
+             limit: Optional[int] = None, lines: Optional[int] = None,
+             after: Optional[int] = None, file_id: str = "",
+             user: dict = Depends(require_auth)):
+    # `lines` es el nombre anterior de `limit`; se sigue aceptando.
+    if limit is None:
+        limit = lines if lines is not None else log_viewer_service.DEFAULT_LIMIT
     try:
-        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
-            all_lines = f.readlines()
-    except FileNotFoundError:
-        return {"lines": []}
-
-    tail = all_lines[-lines:] if lines > 0 else all_lines
-    if level:
-        needle = f" {level.upper()} "
-        tail = [line for line in tail if needle in line]
-    return {"lines": [line.rstrip("\n") for line in tail]}
+        return log_viewer_service.read_entries(file=file, component=component, level=level, q=q,
+                                               limit=limit, after=after, file_id=file_id)
+    except log_viewer_service.LogViewerError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except log_viewer_service.LogFileNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

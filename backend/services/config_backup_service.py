@@ -55,6 +55,9 @@ GROUPS: Dict[str, Dict[str, Any]] = {
         "sensitive": False,
     },
     "laser_cnc": {"label": "Láser y CNC", "files": ["laser_registry.json"], "sensitive": False},
+    # Configuración → Registro (fuentes, repetidos, rotación). Al importarla
+    # se aplica en el siguiente arranque de NOPAL.
+    "logging": {"label": "Registro (logs)", "files": ["logging_config.json"], "sensitive": False},
     "accessories": {
         "label": "Accesorios y placas",
         "files": ["accessory_registry.json", "arduino_boards_config.json"],
@@ -87,12 +90,11 @@ GROUPS: Dict[str, Dict[str, Any]] = {
         "sensitive": True,
         "warning": "Incluye la clave de API de tu proveedor de IA, en claro dentro del archivo.",
     },
-    "ai_conversations": {
-        "label": "Historial de conversaciones con la IA",
-        "files": ["ai_conversations.json"],
-        "sensitive": True,
-        "warning": "Puede contener detalles del taller y de sus fallas.",
-    },
+    # `ai_conversations.json` queda FUERA de los respaldos generales (D-9):
+    # las conversaciones son privadas de cada usuario y exportarlas le daría
+    # al admin acceso de lectura a todas (C-4 solo le permite borrarlas).
+    # Tampoco se importan: un archivo restaurado traería propietarios
+    # ajenos. Hasta diseñar un respaldo compatible con propietarios, no hay.
 }
 
 # Jamás se exporta: quien lo tuviera podría falsificar sesiones.

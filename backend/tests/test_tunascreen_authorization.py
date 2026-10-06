@@ -5,9 +5,11 @@ scope) y consulta la Authorization Policy antes de cualquier servicio:
 
 - Acciones de admin (consola, macros, potencia láser/husillo, configuración…):
   denegadas siempre, aunque el recurso esté en el scope.
-- Acciones de operador: siguen funcionando. Por decisión del propietario
-  (2026-10-03) el scope todavía no se persiste y device_scope() devuelve el
-  propio recurso pedido (transitorio), así que no se limita por máquina.
+- Acciones de operador: funcionan sobre las máquinas del scope PERSISTENTE
+  del dispositivo (antes el scope era transitorio = el recurso pedido).
+- Láser y CNC (identidad por IP, inestable) no pueden entrar a ningún scope:
+  para TUNA-Screen son inexistentes ("Máquina no encontrada"), ni siquiera
+  llegan a la decisión de la acción.
 """
 
 import pytest
@@ -72,7 +74,7 @@ def workshop(monkeypatch):
 
 @pytest.fixture
 def token():
-    code = tunascreen_service.generate_pairing_code()["code"]
+    code = tunascreen_service.generate_pairing_code(scope=["printer:klipper:7125"])["code"]
     return tunascreen_service.confirm_pairing(code, "Tablet de prueba")["token"]
 
 
@@ -84,8 +86,13 @@ def _act(client, token, machine_id, action, params=None, extra=None):
 ADMIN_TUNA_ACTIONS = [
     ("klipper:7125", "send_console_command", {"command": "M104 S250"}),
     ("klipper:7125", "run_macro", {"macro": "PREHEAT"}),
+]
+# Potencia láser / husillo: además de ser de admin, sus máquinas no pueden
+# estar en un scope (IP inestable): responden como inexistentes.
+UNREACHABLE_TUNA_ACTIONS = [
     (f"laser:{LASER_HOST}", "set_laser_power", {"on": True, "power": 1000}),
     (f"laser:{CNC_HOST}", "set_spindle", {"on": True, "rpm": 12000}),
+    (f"laser:{LASER_HOST}", "set_air_assist", {"on": True}),
 ]
 
 
@@ -98,6 +105,15 @@ class TestAdminActionsDenied:
         assert response.json() == {"detail": "Permiso insuficiente"}
         assert workshop == []
 
+    @pytest.mark.parametrize("machine_id, action, params", UNREACHABLE_TUNA_ACTIONS,
+                             ids=[a for _, a, _ in UNREACHABLE_TUNA_ACTIONS])
+    def test_unstable_machines_are_unreachable(self, client, token, workshop, machine_id, action, params):
+        response = _act(client, token, machine_id, action, params)
+
+        assert response.status_code == 400
+        assert response.json() == {"detail": "Máquina no encontrada"}
+        assert workshop == []
+
     def test_role_in_request_cannot_elevate(self, client, token, workshop):
         response = _act(client, token, "klipper:7125", "send_console_command", {"command": "M104 S250"},
                         extra={"role": "admin", "principal": {"role": "admin"}})
@@ -108,9 +124,11 @@ class TestAdminActionsDenied:
     @pytest.mark.parametrize("action", ["printer_config", "grbl_settings", "firmware_restart", "restart_klipper", "delete_sd_file"])
     async def test_other_admin_actions_denied_in_dispatch(self, workshop, action):
         """No son acciones que TUNA-Screen declare, pero si llegan a
-        dispatch_action la política las deniega antes de cualquier servicio."""
+        dispatch_action la política las deniega antes de cualquier servicio,
+        aunque la máquina esté en el scope."""
+        device = {"device_id": "tuna_x", "scope": ["printer:klipper:7125"]}
         with pytest.raises(tunascreen_service.DeviceActionDenied):
-            await tunascreen_service.dispatch_action("klipper:7125", action, {}, device={"device_id": "tuna_x"})
+            await tunascreen_service.dispatch_action("klipper:7125", action, {}, device=device)
         assert workshop == []
 
 
@@ -139,11 +157,6 @@ class TestOperatorActionsAllowed:
         assert response.status_code == 200
         assert [name for name, _ in workshop] == ["klipper.send_console_command"]
 
-    def test_laser_air_assist_allowed(self, client, token, workshop):
-        response = _act(client, token, f"laser:{LASER_HOST}", "set_air_assist", {"on": True})
-
-        assert response.status_code == 200
-        assert workshop == [("laser.send_raw_command", (LASER_HOST, "M8"))]
 
 
 class TestOrderAndErrors:
@@ -165,9 +178,11 @@ class TestOrderAndErrors:
 
         _act(client, token, "klipper:7125", "pause")
 
-        assert calls[0][0] == "authorize"
-        principal, action, resource = calls[0][1:]
+        # Primero la visibilidad (¿está en el scope?) y luego la acción.
+        assert [call[2] for call in calls] == [Action.VIEW_STATUS, Action.PAUSE]
+        principal, action, resource = calls[1][1:]
         assert principal.kind is PrincipalKind.TUNA_DEVICE and principal.role is Role.OPERATOR
+        assert principal.scope == frozenset({"printer:klipper:7125"})
         assert action is Action.PAUSE and resource.key == "printer:klipper:7125"
         assert [name for name, _ in workshop] == ["klipper.pause"]
 
@@ -195,9 +210,13 @@ class TestPrincipalAndResource:
         assert principal.role is Role.OPERATOR
         assert principal.id == "tuna_x"
 
-    def test_transitional_scope_is_only_the_requested_resource(self):
+    def test_scope_is_the_persisted_one_not_the_requested_resource(self):
+        """Antes era transitorio (= recurso pedido); ahora sale del registro
+        y un dispositivo sin scope no tiene ninguno."""
         resource = Resource(ResourceKind.PRINTER, "klipper:7125")
-        assert tunascreen_service.device_scope({"device_id": "tuna_x"}, resource) == {"printer:klipper:7125"}
+        assert tunascreen_service.device_scope({"device_id": "tuna_x"}, resource) == set()
+        stored = {"device_id": "tuna_x", "scope": ["printer:klipper:7126"]}
+        assert tunascreen_service.device_scope(stored, resource) == {"printer:klipper:7126"}
 
     @pytest.mark.parametrize("machine, key", [
         ({"id": "klipper:7125", "type": "printer"}, "printer:klipper:7125"),

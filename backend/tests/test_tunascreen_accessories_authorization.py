@@ -54,7 +54,7 @@ def log(monkeypatch):
 
 @pytest.fixture
 def token():
-    code = tunascreen_service.generate_pairing_code()["code"]
+    code = tunascreen_service.generate_pairing_code(scope=["plugin:arduino-accessories"])["code"]
     return tunascreen_service.confirm_pairing(code, "Tablet de prueba")["token"]
 
 

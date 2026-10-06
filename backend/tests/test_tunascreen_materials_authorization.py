@@ -57,7 +57,7 @@ def workshop(monkeypatch):
 
 @pytest.fixture
 def token():
-    code = tunascreen_service.generate_pairing_code()["code"]
+    code = tunascreen_service.generate_pairing_code(scope=["plugin:spoolman", "printer:klipper:7125"])["code"]
     return tunascreen_service.confirm_pairing(code, "Tablet de prueba")["token"]
 
 
@@ -102,13 +102,15 @@ def test_device_can_clear_spool(client, workshop, token):
 def test_principal_action_resource_and_order(client, workshop, token):
     _post(client, {"machine_id": "klipper:7125", "spool_id": 9, "role": "admin"}, token)
 
-    kind, principal, action, resource, result = workshop[0]
+    # Primero `plugin:spoolman` (use_plugin), luego assign_active_spool sobre la máquina.
+    assert [entry[2] for entry in workshop if entry[0] == "authorize"] == [Action.USE_PLUGIN, Action.ASSIGN_ACTIVE_SPOOL]
+    kind, principal, action, resource, result = workshop[1]
     assert kind == "authorize"
     assert principal.kind is PrincipalKind.TUNA_DEVICE and principal.role is Role.OPERATOR
     assert action is Action.ASSIGN_ACTIVE_SPOOL
     assert resource.kind is ResourceKind.PRINTER and resource.key == "printer:klipper:7125"
     assert result.decision is Decision.ALLOW
-    assert [entry[0] for entry in workshop] == ["authorize", "service"]
+    assert [entry[0] for entry in workshop] == ["authorize", "authorize", "service"]
 
 
 def test_policy_deny_blocks_service(client, workshop, token, monkeypatch):
@@ -124,14 +126,16 @@ def test_policy_deny_blocks_service(client, workshop, token, monkeypatch):
     assert _service_calls(workshop) == []
 
 
-def test_unknown_machine_keeps_service_decision(client, workshop, token):
-    """Si la máquina no está en el modelo normalizado, el recurso queda como
-    `machine:<id>` y el servicio decide como antes (no exige que esté en línea)."""
+def test_unknown_machine_is_denied_like_out_of_scope(client, workshop, token):
+    """Una máquina que no está en el modelo normalizado queda como
+    `machine:<id>`, que no puede estar en ningún scope: 403, el mismo que una
+    máquina existente fuera del scope (sin enumeración). Antes, con el scope
+    transitorio, se dejaba decidir al servicio."""
     response = _post(client, {"machine_id": "klipper:9999", "spool_id": 3}, token)
 
-    assert response.status_code == 200
-    assert workshop[0][3].key == "machine:klipper:9999"
-    assert _service_calls(workshop) == [("service", "klipper:9999", 3)]
+    assert response.status_code == 403
+    assert workshop[-1][3].key == "machine:klipper:9999"
+    assert _service_calls(workshop) == []
 
 
 def test_missing_machine_id_denied_without_service(client, workshop, token):

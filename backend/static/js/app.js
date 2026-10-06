@@ -5328,6 +5328,7 @@ const SETTINGS_MODULE_DEFS = [
     { key: 'about', labelKey: 'aboutTitle', iconSvg: SETTINGS_MODULE_ICON_ABOUT },
     { key: 'updates', labelKey: 'updates', iconSvg: SETTINGS_MODULE_ICON_UPDATES },
     { key: 'logs', labelKey: 'systemLogs', iconSvg: SETTINGS_MODULE_ICON_LOGS },
+    { key: 'logsConfig', labelKey: 'logsConfigTitle', iconSvg: SETTINGS_MODULE_ICON_GENERAL },
     { key: 'users', labelKey: 'usersTitle', iconSvg: SETTINGS_MODULE_ICON_USERS },
     { key: 'devices', labelKey: 'devicesTitle', iconSvg: SETTINGS_MODULE_ICON_DEVICES },
     { key: 'accessories', labelKey: 'accessoriesSettingsTitle', iconSvg: SETTINGS_MODULE_ICON_ACCESSORIES },
@@ -6292,9 +6293,9 @@ async function refreshDashboardLaserCard() {
             try {
                 const response = await fetch(`/api/laser/status?host=${encodeURIComponent(laser.host)}`);
                 const status = await response.json();
-                return { host: laser.host, status, kind: laser.kind || 'laser' };
+                return { id: laser.id, host: laser.host, status, kind: laser.kind || 'laser' };
             } catch (error) {
-                return { host: laser.host, status: { connected: false }, kind: laser.kind || 'laser' };
+                return { id: laser.id, host: laser.host, status: { connected: false }, kind: laser.kind || 'laser' };
             }
         }));
         dashboardLaserDevicesLoadError = false;
@@ -6714,15 +6715,17 @@ function machineLedCardIdentity(card) {
     const name = (card.querySelector('.printer-name') || card.querySelector('.dev-card-name'))
         ?.textContent?.trim() || 'Máquina';
     if (card.dataset.port) return { type: 'klipper', id: card.dataset.port, name };
-    if (card.dataset.marlinDevice) return { type: 'marlin', id: card.dataset.marlinDevice, name };
+    // Marlin y láser/CNC: por id interno (identidad estable), no por la ruta
+    // USB ni la IP. Sin id interno no hay regla LED (fail-closed).
+    if (card.dataset.marlinDevice) return card.dataset.machineUid ? { type: 'marlin', id: card.dataset.machineUid, name } : null;
     if (card.dataset.elegooId) return { type: 'elegoo', id: card.dataset.elegooId, name };
     if (card.dataset.flashforgeId) return { type: 'flashforge', id: card.dataset.flashforgeId, name };
     if (card.dataset.bambuId) return { type: 'bambu', id: card.dataset.bambuId, name };
-    if (card.dataset.laserHost) return {
+    if (card.dataset.laserHost) return card.dataset.machineUid ? {
         type: card.classList.contains('printer-card-type-cnc') ? 'cnc' : 'laser',
-        id: card.dataset.laserHost,
+        id: card.dataset.machineUid,
         name,
-    };
+    } : null;
     return null;
 }
 
@@ -7696,14 +7699,16 @@ function laserDeviceState(status) {
 }
 
 function laserDeviceModel(entry, jobsByHost) {
-    const { host, status, kind } = entry;
+    const { id, host, status, kind } = entry;
     const state = laserDeviceState(status);
     const enLinea = state !== 'offline';
     const enTrabajo = deviceIsBusy(state);
     const esCnc = kind === 'cnc';
     const nombre = laserHostLabel(host) || (esCnc ? t('cnc') : t('laser'));
     const job = laserActiveJobFor(host, jobsByHost);
-    const claveCamara = `${esCnc ? 'cnc' : 'laser'}:${host}`;
+    // La cámara se vincula por el id interno de la máquina (estable), no por
+    // el host: una IP o ruta USB que cambia no debe mover la cámara a otra.
+    const claveCamara = id ? `${esCnc ? 'cnc' : 'laser'}:${id}` : null;
 
     const etiquetas = {
         offline: t('offline'), printing: t('printing'), paused: t('paused'),
@@ -7782,7 +7787,7 @@ function laserDeviceModel(entry, jobsByHost) {
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         waves: deviceStateThermalWave(state, host),
-        dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}"`,
+        dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}" data-machine-uid="${escapeHtml(id || '')}"`,
     };
 }
 
@@ -8372,17 +8377,14 @@ function renderPrinters(printersInput) {
         });
     });
 
-    // Ir a la sección completa (Láser o CNC) primero fija ese host como el
-    // "activo" -- es lo mismo que hacía la ficha vieja al hacer clic.
-    const irASeccionDeLaser = async (host, kind) => {
-        try {
-            const formData = new FormData();
-            formData.append('host', host);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-        } catch (error) {
-            console.error(error);
-        }
-        switchSection(kind === 'cnc' ? 'cnc' : 'laser');
+    // Ir a la sección completa (Láser o CNC) primero deja esa máquina como la
+    // seleccionada de SU sección en este navegador (por su id interno), así la
+    // sección abre directo en ella. Ya no se toca ningún "host activo" en el
+    // servidor.
+    const irASeccionDeLaser = (machineId, host, kind) => {
+        const section = kind === 'cnc' ? 'cnc' : 'laser';
+        rememberSectionMachine(section, machineId, host);
+        switchSection(section);
     };
 
     columnsRoot.querySelectorAll('.dev-card[data-laser-host]').forEach(card => {
@@ -8390,6 +8392,7 @@ function renderPrinters(printersInput) {
         boundLaserCards.add(card);
         const host = card.dataset.laserHost;
         const kind = card.dataset.laserKind;
+        const machineId = card.dataset.machineUid || '';
 
         // Delegación en la ficha, no un listener por botón. El interior de
         // la ficha se reescribe cuando se monta el visor de cámara encima, y
@@ -8436,10 +8439,10 @@ function renderPrinters(printersInput) {
             }
             // Detalles (y cualquier otra acción sin manejo propio) lleva
             // a la sección completa, que es donde vive el resto.
-            await irASeccionDeLaser(host, kind);
+            irASeccionDeLaser(machineId, host, kind);
         });
 
-        card.addEventListener('click', () => irASeccionDeLaser(host, kind));
+        card.addEventListener('click', () => irASeccionDeLaser(machineId, host, kind));
     });
 
     columnsRoot.querySelectorAll('.printer-quick-action-btn').forEach(btn => {
@@ -9922,11 +9925,16 @@ async function loadRegistryDevices() {
         ]);
         const data = await response.json();
         let chips = new Map();
+        // id de máquina (`laser:<id interno>`) -> host ACTUAL. El id ya no
+        // contiene la dirección (identidad estable): no se puede derivar
+        // quitándole el prefijo.
+        let hostsById = new Map();
         try {
             const laserData = laserResponse ? await laserResponse.json() : null;
             chips = new Map((laserData?.lasers || []).map(l => [l.host, l.chip || '']));
-        } catch (_) { /* sin datos de chip: el popup mostrará un guion */ }
-        renderRegistryDevices(data.machines || [], chips);
+            hostsById = new Map((laserData?.lasers || []).filter(l => l.id).map(l => [`laser:${l.id}`, l.host]));
+        } catch (_) { /* sin datos del registro: sin botones de editar/desvincular */ }
+        renderRegistryDevices(data.machines || [], chips, hostsById);
     } catch (error) {
         console.error(error);
     }
@@ -9945,7 +9953,7 @@ function deviceDriverBadgeLabel(driver) {
     return brandLabels[driver] || driver;
 }
 
-function renderRegistryDevices(machines, chips = new Map()) {
+function renderRegistryDevices(machines, chips = new Map(), hostsById = new Map()) {
     const container = document.getElementById('registry-devices-list');
     if (!container) return;
     if (!machines.length) {
@@ -9957,8 +9965,10 @@ function renderRegistryDevices(machines, chips = new Map()) {
         // de NOPAL puede tocar (/api/laser/registry). Una impresora Klipper
         // se administra desde su propia tarjeta, y poner acá un botón que
         // pegara al endpoint equivocado sería peor que no tenerlo.
-        const esGrbl = machine.driver === 'grbl';
-        const host = String(machine.id || '').replace(/^laser:/, '');
+        const host = hostsById.get(machine.id) || '';
+        // Sin host conocido no hay botones: editar o desvincular con una
+        // dirección equivocada crearía o tocaría otro registro.
+        const esGrbl = machine.driver === 'grbl' && Boolean(host);
         const nombre = machine.name || machine.id;
         // La píldora de estado va DENTRO del grupo de la derecha: el item es
         // flex con space-between, y dejarla suelta la empujaría al centro.
@@ -11136,8 +11146,13 @@ function renderLaserStatus(data) {
 }
 
 async function refreshLaserStatus() {
+    const host = getSectionHost('laser');
+    if (!host) {
+        renderLaserStatus(null);
+        return;
+    }
     try {
-        const response = await fetch('/api/laser/status');
+        const response = await fetch(`/api/laser/status?host=${encodeURIComponent(host)}`);
         const data = await response.json();
         renderLaserStatus(data);
     } catch (error) {
@@ -11186,6 +11201,11 @@ function formatLaserJobDuration(ms) {
     return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
 }
 
+// Host del trabajo que muestra la ficha de trabajo de la sección Láser (puede
+// ser el de otro láser con un corte en curso, ver refreshLaserJob): pausar,
+// reanudar y cancelar desde esa ficha actúan sobre ESA máquina.
+let laserJobDisplayedHost = '';
+
 function renderLaserJob(job, jobHost) {
     // El panel de trabajo activo (ficha "Movimiento del cabezal") es la
     // única fuente de controles/progreso — antes había una segunda copia
@@ -11215,6 +11235,7 @@ function renderLaserJob(job, jobHost) {
     // solo se avisa si la transición a error ocurrió mientras ya se estaba
     // viendo ese mismo láser en esta sesión.
     const host = jobHost || document.getElementById('laser-host-select')?.value || '';
+    laserJobDisplayedHost = host;
     const previousStateForHost = laserJobHostLastState.get(host);
     if (state === 'error' && previousStateForHost && previousStateForHost !== 'error') {
         appAlert(job?.error || t('laserJobErrorGeneric'), t('laserJobErrorTitle'), 'danger');
@@ -11354,9 +11375,11 @@ async function refreshLaserJob() {
             return;
         }
 
-        const response = await fetch('/api/laser/job/status');
+        const host = getSectionHost('laser');
+        if (!host) return;
+        const response = await fetch(`/api/laser/job/status?host=${encodeURIComponent(host)}`);
         const data = await response.json();
-        renderLaserJob(data);
+        renderLaserJob(data, host);
     } catch (error) {
         console.error(error);
     }
@@ -11438,7 +11461,10 @@ function renderLaserQueue(queue) {
                     if (!confirmed) return;
                     try {
                         const formData = new FormData();
+                        const host = getSectionHost('laser');
+                        if (!host) throw new Error(t('laserNoMachineSelected'));
                         formData.append('id', id);
+                        formData.append('host', host);
                         const response = await fetch('/api/laser/queue/start', { method: 'POST', body: formData });
                         if (!response.ok) {
                             const data = await response.json().catch(() => ({}));
@@ -11506,8 +11532,13 @@ function renderLaserBoardInfo(info) {
 }
 
 async function loadLaserBoardInfo() {
+    const host = getSectionHost('laser');
+    if (!host) {
+        renderLaserBoardInfo(null);
+        return;
+    }
     try {
-        const response = await fetch('/api/laser/info');
+        const response = await fetch(`/api/laser/info?host=${encodeURIComponent(host)}`);
         if (!response.ok) throw new Error('No se pudo cargar la información de la placa');
         const info = await response.json();
         renderLaserBoardInfo(info);
@@ -11518,6 +11549,101 @@ async function loadLaserBoardInfo() {
 }
 
 let laserHostOptions = [];
+
+// ── Máquina seleccionada por sección (Láser / CNC) ──
+// El servidor ya no guarda un "host activo" global: cada petición de láser o
+// CNC lleva el host de su propia máquina. Cada sección recuerda SU máquina en
+// este navegador por el id interno del registro (`mch_...`), que no cambia
+// aunque la máquina cambie de IP o de puerto USB; el host que se manda al
+// backend siempre se resuelve de ese id contra el registro actual.
+const LASER_SECTION_MACHINE_KEYS = {
+    laser: { idKey: 'lastLaserMachineId', legacyHostKey: 'lastLaserHost', selectId: 'laser-host-select' },
+    cnc: { idKey: 'lastCncMachineId', legacyHostKey: 'lastCncHost', selectId: 'cnc-host-select' },
+};
+
+// Registro completo (incluye máquinas sin conexión), para resolver la clave
+// vieja por host aunque esa máquina no esté en línea ahora mismo.
+let laserRegistryEntries = [];
+let laserRegistryLoaded = false;
+
+function readLaserMachinePref(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (error) {
+        return null;
+    }
+}
+
+function writeLaserMachinePref(key, value) {
+    try {
+        if (value) localStorage.setItem(key, value);
+        else localStorage.removeItem(key);
+    } catch (error) {
+        // Sin almacenamiento local (ventana privada, etc.): la selección
+        // solo dura mientras la página esté abierta.
+    }
+}
+
+function laserDeviceInSection(device, section) {
+    const kind = (device && device.kind) || 'laser';
+    return section === 'cnc' ? kind === 'cnc' : kind !== 'cnc';
+}
+
+// Compatibilidad: antes se guardaba el HOST (lastLaserHost / lastCncHost). Se
+// traduce una sola vez al id interno buscando ese host en el registro y la
+// clave vieja se borra. Solo se intenta con el registro ya cargado, para no
+// perder la preferencia si la carga falló.
+function migrateLegacySectionMachine(section) {
+    const keys = LASER_SECTION_MACHINE_KEYS[section];
+    const legacyHost = readLaserMachinePref(keys.legacyHostKey);
+    if (!legacyHost || !laserRegistryLoaded) return;
+    if (!readLaserMachinePref(keys.idKey)) {
+        const match = laserRegistryEntries.find(entry => entry.id && entry.host === legacyHost && laserDeviceInSection(entry, section));
+        if (match) writeLaserMachinePref(keys.idKey, match.id);
+    }
+    writeLaserMachinePref(keys.legacyHostKey, null);
+}
+
+// Máquina (de laserHostOptions) que le toca a la sección: la guardada por id
+// o, si ya no existe, la primera de ese tipo (null si no hay ninguna).
+function getSectionMachine(section) {
+    migrateLegacySectionMachine(section);
+    const devices = laserHostOptions.filter(device => laserDeviceInSection(device, section));
+    const savedId = readLaserMachinePref(LASER_SECTION_MACHINE_KEYS[section].idKey);
+    return (savedId && devices.find(device => device.id === savedId)) || devices[0] || null;
+}
+
+// Host ACTUAL de la máquina seleccionada en la sección ('' si no hay). El
+// selector de la sección ya se pinta con esa máquina (y refleja lo que el
+// usuario elija en esta pestaña); si aún está vacío se resuelve del registro.
+function getSectionHost(section) {
+    const selected = document.getElementById(LASER_SECTION_MACHINE_KEYS[section].selectId)?.value || '';
+    if (selected) return selected;
+    return getSectionMachine(section)?.host || '';
+}
+
+// Recuerda la máquina de la sección por su id interno. Si no se conoce el id
+// (p. ej. una placa encontrada por escaneo y sin registrar) no se guarda nada.
+function rememberSectionMachine(section, machineId, host) {
+    let id = machineId || '';
+    if (!id && host) {
+        const device = laserHostOptions.find(item => item.host === host)
+            || laserRegistryEntries.find(item => item.host === host);
+        id = device?.id || '';
+    }
+    if (!id) return;
+    writeLaserMachinePref(LASER_SECTION_MACHINE_KEYS[section].idKey, id);
+    writeLaserMachinePref(LASER_SECTION_MACHINE_KEYS[section].legacyHostKey, null);
+}
+
+// Las funciones compartidas (comandos, jog, home) que no reciben host usan el
+// de la sección que está a la vista: CNC si #cnc-section está activa, si no
+// la de Láser. '' si ninguna de las dos está activa o no hay máquina.
+function getActiveSectionLaserHost() {
+    if (document.getElementById('cnc-section')?.classList.contains('active')) return getSectionHost('cnc');
+    if (document.getElementById('laser-section')?.classList.contains('active')) return getSectionHost('laser');
+    return '';
+}
 
 function laserConnectionModeLabel(host) {
     if (!host) return '';
@@ -11550,7 +11676,7 @@ function renderLaserHostOptions(activeHost) {
     const selectEl = document.getElementById('laser-host-select');
     if (!selectEl) return;
     let laserDevices = laserHostOptions.filter(device => (device.kind || 'laser') !== 'cnc');
-    if (!laserDevices.some(device => device.host === activeHost)) {
+    if (activeHost && !laserDevices.some(device => device.host === activeHost)) {
         laserDevices = [{ host: activeHost, hostname: '' }, ...laserDevices];
     }
     selectEl.innerHTML = laserDevices.map(device => {
@@ -11558,7 +11684,7 @@ function renderLaserHostOptions(activeHost) {
         const color = getDeviceKindColor(device.kind || 'laser');
         return `<option value="${escapeHtml(device.host)}" style="color:${color}">${escapeHtml(label)}</option>`;
     }).join('');
-    selectEl.value = activeHost;
+    selectEl.value = activeHost || '';
     const modeEl = document.getElementById('laser-connection-mode');
     if (modeEl) modeEl.textContent = laserConnectionModeLabel(activeHost);
     applyLaserMachineKindUI(activeHost);
@@ -11568,8 +11694,10 @@ function renderLaserHostOptions(activeHost) {
         consoleNameEl.textContent = (device && device.hostname) || laserHostLabel(activeHost) || '—';
     }
     renderLaserBedMap(activeHost);
+    // La cámara se vincula por el id interno de la máquina, no por el host.
     const cameraContainer = document.getElementById('laser-modal-camera');
-    if (cameraContainer && activeHost) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'laser', deviceId: activeHost });
+    const activeId = laserDevices.find(item => item.host === activeHost)?.id;
+    if (cameraContainer && activeId) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'laser', deviceId: activeId });
 }
 
 let laserBedMapWorkArea = null;
@@ -12048,6 +12176,20 @@ async function frameQueuedLaserJob() {
     }
 }
 
+// Pausar/reanudar/cancelar del gamepad estando en la sección CNC: van a la
+// máquina seleccionada en CNC.
+async function handleCncGamepadJobAction(action) {
+    const host = getSectionHost('cnc');
+    if (!host) return;
+    if (action === 'cancel' && !(await appConfirm(t('laserCancelConfirm'), t('laserCancel')))) return;
+    try {
+        await sendLaserJobControl(action, host);
+    } catch (error) {
+        console.error(error);
+    }
+    refreshCncJobFooter();
+}
+
 // activeKind: 'laser' | 'cnc' — resuelto por pollLaserGamepad() según qué
 // sección esté activa. Las acciones kind:'laser' (frame) no hacen nada en
 // CNC (no tienen equivalente real); no hay acciones kind:'cnc' además de
@@ -12061,9 +12203,10 @@ function runLaserGamepadAction(actionId, activeKind) {
         case 'jogRight': gamepadJog('X', 1, activeKind); break;
         case 'jogZUp': if (inCnc) gamepadJog('Z', 1, activeKind); break;
         case 'jogZDown': if (inCnc) gamepadJog('Z', -1, activeKind); break;
-        case 'pause': handleLaserPause(); break;
-        case 'resume': handleLaserResume(); break;
-        case 'cancel': handleLaserCancel(); break;
+        // En CNC van a la máquina seleccionada en CNC, no a la del láser.
+        case 'pause': if (inCnc) handleCncGamepadJobAction('pause'); else handleLaserPause(); break;
+        case 'resume': if (inCnc) handleCncGamepadJobAction('resume'); else handleLaserResume(); break;
+        case 'cancel': if (inCnc) handleCncGamepadJobAction('cancel'); else handleLaserCancel(); break;
         case 'toggleTool': gamepadToggleTool(activeKind); break;
         case 'goToOrigin': gamepadGoToOrigin(activeKind); break;
         case 'setOrigin': gamepadSetOrigin(activeKind); break;
@@ -12251,22 +12394,23 @@ document.getElementById('laser-gamepad-reset-btn')?.addEventListener('click', as
 
 async function loadLaserHostSelector() {
     try {
-        const [hostResponse, registryResponse] = await Promise.all([
-            fetch('/api/laser/host'),
-            fetch('/api/laser/registry/status'),
-        ]);
-        const hostData = await hostResponse.json();
+        const registryResponse = await fetch('/api/laser/registry/status');
         const registryData = await registryResponse.json();
         const registryEntries = registryData.lasers || [];
         const registryHosts = new Set(registryEntries.map(entry => entry.host));
+        laserRegistryEntries = registryEntries;
+        laserRegistryLoaded = true;
 
         // Descarta restos de escaneos anteriores que ya no están registrados,
         // para que el selector no acumule dispositivos fantasma indefinidamente.
-        laserHostOptions = laserHostOptions.filter(device => registryHosts.has(device.host) || device.host === hostData.host);
+        // (se conserva la que esté elegida ahora mismo en el selector de Láser).
+        const selectedLaserHost = document.getElementById('laser-host-select')?.value || '';
+        laserHostOptions = laserHostOptions.filter(device => registryHosts.has(device.host) || device.host === selectedLaserHost);
 
         registryEntries.forEach(entry => {
             const existing = laserHostOptions.find(device => device.host === entry.host);
             if (existing) {
+                existing.id = entry.id || null;
                 existing.hostname = entry.name;
                 existing.kind = entry.kind || 'laser';
                 existing.workArea = entry.work_area || null;
@@ -12275,6 +12419,7 @@ async function loadLaserHostSelector() {
                 existing.online = entry.online;
             } else {
                 laserHostOptions.push({
+                    id: entry.id || null,
                     host: entry.host,
                     hostname: entry.name,
                     kind: entry.kind || 'laser',
@@ -12291,7 +12436,7 @@ async function loadLaserHostSelector() {
         // ya cubre ver/quitar las que están sin conexión.
         laserHostOptions = laserHostOptions.filter(device => device.online !== false);
 
-        renderLaserHostOptions(hostData.host);
+        renderLaserHostOptions(getSectionMachine('laser')?.host || '');
     } catch (error) {
         console.error(error);
     }
@@ -12303,10 +12448,12 @@ async function scanLaserNetwork() {
     try {
         const response = await fetch('/api/laser/scan');
         const data = await response.json();
-        laserHostOptions = data.devices || [];
-        const hostResponse = await fetch('/api/laser/host');
-        const hostData = await hostResponse.json();
-        renderLaserHostOptions(hostData.host);
+        const currentHost = getSectionHost('laser');
+        // El escaneo no trae el id interno ni el tipo de las placas ya
+        // registradas: se conservan de lo que ya se conocía por host.
+        const previous = new Map(laserHostOptions.map(device => [device.host, device]));
+        laserHostOptions = (data.devices || []).map(device => ({ ...(previous.get(device.host) || {}), ...device }));
+        renderLaserHostOptions(currentHost);
     } catch (error) {
         console.error(error);
     } finally {
@@ -12318,10 +12465,9 @@ const laserHostSelect = document.getElementById('laser-host-select');
 if (laserHostSelect) {
     laserHostSelect.addEventListener('change', async () => {
         try {
-            const formData = new FormData();
-            formData.append('host', laserHostSelect.value);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-            localStorage.setItem('lastLaserHost', laserHostSelect.value);
+            // La selección vive solo en este navegador (por id interno); el
+            // servidor ya no tiene un "host activo" que cambiar.
+            rememberSectionMachine('laser', null, laserHostSelect.value);
             // renderLaserHostOptions (no solo applyLaserMachineKindUI) porque
             // también actualiza el título de "Consola Láser de: X" y el mapa
             // de área de trabajo — si no, ambos quedan pegados a la máquina
@@ -12361,8 +12507,12 @@ function renderLaserConsoleLog(messages) {
 
 async function refreshLaserConsole() {
     try {
-        const host = document.getElementById('laser-host-select')?.value;
-        const url = `/api/laser/console?count=150${host ? `&host=${encodeURIComponent(host)}` : ''}`;
+        const host = getSectionHost('laser');
+        if (!host) {
+            renderLaserConsoleLog([]);
+            return;
+        }
+        const url = `/api/laser/console?count=150&host=${encodeURIComponent(host)}`;
         const response = await fetch(url);
         const data = await response.json();
         renderLaserConsoleLog(data.messages || []);
@@ -12489,7 +12639,10 @@ function renderLaserSettings(settings, firmware) {
             const value = input.value.trim();
             const item = input.closest('.laser-settings-item');
             try {
+                const host = getSectionHost('laser');
+                if (!host) throw new Error(t('laserNoMachineSelected'));
                 const formData = new FormData();
+                formData.append('host', host);
                 formData.append('key', key);
                 formData.append('value', value);
                 const response = await fetch('/api/laser/settings', { method: 'POST', body: formData });
@@ -12510,10 +12663,16 @@ function renderLaserSettings(settings, firmware) {
 }
 
 async function loadLaserSettings() {
+    const host = getSectionHost('laser');
+    if (!host) {
+        renderLaserSettings([]);
+        return;
+    }
     try {
+        const hostQuery = `?host=${encodeURIComponent(host)}`;
         const [settingsResponse, statusResponse] = await Promise.all([
-            fetch('/api/laser/settings'),
-            fetch('/api/laser/status'),
+            fetch(`/api/laser/settings${hostQuery}`),
+            fetch(`/api/laser/status${hostQuery}`),
         ]);
         if (!settingsResponse.ok) throw new Error('No se pudo cargar la configuración');
         const data = await settingsResponse.json();
@@ -12531,14 +12690,15 @@ if (laserSettingsReloadBtn) laserSettingsReloadBtn.addEventListener('click', loa
 async function loadLaserNameField() {
     const input = document.getElementById('laser-name-input');
     if (!input) return;
+    const host = getSectionHost('laser');
+    if (!host) {
+        input.value = '';
+        return;
+    }
     try {
-        const [hostResponse, registryResponse] = await Promise.all([
-            fetch('/api/laser/host'),
-            fetch('/api/laser/registry'),
-        ]);
-        const hostData = await hostResponse.json();
+        const registryResponse = await fetch('/api/laser/registry');
         const registryData = await registryResponse.json();
-        const entry = (registryData.lasers || []).find(item => item.host === hostData.host);
+        const entry = (registryData.lasers || []).find(item => item.host === host);
         input.value = entry ? entry.name : '';
     } catch (error) {
         console.error(error);
@@ -12551,13 +12711,13 @@ if (laserNameSaveBtn) {
         const input = document.getElementById('laser-name-input');
         const name = input?.value.trim();
         if (!name) return;
+        const host = getSectionHost('laser');
+        if (!host) return;
         try {
-            const hostResponse = await fetch('/api/laser/host');
-            const hostData = await hostResponse.json();
             const formData = new FormData();
-            formData.append('host', hostData.host);
+            formData.append('host', host);
             formData.append('name', name);
-            formData.append('transport', hostData.host.startsWith('usb:') ? 'usb' : 'network');
+            formData.append('transport', host.startsWith('usb:') ? 'usb' : 'network');
             await fetch('/api/laser/registry', { method: 'POST', body: formData });
             showToast(t('laserNameSaved'));
             loadLaserHostSelector();
@@ -12792,7 +12952,10 @@ function renderSdRows(entries) {
             closeAllSdRowMenus();
             if (!(await appConfirm(t('laserSdDeleteConfirm'), t('delete')))) return;
             try {
+                const host = getSectionHost('laser');
+                if (!host) throw new Error(t('laserNoMachineSelected'));
                 const formData = new FormData();
+                formData.append('host', host);
                 formData.append('path', sdCurrentPath);
                 formData.append('name', name);
                 formData.append('is_dir', isDir ? 'true' : 'false');
@@ -12847,12 +13010,14 @@ async function startSdFilePrint(name) {
     if (!confirmed) return;
 
     try {
-        const hostResponse = await fetch('/api/laser/host');
-        const hostData = await hostResponse.json();
-        const activeHost = hostData.host;
+        // Se fija la máquina al confirmar: las copias siguientes van a la
+        // misma placa aunque el usuario cambie de selección mientras tanto.
+        const activeHost = getSectionHost('laser');
+        if (!activeHost) throw new Error(t('laserNoMachineSelected'));
 
         for (let i = 0; i < copies; i++) {
             const formData = new FormData();
+            formData.append('host', activeHost);
             formData.append('path', sdCurrentPath);
             formData.append('name', name);
             const response = await fetch('/api/laser/sd/run', { method: 'POST', body: formData });
@@ -12876,9 +13041,14 @@ async function loadSdFolder(path) {
     sdCurrentPath = path;
     renderSdBreadcrumb(path);
     const listEl = document.getElementById('laser-sd-list');
+    const host = getSectionHost('laser');
+    if (!host) {
+        if (listEl) listEl.innerHTML = `<div class="empty-state-small">${t('laserNoMachineSelected')}</div>`;
+        return;
+    }
     if (listEl) listEl.innerHTML = `<div class="empty-state-small empty-state-small-loading"><span class="mini-spinner"></span>${t('laserSdLoading')}</div>`;
     try {
-        const response = await fetch(`/api/laser/sd/files?path=${encodeURIComponent(path)}`);
+        const response = await fetch(`/api/laser/sd/files?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`);
         const data = await response.json();
         if (data.status && data.status !== 'Ok') {
             listEl.innerHTML = `<div class="empty-state-small">${escapeHtml(data.message || t('laserSdError'))}</div>`;
@@ -12921,8 +13091,13 @@ async function checkSdAvailability() {
     // laser_sd_format_endpoint, esto no es la única traba).
     const formatBtn = document.getElementById('laser-sd-format-btn');
     if (formatBtn) formatBtn.hidden = currentAuthUser?.role !== 'admin';
+    const host = getSectionHost('laser');
+    if (!host) {
+        setLaserMemoryTabAvailable(false);
+        return;
+    }
     try {
-        const response = await fetch('/api/laser/sd/available');
+        const response = await fetch(`/api/laser/sd/available?host=${encodeURIComponent(host)}`);
         const data = await response.json();
         setLaserMemoryTabAvailable(!!data.available);
         if (data.available) {
@@ -13012,9 +13187,16 @@ if (laserSdFormatBtn) {
             if (typed !== null) appAlert(t('laserSdFormatConfirmMismatch'), '', 'danger');
             return;
         }
+        const host = getSectionHost('laser');
+        if (!host) {
+            appAlert(t('laserNoMachineSelected'), '', 'danger');
+            return;
+        }
         laserSdFormatBtn.disabled = true;
         try {
-            const response = await fetch('/api/laser/sd/format', { method: 'POST' });
+            const formData = new FormData();
+            formData.append('host', host);
+            const response = await fetch('/api/laser/sd/format', { method: 'POST', body: formData });
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
                 throw new Error(data.detail || t('laserSdError'));
@@ -13037,7 +13219,10 @@ if (laserSdNewFolderBtn) {
         const name = prompt(t('laserSdNewFolderPrompt'));
         if (!name || !name.trim()) return;
         try {
+            const host = getSectionHost('laser');
+            if (!host) throw new Error(t('laserNoMachineSelected'));
             const formData = new FormData();
+            formData.append('host', host);
             formData.append('path', sdCurrentPath);
             formData.append('name', name.trim());
             const response = await fetch('/api/laser/sd/folder', { method: 'POST', body: formData });
@@ -13108,7 +13293,10 @@ if (laserSdUploadInput) {
         if (progressLabel) progressLabel.textContent = '0%';
 
         try {
+            const host = getSectionHost('laser');
+            if (!host) throw new Error(t('laserNoMachineSelected'));
             const formData = new FormData();
+            formData.append('host', host);
             formData.append('path', sdCurrentPath);
             formData.append('file', file);
             const response = await fetch('/api/laser/sd/upload', { method: 'POST', body: formData });
@@ -13216,13 +13404,17 @@ document.getElementById('laser-sd-library-send-btn')?.addEventListener('click', 
 
     let lastName = null;
     let hadError = false;
+    // Todo el lote va a la misma placa, aunque cambie la selección a media subida.
+    const sdLibraryHost = getSectionHost('laser');
     for (let i = 0; i < checked.length; i++) {
         const name = checked[i].dataset.libraryName;
         if (progressLabel) progressLabel.textContent = t('laserSdLibraryProgressOf').replace('{name}', name).replace('{i}', i + 1).replace('{n}', checked.length);
         if (progressFill) progressFill.style.width = '0%';
         if (progressPct) progressPct.textContent = '0%';
         try {
+            if (!sdLibraryHost) throw new Error(t('laserNoMachineSelected'));
             const formData = new FormData();
+            formData.append('host', sdLibraryHost);
             formData.append('gcode_path', checked[i].dataset.libraryPath);
             formData.append('sd_path', sdCurrentPath);
             const response = await fetch('/api/laser/sd/upload-from-library', { method: 'POST', body: formData });
@@ -13256,16 +13448,31 @@ document.getElementById('laser-sd-library-send-btn')?.addEventListener('click', 
 
 async function loadLaserSection() {
     await loadLaserHostSelector();
-    const resolvedHost = await ensureSectionHost(kind => kind !== 'cnc', 'lastLaserHost');
+    const resolvedHost = ensureSectionHost('laser');
     if (resolvedHost) renderLaserHostOptions(resolvedHost);
     loadLaserBoardInfo();
     startLaserPolling();
     checkSdAvailability();
 }
 
+// Pausar/reanudar/cancelar de la ficha de trabajo de Láser: van a la máquina
+// del trabajo que muestra la ficha (laserJobDisplayedHost) o, si aún no hay
+// ninguno pintado, a la máquina seleccionada en Láser. Sin máquina no se
+// manda nada.
+function laserJobControlHost() {
+    return laserJobDisplayedHost || getSectionHost('laser');
+}
+
+async function sendLaserJobControl(action, host) {
+    if (!host) return;
+    const formData = new FormData();
+    formData.append('host', host);
+    await fetch(`/api/laser/job/${action}`, { method: 'POST', body: formData });
+}
+
 async function handleLaserPause() {
     try {
-        await fetch('/api/laser/job/pause', { method: 'POST' });
+        await sendLaserJobControl('pause', laserJobControlHost());
         refreshLaserJob();
     } catch (error) {
         console.error(error);
@@ -13274,7 +13481,7 @@ async function handleLaserPause() {
 
 async function handleLaserResume() {
     try {
-        await fetch('/api/laser/job/resume', { method: 'POST' });
+        await sendLaserJobControl('resume', laserJobControlHost());
         refreshLaserJob();
     } catch (error) {
         console.error(error);
@@ -13282,9 +13489,11 @@ async function handleLaserResume() {
 }
 
 async function handleLaserCancel() {
+    const host = laserJobControlHost();
+    if (!host) return;
     if (!(await appConfirm(t('laserCancelConfirm'), t('laserCancel')))) return;
     try {
-        await fetch('/api/laser/job/cancel', { method: 'POST' });
+        await sendLaserJobControl('cancel', host);
         refreshLaserJob();
     } catch (error) {
         console.error(error);
@@ -13295,11 +13504,18 @@ document.getElementById('laser-pause-btn-panel')?.addEventListener('click', hand
 document.getElementById('laser-resume-btn-panel')?.addEventListener('click', handleLaserResume);
 document.getElementById('laser-cancel-btn-panel')?.addEventListener('click', handleLaserCancel);
 
+// Sin `host` explícito se usa la máquina de la sección a la vista (Láser o
+// CNC). Si no hay ninguna, no se manda nada.
 async function sendLaserRawCommand(command, host) {
+    const targetHost = host || getActiveSectionLaserHost();
+    if (!targetHost) {
+        appAlert(t('laserNoMachineSelected'), '', 'warning');
+        return false;
+    }
     try {
         const formData = new FormData();
         formData.append('command', command);
-        if (host) formData.append('host', host);
+        formData.append('host', targetHost);
         const response = await fetch('/api/laser/command', { method: 'POST', body: formData });
         if (!response.ok) {
             // El backend manda 409 con un detail claro cuando hay un grabado
@@ -13363,12 +13579,14 @@ document.querySelectorAll('#laser-move-to-form input').forEach((input) => {
 // o G91/G1/G90 Marlin) según el firmware registrado para `host`, así el
 // frontend deja de construir G-code de jog a mano (ver services/laser_service.py::jog).
 async function sendLaserJog(axis, distance, feed, host) {
+    const targetHost = host || getActiveSectionLaserHost();
+    if (!targetHost) return false;
     try {
         const formData = new FormData();
         formData.append('axis', axis);
         formData.append('distance', distance);
         formData.append('feed', feed);
-        if (host) formData.append('host', host);
+        formData.append('host', targetHost);
         const response = await fetch('/api/laser/jog', { method: 'POST', body: formData });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
@@ -13391,9 +13609,11 @@ async function sendLaserJogMoves(moves, feed, host) {
 }
 
 async function sendLaserHome(host, axes) {
+    const targetHost = host || getActiveSectionLaserHost();
+    if (!targetHost) return false;
     try {
         const formData = new FormData();
-        if (host) formData.append('host', host);
+        formData.append('host', targetHost);
         if (axes) formData.append('axes', axes);
         const response = await fetch('/api/laser/home', { method: 'POST', body: formData });
         return response.ok;
@@ -13695,28 +13915,12 @@ let cncStatusPollInterval = null;
 let cncSlowPollInterval = null;
 let cncRapidPercent = 100;
 
-// Cada sección (Láser/CNC) recuerda su propio último dispositivo activo,
-// aunque el backend solo mantenga UNA conexión real a la vez (el ESP32 solo
-// acepta un cliente WebSocket) — al entrar a una sección, la reconectamos al
-// dispositivo de su propio tipo, sin tocar nada si ya está en el correcto.
-async function ensureSectionHost(kindPredicate, lastHostKey) {
-    const devices = laserHostOptions.filter(device => kindPredicate(device.kind || 'laser'));
-    if (!devices.length) return null;
-    const remembered = localStorage.getItem(lastHostKey);
-    const target = devices.find(device => device.host === remembered) || devices[0];
-    try {
-        const currentResponse = await fetch('/api/laser/host');
-        const current = await currentResponse.json();
-        if (current.host !== target.host) {
-            const formData = new FormData();
-            formData.append('host', target.host);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-        }
-    } catch (error) {
-        console.error(error);
-    }
-    localStorage.setItem(lastHostKey, target.host);
-    return target.host;
+// Cada sección (Láser/CNC) recuerda su propia máquina en este navegador (ver
+// getSectionMachine). El backend mantiene una conexión por máquina, así que al
+// entrar a una sección no hay nada que reconectar en el servidor: solo se
+// resuelve qué máquina mostrar y a cuál mandarle cada petición.
+function ensureSectionHost(section) {
+    return getSectionMachine(section)?.host || null;
 }
 
 function renderCncHostOptions(activeHost) {
@@ -13734,7 +13938,8 @@ function renderCncHostOptions(activeHost) {
     const activeDevice = cncDevices.find(device => device.host === resolvedHost);
     applyCncMachineProfile(activeDevice?.machineProfile);
     const cameraContainer = document.getElementById('cnc-modal-camera');
-    if (cameraContainer && resolvedHost) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'cnc', deviceId: resolvedHost });
+    // La cámara se vincula por el id interno de la máquina, no por el host.
+    if (cameraContainer && activeDevice?.id) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'cnc', deviceId: activeDevice.id });
 }
 
 // La cola de trabajos es compartida entre láser y CNC a nivel de backend (un
@@ -13777,8 +13982,10 @@ function renderCncQueue(queue) {
                 if (btn.dataset.action === 'play') {
                     try {
                         const formData = new FormData();
+                        const host = getSectionHost('cnc');
+                        if (!host) throw new Error(t('laserNoMachineSelected'));
                         formData.append('id', id);
-                        formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+                        formData.append('host', host);
                         const response = await fetch('/api/laser/queue/start', { method: 'POST', body: formData });
                         if (!response.ok) {
                             const data = await response.json().catch(() => ({}));
@@ -14175,7 +14382,7 @@ function initCncViewerTabs() {
 async function loadCncSection() {
     initCncViewerTabs();
     await loadLaserHostSelector();
-    const resolvedHost = await ensureSectionHost(kind => kind === 'cnc', 'lastCncHost');
+    const resolvedHost = ensureSectionHost('cnc');
     renderCncHostOptions(resolvedHost);
     refreshCncStatus();
     refreshCncParserState();
@@ -14199,10 +14406,9 @@ const cncHostSelect = document.getElementById('cnc-host-select');
 if (cncHostSelect) {
     cncHostSelect.addEventListener('change', async () => {
         try {
-            const formData = new FormData();
-            formData.append('host', cncHostSelect.value);
-            await fetch('/api/laser/host', { method: 'POST', body: formData });
-            localStorage.setItem('lastCncHost', cncHostSelect.value);
+            // La selección vive solo en este navegador (por id interno); el
+            // servidor ya no tiene un "host activo" que cambiar.
+            rememberSectionMachine('cnc', null, cncHostSelect.value);
             const activeDevice = laserHostOptions.find(device => device.host === cncHostSelect.value);
             applyCncMachineProfile(activeDevice?.machineProfile);
             refreshCncStatus();
@@ -14222,8 +14428,9 @@ function setCncPinActive(pinKey, active) {
 async function refreshCncStatus() {
     const host = document.getElementById('cnc-host-select')?.value;
     try {
-        const response = await fetch(`/api/laser/status${host ? `?host=${encodeURIComponent(host)}` : ''}`);
-        const data = await response.json();
+        // Sin máquina CNC seleccionada no se consulta nada: se pinta como sin conexión.
+        const response = host ? await fetch(`/api/laser/status?host=${encodeURIComponent(host)}`) : null;
+        const data = response ? await response.json() : { connected: false };
 
         const statePills = [document.getElementById('cnc-state-pill'), document.getElementById('cnc-wizard-state-pill')].filter(Boolean);
         const dot = document.getElementById('cnc-footer-dot');
@@ -14311,8 +14518,9 @@ async function refreshCncStatus() {
 
 async function refreshCncParserState() {
     const host = document.getElementById('cnc-host-select')?.value;
+    if (!host) return;
     try {
-        const response = await fetch(`/api/laser/parser-state${host ? `?host=${encodeURIComponent(host)}` : ''}`);
+        const response = await fetch(`/api/laser/parser-state?host=${encodeURIComponent(host)}`);
         if (!response.ok) return;
         const data = await response.json();
         const wcsSelect = document.getElementById('cnc-wcs-select');
@@ -14329,8 +14537,10 @@ async function refreshCncParserState() {
 }
 
 async function refreshCncJobFooter() {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     try {
-        const response = await fetch('/api/laser/job/status');
+        const response = await fetch(`/api/laser/job/status?host=${encodeURIComponent(host)}`);
         const job = await response.json();
         const filenameEl = document.getElementById('cnc-job-filename');
         if (filenameEl) filenameEl.textContent = job?.filename || '—';
@@ -14374,8 +14584,10 @@ document.getElementById('cnc-footer-stop-btn')?.addEventListener('click', async 
 });
 
 document.getElementById('cnc-run-btn')?.addEventListener('click', async () => {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     const formData = new FormData();
-    formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', host);
     try {
         await fetch('/api/laser/job/resume', { method: 'POST', body: formData });
     } catch (error) {
@@ -14385,8 +14597,10 @@ document.getElementById('cnc-run-btn')?.addEventListener('click', async () => {
 });
 
 document.getElementById('cnc-pause-btn')?.addEventListener('click', async () => {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     const formData = new FormData();
-    formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', host);
     try {
         await fetch('/api/laser/job/pause', { method: 'POST', body: formData });
     } catch (error) {
@@ -14396,15 +14610,17 @@ document.getElementById('cnc-pause-btn')?.addEventListener('click', async () => 
 });
 
 document.getElementById('cnc-park-btn')?.addEventListener('click', async () => {
+    const host = getSectionHost('cnc');
+    if (!host) return;
     const formData = new FormData();
-    formData.append('host', document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', host);
     try {
         await fetch('/api/laser/job/pause', { method: 'POST', body: formData });
     } catch (error) {
         console.error(error);
     }
     // Se aleja un poco de la pieza en Z al estacionar, además de pausar.
-    await sendLaserJog('Z', 10, 500);
+    await sendLaserJog('Z', 10, 500, host);
     refreshCncStatus();
     refreshCncJobFooter();
 });
@@ -14459,9 +14675,14 @@ document.getElementById('cnc-zero-z-btn')?.addEventListener('click', async () =>
 // Compartido entre el botón "Correr" de la tabla ARCHIVOS y el paso final
 // del asistente guiado, para no duplicar la lógica de arrancar un trabajo.
 async function startCncJob(path, host) {
+    const targetHost = host || getSectionHost('cnc');
+    if (!targetHost) {
+        appAlert(t('laserNoMachineSelected'), '', 'warning');
+        return;
+    }
     const formData = new FormData();
     formData.append('path', path);
-    formData.append('host', host || document.getElementById('cnc-host-select')?.value || '');
+    formData.append('host', targetHost);
     try {
         await fetch('/api/laser/job/start', { method: 'POST', body: formData });
         showToast(t('cncJobStarted'));
@@ -15061,7 +15282,7 @@ if (laserHomeBtn) {
         if (isLaserHomeConfirmEnabled()) {
             if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
         }
-        await sendLaserHome();
+        await sendLaserHome(getSectionHost('laser'));
         clearLaserBedMapTrace();
         refreshLaserStatus();
     });
@@ -15073,7 +15294,7 @@ if (cncHomeBtn) {
         if (isLaserHomeConfirmEnabled()) {
             if (!(await appConfirm(t('laserHomeConfirm'), t('laserHome'), 'warning'))) return;
         }
-        await sendLaserHome();
+        await sendLaserHome(getSectionHost('cnc'));
         refreshCncStatus();
     });
 }
@@ -15585,7 +15806,7 @@ function marlinPrinterCardHtml(printer, status) {
     // sigue mostrando el estado real sin conexión.
     const illustrationState = visualState === 'offline' ? 'idle' : visualState;
     return `
-        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}" data-heat-progress="${heatProgress ?? ''}">
+        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}" data-machine-uid="${escapeHtml(printer.id || '')}" data-heat-progress="${heatProgress ?? ''}">
             ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
             <div class="printer-card-top">
                 <div>
@@ -16899,8 +17120,9 @@ async function openMarlinPrinterModal(device) {
     if (nameEl) nameEl.textContent = (entry && entry.name) || device;
     document.getElementById('marlin-printer-modal')?.classList.add('active');
 
+    // La cámara se vincula por el id interno de la impresora, no por la ruta USB.
     const cameraContainer = document.getElementById('marlin-printer-modal-camera');
-    if (cameraContainer) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'marlin', deviceId: device });
+    if (cameraContainer && entry?.id) window.NopalCameraCard?.mount(cameraContainer, { deviceType: 'marlin', deviceId: entry.id });
 
     await renderMarlinPrintCardShell(device);
 
@@ -17771,6 +17993,7 @@ function switchSection(sectionName) {
         renderGamepadBadge();
         loadUsersSettings();
         loadTunascreenSettings();
+        loadLogsConfigSettings();
         applySettingsModulesLayout();
         // Solo la lista de registradas (GET local, sin costo) — el escaneo
         // UDP de red queda para cuando el usuario aprieta "Actualizar", igual
@@ -18871,44 +19094,346 @@ const usbClassifyProfileSwitch = createOptionSwitch('usb-classify-profile-switch
 const deviceRenameProfileSwitch = createOptionSwitch('device-rename-profile-switch', null);
 const usbClassifyFirmwareSwitch = createOptionSwitch('usb-classify-firmware-switch', null);
 const deviceRenameFirmwareSwitch = createOptionSwitch('device-rename-firmware-switch', null);
-const systemLogLevelSwitch = createOptionSwitch('system-log-level-switch', () => renderSystemLogs());
+const systemLogLevelSwitch = createOptionSwitch('system-log-level-switch', () => loadSystemLogs());
 
 // ── Visor de logs del sistema (Configuración) ──
-let systemLogPollInterval = null;
+// Carga completa al abrir o al cambiar un filtro; después, sondeo incremental
+// cada 5 s desde el cursor que devuelve el servidor (solo el archivo actual).
+// Los archivos rotados no cambian, así que ahí no hay sondeo.
+const SYSTEM_LOG_POLL_MS = 5000;
+const SYSTEM_LOG_FULL_LIMIT = 500;
+const SYSTEM_LOG_INCREMENTAL_LIMIT = 1000;
+const SYSTEM_LOG_MAX_DOM_ENTRIES = 1000;
+const SYSTEM_LOG_SEARCH_DEBOUNCE_MS = 400;
+const SYSTEM_LOG_SCROLL_STICK_PX = 40;
+const SYSTEM_LOG_LEVEL_TAG_KEYS = {
+    INFO: 'systemLogsLevelTagInfo',
+    WARNING: 'systemLogsLevelTagWarning',
+    ERROR: 'systemLogsLevelTagError',
+    CRITICAL: 'systemLogsLevelTagCritical',
+    DEBUG: 'systemLogsLevelTagDebug',
+};
 
-async function renderSystemLogs() {
-    const viewer = document.getElementById('system-log-viewer');
-    if (!viewer) return;
+let systemLogPollInterval = null;
+let systemLogPaused = false;
+let systemLogCursor = null;
+// Parámetros de filtro de la última carga completa: el sondeo los reutiliza
+// para que el cursor siempre corresponda a los mismos filtros.
+let systemLogActiveParams = '';
+let systemLogSelectedFile = 0;
+// Sube con cada carga completa (y al cerrar) para descartar respuestas viejas.
+let systemLogGeneration = 0;
+let systemLogFullLoadPending = false;
+let systemLogPollInFlight = false;
+let systemLogSearchTimer = null;
+let systemLogScanLimited = false;
+let systemLogGap = false;
+let systemLogError = '';
+
+function systemLogEls() {
+    return {
+        viewer: document.getElementById('system-log-viewer'),
+        status: document.getElementById('system-log-status'),
+        componentSelect: document.getElementById('system-log-component-select'),
+        fileSelect: document.getElementById('system-log-file-select'),
+        searchInput: document.getElementById('system-log-search-input'),
+        pauseBtn: document.getElementById('system-log-pause-btn'),
+        pauseLabel: document.getElementById('system-log-pause-label'),
+    };
+}
+
+function systemLogFilterParams() {
+    const { componentSelect, searchInput } = systemLogEls();
+    const params = new URLSearchParams();
+    params.set('file', String(systemLogSelectedFile));
+    const component = componentSelect?.value || '';
+    if (component) params.set('component', component);
     const level = systemLogLevelSwitch.getValue();
-    const query = level && level !== 'all' ? `&level=${encodeURIComponent(level)}` : '';
+    if (level && level !== 'all') params.set('level', level);
+    const query = (searchInput?.value || '').trim().slice(0, 200);
+    if (query) params.set('q', query);
+    return params;
+}
+
+function systemLogComponentLabel(component) {
+    if (!component) return t('systemLogsComponentOther');
+    const key = LOGS_CONFIG_COMPONENT_NAME_KEYS[component];
+    return key ? t(key) : component;
+}
+
+function renderSystemLogComponentOptions() {
+    const { componentSelect } = systemLogEls();
+    if (!componentSelect) return;
+    const current = componentSelect.value || '';
+    const options = [`<option value="">${escapeHtml(t('systemLogsComponentAll'))}</option>`];
+    Object.keys(LOGS_CONFIG_COMPONENT_NAME_KEYS).forEach(id => {
+        options.push(`<option value="${escapeHtml(id)}">${escapeHtml(systemLogComponentLabel(id))}</option>`);
+    });
+    componentSelect.innerHTML = options.join('');
+    componentSelect.value = LOGS_CONFIG_COMPONENT_NAME_KEYS[current] ? current : '';
+}
+
+function systemLogFileLabel(file) {
+    const index = Number(file?.index) || 0;
+    let label;
+    if (index === 0) label = t('systemLogsFileCurrent');
+    else if (index === 1) label = t('systemLogsFilePrevious');
+    else label = t('systemLogsFilePreviousN').replace('{n}', String(index));
+    const modified = String(file?.modified || '');
+    return modified ? `${label} · ${modified.slice(0, 16).replace('T', ' ')}` : label;
+}
+
+function renderSystemLogFileOptions(files) {
+    const { fileSelect } = systemLogEls();
+    if (!fileSelect) return;
+    const list = Array.isArray(files) && files.length ? files : [{ index: 0 }];
+    if (!list.some(file => Number(file.index) === 0)) list.unshift({ index: 0 });
+    fileSelect.innerHTML = list.map(file => {
+        const index = Number(file.index) || 0;
+        return `<option value="${index}">${escapeHtml(systemLogFileLabel(file))}</option>`;
+    }).join('');
+    const hasSelected = list.some(file => Number(file.index) === systemLogSelectedFile);
+    fileSelect.value = String(hasSelected ? systemLogSelectedFile : 0);
+}
+
+function systemLogEntryHtml(entry) {
+    const level = String(entry?.level || '').toUpperCase();
+    let levelClass = 'system-log-entry-info';
+    if (level === 'ERROR' || level === 'CRITICAL') levelClass = 'console-line-level-error';
+    else if (level === 'WARNING') levelClass = 'console-line-level-warning';
+    else if (level === 'DEBUG') levelClass = 'system-log-entry-debug';
+    const time = String(entry?.time || '');
+    const shortTime = time.includes(' ') ? time.split(' ').pop() : time;
+    const levelKey = SYSTEM_LOG_LEVEL_TAG_KEYS[level];
+    const levelLabel = levelKey ? t(levelKey) : level;
+    const source = String(entry?.source || '');
+    const message = String(entry?.message ?? '');
+    const repeatedClass = message.startsWith('[repetido]') ? ' system-log-entry-repeated' : '';
+    const detail = String(entry?.detail || '');
+    const detailHtml = detail
+        ? `<details class="system-log-detail"><summary>${escapeHtml(t('systemLogsDetailToggle'))}</summary><pre>${escapeHtml(detail)}</pre></details>`
+        : '';
+    return `<div class="console-line system-log-entry ${levelClass}${repeatedClass}">`
+        + '<span class="system-log-entry-head">'
+        + `<span class="console-line-time" title="${escapeHtml(time)}">${escapeHtml(shortTime)}</span>`
+        + `<span class="system-log-tag system-log-tag-level">${escapeHtml(levelLabel)}</span>`
+        + `<span class="system-log-tag system-log-tag-component"${source ? ` title="${escapeHtml(source)}"` : ''}>${escapeHtml(systemLogComponentLabel(entry?.component))}</span>`
+        + '</span>'
+        + `<span class="console-line-message">${escapeHtml(message)}</span>`
+        + detailHtml
+        + '</div>';
+}
+
+function systemLogEntryCount() {
+    const { viewer } = systemLogEls();
+    return viewer ? viewer.querySelectorAll('.system-log-entry').length : 0;
+}
+
+function systemLogTrimDom() {
+    const { viewer } = systemLogEls();
+    if (!viewer) return;
+    const entries = viewer.querySelectorAll('.system-log-entry');
+    const excess = entries.length - SYSTEM_LOG_MAX_DOM_ENTRIES;
+    for (let i = 0; i < excess; i++) entries[i].remove();
+}
+
+function systemLogShowEmptyIfNeeded() {
+    const { viewer } = systemLogEls();
+    if (!viewer || systemLogEntryCount() > 0 || viewer.querySelector('.system-log-empty')) return;
+    viewer.innerHTML = `<div class="system-log-empty">${escapeHtml(t('systemLogsEmpty'))}</div>`;
+}
+
+function systemLogReplaceEntries(entries) {
+    const { viewer } = systemLogEls();
+    if (!viewer) return;
+    const list = Array.isArray(entries) ? entries.slice(-SYSTEM_LOG_MAX_DOM_ENTRIES) : [];
+    viewer.innerHTML = list.map(systemLogEntryHtml).join('');
+    systemLogShowEmptyIfNeeded();
+    viewer.scrollTop = viewer.scrollHeight;
+}
+
+function systemLogAppendEntries(entries) {
+    const { viewer } = systemLogEls();
+    if (!viewer || !Array.isArray(entries) || !entries.length) return;
+    // Solo seguir al fondo si el usuario ya estaba ahí; si subió a leer, no moverlo.
+    const wasAtBottom = viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight <= SYSTEM_LOG_SCROLL_STICK_PX;
+    viewer.querySelector('.system-log-empty')?.remove();
+    viewer.insertAdjacentHTML('beforeend', entries.map(systemLogEntryHtml).join(''));
+    systemLogTrimDom();
+    if (wasAtBottom) viewer.scrollTop = viewer.scrollHeight;
+}
+
+function renderSystemLogStatus() {
+    const { status } = systemLogEls();
+    if (!status) return;
+    const count = systemLogEntryCount();
+    const parts = [`<span class="system-log-status-count">${escapeHtml(count === 1 ? t('systemLogsEventCountOne') : t('systemLogsEventCount').replace('{count}', count.toLocaleString()))}</span>`];
+    if (systemLogScanLimited) parts.push(`<span class="system-log-status-notice">${escapeHtml(t('systemLogsScanLimited'))}</span>`);
+    if (systemLogGap) parts.push(`<span class="system-log-status-notice">${escapeHtml(t('systemLogsGap'))}</span>`);
+    if (systemLogError) parts.push(`<span class="system-log-status-error">${escapeHtml(systemLogError)}</span>`);
+    status.innerHTML = parts.join('');
+}
+
+function updateSystemLogPauseButton() {
+    const { pauseBtn, pauseLabel } = systemLogEls();
+    if (!pauseBtn) return;
+    const rotated = systemLogSelectedFile !== 0;
+    pauseBtn.disabled = rotated;
+    pauseBtn.setAttribute('aria-pressed', systemLogPaused ? 'true' : 'false');
+    pauseBtn.classList.toggle('is-paused', systemLogPaused);
+    pauseBtn.title = rotated ? t('systemLogsPauseNotApplicable') : '';
+    if (pauseLabel) pauseLabel.textContent = systemLogPaused ? t('systemLogsPaused') : t('systemLogsLive');
+}
+
+function systemLogErrorText(response, data) {
+    const detail = typeof data?.detail === 'string' ? data.detail : '';
+    return detail ? `${t('systemLogsLoadError')}: ${detail}` : `${t('systemLogsLoadError')} (HTTP ${response.status})`;
+}
+
+function applySystemLogFull(data) {
+    systemLogCursor = data?.cursor || null;
+    systemLogScanLimited = !!data?.scan_limited;
+    systemLogGap = false;
+    systemLogError = '';
+    if (Array.isArray(data?.files)) renderSystemLogFileOptions(data.files);
+    systemLogReplaceEntries(data?.entries);
+    renderSystemLogStatus();
+}
+
+// Carga completa con los filtros actuales. También corre en pausa: es una
+// acción del usuario, no el refresco automático.
+async function loadSystemLogs() {
+    const { viewer } = systemLogEls();
+    if (!viewer) return;
+    clearTimeout(systemLogSearchTimer);
+    systemLogSearchTimer = null;
+    const generation = ++systemLogGeneration;
+    systemLogFullLoadPending = true;
+    const params = systemLogFilterParams();
+    const activeParams = params.toString();
+    params.set('limit', String(SYSTEM_LOG_FULL_LIMIT));
     try {
-        const response = await fetch(`/api/logs?lines=500${query}`);
-        const data = await response.json();
-        viewer.innerHTML = (data.lines || []).map(line => {
-            let levelClass = '';
-            if (/\bERROR\b/.test(line)) levelClass = 'console-line-level-error';
-            else if (/\bWARNING\b/.test(line)) levelClass = 'console-line-level-warning';
-            return `<div class="console-line ${levelClass}"><span class="console-line-message">${escapeHtml(line)}</span></div>`;
-        }).join('');
-        viewer.scrollTop = viewer.scrollHeight;
+        const response = await fetch(`/api/logs?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (generation !== systemLogGeneration) return;
+        if (response.status === 404 && systemLogSelectedFile !== 0) {
+            // El archivo rotado ya no existe: volver al registro actual.
+            systemLogSelectedFile = 0;
+            const { fileSelect } = systemLogEls();
+            if (fileSelect) fileSelect.value = '0';
+            updateSystemLogPauseButton();
+            startSystemLogPolling();
+            loadSystemLogs();
+            return;
+        }
+        if (!response.ok) {
+            systemLogError = systemLogErrorText(response, data);
+            renderSystemLogStatus();
+            return;
+        }
+        systemLogActiveParams = activeParams;
+        applySystemLogFull(data);
     } catch (error) {
         console.error(error);
+    } finally {
+        if (generation === systemLogGeneration) systemLogFullLoadPending = false;
     }
 }
 
-document.getElementById('system-log-refresh-btn')?.addEventListener('click', renderSystemLogs);
+// Sondeo incremental desde el cursor guardado (solo registro actual, sin pausa).
+async function pollSystemLogs() {
+    if (!systemLogsModal || !systemLogsModal.classList.contains('active')) {
+        stopSystemLogPolling();
+        return;
+    }
+    if (systemLogPaused || systemLogSelectedFile !== 0) return;
+    if (systemLogPollInFlight || systemLogFullLoadPending) return;
+    if (!systemLogCursor) {
+        loadSystemLogs();
+        return;
+    }
+    const generation = systemLogGeneration;
+    const params = new URLSearchParams(systemLogActiveParams);
+    params.set('limit', String(SYSTEM_LOG_INCREMENTAL_LIMIT));
+    params.set('after', String(systemLogCursor.offset));
+    params.set('file_id', String(systemLogCursor.file_id));
+    systemLogPollInFlight = true;
+    try {
+        const response = await fetch(`/api/logs?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (generation !== systemLogGeneration) return;
+        if (!response.ok) {
+            console.error(systemLogErrorText(response, data));
+            return;
+        }
+        if (data.reset) {
+            // El archivo rotó: lo recibido es una carga completa nueva.
+            applySystemLogFull(data);
+            return;
+        }
+        if (data.cursor) systemLogCursor = data.cursor;
+        systemLogError = '';
+        if (data.gap) {
+            // Hubo más eventos que el límite: lo recibido es la cola más reciente.
+            systemLogGap = true;
+            systemLogReplaceEntries(data.entries);
+        } else {
+            systemLogAppendEntries(data.entries);
+        }
+        renderSystemLogStatus();
+    } catch (error) {
+        console.error(error);
+    } finally {
+        systemLogPollInFlight = false;
+    }
+}
 
 function startSystemLogPolling() {
-    renderSystemLogs();
     stopSystemLogPolling();
-    // Un log no necesita el ritmo de 600ms/4s usado en otros lados — 15s
-    // alcanza de sobra para un panel de diagnóstico que se refresca a pedido.
-    systemLogPollInterval = setInterval(renderSystemLogs, 15000);
+    if (systemLogPaused || systemLogSelectedFile !== 0) return;
+    systemLogPollInterval = setInterval(pollSystemLogs, SYSTEM_LOG_POLL_MS);
 }
 
 function stopSystemLogPolling() {
     if (systemLogPollInterval) { clearInterval(systemLogPollInterval); systemLogPollInterval = null; }
 }
+
+function toggleSystemLogPause() {
+    if (systemLogSelectedFile !== 0) return;
+    systemLogPaused = !systemLogPaused;
+    updateSystemLogPauseButton();
+    if (systemLogPaused) {
+        stopSystemLogPolling();
+        return;
+    }
+    startSystemLogPolling();
+    if (systemLogCursor) pollSystemLogs();
+    else loadSystemLogs();
+}
+
+(() => {
+    const { componentSelect, fileSelect, searchInput, pauseBtn } = systemLogEls();
+    componentSelect?.addEventListener('change', () => loadSystemLogs());
+    fileSelect?.addEventListener('change', () => {
+        systemLogSelectedFile = Number(fileSelect.value) || 0;
+        systemLogCursor = null;
+        updateSystemLogPauseButton();
+        if (systemLogSelectedFile === 0) startSystemLogPolling();
+        else stopSystemLogPolling();
+        loadSystemLogs();
+    });
+    searchInput?.addEventListener('input', () => {
+        clearTimeout(systemLogSearchTimer);
+        systemLogSearchTimer = setTimeout(() => loadSystemLogs(), SYSTEM_LOG_SEARCH_DEBOUNCE_MS);
+    });
+    searchInput?.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            loadSystemLogs();
+        }
+    });
+    pauseBtn?.addEventListener('click', toggleSystemLogPause);
+})();
 
 const systemLogsModal = document.getElementById('system-logs-modal');
 const systemLogsModalBackdrop = document.getElementById('system-logs-modal-backdrop');
@@ -18917,12 +19442,22 @@ const systemLogOpenBtn = document.getElementById('system-log-open-btn');
 
 function openSystemLogsModal() {
     if (systemLogsModal) systemLogsModal.classList.add('active');
+    systemLogPaused = false;
+    systemLogCursor = null;
+    renderSystemLogComponentOptions();
+    updateSystemLogPauseButton();
+    loadSystemLogs();
     startSystemLogPolling();
 }
 
 function closeSystemLogsModal() {
     if (systemLogsModal) systemLogsModal.classList.remove('active');
     stopSystemLogPolling();
+    clearTimeout(systemLogSearchTimer);
+    systemLogSearchTimer = null;
+    // Descarta cualquier respuesta en vuelo.
+    systemLogGeneration++;
+    systemLogFullLoadPending = false;
 }
 
 if (systemLogOpenBtn) systemLogOpenBtn.addEventListener('click', openSystemLogsModal);
@@ -20216,9 +20751,440 @@ function renderUsersList(users) {
     });
 }
 
+// ── Configuración > Registro ──
+// GET /api/logs/config lo puede leer cualquier sesión; el PUT es solo admin
+// (el backend responde 403 a un operador). Por eso la tarjeta se muestra a
+// todos, pero a quien no es admin se le pinta en solo lectura.
+//
+// Diseño "simple primero, técnico después": el nivel general y los
+// componentes llevan nombres de producto; los nombres de loggers solo se
+// muestran dentro de "Configuración avanzada".
+
+const LOGS_CONFIG_BYTES_PER_MB = 1024 * 1024;
+// Nivel general → [clave del nombre, clave de la descripción].
+const LOGS_CONFIG_LEVEL_KEYS = {
+    basic: ['logsConfigLevelBasic', 'logsConfigLevelBasicDesc'],
+    normal: ['logsConfigLevelNormal', 'logsConfigLevelNormalDesc'],
+    detailed: ['logsConfigLevelDetailed', 'logsConfigLevelDetailedDesc'],
+    diagnostic: ['logsConfigLevelDiagnostic', 'logsConfigLevelDiagnosticDesc'],
+};
+const LOGS_CONFIG_RECOMMENDED_LEVEL = 'normal';
+// Estados por componente (los que entiende el PUT en `components`).
+const LOGS_CONFIG_COMPONENT_STATE_KEYS = {
+    inherit: 'logsConfigComponentStateInherit',
+    info: 'logsConfigComponentStateInfo',
+    warnings: 'logsConfigComponentStateWarnings',
+    errors: 'logsConfigComponentStateErrors',
+    silenced: 'logsConfigComponentStateSilenced',
+    custom: 'logsConfigComponentStateCustom',
+};
+// Estados técnicos por fuente (lista de la configuración avanzada).
+const LOGS_CONFIG_STATE_LABEL_KEYS = {
+    normal: 'logsConfigStateNormal',
+    warnings: 'logsConfigStateWarnings',
+    errors: 'logsConfigStateErrors',
+    silenced: 'logsConfigStateSilenced',
+};
+// Fuentes sin componente: se agrupan según su grupo técnico.
+const LOGS_CONFIG_OTHER_GROUP_KEYS = {
+    nopal: 'logsConfigOtherNopal',
+    plugins: 'logsConfigOtherPlugins',
+    libraries: 'logsConfigOtherLibraries',
+};
+// Íconos de componente: SVG de trazo simple, como el resto del panel.
+const LOGS_CONFIG_COMPONENT_ICONS = {
+    system: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    printers: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+    laser: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    led_matrix: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>',
+    ai: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>',
+    tunascreen: '<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>',
+    cameras: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+    accessories: '<rect x="1" y="5" width="22" height="14" rx="7"/><circle cx="16" cy="12" r="3"/>',
+    materials: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
+    plugins: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    network: '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+};
+const LOGS_CONFIG_COMPONENT_ICON_FALLBACK = '<circle cx="12" cy="12" r="9"/>';
+// Componente → clave de su nombre amigable.
+const LOGS_CONFIG_COMPONENT_NAME_KEYS = {
+    system: 'logsConfigComponentSystem',
+    printers: 'logsConfigComponentPrinters',
+    laser: 'logsConfigComponentLaser',
+    led_matrix: 'logsConfigComponentLedMatrix',
+    ai: 'logsConfigComponentAi',
+    tunascreen: 'logsConfigComponentTunascreen',
+    cameras: 'logsConfigComponentCameras',
+    accessories: 'logsConfigComponentAccessories',
+    materials: 'logsConfigComponentMaterials',
+    plugins: 'logsConfigComponentPlugins',
+    network: 'logsConfigComponentNetwork',
+};
+const LOGS_CONFIG_CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+const LOGS_CONFIG_STAR_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+
+// Última respuesta del servidor: el PUT se arma a partir de su `config`
+// para conservar intactas las claves que esta tarjeta no edita.
+let logsConfigData = null;
+// Nivel general elegido en las tarjetas (aún sin guardar).
+let logsConfigSelectedLevel = null;
+
+function logsConfigCanEdit() {
+    return currentAuthUser?.role === 'admin';
+}
+
+// Megabytes legibles (máximo 2 decimales, sin ceros de sobra).
+function logsConfigBytesToMb(bytes) {
+    return Math.round((Number(bytes) / LOGS_CONFIG_BYTES_PER_MB) * 100) / 100;
+}
+
+function logsConfigComponentName(id) {
+    return LOGS_CONFIG_COMPONENT_NAME_KEYS[id] ? t(LOGS_CONFIG_COMPONENT_NAME_KEYS[id]) : id;
+}
+
+async function loadLogsConfigSettings() {
+    const card = document.getElementById('logs-config-settings-card');
+    if (!card) return;
+    // Los eventos se bindean una sola vez: este loader se vuelve a llamar
+    // cada vez que se entra a Configuración (ver switchSection). Se delegan
+    // en contenedores fijos porque su contenido se re-pinta.
+    if (!card.dataset.bound) {
+        card.dataset.bound = '1';
+        document.getElementById('logs-config-save-btn')?.addEventListener('click', saveLogsConfigSettings);
+        const levels = document.getElementById('logs-config-levels');
+        levels?.addEventListener('click', event => {
+            const option = event.target.closest('.logs-config-level');
+            if (option && !option.disabled) selectLogsConfigLevel(option.dataset.level, false);
+        });
+        // Enter/Espacio ya disparan el click en un <button>; las flechas
+        // mueven la selección como en un grupo de radios nativo.
+        levels?.addEventListener('keydown', event => {
+            const keys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
+            if (!keys.includes(event.key)) return;
+            const options = [...levels.querySelectorAll('.logs-config-level:not([disabled])')];
+            const current = options.indexOf(document.activeElement);
+            if (current < 0 || !options.length) return;
+            event.preventDefault();
+            const step = (event.key === 'ArrowRight' || event.key === 'ArrowDown') ? 1 : -1;
+            const next = options[(current + step + options.length) % options.length];
+            selectLogsConfigLevel(next.dataset.level, true);
+        });
+        document.getElementById('logs-config-components')?.addEventListener('change', event => {
+            const select = event.target.closest('.logs-config-component-state');
+            if (select) updateLogsConfigComponentTile(select);
+        });
+    }
+    try {
+        const data = await aiFetchJson('/api/logs/config');
+        renderLogsConfigSettings(data);
+    } catch (error) {
+        console.error(error);
+        const levels = document.getElementById('logs-config-levels');
+        if (levels) levels.innerHTML = `<div class="empty-state-small">${escapeHtml(t('logsConfigLoadError'))}</div>`;
+    }
+}
+
+function selectLogsConfigLevel(level, focus) {
+    if (!level) return;
+    logsConfigSelectedLevel = level;
+    document.querySelectorAll('#logs-config-levels .logs-config-level').forEach(option => {
+        const active = option.dataset.level === level;
+        option.classList.toggle('is-active', active);
+        option.setAttribute('aria-checked', active ? 'true' : 'false');
+        if (active && focus) option.focus();
+    });
+}
+
+function renderLogsConfigLevels(data, canEdit) {
+    const container = document.getElementById('logs-config-levels');
+    if (!container) return;
+    const levels = Array.isArray(data?.levels) && data.levels.length ? data.levels : Object.keys(LOGS_CONFIG_LEVEL_KEYS);
+    const current = data?.level || data?.config?.level || LOGS_CONFIG_RECOMMENDED_LEVEL;
+    logsConfigSelectedLevel = current;
+    container.setAttribute('aria-disabled', canEdit ? 'false' : 'true');
+    container.innerHTML = levels.map(level => {
+        const [nameKey, descKey] = LOGS_CONFIG_LEVEL_KEYS[level] || [];
+        const name = nameKey ? t(nameKey) : level;
+        const desc = descKey ? t(descKey) : '';
+        const active = level === current;
+        const badge = level === LOGS_CONFIG_RECOMMENDED_LEVEL
+            ? `<span class="logs-config-level-badge">${LOGS_CONFIG_STAR_SVG}${escapeHtml(t('logsConfigRecommended'))}</span>`
+            : '';
+        return `<button type="button" class="logs-config-level${active ? ' is-active' : ''}" role="radio"
+                aria-checked="${active ? 'true' : 'false'}" data-level="${escapeHtml(level)}"${canEdit ? '' : ' disabled'}>
+            <span class="logs-config-level-check">${LOGS_CONFIG_CHECK_SVG}</span>
+            <span class="logs-config-level-name">${escapeHtml(name)}</span>
+            ${desc ? `<span class="logs-config-level-desc">${escapeHtml(desc)}</span>` : ''}
+            ${badge}
+        </button>`;
+    }).join('');
+}
+
+function renderLogsConfigComponents(data, canEdit) {
+    const section = document.getElementById('logs-config-components-section');
+    const container = document.getElementById('logs-config-components');
+    if (!container) return;
+    const components = Array.isArray(data?.components) ? data.components : [];
+    if (section) section.hidden = components.length === 0;
+    const baseStates = Array.isArray(data?.component_states) && data.component_states.length
+        ? data.component_states
+        : ['inherit', 'info', 'warnings', 'errors', 'silenced'];
+    container.innerHTML = components.map(component => {
+        // "Personalizado" (o un estado que esta versión no conoce) solo se
+        // ofrece si llegó así, para no cambiarlo sin querer.
+        const options = baseStates.includes(component.state) ? baseStates : [...baseStates, component.state];
+        const optionsHtml = options.map(state => {
+            const label = LOGS_CONFIG_COMPONENT_STATE_KEYS[state] ? t(LOGS_CONFIG_COMPONENT_STATE_KEYS[state]) : state;
+            return `<option value="${escapeHtml(state)}"${state === component.state ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
+        const name = logsConfigComponentName(component.id);
+        const icon = LOGS_CONFIG_COMPONENT_ICONS[component.id] || LOGS_CONFIG_COMPONENT_ICON_FALLBACK;
+        const selectId = `logs-config-component-${escapeHtml(component.id)}`;
+        const hint = component.id === 'led_matrix'
+            ? `<small class="logs-config-component-hint" data-hint-for="errors" hidden>${escapeHtml(t('logsConfigLedMatrixHint'))}</small>`
+            : '';
+        return `<div class="logs-config-component" data-component="${escapeHtml(component.id)}">
+            <div class="logs-config-component-main">
+                <span class="logs-config-component-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">${icon}</svg></span>
+                <label class="logs-config-component-name" for="${selectId}">${escapeHtml(name)}</label>
+                <select class="settings-select logs-config-component-state" id="${selectId}"
+                        data-component="${escapeHtml(component.id)}" data-original="${escapeHtml(component.state)}"${canEdit ? '' : ' disabled'}>${optionsHtml}</select>
+            </div>
+            ${hint}
+        </div>`;
+    }).join('');
+    container.querySelectorAll('.logs-config-component-state').forEach(updateLogsConfigComponentTile);
+}
+
+// Resalta (sutil) los componentes que no heredan y muestra la ayuda que
+// depende del estado (p. ej. Matriz LED en "Errores").
+function updateLogsConfigComponentTile(select) {
+    const tile = select.closest('.logs-config-component');
+    if (!tile) return;
+    tile.classList.toggle('is-overridden', select.value !== 'inherit');
+    tile.querySelectorAll('.logs-config-component-hint').forEach(hint => {
+        hint.hidden = hint.dataset.hintFor !== select.value;
+    });
+}
+
+function renderLogsConfigSources(data, canEdit) {
+    const list = document.getElementById('logs-config-sources');
+    if (!list) return;
+    const states = Array.isArray(data?.states) && data.states.length ? data.states : Object.keys(LOGS_CONFIG_STATE_LABEL_KEYS);
+    const groups = Array.isArray(data?.groups) && data.groups.length ? data.groups : Object.keys(LOGS_CONFIG_OTHER_GROUP_KEYS);
+    const sources = Array.isArray(data?.sources) ? data.sources : [];
+    if (!sources.length) {
+        list.innerHTML = `<div class="empty-state-small">${escapeHtml(t('logsConfigNoSources'))}</div>`;
+        return;
+    }
+    // Orden: primero las de cada componente (en el orden de la tarjeta),
+    // luego las demás agrupadas por su grupo técnico.
+    const componentOrder = (Array.isArray(data?.components) ? data.components : []).map(c => c.id);
+    const rank = src => {
+        if (src.component) {
+            const idx = componentOrder.indexOf(src.component);
+            return idx >= 0 ? idx : componentOrder.length;
+        }
+        const groupIdx = groups.indexOf(src.group);
+        return componentOrder.length + 1 + (groupIdx >= 0 ? groupIdx : groups.length);
+    };
+    const sorted = sources
+        .map((src, index) => ({ src, index }))
+        .sort((a, b) => (rank(a.src) - rank(b.src)) || (a.index - b.index))
+        .map(item => item.src);
+    list.innerHTML = sorted.map(src => {
+        const friendly = src.component
+            ? logsConfigComponentName(src.component)
+            : (LOGS_CONFIG_OTHER_GROUP_KEYS[src.group] ? t(LOGS_CONFIG_OTHER_GROUP_KEYS[src.group]) : src.group);
+        // Si el servidor reporta un estado que esta versión no conoce, se
+        // agrega tal cual para no cambiarlo sin querer.
+        const options = states.includes(src.state) ? states : [...states, src.state];
+        const optionsHtml = options.map(state => {
+            const label = LOGS_CONFIG_STATE_LABEL_KEYS[state] ? t(LOGS_CONFIG_STATE_LABEL_KEYS[state])
+                : (LOGS_CONFIG_COMPONENT_STATE_KEYS[state] ? t(LOGS_CONFIG_COMPONENT_STATE_KEYS[state]) : state);
+            return `<option value="${escapeHtml(state)}"${state === src.state ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
+        return `<div class="logs-config-source-row">
+            <span class="logs-config-source-text">
+                <span class="logs-config-source-friendly">${escapeHtml(friendly)}</span>
+                <span class="logs-config-source-name logs-config-mono" title="${escapeHtml(src.name)}">${escapeHtml(src.name)}</span>
+            </span>
+            <select class="settings-select logs-config-source-state" aria-label="${escapeHtml(`${friendly} · ${src.name}`)}"
+                    data-source-name="${escapeHtml(src.name)}" data-component="${escapeHtml(src.component || '')}"
+                    data-original="${escapeHtml(src.state)}"${canEdit ? '' : ' disabled'}>${optionsHtml}</select>
+        </div>`;
+    }).join('');
+}
+
+function renderLogsConfigSettings(data) {
+    logsConfigData = data || null;
+    const config = data?.config || {};
+    const limits = data?.limits || {};
+    const canEdit = logsConfigCanEdit();
+
+    renderLogsConfigLevels(data, canEdit);
+    renderLogsConfigComponents(data, canEdit);
+    renderLogsConfigSources(data, canEdit);
+
+    // Almacenamiento
+    const [minBackups, maxBackups] = Array.isArray(limits.backup_count) ? limits.backup_count : [null, null];
+    const backupInput = document.getElementById('logs-config-backup-count');
+    if (backupInput) {
+        backupInput.value = config.backup_count ?? '';
+        if (minBackups != null) backupInput.min = minBackups;
+        if (maxBackups != null) backupInput.max = maxBackups;
+        backupInput.disabled = !canEdit;
+    }
+    const [minBytes, maxBytes] = Array.isArray(limits.max_bytes) ? limits.max_bytes : [null, null];
+    const mbInput = document.getElementById('logs-config-max-mb');
+    if (mbInput) {
+        mbInput.value = config.max_bytes != null ? logsConfigBytesToMb(config.max_bytes) : '';
+        if (minBytes != null) mbInput.min = logsConfigBytesToMb(minBytes);
+        if (maxBytes != null) mbInput.max = logsConfigBytesToMb(maxBytes);
+        mbInput.disabled = !canEdit;
+    }
+    const dedupCheck = document.getElementById('logs-config-dedup');
+    if (dedupCheck) {
+        dedupCheck.checked = config.dedup?.enabled !== false;
+        dedupCheck.disabled = !canEdit;
+    }
+    const consoleCheck = document.getElementById('logs-config-console');
+    if (consoleCheck) {
+        consoleCheck.checked = !!config.console;
+        consoleCheck.disabled = !canEdit;
+    }
+
+    // Configuración avanzada
+    const folderInput = document.getElementById('logs-config-folder');
+    if (folderInput) {
+        folderInput.value = config.folder ?? '';
+        folderInput.disabled = !canEdit;
+    }
+    const folderHint = document.getElementById('logs-config-folder-hint');
+    if (folderHint) folderHint.textContent = t('logsConfigFolderHint').replace('{base}', limits.folder_base || 'logs');
+    const logFile = document.getElementById('logs-config-log-file');
+    if (logFile) logFile.textContent = data?.log_file || '—';
+
+    const card = document.getElementById('logs-config-settings-card');
+    card?.classList.toggle('is-readonly', !canEdit);
+    const readOnlyNote = document.getElementById('logs-config-readonly');
+    if (readOnlyNote) readOnlyNote.hidden = canEdit;
+    const saveBtn = document.getElementById('logs-config-save-btn');
+    if (saveBtn) saveBtn.hidden = !canEdit;
+}
+
+// Arma el cuerpo del PUT: la `config` completa tal como vino del servidor,
+// reemplazando solo lo que la tarjeta edita. El backend aplica primero
+// `sources` y luego `components` encima.
+function buildLogsConfigPayload() {
+    const original = logsConfigData?.config || {};
+    const payload = JSON.parse(JSON.stringify(original));
+    const limits = logsConfigData?.limits || {};
+
+    payload.level = logsConfigSelectedLevel || original.level;
+
+    // Fuentes técnicas: se parte de las ya configuradas que no aparecen en
+    // la lista (para no borrarlas sin querer) y se sobreescriben con los
+    // selectores. Solo van las que no están en "normal" (normal = heredar).
+    const sources = {};
+    Object.entries(original.sources || {}).forEach(([name, state]) => {
+        if (state !== 'normal') sources[name] = state;
+    });
+    // Componentes cuyas fuentes se tocaron en la lista técnica.
+    const touchedComponents = new Set();
+    document.querySelectorAll('#logs-config-sources .logs-config-source-state').forEach(select => {
+        const name = select.dataset.sourceName;
+        if (!name) return;
+        if (select.value === 'normal') delete sources[name];
+        else sources[name] = select.value;
+        if (select.dataset.component && select.value !== select.dataset.original) {
+            touchedComponents.add(select.dataset.component);
+        }
+    });
+    payload.sources = sources;
+
+    // Componentes: un cambio del usuario aquí gana. Si no se cambió pero sí
+    // se tocaron sus fuentes en la lista técnica, se manda "custom" para que
+    // el backend respete esa mezcla en lugar de pisarla.
+    const components = {};
+    document.querySelectorAll('#logs-config-components .logs-config-component-state').forEach(select => {
+        const id = select.dataset.component;
+        if (!id) return;
+        const changed = select.value !== select.dataset.original;
+        components[id] = (!changed && touchedComponents.has(id)) ? 'custom' : select.value;
+    });
+    payload.components = components;
+
+    // Almacenamiento
+    const backups = Number(document.getElementById('logs-config-backup-count')?.value);
+    const [minBackups, maxBackups] = Array.isArray(limits.backup_count) ? limits.backup_count : [null, null];
+    if (!Number.isInteger(backups)
+        || (minBackups != null && backups < minBackups)
+        || (maxBackups != null && backups > maxBackups)) {
+        throw new Error(t('logsConfigInvalidBackupCount')
+            .replace('{min}', minBackups ?? 0).replace('{max}', maxBackups ?? '∞'));
+    }
+    payload.backup_count = backups;
+
+    const [minBytes, maxBytes] = Array.isArray(limits.max_bytes) ? limits.max_bytes : [null, null];
+    const sizeError = () => new Error(t('logsConfigInvalidMaxSize')
+        .replace('{min}', minBytes != null ? logsConfigBytesToMb(minBytes) : 0)
+        .replace('{max}', maxBytes != null ? logsConfigBytesToMb(maxBytes) : '∞'));
+    const mb = parseFloat(document.getElementById('logs-config-max-mb')?.value);
+    if (!Number.isFinite(mb)) throw sizeError();
+    // Si el valor mostrado no cambió, se manda el original en bytes para no
+    // introducir diferencias por redondeo.
+    payload.max_bytes = (original.max_bytes != null && mb === logsConfigBytesToMb(original.max_bytes))
+        ? original.max_bytes
+        : Math.round(mb * LOGS_CONFIG_BYTES_PER_MB);
+    if ((minBytes != null && payload.max_bytes < minBytes) || (maxBytes != null && payload.max_bytes > maxBytes)) {
+        throw sizeError();
+    }
+
+    // Repetidos: solo se edita el interruptor; la ventana se conserva.
+    payload.dedup = { ...(original.dedup || {}), enabled: !!document.getElementById('logs-config-dedup')?.checked };
+    payload.console = !!document.getElementById('logs-config-console')?.checked;
+
+    // Avanzado
+    payload.folder = (document.getElementById('logs-config-folder')?.value || '').trim();
+    return payload;
+}
+
+async function saveLogsConfigSettings() {
+    if (!logsConfigCanEdit() || !logsConfigData) return;
+    const button = document.getElementById('logs-config-save-btn');
+    if (button) button.disabled = true;
+    try {
+        const payload = buildLogsConfigPayload();
+        const data = await aiFetchJson('/api/logs/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        renderLogsConfigSettings(data);
+        showToast(t('logsConfigSaved'), 'success');
+    } catch (error) {
+        // El `detail` del servidor ya viene en español; se muestra tal cual.
+        showToast(error.message || t('logsConfigSaveError'), 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 // ── Configuración > TUNA-Screen ──
 
 let tunascreenCodeCountdownTimer = null;
+// Recursos asignables al scope de un dispositivo (solo máquinas con identidad
+// estable y plugins instalados; ver GET /api/tunascreen/scope-options).
+let tunascreenScopeOptions = { machines: [], plugins: [] };
+// Ícono de cada plugin (campo `icon` de GET /api/plugins) por id de plugin.
+let tunascreenPluginIcons = new Map();
+
+const TUNASCREEN_MACHINE_ICONS = { printer: PANEL_ICON_PRINTER, laser: PANEL_ICON_LASER, cnc: PANEL_ICON_CNC };
+const TUNASCREEN_CHECK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const TUNASCREEN_DEVICE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+// Etiquetas de acceso visibles antes del "+N" en la tarjeta del dispositivo.
+const TUNASCREEN_VISIBLE_TAGS = 3;
 
 async function loadTunascreenSettings() {
     const card = document.getElementById('tunascreen-settings-card');
@@ -20234,8 +21200,136 @@ async function loadTunascreenSettings() {
     if (!card.dataset.bound) {
         card.dataset.bound = '1';
         document.getElementById('tunascreen-generate-code-btn')?.addEventListener('click', handleTunascreenGenerateCode);
+        // El menú de tres puntos de cada dispositivo se cierra al hacer clic
+        // fuera o con Escape. Va en document una sola vez porque la lista se
+        // vuelve a pintar completa en cada recarga.
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.tunascreen-device-menu-wrap')) closeTunascreenDeviceMenus(false);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && document.querySelector('.tunascreen-device-menu:not([hidden])')) {
+                closeTunascreenDeviceMenus(true);
+            }
+        });
     }
+    await loadTunascreenScopeOptions();
     loadTunascreenDevices();
+}
+
+async function loadTunascreenScopeOptions() {
+    try {
+        const response = await fetch('/api/tunascreen/scope-options');
+        if (!response.ok) throw new Error();
+        tunascreenScopeOptions = await response.json();
+    } catch (error) {
+        console.error(error);
+        tunascreenScopeOptions = { machines: [], plugins: [] };
+        appAlert(t('tunascreenScopeLoadError'), '', 'danger');
+    }
+    if ((tunascreenScopeOptions.plugins || []).length) await loadTunascreenPluginIcons();
+    const picker = document.getElementById('tunascreen-pair-scope');
+    if (picker) {
+        picker.innerHTML = `
+            <div class="tunascreen-scope-title">
+                <span class="tunascreen-scope-title-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </span>
+                <h3>${escapeHtml(t('tunascreenScopeTitle'))}</h3>
+            </div>
+            ${renderTunascreenScopeChecks([])}
+            <div class="tunascreen-scope-note" role="note">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>${escapeHtml(t('tunascreenScopeNote'))}</span>
+            </div>`;
+    }
+}
+
+// Reutiliza el catálogo que ya cargó la galería de plugins; si todavía no se
+// abrió, lo pide una vez. Si falla, los chips usan el ícono genérico.
+async function loadTunascreenPluginIcons() {
+    let list = pluginsCatalog;
+    if (!list.length) {
+        try {
+            const response = await fetch('/api/plugins');
+            list = response.ok ? ((await response.json()).plugins || []) : [];
+        } catch (error) {
+            console.error(error);
+            list = [];
+        }
+    }
+    tunascreenPluginIcons = new Map(list.map(plugin => [plugin.id, plugin.icon]));
+}
+
+// Ícono por tipo de máquina. Una clave guardada que ya no se ofrece no trae
+// `type`, así que se toma del prefijo de la clave ("printer:…", "laser:…").
+function tunascreenMachineIcon(item) {
+    const type = item.type || String(item.key).split(':')[0];
+    return TUNASCREEN_MACHINE_ICONS[type] || PANEL_ICON_PRINTER;
+}
+
+// Casillas de máquinas (tarjetas) y plugins (chips). Cada opción conserva un
+// <input type="checkbox"> real, oculto solo visualmente, para que
+// selectedTunascreenScope y los lectores de pantalla sigan leyendo el estado
+// de ahí. Una clave guardada que ya no se ofrece (por ejemplo, una máquina que
+// hoy no aparece) se muestra marcada con su clave, para que guardar no la
+// quite sin que el admin lo vea.
+function renderTunascreenScopeChecks(selected) {
+    const chosen = new Set(selected);
+    const offered = new Set([...tunascreenScopeOptions.machines, ...tunascreenScopeOptions.plugins].map(o => o.key));
+    const extra = selected.filter(key => !offered.has(key)).map(key => ({ key, name: key }));
+    const machines = [...tunascreenScopeOptions.machines, ...extra.filter(i => !i.key.startsWith('plugin:'))];
+    const plugins = [...tunascreenScopeOptions.plugins, ...extra.filter(i => i.key.startsWith('plugin:'))];
+    const input = item => `<input type="checkbox" class="tunascreen-option-input" value="${escapeHtml(item.key)}"${chosen.has(item.key) ? ' checked' : ''}>`;
+
+    const machinesHtml = machines.length ? `
+        <span class="tunascreen-scope-heading">${escapeHtml(t('tunascreenScopeMachines'))}</span>
+        <div class="tunascreen-machine-grid">
+            ${machines.map(item => `
+                <label class="tunascreen-machine-option">
+                    ${input(item)}
+                    <span class="tunascreen-machine-icon" aria-hidden="true">${tunascreenMachineIcon(item)}</span>
+                    <span class="tunascreen-machine-name">${escapeHtml(item.name)}</span>
+                    <span class="tunascreen-option-check" aria-hidden="true">${TUNASCREEN_CHECK_ICON}</span>
+                </label>`).join('')}
+        </div>` : '';
+    const pluginsHtml = plugins.length ? `
+        <span class="tunascreen-scope-heading tunascreen-scope-heading-minor">${escapeHtml(t('tunascreenScopePlugins'))}</span>
+        <div class="tunascreen-plugin-chips">
+            ${plugins.map(item => `
+                <label class="tunascreen-plugin-chip">
+                    ${input(item)}
+                    <span class="tunascreen-plugin-chip-icon" aria-hidden="true">${pluginIconSvg(tunascreenPluginIcons.get(item.key.slice('plugin:'.length)), 14)}</span>
+                    <span class="tunascreen-plugin-chip-name">${escapeHtml(item.name)}</span>
+                    <span class="tunascreen-option-check" aria-hidden="true">${TUNASCREEN_CHECK_ICON}</span>
+                </label>`).join('')}
+        </div>` : '';
+    return machinesHtml + pluginsHtml;
+}
+
+function selectedTunascreenScope(container) {
+    return [...container.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
+}
+
+// Etiquetas "Acceso" de un dispositivo: las primeras TUNASCREEN_VISIBLE_TAGS
+// a la vista y el resto oculto detrás de un "+N" (N = total - visibles).
+function renderTunascreenAccessTags(scope) {
+    if (!scope || !scope.length) return `<span class="tunascreen-tag-empty">${escapeHtml(t('tunascreenScopeNone'))}</span>`;
+    const names = new Map([...tunascreenScopeOptions.machines, ...tunascreenScopeOptions.plugins].map(o => [o.key, o.name]));
+    const tags = scope.map((key, index) => `<span class="tunascreen-tag"${index >= TUNASCREEN_VISIBLE_TAGS ? ' hidden' : ''}>${escapeHtml(names.get(key) || key)}</span>`).join('');
+    const hiddenCount = scope.length - TUNASCREEN_VISIBLE_TAGS;
+    const more = hiddenCount > 0
+        ? `<button type="button" class="tunascreen-tag tunascreen-tag-more" aria-expanded="false" aria-label="${escapeHtml(t('tunascreenAccessMore').replace('{count}', hiddenCount))}">+${hiddenCount}</button>`
+        : '';
+    return tags + more;
+}
+
+function closeTunascreenDeviceMenus(restoreFocus) {
+    document.querySelectorAll('.tunascreen-device-menu-btn[aria-expanded="true"]').forEach(btn => {
+        btn.setAttribute('aria-expanded', 'false');
+        const menu = btn.parentElement?.querySelector('.tunascreen-device-menu');
+        if (menu) menu.hidden = true;
+        if (restoreFocus) btn.focus();
+    });
 }
 
 async function loadTunascreenDevices() {
@@ -20254,13 +21348,18 @@ async function loadTunascreenDevices() {
 
 async function handleTunascreenGenerateCode() {
     try {
-        const response = await fetch('/api/tunascreen/pair/start', { method: 'POST' });
-        if (!response.ok) throw new Error();
-        const data = await response.json();
+        const picker = document.getElementById('tunascreen-pair-scope');
+        const response = await fetch('/api/tunascreen/pair/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scope: picker ? selectedTunascreenScope(picker) : [] }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || '');
         showTunascreenCode(data.code, data.expires_in);
     } catch (error) {
         console.error(error);
-        appAlert(t('tunascreenGenerateError'), '', 'danger');
+        appAlert(error.message || t('tunascreenGenerateError'), '', 'danger');
     }
 }
 
@@ -20301,20 +21400,112 @@ function renderTunascreenDevicesList(devices) {
         return;
     }
 
-    container.innerHTML = devices.map(device => `
-        <div class="usb-port-item" data-id="${escapeHtml(device.device_id)}">
-            <div class="usb-port-item-info">
-                <strong>${escapeHtml(device.name)}</strong>
-                <span>${device.last_seen ? escapeHtml(t('tunascreenLastSeen').replace('{date}', new Date(device.last_seen * 1000).toLocaleString())) : escapeHtml(t('tunascreenNeverConnected'))}</span>
+    // Sin indicador de "en línea": GET /api/tunascreen/devices no informa si
+    // el dispositivo está conectado ahora, solo su última conexión.
+    container.innerHTML = devices.map((device, index) => `
+        <article class="tunascreen-device" data-id="${escapeHtml(device.device_id)}">
+            <div class="tunascreen-device-main">
+                <div class="tunascreen-device-head">
+                    <span class="tunascreen-device-icon" aria-hidden="true">${TUNASCREEN_DEVICE_ICON}</span>
+                    <div class="tunascreen-device-text">
+                        <strong class="tunascreen-device-name">${escapeHtml(device.name)}</strong>
+                        <span class="tunascreen-device-seen">${device.last_seen ? escapeHtml(t('tunascreenLastSeen').replace('{date}', new Date(device.last_seen * 1000).toLocaleString())) : escapeHtml(t('tunascreenNeverConnected'))}</span>
+                    </div>
+                </div>
+                <div class="tunascreen-device-access">
+                    <span class="tunascreen-device-access-label">${escapeHtml(t('tunascreenAccessLabel'))}</span>
+                    <div class="tunascreen-device-tags" tabindex="-1">${renderTunascreenAccessTags(device.scope)}</div>
+                </div>
             </div>
-            <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger tunascreen-device-revoke-btn" data-id="${escapeHtml(device.device_id)}" title="${escapeHtml(t('tunascreenRevoke'))}">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-        </div>
+            <div class="tunascreen-device-actions">
+                <button type="button" class="btn-file-action tunascreen-device-scope-btn" aria-expanded="false" aria-controls="tunascreen-scope-editor-${index}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    <span>${escapeHtml(t('tunascreenScopeEdit'))}</span>
+                </button>
+                <div class="tunascreen-device-menu-wrap">
+                    <button type="button" class="tunascreen-device-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="tunascreen-device-menu-${index}" aria-label="${escapeHtml(t('tunascreenDeviceMenu'))}" title="${escapeHtml(t('tunascreenDeviceMenu'))}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+                    </button>
+                    <div class="tunascreen-device-menu" id="tunascreen-device-menu-${index}" role="menu" hidden>
+                        <button type="button" role="menuitem" class="tunascreen-device-menu-item tunascreen-device-revoke-btn" data-id="${escapeHtml(device.device_id)}">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            <span>${escapeHtml(t('tunascreenRevoke'))}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="tunascreen-device-scope-editor" id="tunascreen-scope-editor-${index}" hidden>
+                <div class="tunascreen-scope-picker">${renderTunascreenScopeChecks(device.scope || [])}</div>
+                <button type="button" class="btn-file-action btn-file-action-accent tunascreen-device-scope-save-btn" data-id="${escapeHtml(device.device_id)}">${escapeHtml(t('tunascreenScopeSave'))}</button>
+            </div>
+        </article>
     `).join('');
+
+    container.querySelectorAll('.tunascreen-device-scope-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const editor = btn.closest('.tunascreen-device')?.querySelector('.tunascreen-device-scope-editor');
+            if (!editor) return;
+            editor.hidden = !editor.hidden;
+            btn.setAttribute('aria-expanded', String(!editor.hidden));
+        });
+    });
+
+    // "+N": despliega en el mismo lugar las etiquetas ocultas y desaparece;
+    // el foco pasa al contenedor de etiquetas para no perderse en <body>.
+    container.querySelectorAll('.tunascreen-tag-more').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tags = btn.closest('.tunascreen-device-tags');
+            if (!tags) return;
+            tags.querySelectorAll('.tunascreen-tag[hidden]').forEach(tag => { tag.hidden = false; });
+            btn.remove();
+            tags.focus();
+        });
+    });
+
+    container.querySelectorAll('.tunascreen-device-menu-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const menu = btn.parentElement?.querySelector('.tunascreen-device-menu');
+            if (!menu) return;
+            const willOpen = menu.hidden;
+            closeTunascreenDeviceMenus(false);
+            if (!willOpen) return;
+            menu.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            menu.querySelector('[role="menuitem"]')?.focus();
+        });
+        // Si el foco sale del menú con Tab, el menú se cierra solo.
+        btn.parentElement?.addEventListener('focusout', event => {
+            if (event.currentTarget.contains(event.relatedTarget)) return;
+            const menu = event.currentTarget.querySelector('.tunascreen-device-menu');
+            if (event.relatedTarget && menu && !menu.hidden) {
+                menu.hidden = true;
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    });
+
+    container.querySelectorAll('.tunascreen-device-scope-save-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const editor = btn.closest('.tunascreen-device-scope-editor');
+            try {
+                const response = await fetch(`/api/tunascreen/devices/${encodeURIComponent(btn.dataset.id)}/scope`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scope: selectedTunascreenScope(editor) }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || '');
+                loadTunascreenDevices();
+            } catch (error) {
+                console.error(error);
+                appAlert(error.message || t('tunascreenScopeSaveError'), '', 'danger');
+            }
+        });
+    });
 
     container.querySelectorAll('.tunascreen-device-revoke-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
+            closeTunascreenDeviceMenus(false);
             if (!(await appConfirm(t('tunascreenRevokeConfirm'), t('tunascreenRevoke')))) return;
             try {
                 const response = await fetch(`/api/tunascreen/devices/${encodeURIComponent(btn.dataset.id)}`, { method: 'DELETE' });

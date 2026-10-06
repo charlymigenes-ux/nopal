@@ -8,7 +8,7 @@ from backend.services.bambu_service import get_registered_printers_with_status a
 from backend.services.elegoo_service import get_registered_printers_with_status as get_elegoo_printers
 from backend.services.flashforge_service import get_registered_printers_with_status as get_flashforge_printers
 from backend.services.klipper_service import get_all_printers_status, get_system_stats
-from backend.services.laser_service import get_active_job_hosts, get_registered_lasers_status
+from backend.services.laser_service import get_active_laser_jobs, get_registered_lasers_status
 from backend.services.marlin_printer_service import get_active_job_devices, get_registered_printers_with_status
 from backend.services import maintenance_service
 from backend.services.notification_service import get_notifications
@@ -212,13 +212,16 @@ def _active_jobs(
             })
 
     marlin_names = {entry.get("device"): entry.get("name") for entry in marlin_registry}
+    # device_type/device_id vinculan la cámara del trabajo: por id interno
+    # (identidad estable), no por la ruta USB que cambia al renumerar.
+    marlin_uids = {entry.get("device"): entry.get("id") for entry in marlin_registry}
     for job in marlin_jobs:
         total = job.get("total") or 0
         current = job.get("current") or 0
         jobs.append({
             "machine_type": "printer",
             "device_type": "marlin",
-            "device_id": job.get("device"),
+            "device_id": marlin_uids.get(job.get("device")),
             "name": marlin_names.get(job.get("device")) or job.get("device"),
             "filename": job.get("filename"),
             "state": job.get("state"),
@@ -237,7 +240,7 @@ def _active_jobs(
         jobs.append({
             "machine_type": kind,
             "device_type": kind,
-            "device_id": job.get("host"),
+            "device_id": entry.get("id"),
             "name": entry.get("name") or job.get("host"),
             "filename": job.get("filename"),
             "state": job.get("state"),
@@ -303,7 +306,9 @@ async def get_dashboard_summary() -> Dict[str, Any]:
         _get_ambient_temperature_c(),
     )
     marlin_jobs = await loop.run_in_executor(None, get_active_job_devices)
-    laser_cnc_jobs = await loop.run_in_executor(None, get_active_job_hosts)
+    # Incluye trabajos que NOPAL no sigue en memoria (p. ej. un archivo de la
+    # SD tras reiniciar): sin esto, "trabajos activos" quedaba vacío.
+    laser_cnc_jobs = await get_active_laser_jobs(laser_cnc_registry)
     camera_counts = await loop.run_in_executor(None, _get_camera_health_counts)
     # Sin executor a propósito: arranca (si hace falta) las tareas asyncio de
     # los listeners WS persistentes de elegoo_service.py, que necesitan el

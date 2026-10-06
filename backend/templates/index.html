@@ -2860,6 +2860,110 @@
                                 </button>
                             </div>
                         </div>
+                        <!-- Configuración → Registro: "simple primero, técnico después".
+                             Arriba el nivel general y los componentes con nombres de producto;
+                             los nombres técnicos (loggers) solo aparecen dentro de
+                             "Configuración avanzada". Cualquier sesión puede verla; solo un
+                             admin puede guardar (PUT /api/logs/config, ver loadLogsConfigSettings). -->
+                        <div class="settings-card card-collapsible" id="logs-config-settings-card" data-settings-module="logsConfig">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+                                </span>
+                                <h2 class="card-header-std-title" data-i18n="logsConfigTitle">Registro</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
+                            <p data-i18n="logsConfigDescription">Controla cuánto detalle guarda NOPAL. Los cambios se aplican al instante al guardar.</p>
+                            <p class="logs-config-readonly" id="logs-config-readonly" hidden>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                <span data-i18n="logsConfigReadOnly">Solo un administrador puede cambiar esta configuración.</span>
+                            </p>
+
+                            <!-- 1. Nivel general: tarjetas de opción (radio-cards), las pinta renderLogsConfigLevels -->
+                            <section class="logs-config-section">
+                                <h3 class="logs-config-section-title" id="logs-config-level-title" data-i18n="logsConfigLevelTitle">Nivel de registro</h3>
+                                <div class="logs-config-levels" id="logs-config-levels" role="radiogroup" aria-labelledby="logs-config-level-title"></div>
+                            </section>
+
+                            <!-- 2. Componentes: ajuste opcional por área de NOPAL -->
+                            <section class="logs-config-section" id="logs-config-components-section">
+                                <h3 class="logs-config-section-title" data-i18n="logsConfigComponentsTitle">Componentes</h3>
+                                <p class="logs-config-section-text" data-i18n="logsConfigComponentsDescription">Normalmente basta con el nivel general. Ajusta un componente solo si necesitas más o menos detalle de esa parte.</p>
+                                <div class="logs-config-components" id="logs-config-components"></div>
+                            </section>
+
+                            <!-- 3. Almacenamiento -->
+                            <section class="logs-config-section">
+                                <h3 class="logs-config-section-title" data-i18n="logsConfigStorageTitle">Almacenamiento</h3>
+                                <div class="logs-config-storage-grid">
+                                    <label class="logs-config-field" for="logs-config-backup-count">
+                                        <span class="logs-config-field-label" data-i18n="logsConfigBackupCount">Conservar registros</span>
+                                        <span class="logs-config-input-group">
+                                            <input type="number" id="logs-config-backup-count" class="ai-text-input" step="1" inputmode="numeric">
+                                            <span class="logs-config-input-suffix" data-i18n="logsConfigBackupSuffix">archivos</span>
+                                        </span>
+                                    </label>
+                                    <label class="logs-config-field" for="logs-config-max-mb">
+                                        <span class="logs-config-field-label" data-i18n="logsConfigMaxSize">Tamaño máximo</span>
+                                        <span class="logs-config-input-group">
+                                            <input type="number" id="logs-config-max-mb" class="ai-text-input" step="0.25" inputmode="decimal">
+                                            <span class="logs-config-input-suffix" data-i18n="logsConfigMaxSizeSuffix">MB por archivo</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="logs-config-toggle-row">
+                                    <div class="logs-config-toggle-label">
+                                        <span data-i18n="logsConfigDedup">Agrupar mensajes repetidos</span>
+                                        <small data-i18n="logsConfigDedupHint">Evita que un mismo problema llene el registro.</small>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="logs-config-dedup">
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="logs-config-toggle-row">
+                                    <div class="logs-config-toggle-label">
+                                        <span data-i18n="logsConfigConsole">Guardar también en el registro del sistema</span>
+                                        <small data-i18n="logsConfigConsoleHint">Permite consultar los registros desde el sistema operativo.</small>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="logs-config-console">
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </div>
+                            </section>
+
+                            <!-- 4. Configuración avanzada (plegada): aquí, y solo aquí, se ven
+                                 la carpeta, la ruta del archivo y los nombres técnicos. -->
+                            <details class="ai-advanced logs-config-advanced" id="logs-config-advanced">
+                                <summary data-i18n="logsConfigAdvancedTitle">Configuración avanzada</summary>
+                                <p class="logs-config-section-text" data-i18n="logsConfigAdvancedDescription">Estas opciones están destinadas a diagnóstico y soporte técnico.</p>
+                                <div class="ai-settings-fields logs-config-advanced-fields">
+                                    <label class="ai-field">
+                                        <span data-i18n="logsConfigFolder">Carpeta</span>
+                                        <input type="text" id="logs-config-folder" class="ai-text-input" autocomplete="off" spellcheck="false">
+                                        <small class="ai-field-hint" id="logs-config-folder-hint"></small>
+                                    </label>
+                                    <div class="logs-config-datum">
+                                        <span class="logs-config-datum-label" data-i18n="logsConfigCurrentFile">Archivo actual</span>
+                                        <code class="logs-config-mono" id="logs-config-log-file"></code>
+                                    </div>
+                                    <div class="logs-config-sources-block">
+                                        <span class="logs-config-datum-label" data-i18n="logsConfigSourcesTitle">Fuentes técnicas</span>
+                                        <div class="logs-config-sources" id="logs-config-sources"></div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <!-- 5. Guardar (no hay guardado automático) -->
+                            <div class="ai-settings-actions logs-config-actions">
+                                <button type="button" class="btn-file-action btn-file-action-accent" id="logs-config-save-btn">
+                                    <span data-i18n="logsConfigSaveButton">Guardar ajustes</span>
+                                </button>
+                            </div>
+                        </div>
                         <div class="settings-card card-collapsible" id="users-settings-card" hidden data-settings-module="users">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
@@ -2908,16 +3012,24 @@
                                 </button>
                             </div>
                             <p data-i18n="tunascreenDescription">Emparejá tablets/teléfonos con la app TUNA-Screen para controlar tus máquinas como pantalla dedicada o consola de taller.</p>
-                            <button type="button" class="btn-file-action" id="tunascreen-generate-code-btn">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2" ry="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-                                <span data-i18n="tunascreenGenerateCode">Generar código de emparejamiento</span>
-                            </button>
-                            <div class="tunascreen-code-display" id="tunascreen-code-display" hidden>
-                                <span class="tunascreen-code-value" id="tunascreen-code-value"></span>
-                                <span class="tunascreen-code-expiry" id="tunascreen-code-expiry"></span>
-                            </div>
-                            <h3 class="tunascreen-devices-title" data-i18n="tunascreenDevicesTitle">Dispositivos emparejados</h3>
-                            <div class="usb-ports-list" id="tunascreen-devices-list"></div>
+                            <!-- Bloque 1: qué puede controlar el próximo dispositivo y su código. -->
+                            <section class="tunascreen-section tunascreen-pair-section">
+                                <div class="tunascreen-scope-picker" id="tunascreen-pair-scope"></div>
+                                <button type="button" class="btn-file-action btn-file-action-accent tunascreen-generate-btn" id="tunascreen-generate-code-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2" ry="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                                    <span data-i18n="tunascreenGenerateCode">Generar código de emparejamiento</span>
+                                    <svg class="tunascreen-generate-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                </button>
+                                <div class="tunascreen-code-display" id="tunascreen-code-display" hidden>
+                                    <span class="tunascreen-code-value" id="tunascreen-code-value"></span>
+                                    <span class="tunascreen-code-expiry" id="tunascreen-code-expiry"></span>
+                                </div>
+                            </section>
+                            <!-- Bloque 2: dispositivos ya emparejados. -->
+                            <section class="tunascreen-section tunascreen-devices-section">
+                                <h3 class="tunascreen-devices-title" data-i18n="tunascreenDevicesTitle">Dispositivos emparejados</h3>
+                                <div class="tunascreen-devices-list" id="tunascreen-devices-list"></div>
+                            </section>
                         </div>
                         <div class="settings-card card-collapsible usb-ports-settings-card" data-settings-module="devices">
                             <div class="card-header-std">
@@ -3891,21 +4003,37 @@
                 <h2 data-i18n="systemLogs">Logs del sistema</h2>
             </div>
             <p data-i18n="systemLogsDescription">Registro persistente de NOPAL (conexiones, trabajos, errores) — se guarda en logs/nopal.log con rotación automática.</p>
-            <div class="settings-field">
-                <div class="option-switch" id="system-log-level-switch">
-                    <button type="button" class="option-switch-btn active" data-value="all" data-i18n="systemLogsLevelAll">Todo</button>
-                    <button type="button" class="option-switch-btn" data-value="INFO" data-i18n="systemLogsLevelInfo">Info</button>
-                    <button type="button" class="option-switch-btn" data-value="WARNING" data-i18n="systemLogsLevelWarning">Avisos</button>
-                    <button type="button" class="option-switch-btn" data-value="ERROR" data-i18n="systemLogsLevelError">Errores</button>
+            <div class="system-log-toolbar">
+                <label class="system-log-control">
+                    <span class="system-log-control-label" data-i18n="systemLogsComponentLabel">Componente</span>
+                    <select class="settings-select" id="system-log-component-select">
+                        <option value="" data-i18n="systemLogsComponentAll">Todos los componentes</option>
+                    </select>
+                </label>
+                <label class="system-log-control">
+                    <span class="system-log-control-label" data-i18n="systemLogsFileLabel">Archivo</span>
+                    <select class="settings-select" id="system-log-file-select">
+                        <option value="0" data-i18n="systemLogsFileCurrent">Registro actual</option>
+                    </select>
+                </label>
+                <label class="system-log-control system-log-control-search">
+                    <span class="system-log-control-label" data-i18n="systemLogsSearchLabel">Buscar</span>
+                    <input type="search" class="settings-select" id="system-log-search-input" maxlength="200" autocomplete="off" data-i18n-placeholder="systemLogsSearchPlaceholder" placeholder="Buscar en el registro…">
+                </label>
+                <div class="system-log-toolbar-row">
+                    <div class="option-switch" id="system-log-level-switch">
+                        <button type="button" class="option-switch-btn active" data-value="all" data-i18n="systemLogsLevelAll">Todo</button>
+                        <button type="button" class="option-switch-btn" data-value="INFO" data-i18n="systemLogsLevelInfo">Info</button>
+                        <button type="button" class="option-switch-btn" data-value="WARNING" data-i18n="systemLogsLevelWarning">Avisos</button>
+                        <button type="button" class="option-switch-btn" data-value="ERROR" data-i18n="systemLogsLevelError">Errores</button>
+                    </div>
+                    <button type="button" class="btn-file-action system-log-pause-btn" id="system-log-pause-btn" aria-pressed="false">
+                        <span id="system-log-pause-label">▶ Actualizando</span>
+                    </button>
                 </div>
             </div>
-            <div class="console-log" id="system-log-viewer"></div>
-            <div class="updates-actions">
-                <button type="button" class="btn-file-action" id="system-log-refresh-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                    <span data-i18n="systemLogsRefresh">Refrescar</span>
-                </button>
-            </div>
+            <div class="system-log-status" id="system-log-status" aria-live="polite"></div>
+            <div class="console-log system-log-viewer" id="system-log-viewer"></div>
         </div>
     </div>
 

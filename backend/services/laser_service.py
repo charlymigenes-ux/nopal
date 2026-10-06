@@ -15,11 +15,14 @@ import requests
 import websockets
 from requests_toolbelt.multipart.encoder import MultipartEncoder, MultipartEncoderMonitor
 
-from backend.services import marlin_driver
+from backend.services import machine_identity, marlin_driver
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LASER_HOST = "192.168.0.61"
+# Solo para adivinar la subred a escanear si no se puede detectar la propia.
+# No es un láser por omisión: D4 retiró el "host activo" global, cada
+# operación recibe su host explícito.
+FALLBACK_SCAN_SUBNET = "192.168.0"
 HTTP_TIMEOUT = 4
 WS_PORT = 81
 REGISTRY_PATH = "laser_registry.json"
@@ -27,18 +30,6 @@ HISTORY_PATH = "laser_history.json"
 HISTORY_MAX_ENTRIES = 200
 
 STATUS_RE = re.compile(r"<(?P<state>\w+)(?::\d+)?\|(?P<fields>[^>]*)>")
-
-_active_host = DEFAULT_LASER_HOST
-
-
-def get_active_host() -> str:
-    return _active_host
-
-
-def set_active_host(host: str):
-    global _active_host
-    _active_host = host
-
 
 def _is_usb_host(host: str) -> bool:
     return host.startswith("usb:")
@@ -50,18 +41,32 @@ def _usb_device(host: str) -> str:
 
 # ── Registro de placas conocidas (persistido) ──
 
+# Campos calculados en cada lectura de estado; nunca se persisten.
+_TRANSIENT_FIELDS = ("online", "identity", "anchor_unverified")
+
+
 def _load_registry() -> List[Dict[str, Any]]:
+    """Cada entrada lleva su id interno inmutable (`id`, ver
+    machine_identity): a las de antes se les asigna uno al leerlas, una sola
+    vez, y se guarda."""
     try:
         with open(REGISTRY_PATH, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+            entries = json.load(handle)
     except (OSError, json.JSONDecodeError):
         return []
+    if not isinstance(entries, list):
+        return []
+    entries = [e for e in entries if isinstance(e, dict)]
+    if machine_identity.ensure_uids(entries):
+        _save_registry(entries)
+    return entries
 
 
 def _save_registry(entries: List[Dict[str, Any]]):
+    clean = [{k: v for k, v in e.items() if k not in _TRANSIENT_FIELDS} for e in entries]
     try:
         with open(REGISTRY_PATH, "w", encoding="utf-8") as handle:
-            json.dump(entries, handle, indent=2)
+            json.dump(clean, handle, indent=2)
     except OSError:
         pass
 
@@ -70,7 +75,28 @@ def get_registered_lasers() -> List[Dict[str, Any]]:
     return _load_registry()
 
 
+def _is_network_entry(entry: Dict[str, Any]) -> bool:
+    return not _is_usb_host(str(entry.get("host", "")))
+
+
+def get_laser_by_uid(uid: str) -> Optional[Dict[str, Any]]:
+    """Entrada del registro por su id interno (None si no existe). Es la única
+    forma de pasar de un id canónico `laser:<id>` a la dirección actual."""
+    if not machine_identity.is_machine_uid(uid):
+        return None
+    return next((e for e in _load_registry() if e.get("id") == uid), None)
+
+
+def laser_identity_state(entry: Dict[str, Any], entries: List[Dict[str, Any]]) -> str:
+    kind = "usb" if _is_usb_host(str(entry.get("host", ""))) else "network"
+    return machine_identity.identity_state(entry, entries, kind)
+
+
 def _registry_entry_online(entry: Dict[str, Any], network_probe_results: Dict[str, bool]) -> bool:
+    if entry.get("anchor_unverified"):
+        # Tiene MAC guardada pero no aparece en el ARP del servidor: no se
+        # puede confirmar que en esa IP siga la misma placa (fail-closed).
+        return False
     if entry.get("conflict"):
         # Hay algo respondiendo en ese puerto, pero la reconciliación no
         # pudo confirmar que sigue siendo la misma placa — se reporta
@@ -163,16 +189,27 @@ def get_registered_lasers_with_status(timeout: float = 1.0) -> List[Dict[str, An
     entries = _reconcile_usb_entries(_load_registry())
     network_hosts = [e["host"] for e in entries if not _is_usb_host(e.get("host", ""))]
 
-    probe_results: Dict[str, bool] = {}
+    probes: Dict[str, Optional[Dict[str, Any]]] = {}
     if network_hosts:
         with ThreadPoolExecutor(max_workers=min(len(network_hosts), 20)) as executor:
-            for host, reachable in executor.map(
-                lambda h: (h, _probe_host(h, timeout) is not None), network_hosts
-            ):
-                probe_results[host] = reachable
+            for host, probe in executor.map(lambda h: (h, _probe_host(h, timeout)), network_hosts):
+                probes[host] = probe
+    probe_results = {host: probe is not None for host, probe in probes.items()}
+
+    # Identidad: el sondeo de arriba llena el ARP del servidor; con eso se
+    # verifica (y, si cambió la IP, se reencuentra) cada máquina anclada por
+    # MAC. Nunca se reasigna una máquina a otro id.
+    if machine_identity.reconcile_network_anchors(
+        entries, machine_identity.read_arp_table(), probes, _is_network_entry
+    ):
+        _save_registry(entries)
 
     return [
-        {**entry, "online": _registry_entry_online(entry, probe_results)}
+        {
+            **entry,
+            "online": _registry_entry_online(entry, probe_results),
+            "identity": laser_identity_state(entry, entries),
+        }
         for entry in entries
     ]
 
@@ -213,8 +250,12 @@ def record_laser_job_history(job: "LaserJob"):
     """Guarda el resultado final de un trabajo (completado, cancelado o con
     error) en el historial persistente, más reciente primero."""
     entries = _load_history()
+    machine = next((e for e in _load_registry() if e.get("host") == job.host), None)
     entry = {
         "host": job.host,
+        # Vínculo estable a la máquina (id interno); `host` queda solo como
+        # dato de la dirección que tenía al cortar.
+        "machine_id": f"laser:{machine['id']}" if machine else None,
         "filename": job.filename,
         "source": job.source,
         "state": job.state,
@@ -256,6 +297,10 @@ def register_laser(
     entries = [e for e in _load_registry() if e.get("host") != host]
     existing = next((e for e in _load_registry() if e.get("host") == host), None)
     entry = {
+        # Id interno inmutable: se conserva en cada edición; uno nuevo solo
+        # para una máquina nueva.
+        "id": existing["id"] if existing and machine_identity.is_machine_uid(existing.get("id"))
+        else machine_identity.new_machine_uid(),
         "host": host,
         "name": name,
         "transport": transport,
@@ -298,6 +343,15 @@ def register_laser(
         firmware = None
     entry["firmware"] = firmware or (existing.get("firmware") if existing else None) or "fluidnc"
 
+    # Anclas de red (MAC del ARP y, como dato complementario, Chip ID de
+    # [ESP420]): se conservan las existentes; solo se capturan si faltan.
+    if not _is_usb_host(host):
+        for field in ("mac", "chip_id"):
+            if existing and existing.get(field):
+                entry[field] = existing[field]
+        if not entry.get("mac"):
+            entry.update(capture_network_anchor(host))
+
     entries.append(entry)
     _save_registry(entries)
     logger.info(f"Dispositivo registrado: {host} ({name}, {entry['kind']}, perfil={entry['machine_profile']}, firmware={entry['firmware']})")
@@ -336,7 +390,7 @@ def _get_local_subnet() -> str:
             local_ip = sock.getsockname()[0]
         return ".".join(local_ip.split(".")[:3])
     except Exception:
-        return ".".join(DEFAULT_LASER_HOST.split(".")[:3])
+        return FALLBACK_SCAN_SUBNET
 
 
 def _parse_esp420_response(text: str) -> Dict[str, str]:
@@ -391,12 +445,29 @@ def _probe_host(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
             "host": ip,
             "hostname": info.get("Hostname", ""),
             "firmware": info.get("Firmware") or info.get("FW version", ""),
+            # 16 bits de la MAC: dato complementario de ancla, nunca un id.
+            "chip_id": info.get("Chip ID", ""),
         }
     except requests.exceptions.RequestException as e:
         # DEBUG y no WARNING: un escaneo de red sondea hasta 254 IPs y que la
         # mayoría no responda es el caso normal, no un problema real.
         logger.debug(f"Sondeo de {ip} sin respuesta: {e}")
         return None
+
+
+def capture_network_anchor(host: str, timeout: float = 1.5) -> Dict[str, Any]:
+    """Anclas de una placa por red en este momento: `chip_id` de [ESP420]
+    (consulta de solo lectura) y la `mac` que el ARP del servidor tiene para
+    esa IP tras contactarla. Lo que no se pueda obtener se omite: sin MAC la
+    máquina queda sin identidad estable (fuera del scope de TUNA-Screen)."""
+    anchor: Dict[str, Any] = {}
+    probe = _probe_host(host, timeout)
+    if probe and probe.get("chip_id"):
+        anchor["chip_id"] = probe["chip_id"]
+    mac = machine_identity.read_arp_table().get(host)
+    if mac:
+        anchor["mac"] = mac
+    return anchor
 
 
 def _scan_network_sync(timeout: float = 0.4, max_workers: int = 60) -> List[Dict[str, Any]]:
@@ -721,6 +792,17 @@ def _parse_grbl_status_line(line: str) -> Optional[Dict[str, Any]]:
         "speed": speed,
     }
 
+    # Mientras corre un archivo de la SD, la placa agrega "SD:<porcentaje>,
+    # <archivo>" (Report.cpp de Grbl_Esp32/FluidNC). Es la señal fiable de
+    # que el archivo sigue corriendo y su avance real.
+    if "SD" in fields:
+        percent, _, sd_file = fields["SD"].partition(",")
+        try:
+            result["sd_percent"] = max(0.0, min(100.0, float(percent)))
+            result["sd_file"] = sd_file
+        except ValueError:
+            pass
+
     if "WCO" in fields:
         parts = fields["WCO"].split(",")
         if len(parts) >= 3:
@@ -771,7 +853,7 @@ def _parse_grbl_status_line(line: str) -> Optional[Dict[str, Any]]:
     return result
 
 
-def get_board_info(host: str = DEFAULT_LASER_HOST) -> Dict[str, Any]:
+def get_board_info(host: str) -> Dict[str, Any]:
     """Info de la placa: por red, comando [ESP420] (chip, firmware, red...);
     por USB, los datos del descriptor serie (chip, VID:PID, descripción)."""
     if _is_usb_host(host):
@@ -1179,7 +1261,7 @@ def _ensure_serial_listener(host: str, baud: int = 115200):
     thread.start()
 
 
-def ensure_listener(host: str = DEFAULT_LASER_HOST):
+def ensure_listener(host: str):
     """Garantiza que exista una única conexión persistente hacia `host`
     (websocket para placas de red, hilo de lectura serie para USB)."""
     if _is_usb_host(host):
@@ -1188,7 +1270,7 @@ def ensure_listener(host: str = DEFAULT_LASER_HOST):
         _ensure_ws_listener(host)
 
 
-async def ensure_listener_ready(host: str = DEFAULT_LASER_HOST, timeout: float = 5.0):
+async def ensure_listener_ready(host: str, timeout: float = 5.0):
     """Como `ensure_listener`, pero espera a que la conexión esté realmente
     establecida antes de continuar (evita perder las primeras líneas de la
     respuesta a un comando enviado justo después)."""
@@ -1226,7 +1308,7 @@ def _marlin_transport_for(host: str) -> marlin_driver.MarlinTransport:
     )
 
 
-def get_console_buffer(host: str = DEFAULT_LASER_HOST, count: int = 100) -> List[Dict[str, Any]]:
+def get_console_buffer(host: str, count: int = 100) -> List[Dict[str, Any]]:
     messages = list(_console_buffers.get(host, []))
     return messages[-count:]
 
@@ -1237,7 +1319,7 @@ async def send_console_command(host: str, command: str) -> bool:
     return await loop.run_in_executor(None, send_raw_command, host, command)
 
 
-async def get_status(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+async def get_status(host: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
     if _firmware_for_host(host) == "marlin":
         return await _get_marlin_status(host, timeout)
     return await _get_grbl_status(host, timeout)
@@ -1302,7 +1384,7 @@ GCODE_PARSER_STATE_RE = re.compile(r"\[GC:(?P<words>[^\]]*)\]")
 WORK_COORDINATE_SYSTEMS = {"G54", "G55", "G56", "G57", "G58", "G59"}
 
 
-async def get_parser_state(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+async def get_parser_state(host: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
     """Dispara '$G' y espera la línea de estado del parser GRBL, ej.
     '[GC:G0 G54 G17 G21 G90 G94 M5 M9 T0 F0 S0]' — de ahí se saca el sistema
     de coordenadas activo (G54/G55/...) para mostrarlo en la ficha CNC.
@@ -1338,7 +1420,7 @@ async def get_parser_state(host: str = DEFAULT_LASER_HOST, timeout: float = 3.0)
     return None
 
 
-async def get_grbl_settings(host: str = DEFAULT_LASER_HOST, timeout: float = 5.0) -> List[Dict[str, str]]:
+async def get_grbl_settings(host: str, timeout: float = 5.0) -> List[Dict[str, str]]:
     """Obtiene los parámetros $$ actuales de la placa.
 
     Marlin no tiene este protocolo (su volcado M503 es texto libre, no pares
@@ -1574,6 +1656,13 @@ async def _run_sd_job(job: LaserJob):
     run_seen = False
     waited_for_run = 0.0
     RUN_TIMEOUT = 20  # segundos máximos esperando que la placa arranque el archivo
+    # La placa puede reportar Idle un instante a mitad del archivo (p. ej.
+    # mientras lee el siguiente bloque de la SD y el planificador se vacía):
+    # una sola lectura Idle cerraba el trabajo en falso (confirmado en vivo
+    # con la TTS-55 Pro: "completado" a los 39 s y la placa siguió grabando).
+    # Sin el campo SD, el Idle se confirma en varias lecturas seguidas.
+    IDLE_CONFIRM_POLLS = 3
+    idle_polls = 0
 
     try:
         while True:
@@ -1596,13 +1685,24 @@ async def _run_sd_job(job: LaserJob):
                     job.state = "error"
                     job.error_message = "La placa reportó una alarma"
                     return
-                if state_value == "run":
+                sd_busy = status.get("sd_percent") is not None
+                if sd_busy:
+                    # Avance real (0-100): current/total en esa escala para
+                    # que panel, IA y TUNA-Screen muestren el porcentaje.
+                    job.total = 100
+                    job.current = int(status["sd_percent"])
+                if state_value == "run" or sd_busy:
                     run_seen = True
+                    idle_polls = 0
                 elif state_value == "idle":
                     if run_seen:
-                        job.state = "completed"
-                        return
-                    if waited_for_run >= RUN_TIMEOUT:
+                        idle_polls += 1
+                        if idle_polls >= IDLE_CONFIRM_POLLS:
+                            if job.total:
+                                job.current = job.total
+                            job.state = "completed"
+                            return
+                    elif waited_for_run >= RUN_TIMEOUT:
                         job.state = "error"
                         job.error_message = (
                             "La placa nunca inició el archivo (revisa el nombre/ruta en la SD)"
@@ -1711,13 +1811,19 @@ async def get_job_status(host: str) -> Dict[str, Any]:
 
     status = await get_status(host, timeout=1.5)
     external_state = _external_job_state(status.get("state") if status else None)
+    sd_percent = (status or {}).get("sd_percent")
+    if external_state is None and sd_percent is not None:
+        # Corriendo un archivo de la SD aunque el estado diga Idle un instante.
+        external_state = "running"
     if external_state is not None:
+        # Un archivo de la SD que NOPAL no sigue (p. ej. tras reiniciar el
+        # servidor) sí trae nombre y avance en el propio estado de la placa.
         return {
-            "filename": "",
+            "filename": (status or {}).get("sd_file", "") if sd_percent is not None else "",
             "source": "external",
             "state": external_state,
-            "current": 0,
-            "total": 0,
+            "current": int(sd_percent) if sd_percent is not None else 0,
+            "total": 100 if sd_percent is not None else 0,
             "error": None,
         }
     return {"filename": "", "source": "", "state": "idle", "current": 0, "total": 0, "error": None}
@@ -1737,6 +1843,25 @@ def get_active_job_hosts() -> List[Dict[str, Any]]:
         for host, job in _jobs.items()
         if job.state in ("running", "paused")
     ]
+
+
+async def get_active_laser_jobs(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Trabajos en curso de todos los láseres/CNC de `entries` (registro con
+    `online`): los propios (en memoria) y, para los que están en línea sin
+    trabajo propio, el que reporte la placa -- un trabajo "externo", p. ej.
+    un archivo de la SD que NOPAL dejó de seguir tras reiniciarse, que trae
+    nombre y avance (ver get_job_status). Sin esto, el dashboard y la IA
+    decían que no había nada corriendo mientras la placa grababa."""
+    own = get_active_job_hosts()
+    tracked = {job["host"] for job in own}
+    candidates = [e["host"] for e in entries if e.get("online") and e.get("host") and e["host"] not in tracked]
+    results = await asyncio.gather(*(get_job_status(host) for host in candidates), return_exceptions=True)
+    external = [
+        {**job, "host": host}
+        for host, job in zip(candidates, results)
+        if isinstance(job, dict) and job.get("state") in ("running", "paused")
+    ]
+    return own + external
 
 
 def get_laser_jobs_with_errors() -> List[Dict[str, Any]]:

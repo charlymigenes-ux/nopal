@@ -155,13 +155,13 @@ MACHINE = "machine"
 
 
 def machine_resource(machine: Dict[str, Any]) -> Resource:
-    """Recurso de una máquina del modelo de ai_tools. El láser y la CNC usan
-    el id de su registro (`laser:<host>`), igual que `_laser_resource` del
-    panel; ai_tools nombra a la CNC `cnc:<host>`, pero es la misma placa."""
+    """Recurso de una máquina del modelo de ai_tools. Marlin, láser y CNC usan
+    su id canónico por id interno (`marlin:<id>`, `laser:<id>`), el mismo que
+    el panel y TUNA-Screen (identidad estable de máquinas)."""
     kind = machine.get("kind")
     if kind in ("laser", "cnc"):
-        host = str(machine["id"]).split(":", 1)[1]
-        return Resource(ResourceKind.CNC if kind == "cnc" else ResourceKind.LASER, f"laser:{host}")
+        # `laser:<id interno>`: misma clave que el panel y TUNA-Screen.
+        return Resource(ResourceKind.CNC if kind == "cnc" else ResourceKind.LASER, str(machine["id"]))
     return Resource(ResourceKind.PRINTER, str(machine["id"]))
 
 
@@ -975,8 +975,11 @@ def _purge_expired() -> None:
         _pending.pop(key, None)
 
 
-def stage_action(name: str, arguments: Dict[str, Any], username: str) -> Dict[str, Any]:
-    """Deja una acción de riesgo esperando confirmación humana."""
+def stage_action(name: str, arguments: Dict[str, Any], username: str,
+                 user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Deja una acción de riesgo esperando confirmación humana. Se guarda el
+    `user_id` del usuario autenticado (identidad estable: un usuario borrado y
+    recreado con el mismo nombre es otra persona); no sale en la respuesta."""
     _purge_expired()
     token = uuid.uuid4().hex[:12]
     _pending[token] = {
@@ -984,6 +987,7 @@ def stage_action(name: str, arguments: Dict[str, Any], username: str) -> Dict[st
         "action": name,
         "arguments": arguments,
         "username": username,
+        "user_id": user_id,
         "created_at": time.time(),
     }
     accion = ACTIONS[name]
@@ -1032,7 +1036,9 @@ async def confirm(token: str, role: str, username: str, user_id: Optional[str] =
     pendiente = _pending.get(token)
     if pendiente is None:
         raise ActionError("Esa confirmación ya venció o no existe")
-    if pendiente["username"] != username:
+    # Mismo usuario por id (estable) y por nombre. Sin id en cualquiera de
+    # los dos lados se rechaza (fail-closed).
+    if not user_id or pendiente.get("user_id") != user_id or pendiente["username"] != username:
         raise ActionError("Solo quien pidió la acción puede confirmarla")
 
     _pending.pop(token, None)  # de un solo uso, incluso si la ejecución falla

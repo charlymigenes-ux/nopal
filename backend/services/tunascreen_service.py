@@ -31,7 +31,9 @@ from backend.services import (
     flashforge_service,
     klipper_service,
     laser_service,
+    machine_identity,
     marlin_printer_service,
+    plugin_installer_service,
 )
 from backend.services.authorization_policy import Action, Principal, Resource, ResourceKind, authorize
 from backend.services.plugin_loader_service import get_loaded_plugin_module
@@ -94,7 +96,9 @@ CNC_ACTIONS = [
 # Códigos de pairing: en memoria, nunca en disco -- de un solo uso y de vida
 # corta (5 min), a diferencia de tunascreen_devices.json (persistente,
 # guarda los tokens ya emitidos).
-_pending_codes: Dict[str, float] = {}  # código → vencimiento (time.monotonic())
+# código → {"expires_at": vencimiento (time.monotonic()), "scope": scope ya
+# validado que eligió el admin al abrir el código}
+_pending_codes: Dict[str, Dict[str, Any]] = {}
 _pairing_failed_attempts = 0
 # Serializa generar/canjear: el canje de un código es atómico (solo una
 # petición puede consumirlo) y el contador de intentos no se pierde.
@@ -102,9 +106,11 @@ _pairing_lock = threading.Lock()
 
 # Conexiones WS activas -- primer WebSocket servidor->cliente de NOPAL, no
 # hay infraestructura previa que reutilizar acá.
-_ws_connections: Set[WebSocket] = set()
+# Cada conexión queda asociada al dispositivo autenticado en el handshake y al
+# último payload que se le mandó (deduplicación por conexión: cada dispositivo
+# recibe solo lo de su scope).
+_ws_connections: Dict[WebSocket, Dict[str, Any]] = {}
 _registry_lock = threading.RLock()
-_last_broadcast_payload: Optional[str] = None
 
 
 # ── Registro de dispositivos pareados ──
@@ -167,45 +173,52 @@ def _hash_token(token: str) -> str:
 
 # ── Pairing ──
 
-def generate_pairing_code() -> Dict[str, Any]:
+def generate_pairing_code(scope: Optional[List[str]] = None) -> Dict[str, Any]:
     """Solo se llama desde un endpoint que ya exige sesión de admin -- el
     código no reemplaza esa autenticación, es la credencial de un solo uso
-    que el dispositivo nuevo va a canjear por un token permanente."""
+    que el dispositivo nuevo va a canjear por un token permanente.
+
+    `scope`: lo que el admin autoriza para el dispositivo que canjee este
+    código. Omitido = vacío (autenticado pero sin acceso), nunca "todo". Se
+    valida aquí (formato e identidad estable) y viaja con el código."""
     global _pairing_failed_attempts
+    validated = validate_scope(scope if scope is not None else [])
     with _pairing_lock:
         now = time.monotonic()
         _purge_expired_codes_unlocked(now)
         code = f"{secrets.randbelow(1_000_000):06d}"
         while code in _pending_codes:
             code = f"{secrets.randbelow(1_000_000):06d}"
-        _pending_codes[code] = now + PAIRING_CODE_TTL_SECONDS
+        _pending_codes[code] = {"expires_at": now + PAIRING_CODE_TTL_SECONDS, "scope": validated}
         # Un código nuevo, generado por un admin, abre una ventana nueva.
         _pairing_failed_attempts = 0
     return {"code": code, "expires_in": PAIRING_CODE_TTL_SECONDS}
 
 
 def _purge_expired_codes_unlocked(now: float) -> None:
-    for code, expires_at in list(_pending_codes.items()):
-        if expires_at <= now:
+    for code, pending in list(_pending_codes.items()):
+        if pending["expires_at"] <= now:
             del _pending_codes[code]
 
 
 def has_pending_codes() -> bool:
     with _pairing_lock:
         now = time.monotonic()
-        return any(expires_at > now for expires_at in _pending_codes.values())
+        return any(pending["expires_at"] > now for pending in _pending_codes.values())
 
 
-def _consume_pairing_code(code: str) -> bool:
-    """True si `code` estaba vigente; lo consume (un solo uso). Un fallo suma
+def _consume_pairing_code(code: str) -> Optional[List[str]]:
+    """El scope del código si estaba vigente (lo consume: un solo uso); None
+    si no. Un fallo suma
     un intento y, al llegar a PAIRING_MAX_FAILED_ATTEMPTS, invalida todos los
     códigos vigentes. Todo bajo el lock: dos canjes simultáneos del mismo
     código no pueden tener éxito los dos."""
     global _pairing_failed_attempts
     with _pairing_lock:
         _purge_expired_codes_unlocked(time.monotonic())
-        if _pending_codes.pop(code, None) is not None:
-            return True
+        pending = _pending_codes.pop(code, None)
+        if pending is not None:
+            return list(pending["scope"])
         _pairing_failed_attempts += 1
         if _pairing_failed_attempts >= PAIRING_MAX_FAILED_ATTEMPTS:
             if _pending_codes:
@@ -213,11 +226,14 @@ def _consume_pairing_code(code: str) -> bool:
                 logger.warning("TUNA-Screen: demasiados intentos de emparejamiento fallidos; códigos invalidados")
             _pending_codes.clear()
             _pairing_failed_attempts = 0
-        return False
+        return None
 
 
 def confirm_pairing(code: str, device_name: str) -> Dict[str, Any]:
-    if not _consume_pairing_code(code):
+    """El dispositivo solo aporta el código y su nombre. El scope sale del
+    código (lo eligió el admin al abrirlo); nada del dispositivo lo cambia."""
+    scope = _consume_pairing_code(code)
+    if scope is None:
         raise ValueError("Código inválido o vencido")
 
     token = secrets.token_urlsafe(32)
@@ -230,6 +246,7 @@ def confirm_pairing(code: str, device_name: str) -> Dict[str, Any]:
             "token_hash": _hash_token(token),
             "paired_at": time.time(),
             "last_seen": None,
+            "scope": scope,
         })
         _save_registry_unlocked(devices)
     logger.info(f"TUNA-Screen emparejado: {device_name or device_id}")
@@ -257,8 +274,51 @@ def resolve_device(token: str) -> Optional[Dict[str, Any]]:
 
 
 def list_paired_devices() -> List[Dict[str, Any]]:
-    """Para una futura UI de Settings -- nunca incluye token_hash."""
-    return [{k: v for k, v in d.items() if k != "token_hash"} for d in _load_registry()]
+    """Para la UI de Settings -- nunca incluye token_hash. El scope se
+    muestra ya normalizado (fail-closed): lo que de verdad aplica."""
+    return [_public_device(d) for d in _load_registry()]
+
+
+def _public_device(device: Dict[str, Any]) -> Dict[str, Any]:
+    public = {k: v for k, v in device.items() if k != "token_hash"}
+    public["scope"] = sorted(device_scope(device))
+    return public
+
+
+def get_device(device_id: str) -> Optional[Dict[str, Any]]:
+    """El registro actual del dispositivo (None si fue revocado). Lo usa el
+    WebSocket para revalidar en cada ciclo, sin depender del handshake."""
+    return next((dict(d) for d in _load_registry() if d.get("device_id") == device_id), None)
+
+
+def set_device_scope(device_id: str, scope: List[str]) -> Optional[Dict[str, Any]]:
+    """Reemplaza el scope de un dispositivo (solo admin, desde la ruta de
+    gestión). Se valida completo antes de escribir: o se guarda todo o nada.
+    None si el dispositivo no existe."""
+    validated = validate_scope(scope)
+    with _registry_lock:
+        devices = _load_registry_unlocked()
+        device = next((d for d in devices if d.get("device_id") == device_id), None)
+        if device is None:
+            return None
+        device["scope"] = validated
+        _save_registry_unlocked(devices)
+        return _public_device(device)
+
+
+def migrate_registry_scopes() -> int:
+    """Agrega `scope: []` explícito a los registros que no lo tienen (los de
+    antes del scope persistente). Nunca concede acceso: la lectura ya trata la
+    ausencia como vacío; esto solo deja el estado escrito. Idempotente.
+    Devuelve cuántos registros cambió."""
+    with _registry_lock:
+        devices = _load_registry_unlocked()
+        missing = [d for d in devices if "scope" not in d]
+        for device in missing:
+            device["scope"] = []
+        if missing:
+            _save_registry_unlocked(devices)
+        return len(missing)
 
 
 def revoke_device(device_id: str) -> bool:
@@ -367,21 +427,38 @@ def _camera_fields(device_type: str, device_id: str) -> Any:
     # ruta equivalente bajo su propio namespace de autenticación; las URLs
     # absolutas de cámaras IP permanecen directas y nunca pasan por NOPAL.
     if isinstance(stream_url, str) and stream_url.startswith("/") and camera.get("device_path"):
-        stream_url = f"/api/tunascreen/cameras/{camera['id']}/stream"
+        stream_url = _camera_stream_path(camera["id"])
     return ["camera"], {"stream_url": stream_url, "name": camera.get("name")}
 
 
-async def subscribe_camera_stream(camera_id: str) -> Tuple[Any, Any]:
+def _camera_stream_path(camera_id: str) -> str:
+    return f"/api/tunascreen/cameras/{camera_id}/stream"
+
+
+async def subscribe_camera_stream(camera_id: str, device: Dict[str, Any]) -> Tuple[Any, Any]:
     """Abre una webcam USB vinculada usando el servicio compartido del plugin.
 
     Solo se aceptan cámaras registradas, vinculadas a una máquina y con un
     ``device_path`` local. Las cámaras IP siguen usando su URL absoluta para no
     convertir NOPAL en un proxy abierto hacia destinos arbitrarios.
+
+    Scope: la cámara tiene que ser la que TUNA-Screen expone (`stream_url`)
+    para una máquina del scope del dispositivo -- el mismo vínculo
+    (`bound_device`) que arma `_camera_fields`, sin reinterpretarlo. Conocer el
+    `camera_id` no basta. Sin vínculo, fuera del scope o inexistente: KeyError
+    (el mismo 404).
     """
     camera_module = get_loaded_plugin_module("camera-viewer", "services.camera_service")
     usb_module = get_loaded_plugin_module("camera-viewer", "services.usb_camera_service")
     if camera_module is None or usb_module is None:
         raise RuntimeError("El plugin de cámaras no está disponible")
+    allowed = {
+        ((m.get("status") or {}).get("camera") or {}).get("stream_url")
+        for m in await list_machines_for(device)
+        if "camera" in (m.get("capabilities") or [])
+    }
+    if _camera_stream_path(camera_id) not in allowed:
+        raise KeyError(camera_id)
     camera = camera_module.get_camera_by_id(camera_id)
     if camera is None or not camera.get("bound_device") or not camera.get("device_path"):
         raise KeyError(camera_id)
@@ -417,7 +494,10 @@ def _normalize_spool(spool: Dict[str, Any], reserved_g: float = 0) -> Dict[str, 
     }
 
 
-async def get_materials_snapshot() -> Dict[str, Any]:
+async def get_materials_snapshot(device: Dict[str, Any]) -> Dict[str, Any]:
+    """Inventario de Spoolman (el router exige `plugin:spoolman` en el scope)
+    con los vínculos máquina→carrete SOLO de las máquinas del scope: nunca se
+    revelan ids de máquinas ajenas."""
     try:
         config, links, reservations = _spool_modules()
         client = config.get_client()
@@ -428,10 +508,11 @@ async def get_materials_snapshot() -> Dict[str, Any]:
         for spool in raw_spools:
             reserved = reservations.reserved_grams_for_spool(spool["id"]) if reservations else 0
             normalized.append(_normalize_spool(spool, reserved))
+        visible = {m["id"] for m in await list_machines_for(device)}
         machine_links = {
             f"klipper:{port}": int(link["spool_id"])
             for port, link in links.get_all_links().items()
-            if isinstance(link, dict) and link.get("spool_id") is not None
+            if isinstance(link, dict) and link.get("spool_id") is not None and f"klipper:{port}" in visible
         }
         return {"available": True, "reason": None, "spools": normalized, "links": machine_links}
     except ValueError:
@@ -615,9 +696,14 @@ async def _marlin_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     online = registered_online and status is not None
     hotend = (status or {}).get("extruder") or {}
     bed = (status or {}).get("heater_bed") or {}
-    camera_capabilities, camera = _camera_fields("marlin", device)
+    uid = entry["id"]
+    # La cámara se vincula por el id interno (estable), no por la ruta USB.
+    camera_capabilities, camera = _camera_fields("marlin", uid)
     return {
-        "id": f"marlin:{device}",
+        "id": f"marlin:{uid}",
+        # stable | missing | conflict (ver machine_identity): solo `stable`
+        # puede entrar al scope de un dispositivo.
+        "identity": entry.get("identity"),
         "name": entry.get("name") or device,
         "type": "printer",
         "driver": "marlin",
@@ -695,10 +781,12 @@ async def _laser_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     # bound_device.type de una cámara vinculada a láser/CNC es "laser" o
     # "cnc" (no un prefijo compartido) -- mismo `kind` que ya resolvimos
     # arriba, ver dashboard_service._active_jobs() para la misma convención.
-    camera_capabilities, camera = _camera_fields(kind, host)
+    uid = entry["id"]
+    camera_capabilities, camera = _camera_fields(kind, uid)
 
     return {
-        "id": f"laser:{host}",
+        "id": f"laser:{uid}",
+        "identity": entry.get("identity"),
         "name": entry.get("name") or host,
         "type": kind,
         "driver": "grbl",
@@ -779,11 +867,14 @@ async def _collect_machines() -> List[Dict[str, Any]]:
         machines.extend(_cached_driver("marlin"))
     else:
         for entry in marlin_entries:
+            if not machine_identity.is_machine_uid(entry.get("id")):
+                logger.warning("Marlin %s sin id interno; no se expone a TUNA-Screen", entry.get("device"))
+                continue
             try:
                 machines.append(await _marlin_machine(entry))
             except Exception as exc:
                 logger.warning("No se pudo actualizar Marlin %s: %s", entry.get("device"), exc)
-                machine_id = f"marlin:{entry.get('device')}"
+                machine_id = f"marlin:{entry.get('id')}"
                 previous = next((m for m in _machines_cache if m.get("id") == machine_id), None)
                 if previous:
                     machines.append(previous)
@@ -794,11 +885,14 @@ async def _collect_machines() -> List[Dict[str, Any]]:
         machines.extend(_cached_driver("grbl"))
     else:
         for entry in laser_entries:
+            if not machine_identity.is_machine_uid(entry.get("id")):
+                logger.warning("GRBL %s sin id interno; no se expone a TUNA-Screen", entry.get("host"))
+                continue
             try:
                 machines.append(await _laser_machine(entry))
             except Exception as exc:
                 logger.warning("No se pudo actualizar GRBL %s: %s", entry.get("host"), exc)
-                machine_id = f"laser:{entry.get('host')}"
+                machine_id = f"laser:{entry.get('id')}"
                 previous = next((m for m in _machines_cache if m.get("id") == machine_id), None)
                 if previous:
                     machines.append(previous)
@@ -922,23 +1016,148 @@ def machine_resource(machine: Dict[str, Any]) -> Resource:
     return Resource(_MACHINE_TYPE_KIND.get(machine.get("type"), ResourceKind.MACHINE), machine["id"])
 
 
-def device_scope(device: Dict[str, Any], resource: Resource) -> Set[str]:
-    """Punto de integración del scope de un dispositivo TUNA-Screen (D3-Q5).
+# ── Scope persistente (D3-Q5) ──
+#
+# Cada dispositivo guarda en el registro `scope`: lista de claves canónicas
+# `kind:id` (las mismas que valida la Authorization Policy). Solo recursos con
+# identidad ESTABLE: una clave que mañana pudiera nombrar otra máquina física
+# no puede autorizar nada. Marlin y GRBL/láser/CNC entran SOLO por su id
+# interno (`printer:marlin:mch_…`, `laser:laser:mch_…`, `cnc:laser:mch_…`,
+# ver machine_identity) y solo mientras su ancla esté estable (sin conflicto);
+# sus direcciones (`/dev/ttyUSBx`, IP, `usb:/dev/…`) nunca.
+STABLE_PRINTER_DRIVERS = ("klipper", "bambu", "elegoo", "flashforge")
+UNSTABLE_SCOPE_ERROR = (
+    "Esa máquina no tiene una identidad estable (una dirección USB o IP no es un id) "
+    "y no se puede asignar a un dispositivo TUNA-Screen"
+)
 
-    TRANSITORIO: el scope todavía no se persiste. Por decisión del propietario
-    (2026-10-03, enforcement parcial) se usa como scope el propio recurso
-    pedido: la política sigue evaluando rol y si la acción está permitida a
-    dispositivos (las de admin se deniegan siempre), pero no limita por
-    máquina. Cuando exista la persistencia, devolver aquí el scope guardado.
-    Un recurso sin id no tiene clave: scope vacío y la política deniega."""
-    return {resource.key} if resource.key else set()
+
+def machine_identity_ok(machine: Dict[str, Any]) -> bool:
+    """Marlin y GRBL traen `identity`; solo `stable` puede autorizarse a un
+    dispositivo (un ancla en conflicto o sin ancla la deja fuera, aunque su
+    clave siga en el scope). Las demás marcas no lo traen: su id ya es del
+    fabricante."""
+    return machine.get("identity", machine_identity.IDENTITY_STABLE) == machine_identity.IDENTITY_STABLE
 
 
-def principal_for_device(device: Dict[str, Any], resource: Resource) -> Principal:
-    """Principal de un dispositivo: perfil fijo operador (Principal.tuna_device),
-    a partir solo de la identidad del token; nada de la petición puede
-    cambiar su rol."""
-    return Principal.tuna_device(device["device_id"], device_scope(device, resource))
+def _scope_key_error(key: Any) -> Optional[str]:
+    """Por qué `key` no puede estar en un scope (None si es válida). Solo
+    forma e identidad estable; si el recurso existe lo comprueba quien
+    administra (`validate_scope_resources`)."""
+    if not isinstance(key, str) or not key or key != key.strip():
+        return "Cada entrada del scope debe ser texto con la forma tipo:id"
+    kind, sep, rest = key.partition(":")
+    if not sep or not rest:
+        return f"Entrada de scope inválida: {key}"
+    if kind == ResourceKind.PLUGIN.value:
+        return None if ":" not in rest else f"Entrada de scope inválida: {key}"
+    if kind == ResourceKind.PRINTER.value:
+        driver, sep, raw = rest.partition(":")
+        if not sep or not raw:
+            return f"Entrada de scope inválida: {key}"
+        if driver == "marlin":
+            # Solo por id interno (`mch_…`); la ruta /dev/… nunca.
+            return None if machine_identity.is_machine_uid(raw) else UNSTABLE_SCOPE_ERROR
+        if driver not in STABLE_PRINTER_DRIVERS:
+            return f"Entrada de scope inválida: {key}"
+        if driver == "klipper" and not (raw.isdigit() and 0 < int(raw) < 65536):
+            return f"Entrada de scope inválida: {key}"
+        return None
+    if kind in (ResourceKind.LASER.value, ResourceKind.CNC.value):
+        driver, _, raw = rest.partition(":")
+        return None if driver == "laser" and machine_identity.is_machine_uid(raw) else UNSTABLE_SCOPE_ERROR
+    # Formas no canónicas de máquinas inestables (`marlin:/dev/…`, `laser:<ip>`).
+    if kind in ("marlin", "laser"):
+        return UNSTABLE_SCOPE_ERROR
+    return f"Entrada de scope inválida: {key}"
+
+
+def validate_scope(scope: Any) -> List[str]:
+    """Valida un scope completo (forma, identidad estable, sin duplicados) y
+    lo devuelve ordenado. Levanta ValueError ante cualquier entrada mala: no
+    hay escrituras parciales."""
+    if not isinstance(scope, list):
+        raise ValueError("El scope debe ser una lista de recursos")
+    for key in scope:
+        error = _scope_key_error(key)
+        if error:
+            raise ValueError(error)
+    if len(set(scope)) != len(scope):
+        raise ValueError("El scope tiene entradas repetidas")
+    return sorted(scope)
+
+
+async def validate_scope_resources(scope: Any) -> List[str]:
+    """Para la gestión del admin: además de `validate_scope`, cada recurso
+    tiene que existir hoy (una máquina que TUNA-Screen conoce o un plugin
+    instalado)."""
+    validated = validate_scope(scope)
+    machine_keys = {machine_resource(m).key for m in await list_machines() if machine_identity_ok(m)}
+    installed = set(plugin_installer_service.read_installed_state())
+    for key in validated:
+        kind, _, rest = key.partition(":")
+        known = rest in installed if kind == ResourceKind.PLUGIN.value else key in machine_keys
+        if not known:
+            raise ValueError(f"Recurso desconocido: {key}")
+    return validated
+
+
+async def scope_options() -> Dict[str, Any]:
+    """Lo que un admin puede asignar: máquinas con identidad estable y plugins
+    instalados. Las inestables no se ofrecen."""
+    machines = []
+    for machine in await list_machines():
+        key = machine_resource(machine).key
+        if key and _scope_key_error(key) is None and machine_identity_ok(machine):
+            machines.append({"key": key, "name": machine.get("name") or machine["id"], "type": machine.get("type")})
+    plugins = [{"key": f"plugin:{plugin_id}", "name": plugin_id}
+               for plugin_id in sorted(plugin_installer_service.read_installed_state())]
+    return {"machines": machines, "plugins": plugins}
+
+
+def device_scope(device: Dict[str, Any], resource: Optional[Resource] = None) -> Set[str]:
+    """Scope persistente del dispositivo, leído de su registro. Fail-closed:
+    ausente, mal formado o con cualquier entrada inválida (o inestable) =
+    vacío, nunca "todo". `resource` ya no se usa (el scope transitorio
+    devolvía el recurso pedido); se conserva por compatibilidad."""
+    stored = device.get("scope")
+    try:
+        return set(validate_scope(stored))
+    except ValueError:
+        if stored is not None:
+            logger.warning("TUNA-Screen: scope inválido en el registro de %s; se trata como vacío",
+                           device.get("device_id"))
+        return set()
+
+
+def principal_for_device(device: Dict[str, Any], resource: Optional[Resource] = None) -> Principal:
+    """Principal de un dispositivo: perfil fijo operador (Principal.tuna_device)
+    con su scope persistente, a partir solo de la identidad del token; nada de
+    la petición puede cambiar su rol ni su scope."""
+    return Principal.tuna_device(device["device_id"], device_scope(device))
+
+
+def can_view_machine(device: Dict[str, Any], machine: Dict[str, Any]) -> bool:
+    if not machine_identity_ok(machine):
+        return False
+    resource = machine_resource(machine)
+    return bool(authorize(principal_for_device(device), Action.VIEW_STATUS, resource))
+
+
+def visible_machines(machines: List[Dict[str, Any]], device: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Solo las máquinas del scope del dispositivo (`view_status`)."""
+    return [m for m in machines if can_view_machine(device, m)]
+
+
+async def list_machines_for(device: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return visible_machines(await list_machines(), device)
+
+
+async def get_machine_for(device: Dict[str, Any], machine_id: str) -> Optional[Dict[str, Any]]:
+    """La máquina si existe Y está en el scope; si no, None. Fuera del scope
+    es indistinguible de inexistente."""
+    machine = await get_machine(machine_id)
+    return machine if machine is not None and can_view_machine(device, machine) else None
 
 
 async def ensure_device_authorized(device: Dict[str, Any], action: Action, machine_id: str) -> None:
@@ -955,6 +1174,9 @@ async def ensure_device_authorized(device: Dict[str, Any], action: Action, machi
 # Accesorios y escenas se autorizan sobre el plugin completo. El scope por
 # accesorio/escena queda para cuando exista la persistencia del scope.
 ACCESSORIES_PLUGIN_RESOURCE = Resource(ResourceKind.PLUGIN, "arduino-accessories")
+# Spoolman (materiales): entrada explícita `plugin:spoolman` en el scope. Tener
+# una máquina no concede el plugin, ni el plugin concede una máquina.
+SPOOLMAN_PLUGIN_RESOURCE = Resource(ResourceKind.PLUGIN, "spoolman")
 
 
 def ensure_device_authorized_for(device: Dict[str, Any], action: Action, resource: Resource) -> None:
@@ -971,7 +1193,8 @@ async def dispatch_action(
     brand, raw_id = _split_machine_id(machine_id)
     if action not in _ACTION_NAMES:
         raise ValueError("Acción no soportada para esta máquina")
-    machine = await get_machine(machine_id)
+    # Fuera del scope = inexistente (mismo 400): no se revela que existe.
+    machine = await get_machine_for(device, machine_id)
     if machine is None:
         raise ValueError("Máquina no encontrada")
     # ADR-006: la autorización va antes de cualquier otra comprobación y de
@@ -991,7 +1214,11 @@ async def dispatch_action(
     if brand == "klipper":
         return await _dispatch_klipper(int(raw_id), action, params)
     if brand == "marlin":
-        return await _dispatch_marlin(raw_id, action, params)
+        # El id de TUNA-Screen es el interno; la ruta /dev/… se resuelve aquí.
+        entry = marlin_printer_service.get_printer_by_uid(raw_id)
+        if entry is None:
+            raise ValueError("Máquina no encontrada")
+        return await _dispatch_marlin(entry["device"], action, params)
     if brand == "bambu":
         return _dispatch_bambu(raw_id, action)
     if brand == "elegoo":
@@ -999,7 +1226,10 @@ async def dispatch_action(
     if brand == "flashforge":
         return _dispatch_flashforge(raw_id, action)
     if brand == "laser":
-        return await _dispatch_laser(raw_id, action, params)
+        entry = laser_service.get_laser_by_uid(raw_id)
+        if entry is None:
+            raise ValueError("Máquina no encontrada")
+        return await _dispatch_laser(entry["host"], action, params)
     raise ValueError(f"Marca desconocida: {brand}")
 
 
@@ -1263,9 +1493,10 @@ def _macro_param(params: Dict[str, Any]) -> str:
     return macro
 
 
-async def get_machine_macros(machine_id: str) -> List[Dict[str, str]]:
+async def get_machine_macros(machine_id: str, device: Dict[str, Any]) -> List[Dict[str, str]]:
     brand, raw_id = _split_machine_id(machine_id)
-    machine = await get_machine(machine_id)
+    # Fuera del scope = inexistente (mismo 400 "Máquina no encontrada").
+    machine = await get_machine_for(device, machine_id)
     if machine is None:
         raise ValueError("Máquina no encontrada")
     if not machine.get("online"):
@@ -1275,9 +1506,10 @@ async def get_machine_macros(machine_id: str) -> List[Dict[str, str]]:
     return klipper_service.get_macros(int(raw_id))
 
 
-async def get_machine_console(machine_id: str, count: int = 50) -> List[Dict[str, Any]]:
+async def get_machine_console(machine_id: str, device: Dict[str, Any], count: int = 50) -> List[Dict[str, Any]]:
     brand, raw_id = _split_machine_id(machine_id)
-    machine = await get_machine(machine_id)
+    # Fuera del scope = inexistente (mismo 400 "Máquina no encontrada").
+    machine = await get_machine_for(device, machine_id)
     if machine is None:
         raise ValueError("Máquina no encontrada")
     if not machine.get("online"):
@@ -1289,16 +1521,29 @@ async def get_machine_console(machine_id: str, count: int = 50) -> List[Dict[str
 
 # ── WebSocket: difusión de estado en vivo ──
 
-def register_connection(websocket: WebSocket):
-    _ws_connections.add(websocket)
+WS_REVOKED_CLOSE_CODE = 4401
+
+
+def machines_payload(machines: List[Dict[str, Any]]) -> str:
+    return json.dumps({"type": "machines", "api_version": API_VERSION, "machines": machines})
+
+
+def register_connection(websocket: WebSocket, device_id: str, initial_payload: Optional[str] = None):
+    """La conexión queda asociada al dispositivo del handshake durante toda
+    su vida; `initial_payload` es el snapshot ya enviado (deduplicación)."""
+    _ws_connections[websocket] = {"device_id": device_id, "last_payload": initial_payload}
 
 
 def unregister_connection(websocket: WebSocket):
-    _ws_connections.discard(websocket)
+    _ws_connections.pop(websocket, None)
 
 
 async def broadcast_machines():
-    global _last_broadcast_payload
+    """Un ciclo de difusión. Por cada conexión: se relee el registro (un
+    dispositivo revocado se cierra con 4401 y no recibe más), se toma su scope
+    ACTUAL (un cambio aplica en el ciclo siguiente, sin reconectar) y se le
+    manda solo lo que puede ver. El filtrado es del servidor: nunca sale un
+    payload completo para que lo filtre el cliente."""
     if not _ws_connections:
         return
     try:
@@ -1307,22 +1552,27 @@ async def broadcast_machines():
         logger.exception("No se pudo generar el estado de máquinas para difundir por WS")
         return
 
-    payload = json.dumps({
-        "type": "machines",
-        "api_version": API_VERSION,
-        "machines": machines,
-    })
-    if payload == _last_broadcast_payload:
-        return
-    _last_broadcast_payload = payload
+    registry = {d.get("device_id"): d for d in _load_registry()}
     stale: List[WebSocket] = []
-    for websocket in list(_ws_connections):
+    for websocket, state in list(_ws_connections.items()):
+        device = registry.get(state["device_id"])
+        if device is None:
+            stale.append(websocket)
+            try:
+                await websocket.close(code=WS_REVOKED_CLOSE_CODE)
+            except Exception:
+                pass
+            continue
+        payload = machines_payload(visible_machines(machines, device))
+        if payload == state["last_payload"]:
+            continue
         try:
             await websocket.send_text(payload)
+            state["last_payload"] = payload
         except Exception:
             stale.append(websocket)
     for websocket in stale:
-        _ws_connections.discard(websocket)
+        _ws_connections.pop(websocket, None)
 
 
 async def broadcaster_loop():

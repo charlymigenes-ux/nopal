@@ -72,12 +72,16 @@ def _serialize_catalog() -> list[dict]:
         # las dos y mostrar "Actualizar" cuando el catálogo declaró una
         # versión distinta a la que hay clonada.
         entry["catalog_version"] = plugin.get("version")
+        entry["python_error"] = installer.python_requirement_error(plugin.get(installer.PYTHON_REQUIRES_KEY))
         if entry["installed"]:
             manifest = installer.read_manifest(plugin_id)
             if manifest:
                 entry["version"] = manifest.get("version", entry.get("version"))
+                entry["python_error"] = installer.python_requirement_error(manifest.get(installer.PYTHON_REQUIRES_KEY))
                 frontend = manifest.get("frontend")
-                if frontend:
+                # Sin frontend si este Python no le alcanza: su backend no se
+                # carga (plugin_loader_service) y la interfaz quedaría rota.
+                if frontend and not entry["python_error"]:
                     entry["frontend"] = {
                         "section": frontend.get("section"),
                         "script": _plugin_static_url(plugin_id, frontend.get("script")),
@@ -110,6 +114,9 @@ def install_plugin(plugin_id: str, _user: dict = Depends(require_role("admin")))
         )
     if not plugin.get("repo_url"):
         raise HTTPException(status_code=500, detail="Este plugin no tiene un repositorio configurado")
+    python_error = installer.python_requirement_error(plugin.get(installer.PYTHON_REQUIRES_KEY))
+    if python_error:
+        raise HTTPException(status_code=409, detail=python_error)
 
     with _state_lock:
         installed = installer.read_installed_state()
@@ -118,6 +125,12 @@ def install_plugin(plugin_id: str, _user: dict = Depends(require_role("admin")))
         result = installer.clone(plugin_id, plugin["repo_url"])
         if not result["success"]:
             raise HTTPException(status_code=502, detail=result["error"])
+        # El manifiesto clonado es la fuente de verdad: si pide un Python más
+        # nuevo que el del catálogo, no queda instalado a medias.
+        python_error = installer.python_requirement_error(result["manifest"].get(installer.PYTHON_REQUIRES_KEY))
+        if python_error:
+            installer.remove(plugin_id)
+            raise HTTPException(status_code=409, detail=python_error)
         installed[plugin_id] = {
             "version": result["manifest"].get("version", plugin.get("version")),
             "enabled": True,

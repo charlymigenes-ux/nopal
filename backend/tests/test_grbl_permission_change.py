@@ -54,7 +54,6 @@ def calls(monkeypatch):
     monkeypatch.setattr(laser_api, "send_console_command", fake_send_console_command)
     monkeypatch.setattr(laser_api, "set_grbl_setting", fake_set_grbl_setting)
     monkeypatch.setattr(laser_api, "job_active", lambda host: False)
-    monkeypatch.setattr(laser_api, "get_active_host", lambda: HOST)
     monkeypatch.setattr(laser_api, "get_registered_lasers", lambda: [
         {"host": HOST, "kind": "laser"},
         {"host": CNC_HOST, "kind": "cnc"},
@@ -115,12 +114,16 @@ class TestGrblPrivilegedRoutes:
 
         assert calls[0][3].key == f"cnc:laser:{CNC_HOST}"
 
-    def test_active_host_used_when_host_omitted(self, client, calls, as_admin, url, form, service, action):
+    def test_missing_host_rejected_without_touching_any_machine(self, client, calls, as_admin, url, form, service, action):
+        """D4: ya no hay "host activo" global al que caer. Sin host, 400 antes
+        de autorizar y sin llamar a ningún servicio."""
         data = {k: v for k, v in form.items() if k != "host"}
 
-        client.post(url, data=data)
+        response = client.post(url, data=data)
 
-        assert calls[0][3].key == f"laser:laser:{HOST}"
+        assert response.status_code == 400
+        assert response.json() == {"detail": laser_api.MISSING_HOST_DETAIL}
+        assert calls == []
 
     def test_policy_deny_blocks_service(self, client, calls, as_admin, monkeypatch, url, form, service, action):
         monkeypatch.setattr(

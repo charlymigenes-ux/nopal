@@ -15,7 +15,9 @@ async def _async_value(value):
 
 
 # Dispositivo emparejado de prueba (lo que devuelve resolve_device para un token).
-TEST_DEVICE = {"device_id": "tuna_test", "name": "Tablet de prueba"}
+# Scope persistente explícito: las máquinas que usan estos tests (identidad estable).
+TEST_DEVICE = {"device_id": "tuna_test", "name": "Tablet de prueba",
+               "scope": ["printer:bambu:01S00A1", "printer:klipper:7125"]}
 
 
 @pytest.fixture(autouse=True)
@@ -73,7 +75,7 @@ class TestPairing:
 
     def test_expired_code_rejected(self, client, as_admin, monkeypatch):
         code = client.post("/api/tunascreen/pair/start").json()["code"]
-        monkeypatch.setitem(tunascreen_service._pending_codes, code, 0)  # ya vencido
+        tunascreen_service._pending_codes[code]["expires_at"] = 0  # ya vencido
         response = client.post("/api/tunascreen/pair/confirm", json={"code": code, "device_name": "A"})
         assert response.status_code == 400
 
@@ -153,7 +155,7 @@ class TestCameraStream:
             json={"code": code, "device_name": "TUNA-Screen"},
         ).json()["token"]
 
-        async def _missing(camera_id):
+        async def _missing(camera_id, device):
             raise KeyError(camera_id)
 
         monkeypatch.setattr(tunascreen_service, "subscribe_camera_stream", _missing)
@@ -193,7 +195,11 @@ class TestWorkshopResources:
             lambda plugin_id, module: modules.get(module) if plugin_id == "spoolman" else None,
         )
 
-        result = await tunascreen_service.get_materials_snapshot()
+        async def _machines():
+            return [{"id": "klipper:7125", "type": "printer"}]
+
+        monkeypatch.setattr(tunascreen_service, "list_machines", _machines)
+        result = await tunascreen_service.get_materials_snapshot(TEST_DEVICE)
 
         assert result["available"] is True
         assert result["links"] == {"klipper:7125": 7}
@@ -323,7 +329,8 @@ class TestListMachinesShape:
 
     async def test_cnc_machine_gets_cnc_capabilities_not_laser(self, monkeypatch):
         async def _lasers():
-            return [{"host": "192.168.1.60", "name": "Router CNC", "kind": "cnc", "online": True}]
+            return [{"id": "mch_00000000000000c1", "host": "192.168.1.60", "name": "Router CNC",
+                     "kind": "cnc", "online": True, "identity": "stable"}]
         monkeypatch.setattr(laser_service, "get_registered_lasers_status", _lasers)
 
         async def _status(host, timeout=3.0):
@@ -336,7 +343,9 @@ class TestListMachinesShape:
         machines = await tunascreen_service.list_machines()
         assert len(machines) == 1
         machine = machines[0]
-        assert machine["id"] == "laser:192.168.1.60"
+        # Id canónico por id interno, no por la IP (identidad estable).
+        assert machine["id"] == "laser:mch_00000000000000c1"
+        assert machine["identity"] == "stable"
         assert machine["type"] == "cnc"
         assert "spindle" in machine["capabilities"]
         assert "laser_power" not in machine["capabilities"]
@@ -463,7 +472,7 @@ class TestDispatchAction:
             lambda port: [{"name": "PURGE", "description": "Purga"}],
         )
 
-        assert await tunascreen_service.get_machine_macros("klipper:7125") == [
+        assert await tunascreen_service.get_machine_macros("klipper:7125", TEST_DEVICE) == [
             {"name": "PURGE", "description": "Purga"}
         ]
 

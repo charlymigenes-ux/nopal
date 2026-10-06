@@ -132,7 +132,9 @@ async def get_notifications() -> Dict[str, Any]:
         if not laser.get("online"):
             label = laser.get("name") or laser.get("host", "Dispositivo")
             section = "cnc" if laser.get("kind") == "cnc" else "laser"
-            items.append({"id": f"laser:{laser.get('host')}", "severity": "error", "source": "laser", "section": section, "message": f"{label} desconectado"})
+            # Id por id interno (identidad estable): un aviso descartado no
+            # reaparece porque cambió la IP o la ruta USB.
+            items.append({"id": f"laser:{laser.get('id') or laser.get('host')}", "severity": "error", "source": "laser", "section": section, "message": f"{label} desconectado"})
 
     items.extend(await _get_machine_alarms())
 

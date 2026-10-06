@@ -114,7 +114,6 @@ def calls(monkeypatch):
     monkeypatch.setattr(laser_api, "ensure_listener_ready", ready)
     monkeypatch.setattr(laser_api, "send_raw_command", fake_send_raw_command)
     monkeypatch.setattr(laser_api, "job_active", lambda host: False)
-    monkeypatch.setattr(laser_api, "get_active_host", lambda: HOST)
     monkeypatch.setattr(laser_api, "get_registered_lasers", lambda: [
         {"host": HOST, "kind": "laser"},
         {"host": CNC_HOST, "kind": "cnc"},
