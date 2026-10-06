@@ -158,6 +158,10 @@ def load_installed_plugin_routers(app: FastAPI) -> None:
         if manifest is None:
             logger.warning(f"[{plugin_id}] instalado pero sin manifest legible en plugins/{plugin_id}/, se omite")
             continue
+        python_error = installer.python_requirement_error(manifest.get(installer.PYTHON_REQUIRES_KEY))
+        if python_error:
+            logger.warning(f"[{plugin_id}] no se carga: {python_error}")
+            continue
         router = _load_plugin_router(plugin_id, manifest)
         if router is not None:
             app.include_router(router)

@@ -14,8 +14,10 @@ propio checkout de NOPAL).
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -83,6 +85,31 @@ def read_manifest(plugin_id: str) -> Optional[Dict[str, Any]]:
     except (OSError, json.JSONDecodeError) as e:
         logger.warning(f"No se pudo leer el manifest de {plugin_id}: {e}")
         return None
+
+
+# Versión mínima de Python que declara un plugin (`python_requires` en su
+# nopal-plugin.json y, para saberlo antes de clonar, en el catálogo). Solo se
+# entiende `>=X.Y[.Z]`; cualquier otra cosa se trata como no cumplida
+# (fail-closed): un plugin que no se sabe si funciona no se instala ni carga.
+PYTHON_REQUIRES_KEY = "python_requires"
+_PYTHON_REQUIRES = re.compile(r"\s*>=\s*(\d+)\.(\d+)(?:\.(\d+))?\s*")
+
+
+def python_requirement_error(spec: Any, version_info=None) -> Optional[str]:
+    """None si este Python cumple `spec` (o no hay requisito); si no, el
+    motivo, listo para mostrarlo."""
+    if spec is None or spec == "":
+        return None
+    version_info = tuple(version_info or sys.version_info)
+    current = ".".join(str(part) for part in version_info[:3])
+    match = _PYTHON_REQUIRES.fullmatch(str(spec))
+    if not match:
+        return f"El plugin declara un requisito de Python que NOPAL no reconoce ({spec})"
+    required = tuple(int(part) for part in match.groups() if part is not None)
+    if version_info[:len(required)] < required:
+        minimum = ".".join(str(part) for part in required)
+        return f"Este plugin requiere Python {minimum} o superior; NOPAL corre con Python {current}"
+    return None
 
 
 def is_cloned(plugin_id: str) -> bool:

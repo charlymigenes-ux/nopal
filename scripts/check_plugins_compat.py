@@ -12,7 +12,9 @@ Por plugin:
 - C: backend sin tests → carga con el cargador real de NOPAL
   (`load_installed_plugin_routers`, el del arranque) y exige que registre rutas.
 - D: sin backend ni tests → N/A (solo frontend).
-A y C pasan además por el cargador real.
+A y C pasan además por el cargador real. Un plugin cuyo `python_requires`
+(nopal-plugin.json) excluye este Python también es N/A: NOPAL no lo instala
+ni lo carga aquí.
 
 Resultados: PASS, N/A, COMPAT (falla el job: test fallido, router que no
 carga, error de importación) e INFRA (no falla el job: repo inaccesible tras
@@ -36,6 +38,9 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+# Misma regla que la Galería y el cargador de NOPAL para `python_requires`.
+from backend.services.plugin_installer_service import PYTHON_REQUIRES_KEY, python_requirement_error  # noqa: E402
 CATALOG = REPO_ROOT / "backend" / "plugin_catalog.json"
 MANIFEST = "nopal-plugin.json"
 CLONE_ATTEMPTS = 3
@@ -201,6 +206,13 @@ def check_plugin(entry: Dict[str, str], workdir: Path, core_root: Path,
         return result
     result.version = str(manifest.get("version") or "")
     result.kind = classify(plugin_dir, manifest)
+
+    # El plugin declara que necesita un Python más nuevo: NOPAL no lo instala
+    # ni lo carga en este Python, así que no aplica (no es incompatibilidad).
+    python_error = python_requirement_error(manifest.get(PYTHON_REQUIRES_KEY))
+    if python_error:
+        result.status, result.detail = NA, f"declara {PYTHON_REQUIRES_KEY} {manifest[PYTHON_REQUIRES_KEY]}: {python_error}"
+        return result
 
     if result.kind == "D":
         result.status, result.detail = NA, "solo frontend (sin backend Python)"

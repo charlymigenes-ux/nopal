@@ -135,6 +135,18 @@ def test_type_d_is_not_applicable(tmp_path):
     assert result.status == compat.NA and result.kind == "D" and "solo frontend" in result.detail
 
 
+def test_plugin_requiring_newer_python_is_not_applicable(tmp_path):
+    """matriz-led declara python_requires ">=3.10": en el job de 3.9 es N/A
+    (NOPAL no lo instala ni lo carga ahí), no COMPAT."""
+    data = json.loads(manifest("plugin-py"))
+    data["python_requires"] = ">=99.0"
+    repo = make_repo(tmp_path, "plugin-py", {compat.MANIFEST: json.dumps(data), "backend/router.py": ROUTER_BROKEN,
+                                             "tests/test_plugin.py": TEST_FAIL})
+    result = check(tmp_path, repo, "plugin-py")
+    assert result.status == compat.NA and "python_requires >=99.0" in result.detail
+    assert "requiere Python 99.0" in result.detail
+
+
 def test_unreachable_repo_is_infra_not_compat(tmp_path):
     result = check(tmp_path, str(tmp_path / "no-existe"), "caido")
     assert result.status == compat.INFRA
