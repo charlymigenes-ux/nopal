@@ -512,7 +512,6 @@ const boundStandaloneCards = new WeakSet();
 const boundStandaloneActionButtons = new WeakSet();
 const boundLaserCards = new WeakSet();
 const boundQuickActionButtons = new WeakSet();
-const boundMarlinTemperatureButtons = new WeakSet();
 const dashboardPrinterThemeMode = new Map(); // port(String) -> 'warm' | 'cool'
 let recentPrinterFiles = [];
 let selectedGcodeId = null;
@@ -3210,6 +3209,29 @@ async function handleLaserQuickAction(action, host) {
         formData.append('host', host);
         await fetch('/api/laser/job/cancel', { method: 'POST', body: formData });
         refreshDashboardLaserCard();
+    }
+}
+
+// Lo mismo para Marlin: el trabajo se identifica por `device` y los tres
+// verbos son los mismos endpoints que usa el panel de detalle de Marlin
+// (/api/marlin-printers/print/{pause,resume,cancel}). Quien llama decide qué
+// grilla repintar después.
+async function handleMarlinQuickAction(action, device) {
+    if (!['pause', 'resume', 'cancel'].includes(action)) return;
+    if (action === 'cancel') {
+        const confirmed = await appConfirm(t('activePrintCancelConfirm'), t('activePrintStop'), 'danger');
+        if (!confirmed) return;
+    }
+    const formData = new FormData();
+    formData.append('device', device);
+    try {
+        const response = await fetch(`/api/marlin-printers/print/${action}`, { method: 'POST', body: formData });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            showToast(err.detail || 'No se pudo completar la acción en la impresora Marlin', 'error');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
     }
 }
 
@@ -6149,7 +6171,9 @@ async function loadDashboardStandalonePrinters({ skipMarlinStatusRefresh = false
                     type: 'marlin', id: printer.device,
                     isOnline: Boolean(printer.online),
                     sortPriority: standalonePrinterSortPriority(visualState),
-                    html: marlinPrinterCardHtml(printer, status),
+                    // Ficha unificada (ver deviceCardHtml), como Klipper y
+                    // láser/CNC: así también lleva su cámara vinculada.
+                    html: deviceCardHtml(marlinDeviceModel(printer, status, job)),
                 });
             });
             if (!skipMarlinStatusRefresh) void refreshDashboardMarlinStatuses(printers);
@@ -6300,25 +6324,71 @@ function laserDashboardSortPriority(status) {
     return PRINTER_STATUS_SORT_ORDER[visualState] ?? 3;
 }
 
-function bindMarlinTemperatureActions(root) {
-    root.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
-        card.querySelectorAll('[data-marlin-temp-action]').forEach(button => {
-            if (boundMarlinTemperatureButtons.has(button)) return;
-            boundMarlinTemperatureButtons.add(button);
-            button.addEventListener('click', async event => {
-            event.stopPropagation();
-            const device = card.dataset.marlinDevice;
-            const printer = marlinPrintersRegistryCache.find(item => item.device === device) || {};
-            const heaters = ['heater_bed', printer.extruder_count === 2 ? 'extruder0' : 'extruder'];
-            if (printer.extruder_count === 2) heaters.push('extruder1');
-            if (button.dataset.marlinTempAction === 'preheat') {
-                openMaterialPreheatModal({ type: 'marlin', id: device, name: printer.name || card.querySelector('.printer-name')?.textContent || 'Marlin', heaters });
-            } else {
-                try { await Promise.all(heaters.map(heater => setMarlinHeaterTarget(device, heater, 0))); showToast('Calentadores Marlin apagados'); }
-                catch (error) { showToast(error.message, 'error'); }
+// Precalentar/enfriar desde la ficha de Marlin: los mismos calentadores y el
+// mismo endpoint (/api/marlin-printers/temperature-target vía
+// setMarlinHeaterTarget) que ya usaba la ficha vieja.
+async function marlinTemperatureQuickAction(action, device, fallbackName) {
+    const printer = marlinPrintersRegistryCache.find(item => item.device === device) || {};
+    const heaters = ['heater_bed', printer.extruder_count === 2 ? 'extruder0' : 'extruder'];
+    if (printer.extruder_count === 2) heaters.push('extruder1');
+    if (action === 'preheat') {
+        openMaterialPreheatModal({ type: 'marlin', id: device, name: printer.name || fallbackName || 'Marlin', heaters });
+        return;
+    }
+    try {
+        await Promise.all(heaters.map(heater => setMarlinHeaterTarget(device, heater, 0)));
+        showToast('Calentadores Marlin apagados');
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// Enlaza las fichas unificadas de Marlin (.dev-card[data-marlin-device]) de
+// una grilla: la del Dashboard y la de la sección de Marlin. `refrescar` es
+// lo que repinta esa grilla después de una acción.
+function bindMarlinDeviceCards(root, refrescar) {
+    root.querySelectorAll('.dev-card[data-marlin-device]').forEach(card => {
+        if (boundMarlinCards.has(card)) return;
+        boundMarlinCards.add(card);
+        const device = card.dataset.marlinDevice;
+
+        // Delegación en la ficha, no un listener por botón: el interior se
+        // reescribe al montar el visor de cámara y los botones recreados se
+        // quedarían sin listener (mismo motivo que en Klipper y láser).
+        card.addEventListener('click', async event => {
+            const btn = event.target.closest('[data-dev-action]');
+            if (!btn) return;
+            event.stopImmediatePropagation();
+            const accion = btn.dataset.devAction;
+            if (accion === 'pause' || accion === 'resume' || accion === 'cancel') {
+                await handleMarlinQuickAction(accion, device);
+                refrescar?.();
+                return;
             }
-            });
+            if (accion === 'preheat' || accion === 'cool') {
+                await marlinTemperatureQuickAction(accion, device, card.querySelector('.dev-card-name')?.textContent);
+                if (accion === 'cool') refrescar?.();
+                return;
+            }
+            if (accion === 'camera-setup') {
+                switchSection('camera-viewer');
+                return;
+            }
+            if (accion === 'camera') {
+                card.querySelector('.printer-card-camera-toggle')?.click();
+                const clave = card.querySelector('[data-cam-container]')?.dataset.camContainer;
+                const visible = clave ? isCameraCardVisible(clave) : false;
+                card.classList.toggle('is-thumb-mode', visible || deviceIsBusy(card.dataset.state));
+                btn.classList.toggle('is-checked', visible);
+                btn.setAttribute('aria-pressed', String(visible));
+                btn.querySelector('.dev-action-check')?.classList.toggle('is-on', visible);
+                return;
+            }
+            // Detalles, abrir panel y cualquier otra: el panel de detalle.
+            openMarlinPrinterModal(card.dataset.marlinDevice);
         });
+
+        card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
     });
 }
 
@@ -7854,6 +7924,134 @@ function laserDeviceModel(entry, jobsByHost) {
     };
 }
 
+// Estado real de una impresora Marlin -> el vocabulario común de la ficha.
+// Marlin no tiene máquina de estados propia: el backend sintetiza
+// printing/paused/idle a partir del trabajo que NOPAL le está mandando (ver
+// marlin_printer_service.get_status), así que no hay un "error" de la
+// impresora que leer -- no se inventa uno. Calentando sí se puede saber: un
+// calentador con objetivo > 0 en reposo, igual que en Klipper.
+function marlinDeviceState(status, isHeating) {
+    const visual = getMarlinPrinterVisualState(status); // offline | printing | paused | idle
+    if (visual === 'idle' && isHeating) return 'heating';
+    return visual;
+}
+
+// Modelo de la ficha unificada para una impresora Marlin. `status` es la
+// lectura de /api/marlin-printers/status (temperaturas con current/target)
+// combinada con la conexión del registro; `job` es la entrada de
+// /api/marlin-printers/jobs/active para esa impresora, si la hay.
+function marlinDeviceModel(printer, status, job) {
+    const device = printer.device;
+    // extruder_count solo se guarda con perfil (ver printer_profiles.py) --
+    // una placa Marlin genérica sin perfil sigue siendo de un solo hotend.
+    const dobleExtrusor = printer.extruder_count === 2;
+    const leerTemp = clave => status?.[clave] && typeof status[clave].current === 'number'
+        ? Math.round(status[clave].current * 10) / 10 : null;
+    const leerObjetivo = clave => status?.[clave] && typeof status[clave].target === 'number'
+        ? status[clave].target : 0;
+    const extrusorPrincipal = dobleExtrusor ? 'extruder0' : 'extruder';
+    const bedTemp = leerTemp('heater_bed');
+    const bedTarget = leerObjetivo('heater_bed');
+    const extruderTemp = leerTemp(extrusorPrincipal);
+    const extruderTarget = leerObjetivo(extrusorPrincipal)
+        || (dobleExtrusor ? leerObjetivo('extruder1') : 0);
+    const isHeating = bedTarget > 0 || extruderTarget > 0;
+
+    const state = marlinDeviceState(status, isHeating);
+    const enLinea = state !== 'offline';
+    const enTrabajo = deviceIsBusy(state);
+    // La cámara se vincula por el id interno estable (mch_…), igual que la
+    // del modal de Marlin -- nunca por printer.device, que es /dev/ttyUSBx o
+    // un host y cambia al reconectar. Sin id interno no hay cámara.
+    const claveCamara = printer.id ? `marlin:${printer.id}` : null;
+
+    const etiquetas = {
+        offline: t('offline'), printing: t('printing'), paused: t('paused'),
+        error: t('devStateError'), heating: t('heating'), idle: t('devStateReady'),
+    };
+
+    // Mismas reglas que Klipper: solo lo que se puede hacer en ese estado.
+    // En reposo: precalentar y enfriar, que es lo que la ficha de Marlin ya
+    // ofrecía (el resto -- archivo, home -- vive en el panel de detalle).
+    let actions;
+    if (state === 'printing') {
+        actions = [
+            { key: 'pause', label: t('devPause'), icon: 'pause', tone: 'warn' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'paused') {
+        actions = [
+            { key: 'resume', label: t('devResume'), icon: 'play', tone: 'ok' },
+            { key: 'cancel', label: t('devStop'), icon: 'stop', tone: 'danger' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    } else if (state === 'offline' || state === 'error') {
+        actions = [{ key: 'details', label: t('devDetails'), icon: 'details' }];
+    } else {
+        actions = [
+            { key: 'preheat', label: t('devPreheat'), icon: 'heat' },
+            { key: 'cool', label: t('devCool'), icon: 'cool' },
+            ...accionCamara(claveCamara),
+            { key: 'details', label: t('devDetails'), icon: 'details' },
+        ];
+    }
+
+    // Temperaturas solo con la máquina conectada. Con doble extrusor van los
+    // dos hotends por separado: la ficha vieja ya los mostraba como T0/T1.
+    const metricaTemp = (icono, etiqueta, valor) => ({
+        icon: icono, label: etiqueta, value: Number.isFinite(valor) ? `${valor} °C` : null,
+    });
+    const metrics = !enLinea ? [] : (dobleExtrusor ? [
+        metricaTemp('nozzle', `${t('devNozzle')} T0`, leerTemp('extruder0')),
+        metricaTemp('nozzle', `${t('devNozzle')} T1`, leerTemp('extruder1')),
+        metricaTemp('bed', t('devBed'), bedTemp),
+    ] : [
+        metricaTemp('nozzle', t('devNozzle'), extruderTemp),
+        metricaTemp('bed', t('devBed'), bedTemp),
+    ]);
+
+    const info = [];
+    const placa = marlinBoardVariantLabel(printer.profile_id, printer.board_variant);
+    if (placa) info.push({ label: t('marlinBoardVariantLabel'), value: placa });
+
+    // Progreso solo si el dato existe y está vivo. En un trabajo mandado
+    // línea por línea desde NOPAL, current/total se actualizan mientras
+    // corre. En uno de la SD no: /jobs/active devuelve el último M27 que
+    // alguien pidió (solo lo pide el panel de detalle), así que mostrarlo
+    // sería pintar un porcentaje viejo como si fuera actual. Marlin tampoco
+    // da tiempo restante -- no se inventa.
+    const progreso = job && job.source !== 'sd' && Number(job.total) > 0
+        ? Math.round((Number(job.current) / Number(job.total)) * 100) : null;
+
+    return {
+        name: printer.name || device,
+        typeLabel: `${t('printerType3D')} · Marlin`,
+        state,
+        stateLabel: etiquetas[state] || state,
+        online: enLinea,
+        art: PRINTER_STATE_IMAGES[state === 'offline' || state === 'error' ? 'error' : (state === 'heating' ? 'heating' : (enTrabajo ? 'printing' : 'idle'))],
+        job: enTrabajo && job ? {
+            filename: job.filename || '',
+            progress: progreso,
+            remainingLabel: null,
+        } : null,
+        jobLabel: t('devFile'),
+        metrics,
+        info,
+        actions,
+        cameraSlot: claveCamara && deviceCameraKeys.has(claveCamara) ? claveCamara : null,
+        waves: printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, state, !enLinea, printer.id || device),
+        // data-marlin-device (la ruta/host) es lo que usan el panel de
+        // detalle y la reconciliación de la grilla; data-machine-uid (id
+        // interno) lo usan las alertas LED. data-heat-progress alimenta el
+        // degradado LED mientras calienta (ver machineLedCardProgress).
+        dataAttr: `data-marlin-device="${escapeHtml(device)}" data-machine-uid="${escapeHtml(printer.id || '')}" data-heat-progress="${state === 'heating' ? (computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget) ?? '') : ''}"`,
+    };
+}
+
 
 // Secciones que SÍ tiene sentido reordenar en la ficha nueva. Son tres, no
 // las cuatro de la ficha vieja: en la referencia la insignia vive dentro
@@ -7921,6 +8119,9 @@ const DEVICE_ICONS = {
     move: '<polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
     heat: '<path d="M12 2s4 5 4 9a4 4 0 0 1-8 0c0-4 4-9 4-9z"/>',
+    // Enfriar: copo de nieve, para que no se confunda con la gota/flama de
+    // precalentar a tamaño chico.
+    cool: '<line x1="12" y1="2" x2="12" y2="22"/><line x1="3.3" y1="7" x2="20.7" y2="17"/><line x1="3.3" y1="17" x2="20.7" y2="7"/><polyline points="9 4 12 6 15 4"/><polyline points="9 20 12 18 15 20"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.44.58.8.66H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     dots: '<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
     // Cabezal sobre tres ejes: lo que importa comunicar es "dónde está",
@@ -8332,7 +8533,6 @@ function renderPrinters(printersInput) {
     const columnsRoot = groupMode === 'mixed' ? (machinesMixedGrid || printersGrid) : (machinesColumns || printersGrid);
 
     decorateMachineCardsWithLedSettings(columnsRoot);
-    bindMarlinTemperatureActions(columnsRoot);
     // La vista de cámara en la tarjeta solo aplica al modo "mixto" (todos
     // los tipos en una sola grilla) -- en columnas separadas por tipo
     // (Impresoras/Láser/CNC) las tarjetas quedan más angostas y la miniatura
@@ -8408,11 +8608,7 @@ function renderPrinters(printersInput) {
         card.addEventListener('click', () => abrirPanelDeImpresora(port));
     });
 
-    columnsRoot.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
-        if (boundMarlinCards.has(card)) return;
-        boundMarlinCards.add(card);
-        card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
-    });
+    bindMarlinDeviceCards(columnsRoot, () => loadDashboardStandalonePrinters());
 
     const standaloneSections = [
         ['elegoo', 'elegooId'],
@@ -15815,94 +16011,19 @@ function getMarlinPrinterVisualState(status) {
     return 'idle';
 }
 
-function marlinPrinterCardHtml(printer, status) {
-    const visualState = getMarlinPrinterVisualState(status);
-    const isOnline = visualState !== 'offline';
-    const statusText = isOnline ? t('online') : t('offline');
-    const stateLabel = isOnline ? t(visualState) : t('offline');
-    const name = printer.name || printer.device;
-    const boardLabel = marlinBoardVariantLabel(printer.profile_id, printer.board_variant);
-    // extruder_count solo se guarda con perfil (ver printer_profiles.py) --
-    // una placa Marlin genérica sin perfil sigue siendo de un solo hotend,
-    // como toda la vida.
-    const dualExtruder = printer.extruder_count === 2;
-
-    const readTemp = key => status?.[key] && typeof status[key].current === 'number' ? Math.round(status[key].current * 10) / 10 : null;
-    const readTarget = key => status?.[key] && typeof status[key].target === 'number' ? status[key].target : 0;
-    const bedTemp = readTemp('heater_bed');
-    const bedTarget = readTarget('heater_bed');
-    // Para la onda térmica decorativa, con doble extrusor alcanza con T0 --
-    // es un efecto visual aproximado, no una lectura exacta por extrusor.
-    const primaryExtruderKey = dualExtruder ? 'extruder0' : 'extruder';
-    const extruderTemp = readTemp(primaryExtruderKey);
-    const extruderTarget = readTarget(primaryExtruderKey);
-
-    const tempItemsHtml = dualExtruder
-        ? `
-            <div class="temp-item">
-                <div class="temp-label">${t('bedTemp')}</div>
-                <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
-            </div>
-            <div class="temp-item">
-                <div class="temp-label">T0</div>
-                <div class="temp-value">${readTemp('extruder0') != null ? readTemp('extruder0') : '--'}<span class="temp-unit">°C</span></div>
-            </div>
-            <div class="temp-item">
-                <div class="temp-label">T1</div>
-                <div class="temp-value">${readTemp('extruder1') != null ? readTemp('extruder1') : '--'}<span class="temp-unit">°C</span></div>
-            </div>
-        `
-        : `
-            <div class="temp-item">
-                <div class="temp-label">${t('bedTemp')}</div>
-                <div class="temp-value">${bedTemp != null ? bedTemp : '--'}<span class="temp-unit">°C</span></div>
-            </div>
-            <div class="temp-item">
-                <div class="temp-label">${t('extruderTemp')}</div>
-                <div class="temp-value">${extruderTemp != null ? extruderTemp : '--'}<span class="temp-unit">°C</span></div>
-            </div>
-        `;
-
-    const heatProgress = visualState === 'heating' ? computeHeatProgress(bedTemp, bedTarget, extruderTemp, extruderTarget) : null;
-    // PRINTER_STATE_IMAGES no tiene entrada "offline" (ver printerIllustrationImg)
-    // -- se pisa por "idle" solo para elegir la imagen, el resto de la tarjeta
-    // sigue mostrando el estado real sin conexión.
-    const illustrationState = visualState === 'offline' ? 'idle' : visualState;
-    return `
-        <div class="printer-card printer-card-type-3d printer-card-connection-marlin ${isOnline ? 'online' : 'offline'} ${visualState}" data-marlin-device="${escapeHtml(printer.device)}" data-machine-uid="${escapeHtml(printer.id || '')}" data-heat-progress="${heatProgress ?? ''}">
-            ${printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, visualState, !isOnline)}
-            <div class="printer-card-top">
-                <div>
-                    <h3 class="printer-name">${escapeHtml(name)}</h3>
-                    <p class="printer-name-sub">${boardLabel ? escapeHtml(boardLabel) : 'Marlin'}</p>
-                </div>
-                <div class="printer-quick-actions">
-                    ${isOnline ? `<button type="button" class="printer-quick-action-btn marlin-card-temp-action" data-marlin-temp-action="cool" title="${t('tempCool')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.7 17.7 8.4a8 8 0 1 1-11.4 0Z"/></svg></button>
-                    <button type="button" class="printer-quick-action-btn printer-quick-action-btn-accent marlin-card-temp-action" data-marlin-temp-action="preheat" title="${t('tempPreset')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.4 5.2A8.25 8.25 0 1 1 6 7a8.3 8.3 0 0 0 3 2.6 9 9 0 0 1 3.4-6.9 8.2 8.2 0 0 0 3 2.5Z"/></svg></button>` : ''}
-                    <div class="printer-status-icon ${isOnline ? 'online' : 'offline'}" title="${statusText}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>
-                    </div>
-                </div>
-            </div>
-
-            <div class="printer-status-line ${visualState}">
-                <span class="printer-status-dot ${visualState}"></span>${stateLabel}
-            </div>
-
-            <div class="printer-illustration printer-illustration-${illustrationState}">
-                ${printerIllustrationImg(illustrationState)}
-            </div>
-
-            ${isOnline ? `<div class="printer-temps${dualExtruder ? ' printer-temps-triple' : ''}">${tempItemsHtml}</div>` : ''}
-        </div>
-    `;
-}
-
 async function refreshMarlinPrintersGrid() {
     const grid = document.getElementById('marlin-printers-grid');
     if (!grid) return;
     try {
-        const response = await fetch('/api/marlin-printers/registry/status');
+        // Las cámaras vinculadas se consultan junto con el registro: sin
+        // eso, entrar directo a esta sección dejaba la ficha sin cámara.
+        // El trabajo activo (archivo/progreso) sale de la misma consulta
+        // única que usa el Dashboard, no de una por impresora.
+        const [response, jobsData] = await Promise.all([
+            fetch('/api/marlin-printers/registry/status'),
+            fetch('/api/marlin-printers/jobs/active').then(res => res.ok ? res.json() : { jobs: [] }).catch(() => ({ jobs: [] })),
+            refreshDeviceCameras(),
+        ]);
         const data = await response.json();
         const printers = data.printers || [];
         marlinPrintersRegistryCache = printers;
@@ -15910,6 +16031,7 @@ async function refreshMarlinPrintersGrid() {
             grid.innerHTML = `<div class="empty-state">${t('marlinPrinterNoPrinters')}</div>`;
             return;
         }
+        const jobsByDevice = new Map((jobsData.jobs || []).map(job => [String(job.device), job]));
         const entries = await Promise.all(printers.map(async printer => {
             try {
                 const statusResponse = await fetch(`/api/marlin-printers/status?device=${encodeURIComponent(printer.device)}`);
@@ -15919,11 +16041,13 @@ async function refreshMarlinPrintersGrid() {
                 return { printer, status: { connected: false } };
             }
         }));
-        grid.innerHTML = entries.map(({ printer, status }) => marlinPrinterCardHtml(printer, status)).join('');
-        bindMarlinTemperatureActions(grid);
-        grid.querySelectorAll('.printer-card[data-marlin-device]').forEach(card => {
-            card.addEventListener('click', () => openMarlinPrinterModal(card.dataset.marlinDevice));
-        });
+        // Misma ficha unificada que el Dashboard. Se reconcilia en vez de
+        // reemplazar el innerHTML: con el sondeo cada 3 s, reemplazarla
+        // desmontaba y volvía a montar la cámara en cada vuelta.
+        reconcileDashboardGrid(grid, entries.map(({ printer, status }) =>
+            deviceCardHtml(marlinDeviceModel(printer, status, jobsByDevice.get(String(printer.device)) || null))).join(''));
+        bindMarlinDeviceCards(grid, refreshMarlinPrintersGrid);
+        mountCameraCardsIn(grid);
     } catch (error) {
         console.error(error);
     }

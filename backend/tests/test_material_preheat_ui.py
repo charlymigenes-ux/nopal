@@ -11,7 +11,10 @@ def test_material_preheat_is_available_for_klipper_and_marlin_cards():
     assert 'id="material-preheat-modal"' in html
     assert "openMaterialPreheatModal({ type: 'klipper'" in javascript
     assert "openMaterialPreheatModal({ type: 'marlin'" in javascript
-    assert 'data-marlin-temp-action="preheat"' in javascript
+    # La ficha de Marlin pasó al formato unificado (.dev-card): el botón ya no
+    # es `data-marlin-temp-action="preheat"` sino la acción `preheat` del
+    # modelo, que despacha marlinTemperatureQuickAction.
+    assert "marlinTemperatureQuickAction(" in javascript
     assert "setMarlinHeaterTarget" in javascript
     assert "material-preset-editor-row" in javascript
 

@@ -8,7 +8,7 @@
 | Nombre completo | Network Operating Platform for Automation & Libraries |
 | Tipo | Software Design Document (SDD) |
 | Estado | **Draft / Proposed Architecture** |
-| Versión del SDD | 0.42 |
+| Versión del SDD | 0.43 |
 | Fecha | 2026-10-03 |
 | Base analizada | rama `dev-main`: auditoría sobre `f47aa17`; estado actualizado a `09a5630` (incluye `6fc0aec` corrección de S-1, `247efab` pytest en CI, `09a5630` documentación). `main` todavía no contiene estos commits |
 | Versión de NOPAL | `1.2.0-alpha.1` (archivo `VERSION`; sin tags de git) |
@@ -2102,3 +2102,4 @@ Se derivan del análisis; no son preferencias abstractas.
 | 0.40 | 2026-10-05 | **Plugins en Python 3.9**: job `plugins-compat` (check propio) en el workflow de CI con `scripts/check_plugins_compat.py`: punta de la rama por defecto de cada `repo_url` del catálogo, SHA y versión probados en el resumen, suite propia / cargador real / N/A según el plugin, COMPAT falla el check e INFRA solo avisa; disparadores semanal y manual añadidos al workflow. 19 tests nuevos (sin red). |
 | 0.41 | 2026-10-05 | **`python_requires` de plugins**: un plugin puede declarar la versión mínima de Python (manifiesto y catálogo). La Galería no lo instala, el cargador no lo carga y la lista no entrega su frontend si el Python de NOPAL no le alcanza; `plugins-compat` lo marca N/A. matriz-led declara `>=3.10` (pypixelcolor no importa en 3.9). 22 tests nuevos. |
 | 0.42 | 2026-10-06 | **Operador: fichas y rutas de administración**: descubrir impresoras (Marlin, MKS WiFi, Bambu, Elegoo, FlashForge), escanear la LAN de láseres (`/api/laser/scan`, `/scan-ip`) y probar puertos (`/api/laser/usb-ports/test`, `/api/marlin-printers/usb-ports/test`, `/mks-wifi/test`) pasan a `require_role("admin")`, como el alta y la baja (10 rutas; listar puertos USB sigue abierto). En Configuración, el operador ya no ve Registro, Actualizaciones, Dispositivos, Accesorios ni Respaldo (además de IA, Usuarios y TUNA-Screen): lista única `ADMIN_ONLY_SETTINGS_MODULES`, aplicada también al personalizador de fichas; el visor de logs sigue visible (`read_logs`). El botón "Escanear red" del panel láser, solo admin. |
+| 0.43 | 2026-10-06 | **Ficha Marlin unificada**: Marlin pasa a la ficha `.dev-card` (`marlinDeviceModel` + `deviceCardHtml`) en el Dashboard y en la sección Marlin, con cámara por id interno (`marlin:<mch_…>`), acciones según estado (pausar/reanudar/detener por los endpoints existentes, precalentar/enfriar) y temperaturas. Se retira `marlinPrinterCardHtml`. Bambu, Elegoo y FlashForge siguen en la ficha anterior. |
