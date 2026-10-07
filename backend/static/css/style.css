@@ -11607,16 +11607,16 @@ body.light .sidebar-order-select {
     padding: 24px 0;
 }
 
-/* Tarjeta grande por categoría -- misma apariencia "vidrio oscuro fijo" que
-   .plugin-card de la Galería de plugins (línea ~4550), independiente del
-   tema (mismo criterio que .laser-card-accent, línea ~6034). */
+/* Tarjeta grande por categoría -- vidrio translúcido sobre --card-bg, con
+   texto y bordes tomados de las variables del tema (antes el título era
+   blanco fijo y en el tema claro no se leía). */
 .help-feature-card {
     display: flex;
     flex-direction: column;
     gap: 12px;
     padding: 20px;
     background: color-mix(in srgb, var(--card-bg) 72%, transparent);
-    border: 1px solid rgba(148, 163, 184, 0.17);
+    border: 1px solid var(--border);
     border-radius: 15px;
     transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
@@ -11624,7 +11624,7 @@ body.light .sidebar-order-select {
 .help-feature-card:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--green) 55%, transparent);
-    background: rgba(20, 30, 50, 0.88);
+    background: color-mix(in srgb, var(--card-bg) 90%, var(--green) 10%);
 }
 
 .help-feature-card-coming-soon {
@@ -11652,13 +11652,32 @@ body.light .sidebar-order-select {
 .help-feature-card-heading h2 {
     margin: 0 0 4px;
     font-size: 1.02rem;
-    color: #fff;
+    color: var(--text);
 }
 
 .help-feature-card-heading p {
     margin: 0;
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--text-secondary);
+}
+
+/* Puntos/pasos de cada categoría (itemKeys en HELP_CATEGORIES). Solo
+   variables del tema; overflow-wrap evita desborde horizontal con rutas
+   largas tipo /dev/ttyUSB* en pantallas angostas. */
+.help-feature-card-points {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.help-feature-card-points li::marker {
+    color: var(--green);
 }
 
 .help-feature-card-tags {
@@ -19025,6 +19044,10 @@ body.ai .dashboard-dock-section .section-title h2 {
     min-width: 0;
 }
 .dev-metric + .dev-metric { border-left: 1px solid var(--border-subtle); }
+/* Tercera métrica (impresora Marlin de doble extrusor: T0, T1 y cama): la
+   cuadrícula es de dos columnas, así que la cama baja a su propia fila
+   completa en vez de quedar media fila con un divisor colgando. */
+.dev-metrics > .dev-metric:nth-child(3) { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border-subtle); }
 /* Al doble: a 14 px estos iconos se leían como un par de rayas sueltas. */
 .dev-metric-icon { display: inline-flex; color: var(--dev-tone); flex-shrink: 0; }
 .dev-metric-icon svg { width: 28px; height: 28px; }
@@ -19181,6 +19204,7 @@ body.ai .dashboard-dock-section .section-title h2 {
 .printers-grid.list-view .dev-metrics { display: flex; gap: 16px; }
 .printers-grid.list-view .dev-metric { padding: 0; gap: 7px; }
 .printers-grid.list-view .dev-metric + .dev-metric { border-left: none; }
+.printers-grid.list-view .dev-metric:nth-child(3) { border-top: none; }
 .printers-grid.list-view .dev-metric-value { font-size: .95rem; }
 .printers-grid.list-view .dev-metrics + .dev-info { border-top: none; }
 .printers-grid.list-view .dev-info { display: flex; gap: 16px; padding: 0; }

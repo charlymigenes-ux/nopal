@@ -62,13 +62,13 @@ async def marlin_printers_profiles_endpoint(user: dict = Depends(require_auth)):
 
 
 @router.get("/api/marlin-printers/discover")
-async def marlin_printers_discover_endpoint(user: dict = Depends(require_auth)):
+async def marlin_printers_discover_endpoint(user: dict = Depends(require_role("admin"))):
     """Puertos USB conectados que podrían ser una impresora Marlin (aún no registrados)."""
     return {"ports": list_usb_marlin_ports()}
 
 
 @router.get("/api/marlin-printers/mks-wifi/discover")
-async def marlin_mks_wifi_discover_endpoint(user: dict = Depends(require_auth)):
+async def marlin_mks_wifi_discover_endpoint(user: dict = Depends(require_role("admin"))):
     """Descubre módulos oficiales MKS WiFi mediante broadcast UDP 8989."""
     loop = asyncio.get_running_loop()
     modules = await loop.run_in_executor(None, mks_wifi_transport.discover_mks_wifi)
@@ -79,7 +79,7 @@ async def marlin_mks_wifi_discover_endpoint(user: dict = Depends(require_auth)):
 async def marlin_mks_wifi_test_endpoint(
     host: str = Form(...),
     port: int = Form(mks_wifi_transport.DEFAULT_TCP_PORT),
-    user: dict = Depends(require_auth),
+    user: dict = Depends(require_role("admin")),
 ):
     try:
         device = mks_wifi_transport.make_endpoint(host, port)
@@ -110,7 +110,7 @@ async def marlin_printers_registry_status_endpoint(user: dict = Depends(require_
 async def marlin_usb_test_endpoint(
     device: str = Form(...),
     baud: Optional[int] = Form(None),
-    user: dict = Depends(require_auth),
+    user: dict = Depends(require_role("admin")),
 ):
     """Prueba si el puerto USB indicado responde al protocolo Marlin.
     Si no se manda `baud`, autodetecta probando 115200 y 250000 en orden

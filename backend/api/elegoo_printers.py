@@ -26,7 +26,7 @@ async def elegoo_printers_endpoint(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/elegoo/printers/discover")
-async def elegoo_discover_endpoint(user: dict = Depends(require_auth)):
+async def elegoo_discover_endpoint(user: dict = Depends(require_role("admin"))):
     """Escanea la red local en busca de impresoras Elegoo (broadcast UDP)."""
     devices = await scan_network()
     return {"devices": devices}
