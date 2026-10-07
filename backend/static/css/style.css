@@ -11607,16 +11607,16 @@ body.light .sidebar-order-select {
     padding: 24px 0;
 }
 
-/* Tarjeta grande por categoría -- misma apariencia "vidrio oscuro fijo" que
-   .plugin-card de la Galería de plugins (línea ~4550), independiente del
-   tema (mismo criterio que .laser-card-accent, línea ~6034). */
+/* Tarjeta grande por categoría -- vidrio translúcido sobre --card-bg, con
+   texto y bordes tomados de las variables del tema (antes el título era
+   blanco fijo y en el tema claro no se leía). */
 .help-feature-card {
     display: flex;
     flex-direction: column;
     gap: 12px;
     padding: 20px;
     background: color-mix(in srgb, var(--card-bg) 72%, transparent);
-    border: 1px solid rgba(148, 163, 184, 0.17);
+    border: 1px solid var(--border);
     border-radius: 15px;
     transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
@@ -11624,7 +11624,7 @@ body.light .sidebar-order-select {
 .help-feature-card:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--green) 55%, transparent);
-    background: rgba(20, 30, 50, 0.88);
+    background: color-mix(in srgb, var(--card-bg) 90%, var(--green) 10%);
 }
 
 .help-feature-card-coming-soon {
@@ -11652,13 +11652,32 @@ body.light .sidebar-order-select {
 .help-feature-card-heading h2 {
     margin: 0 0 4px;
     font-size: 1.02rem;
-    color: #fff;
+    color: var(--text);
 }
 
 .help-feature-card-heading p {
     margin: 0;
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--text-secondary);
+}
+
+/* Puntos/pasos de cada categoría (itemKeys en HELP_CATEGORIES). Solo
+   variables del tema; overflow-wrap evita desborde horizontal con rutas
+   largas tipo /dev/ttyUSB* en pantallas angostas. */
+.help-feature-card-points {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.help-feature-card-points li::marker {
+    color: var(--green);
 }
 
 .help-feature-card-tags {

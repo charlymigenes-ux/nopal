@@ -5916,10 +5916,11 @@ function applySettingsModulesLayout() {
 
 // ── Centro de ayuda ── Sidebar de categorías + buscador + panel de tarjetas
 // grandes, layout fijo (sin drag & drop ni grupos personalizables -- eso se
-// retiró a propósito, era el diseño viejo de #help-modules-pool). Solo 4
-// categorías tienen contenido/destino real hoy (home/printers3d/laserCnc/
-// library); el resto queda "Próximamente" de forma honesta en vez de
-// simular un artículo que no existe.
+// retiró a propósito, era el diseño viejo de #help-modules-pool). Cada
+// categoría tiene un párrafo (descKey) y una lista corta de puntos
+// (itemKeys) en translations.js; todo lo que dicen debe existir hoy en el
+// código. Una categoría sin contenido real va con status 'coming_soon' (y
+// descKey 'helpCatComingSoonDesc') en vez de simular un artículo.
 const HELP_CAT_ICON_DEVICES = '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>';
 const HELP_CAT_ICON_NETWORK = '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>';
 const HELP_CAT_ICON_MAINTENANCE = '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>';
@@ -5927,16 +5928,16 @@ const HELP_CAT_ICON_TROUBLESHOOTING = '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.
 const HELP_CAT_ICON_FAQ = '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
 
 const HELP_CATEGORIES = [
-    { key: 'home', iconSvg: SETTINGS_MODULE_ICON_ABOUT, titleKey: 'helpCatHomeTitle', descKey: 'helpAboutDescription', tags: [], status: 'available', gotoSection: null },
-    { key: 'printers3d', iconSvg: SETTINGS_MODULE_ICON_DASHBOARD, titleKey: 'helpCatPrintersTitle', descKey: 'helpCatPrintersDesc', tags: ['Klipper', 'Marlin', 'Bambu Lab', 'Elegoo', 'FlashForge'], status: 'available', gotoSection: 'dashboard' },
-    { key: 'laserCnc', iconSvg: SETTINGS_MODULE_ICON_LASER, titleKey: 'helpCatLaserTitle', descKey: 'helpLaserBody', tags: ['GRBL', 'FluidNC', 'DLC32', 'GCode'], status: 'available', gotoSection: 'laser' },
-    { key: 'library', iconSvg: SETTINGS_MODULE_ICON_MODELS, titleKey: 'helpCatLibraryTitle', descKey: 'helpCatLibraryDesc', tags: ['STL', '3MF', 'GCode'], status: 'available', gotoSection: 'models' },
-    { key: 'devices', iconSvg: HELP_CAT_ICON_DEVICES, titleKey: 'helpCatDevicesTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
-    { key: 'network', iconSvg: HELP_CAT_ICON_NETWORK, titleKey: 'helpCatNetworkTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
-    { key: 'automation', iconSvg: SETTINGS_MODULE_ICON_MACROS, titleKey: 'helpCatAutomationTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
-    { key: 'maintenance', iconSvg: HELP_CAT_ICON_MAINTENANCE, titleKey: 'helpCatMaintenanceTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
-    { key: 'troubleshooting', iconSvg: HELP_CAT_ICON_TROUBLESHOOTING, titleKey: 'helpCatTroubleshootingTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
-    { key: 'faq', iconSvg: HELP_CAT_ICON_FAQ, titleKey: 'helpCatFaqTitle', descKey: 'helpCatComingSoonDesc', tags: [], status: 'coming_soon', gotoSection: null },
+    { key: 'home', iconSvg: SETTINGS_MODULE_ICON_ABOUT, titleKey: 'helpCatHomeTitle', descKey: 'helpAboutDescription', itemKeys: ['helpCatHomeItem1', 'helpCatHomeItem2', 'helpCatHomeItem3', 'helpCatHomeItem4', 'helpCatHomeItem5', 'helpCatHomeItem6'], tags: [], status: 'available', gotoSection: null },
+    { key: 'printers3d', iconSvg: SETTINGS_MODULE_ICON_DASHBOARD, titleKey: 'helpCatPrintersTitle', descKey: 'helpCatPrintersDesc', itemKeys: ['helpCatPrintersItem1', 'helpCatPrintersItem2', 'helpCatPrintersItem3', 'helpCatPrintersItem4', 'helpCatPrintersItem5', 'helpCatPrintersItem6'], tags: ['Klipper', 'Marlin', 'Bambu Lab', 'Elegoo', 'FlashForge'], status: 'available', gotoSection: 'dashboard' },
+    { key: 'laserCnc', iconSvg: SETTINGS_MODULE_ICON_LASER, titleKey: 'helpCatLaserTitle', descKey: 'helpLaserBody', itemKeys: ['helpCatLaserItem1', 'helpCatLaserItem2', 'helpCatLaserItem3', 'helpCatLaserItem4', 'helpCatLaserItem5', 'helpCatLaserItem6'], tags: ['GRBL', 'FluidNC', 'DLC32', 'GCode'], status: 'available', gotoSection: 'laser' },
+    { key: 'library', iconSvg: SETTINGS_MODULE_ICON_MODELS, titleKey: 'helpCatLibraryTitle', descKey: 'helpCatLibraryDesc', itemKeys: ['helpCatLibraryItem1', 'helpCatLibraryItem2', 'helpCatLibraryItem3', 'helpCatLibraryItem4', 'helpCatLibraryItem5'], tags: ['STL', '3MF', 'GCode'], status: 'available', gotoSection: 'models' },
+    { key: 'devices', iconSvg: HELP_CAT_ICON_DEVICES, titleKey: 'helpCatDevicesTitle', descKey: 'helpCatDevicesDesc', itemKeys: ['helpCatDevicesItem1', 'helpCatDevicesItem2', 'helpCatDevicesItem3', 'helpCatDevicesItem4', 'helpCatDevicesItem5', 'helpCatDevicesItem6'], tags: ['USB', 'Arduino', 'ESP32'], status: 'available', gotoSection: 'settings' },
+    { key: 'network', iconSvg: HELP_CAT_ICON_NETWORK, titleKey: 'helpCatNetworkTitle', descKey: 'helpCatNetworkDesc', itemKeys: ['helpCatNetworkItem1', 'helpCatNetworkItem2', 'helpCatNetworkItem3', 'helpCatNetworkItem4', 'helpCatNetworkItem5', 'helpCatNetworkItem6'], tags: ['WiFi', 'MKS', 'IP'], status: 'available', gotoSection: null },
+    { key: 'automation', iconSvg: SETTINGS_MODULE_ICON_MACROS, titleKey: 'helpCatAutomationTitle', descKey: 'helpCatAutomationDesc', itemKeys: ['helpCatAutomationItem1', 'helpCatAutomationItem2', 'helpCatAutomationItem3', 'helpCatAutomationItem4', 'helpCatAutomationItem5', 'helpCatAutomationItem6'], tags: [], status: 'available', gotoSection: null },
+    { key: 'maintenance', iconSvg: HELP_CAT_ICON_MAINTENANCE, titleKey: 'helpCatMaintenanceTitle', descKey: 'helpCatMaintenanceDesc', itemKeys: ['helpCatMaintenanceItem1', 'helpCatMaintenanceItem2', 'helpCatMaintenanceItem3', 'helpCatMaintenanceItem4', 'helpCatMaintenanceItem5', 'helpCatMaintenanceItem6'], tags: [], status: 'available', gotoSection: 'settings' },
+    { key: 'troubleshooting', iconSvg: HELP_CAT_ICON_TROUBLESHOOTING, titleKey: 'helpCatTroubleshootingTitle', descKey: 'helpCatTroubleshootingDesc', itemKeys: ['helpCatTroubleshootingItem1', 'helpCatTroubleshootingItem2', 'helpCatTroubleshootingItem3', 'helpCatTroubleshootingItem4', 'helpCatTroubleshootingItem5', 'helpCatTroubleshootingItem6'], tags: [], status: 'available', gotoSection: 'settings' },
+    { key: 'faq', iconSvg: HELP_CAT_ICON_FAQ, titleKey: 'helpCatFaqTitle', descKey: 'helpCatFaqDesc', itemKeys: ['helpCatFaqItem1', 'helpCatFaqItem2', 'helpCatFaqItem3', 'helpCatFaqItem4', 'helpCatFaqItem5', 'helpCatFaqItem6'], tags: [], status: 'available', gotoSection: null },
 ];
 
 let helpCenterActiveKey = 'home';
@@ -5945,10 +5946,16 @@ function helpCenterIcon(pathMarkup) {
     return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${pathMarkup}</svg>`;
 }
 
+// Minúsculas y sin acentos, para que "solucion" encuentre "Solución".
+function helpCenterNormalizeText(text) {
+    return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+// Busca en título, párrafo, puntos y etiquetas de la categoría.
 function helpCenterMatchesQuery(cat, query) {
     if (!query) return true;
-    const haystack = [t(cat.titleKey), t(cat.descKey), ...cat.tags].join(' ').toLowerCase();
-    return haystack.includes(query);
+    const haystack = [t(cat.titleKey), t(cat.descKey), ...(cat.itemKeys || []).map(key => t(key)), ...cat.tags].join(' ');
+    return helpCenterNormalizeText(haystack).includes(helpCenterNormalizeText(query));
 }
 
 function helpCenterCardActionsHtml(cat) {
@@ -5973,6 +5980,9 @@ function helpCenterCardActionsHtml(cat) {
     if (cat.key === 'printers3d' && currentAuthUser?.role === 'admin' && typeof openGuidedPrinterSetup === 'function') {
         extra = `<button type="button" class="btn-file-action btn-file-action-accent help-feature-card-guided-btn" id="help-open-guided-setup-btn"><span data-i18n="guidedSetupAddWizardBtn">Agregar impresora (asistente guiado)</span></button>`;
     }
+    // Sin sección de destino (p. ej. Red, Preguntas frecuentes) no hay botón:
+    // un data-help-goto="null" mandaría a switchSection('null').
+    if (!cat.gotoSection) return extra;
     return `<button type="button" class="btn-file-action help-feature-card-btn" data-help-goto="${cat.gotoSection}"><span data-i18n="helpGotoSection">Ir a la sección</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>${extra}`;
 }
 
@@ -5988,11 +5998,13 @@ function renderHelpCenter() {
             <span class="help-category-item-icon">${helpCenterIcon(cat.iconSvg)}</span>
             <span class="help-category-item-text">
                 <span class="help-category-item-title">${escapeHtml(t(cat.titleKey))}</span>
-                <span class="help-category-item-sub">${cat.status === 'coming_soon' ? escapeHtml(t('helpComingSoonBadge')) : escapeHtml(t(cat.descKey)).slice(0, 40)}</span>
+                <span class="help-category-item-sub">${cat.status === 'coming_soon' ? escapeHtml(t('helpComingSoonBadge')) : escapeHtml(t(cat.descKey).slice(0, 40))}</span>
             </span>
         </button>`).join('');
 
-    panelEl.innerHTML = visible.length ? visible.map(cat => `
+    panelEl.innerHTML = visible.length ? visible.map(cat => {
+        const actionsHtml = helpCenterCardActionsHtml(cat);
+        return `
         <div class="help-feature-card ${cat.status === 'coming_soon' ? 'help-feature-card-coming-soon' : ''}" id="help-card-${cat.key}">
             <div class="help-feature-card-top">
                 <span class="help-feature-card-icon">${helpCenterIcon(cat.iconSvg)}</span>
@@ -6001,9 +6013,11 @@ function renderHelpCenter() {
                     <p>${escapeHtml(t(cat.descKey))}</p>
                 </div>
             </div>
+            ${cat.itemKeys?.length ? `<ul class="help-feature-card-points">${cat.itemKeys.map(key => `<li>${escapeHtml(t(key))}</li>`).join('')}</ul>` : ''}
             ${cat.tags.length ? `<div class="help-feature-card-tags">${cat.tags.map(tag => `<span class="badge badge-alt help-tag-pill">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
-            <div class="help-feature-card-actions">${helpCenterCardActionsHtml(cat)}</div>
-        </div>`).join('') : `<p class="help-panel-empty">${escapeHtml(t('noFilesFound'))}</p>`;
+            ${actionsHtml ? `<div class="help-feature-card-actions">${actionsHtml}</div>` : ''}
+        </div>`;
+    }).join('') : `<p class="help-panel-empty">${escapeHtml(t('noFilesFound'))}</p>`;
 
     updatePageLanguage();
     if (typeof loadHelpVersion === 'function') loadHelpVersion();
