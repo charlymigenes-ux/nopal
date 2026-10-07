@@ -26,7 +26,7 @@ async def flashforge_printers_endpoint(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/flashforge/printers/discover")
-async def flashforge_discover_endpoint(user: dict = Depends(require_auth)):
+async def flashforge_discover_endpoint(user: dict = Depends(require_role("admin"))):
     """Escanea la red local en busca de impresoras FlashForge modernas (5M/5M Pro/AD5X/Creator 5)."""
     devices = await scan_network()
     return {"devices": devices}

@@ -1105,7 +1105,7 @@
                                 <div class="laser-connection-summary">
                                     <div class="laser-host-row">
                                         <select id="laser-host-select" class="settings-select"></select>
-                                        <button type="button" class="theme-option-icon-btn laser-scan-btn-lg" id="laser-scan-btn" title="Escanear red">
+                                        <button type="button" class="theme-option-icon-btn laser-scan-btn-lg" id="laser-scan-btn" hidden title="Escanear red">
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                                         </button>
                                     </div>
@@ -2521,7 +2521,7 @@
                         </div>
                         <!-- Respaldo de configuración. Admin-only: puede llevar usuarios
                              y claves de API, e importar sobrescribe la instalación. -->
-                        <div class="settings-card card-collapsible" data-settings-module="backup">
+                        <div class="settings-card card-collapsible" hidden data-settings-module="backup">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2557,7 +2557,7 @@
                              servidor se le manda telemetría del taller. La
                              API key nunca baja al navegador (ver
                              API_KEY_UNCHANGED en ai_config_service.py). -->
-                        <div class="settings-card card-collapsible" data-settings-module="ai">
+                        <div class="settings-card card-collapsible" hidden data-settings-module="ai">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>
@@ -2811,7 +2811,7 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="settings-card card-collapsible" data-settings-module="updates">
+                        <div class="settings-card card-collapsible" hidden data-settings-module="updates">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
@@ -2865,7 +2865,7 @@
                              los nombres técnicos (loggers) solo aparecen dentro de
                              "Configuración avanzada". Cualquier sesión puede verla; solo un
                              admin puede guardar (PUT /api/logs/config, ver loadLogsConfigSettings). -->
-                        <div class="settings-card card-collapsible" id="logs-config-settings-card" data-settings-module="logsConfig">
+                        <div class="settings-card card-collapsible" id="logs-config-settings-card" hidden data-settings-module="logsConfig">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
@@ -3031,7 +3031,7 @@
                                 <div class="tunascreen-devices-list" id="tunascreen-devices-list"></div>
                             </section>
                         </div>
-                        <div class="settings-card card-collapsible usb-ports-settings-card" data-settings-module="devices">
+                        <div class="settings-card card-collapsible usb-ports-settings-card" hidden data-settings-module="devices">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
@@ -3178,7 +3178,7 @@
                                 <div class="usb-ports-list" id="bambu-printers-registry-list"></div>
                             </div>
                         </div>
-                        <div class="settings-card card-collapsible" id="accessories-settings-card" data-settings-module="accessories">
+                        <div class="settings-card card-collapsible" id="accessories-settings-card" hidden data-settings-module="accessories">
                             <div class="card-header-std">
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>

@@ -89,14 +89,14 @@ def _require_host(host: Optional[str]) -> str:
 
 
 @router.get("/api/laser/scan")
-async def laser_scan_endpoint(user: dict = Depends(require_auth)):
+async def laser_scan_endpoint(user: dict = Depends(require_role("admin"))):
     """Escanea la red local en busca de otras placas láser (ESP3D) disponibles."""
     devices = await scan_network()
     return {"devices": devices}
 
 
 @router.get("/api/laser/scan-ip")
-async def laser_scan_ip_endpoint(ip: str, user: dict = Depends(require_auth)):
+async def laser_scan_ip_endpoint(ip: str, user: dict = Depends(require_role("admin"))):
     """Prueba una IP puntual en vez de barrer toda la subred — para placas
     fuera del rango detectado automáticamente (otra subred, modo Punto de
     Acceso propio, etc.)."""
@@ -132,7 +132,7 @@ async def laser_profiles_endpoint(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/laser/usb-ports/test")
-async def laser_usb_test_endpoint(device: str = Form(...), user: dict = Depends(require_auth)):
+async def laser_usb_test_endpoint(device: str = Form(...), user: dict = Depends(require_role("admin"))):
     """Prueba si el puerto USB indicado responde al protocolo GRBL (envía '?')."""
     host = f"usb:{device}"
     status = await get_status(host=host, timeout=3.0)

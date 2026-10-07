@@ -80,8 +80,51 @@ function updateTopbarUser(user) {
     // admin-only en el backend (require_role("admin") en backend/api/ai.py)
     // y un operador no debe ni verla. Preguntarle a la IA sí es para
     // cualquiera, así que la sección del asistente no se toca acá.
-    const aiCard = document.querySelector('[data-settings-module="ai"]');
-    if (aiCard) aiCard.hidden = user.role !== 'admin';
+    // (La ficha de IA ahora se oculta junto con el resto de las fichas
+    // solo-admin de Configuración, ver applySettingsModulesRoleVisibility.)
+    applySettingsModulesRoleVisibility(user);
+
+    // "Escanear red" en el panel Láser llama a GET /api/laser/scan, que es
+    // admin-only en el backend: el operador no debe ver el botón.
+    const laserScanButton = document.getElementById('laser-scan-btn');
+    if (laserScanButton) laserScanButton.hidden = user.role !== 'admin';
+}
+
+// Fichas de Configuración (data-settings-module) que solo ve el admin: todas
+// sus acciones son require_role("admin") en el backend, así que al operador
+// no se le muestran ni en la página ni en el personalizador de layout. Ojo:
+// 'logs' (el visor "Logs del sistema") NO va aquí — leer logs sí es de
+// operador (READ_LOGS); solo la configuración de niveles ('logsConfig') es
+// de admin.
+const ADMIN_ONLY_SETTINGS_MODULES = ['ai', 'users', 'tunascreen', 'logsConfig', 'updates', 'devices', 'accessories', 'backup'];
+
+// ¿El usuario actual puede ver esta ficha de Configuración? Mientras no se
+// conozca el usuario se asume que no (nunca hay un parpadeo de fichas
+// solo-admin para el operador).
+function isSettingsModuleAllowedForRole(key, user = currentAuthUser) {
+    if (!ADMIN_ONLY_SETTINGS_MODULES.includes(key)) return true;
+    return user?.role === 'admin';
+}
+
+// Aplica la regla por rol con el atributo `hidden` nativo (el mismo que usan
+// loadUsersSettings/loadTunascreenSettings). El personalizador de layout
+// nunca toca `hidden` en las fichas — usa su propia clase
+// settings-module-hidden-by-user —, así que esta regla siempre gana. Al
+// final se vuelve a armar el layout para que un grupo que solo tenía
+// fichas solo-admin no quede como un título vacío para el operador.
+function applySettingsModulesRoleVisibility(user = currentAuthUser) {
+    ADMIN_ONLY_SETTINGS_MODULES.forEach(key => {
+        const card = document.querySelector(`[data-settings-module="${key}"]`);
+        if (card) card.hidden = !isSettingsModuleAllowedForRole(key, user);
+    });
+    // settingsModulesPageScope es un const declarado más abajo; si esto
+    // corriera antes de que exista (zona muerta temporal), el apply()
+    // inicial del scope ya consulta isSettingsModuleAllowedForRole.
+    try {
+        settingsModulesPageScope.apply();
+    } catch (error) {
+        if (!(error instanceof ReferenceError)) throw error;
+    }
 }
 
 function showFullscreenRecommendation() {
@@ -5372,9 +5415,16 @@ function generateSettingsModuleGroupId() {
 //   modalId, modalTabsId, modalGroupsId, modalCloseId, modalBackdropId,
 //   customizeBtnId, addGroupBtnId, resetBtnId,
 //   defaultGroups: [{ id, nameKey, keys }],
+//   isModuleAllowed,             // opcional: key => bool, filtro por rol
 // }
 function createModulePageScope(config) {
     const moduleKeys = config.moduleDefs.map(mod => mod.key);
+    // Filtro por rol (p. ej. ADMIN_ONLY_SETTINGS_MODULES): un módulo no
+    // permitido sigue existiendo en el layout guardado (el localStorage es
+    // del navegador, no del usuario — un admin en la misma máquina no debe
+    // perder su acomodo), pero nunca se cuenta como visible en la página ni
+    // se lista en el editor "Personalizar".
+    const isModuleAllowed = typeof config.isModuleAllowed === 'function' ? config.isModuleAllowed : () => true;
     const moduleDefsByKey = new Map(config.moduleDefs.map(mod => [mod.key, mod]));
     // Pestaña de breakpoint que se está editando en el editor de esta
     // página — independiente del ancho real de la ventana (igual que
@@ -5480,7 +5530,7 @@ function createModulePageScope(config) {
                 hasModule = true;
                 const isHiddenByUser = layout.hidden.includes(key);
                 el.classList.toggle('settings-module-hidden-by-user', isHiddenByUser);
-                if (!isHiddenByUser) hasVisibleModule = true;
+                if (!isHiddenByUser && isModuleAllowed(key)) hasVisibleModule = true;
                 body.appendChild(el);
             });
 
@@ -5526,6 +5576,7 @@ function createModulePageScope(config) {
 
     function renderCustomizerGroupHtml(group, layout) {
         const rowsHtml = group.modules
+            .filter(key => isModuleAllowed(key))
             .map(key => moduleDefsByKey.get(key))
             .filter(Boolean)
             .map(mod => renderCustomizerRow(mod, layout))
@@ -5565,7 +5616,13 @@ function createModulePageScope(config) {
         const container = document.getElementById(config.modalGroupsId);
         if (!container) return;
         const layout = getLayout(customizerActiveBreakpoint);
-        container.innerHTML = layout.groups.map(group => renderCustomizerGroupHtml(group, layout)).join('');
+        // Un grupo cuyas fichas son todas no permitidas para este rol no se
+        // lista (se vería como un grupo vacío que en realidad no lo está).
+        // Los grupos vacíos de verdad sí se listan, para poder arrastrarles
+        // fichas.
+        const visibleGroups = layout.groups.filter(group =>
+            !group.modules.length || group.modules.some(key => isModuleAllowed(key)));
+        container.innerHTML = visibleGroups.map(group => renderCustomizerGroupHtml(group, layout)).join('');
 
         container.querySelectorAll('.settings-module-customizer-list').forEach(list => {
             toggleEmptyHint(list);
@@ -5673,9 +5730,14 @@ function createModulePageScope(config) {
         document.querySelectorAll(`#${config.modalGroupsId} .settings-module-customizer-list`).forEach(list => {
             const group = groupsById.get(list.dataset.groupId);
             if (!group) return;
+            // Las fichas no permitidas para este rol no tienen fila en el
+            // editor: se conservan al final de su mismo grupo para no
+            // alterar el acomodo que ve el admin en este navegador.
+            const keptForOtherRoles = group.modules.filter(key => !isModuleAllowed(key));
             group.modules = listRows(list)
                 .map(row => row.dataset.module)
-                .filter(key => moduleKeys.includes(key));
+                .filter(key => moduleKeys.includes(key))
+                .concat(keptForOtherRoles);
         });
         saveLayout(customizerActiveBreakpoint, { groups: Array.from(groupsById.values()), hidden: currentLayout.hidden });
         apply();
@@ -5821,6 +5883,7 @@ const settingsModulesPageScope = createModulePageScope({
     defaultGroups: [
         { id: 'general', nameKey: 'settingsModuleGroupDefaultGeneral', keys: SETTINGS_MODULE_DEFS.map(mod => mod.key) },
     ],
+    isModuleAllowed: key => isSettingsModuleAllowedForRole(key),
 });
 
 // Wrapper con el mismo nombre que usaba la versión fusionada — switchSection()
@@ -20845,6 +20908,12 @@ function logsConfigComponentName(id) {
 async function loadLogsConfigSettings() {
     const card = document.getElementById('logs-config-settings-card');
     if (!card) return;
+    // Solo admin: el operador ni ve la ficha (ADMIN_ONLY_SETTINGS_MODULES)
+    // ni tiene por qué pedir /api/logs/config.
+    if (!isSettingsModuleAllowedForRole('logsConfig')) {
+        card.hidden = true;
+        return;
+    }
     // Los eventos se bindean una sola vez: este loader se vuelve a llamar
     // cada vez que se entra a Configuración (ver switchSection). Se delegan
     // en contenedores fijos porque su contenido se re-pinta.

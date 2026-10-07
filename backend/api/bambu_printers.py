@@ -26,7 +26,7 @@ async def bambu_printers_endpoint(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/bambu/printers/discover")
-async def bambu_discover_endpoint(user: dict = Depends(require_auth)):
+async def bambu_discover_endpoint(user: dict = Depends(require_role("admin"))):
     """Escucha anuncios SSDP de impresoras Bambu Lab en modo LAN (pasivo, sin
     probe activo -- ver bambu_service.py)."""
     devices = await scan_network()
