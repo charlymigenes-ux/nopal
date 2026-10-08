@@ -210,10 +210,15 @@ def write_pack(language: str, translations: dict[str, str]) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    # No `default=` list: with nargs="*" plus `choices`, Python 3.13's
-    # argparse validates the default list as a single value and crashes.
-    parser.add_argument("languages", nargs="*", choices=list(LANGUAGES))
+    # Languages are validated by hand: nargs="*" combined with `choices`
+    # breaks differently across Python versions (3.13 rejects a list
+    # default; 3.9-3.12 reject the empty list when no language is given).
+    parser.add_argument("languages", nargs="*", metavar="LANG",
+                        help=f"one or more of {', '.join(LANGUAGES)} (default: all)")
     args = parser.parse_args()
+    unknown = [language for language in args.languages if language not in LANGUAGES]
+    if unknown:
+        parser.error(f"unknown language(s): {', '.join(unknown)}")
     catalog = read_english_catalog()
     overrides = load_overrides(catalog)
     print(f"English catalog: {len(catalog)} keys", flush=True)

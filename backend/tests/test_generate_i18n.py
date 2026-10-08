@@ -105,7 +105,8 @@ def test_repo_overrides_are_valid():
 
 
 def test_cli_without_languages_does_not_crash(monkeypatch):
-    """Python 3.13: nargs="*" + choices + default lista hacía fallar argparse."""
+    """nargs="*" + choices fallaba distinto según la versión: 3.13 con una
+    lista por omisión, 3.9–3.12 con la lista vacía (CI de 808c250)."""
     calls = []
     monkeypatch.setattr(sys, "argv", ["generate_i18n.py"])
     monkeypatch.setattr(gen, "read_english_catalog", lambda: {"a": "A"})
@@ -131,3 +132,10 @@ def test_overridden_key_is_not_sent_to_the_service(tmp_path, translator):
     result = gen.translate_catalog({"resume": "Resume", "hello": "Hello"}, "de", {"resume": "Fortsetzen"})
     assert result == {"resume": "Fortsetzen", "hello": "de:Hello"}
     assert translator == ["Hello"]
+
+
+def test_cli_rejects_unknown_language(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["generate_i18n.py", "xx"])
+    monkeypatch.setattr(gen, "read_english_catalog", lambda: {"a": "A"})
+    with pytest.raises(SystemExit):
+        gen.main()
