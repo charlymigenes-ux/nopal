@@ -1,0 +1,840 @@
+{
+  "de": {
+    "accessoryDriverHa": {
+      "en": "Home Assistant",
+      "text": "Home Assistant"
+    },
+    "accessoryKindFan": {
+      "en": "Fan",
+      "text": "Lüfter"
+    },
+    "activePrintResume": {
+      "en": "Resume",
+      "text": "Fortsetzen"
+    },
+    "aiEnable": {
+      "en": "Enable NOPAL Intelligence",
+      "text": "NOPAL Intelligence aktivieren"
+    },
+    "aiGoToSettings": {
+      "en": "Go to settings",
+      "text": "Zu den Einstellungen"
+    },
+    "aiSend": {
+      "en": "Ask",
+      "text": "Fragen"
+    },
+    "aiThinking": {
+      "en": "Checking the workshop...",
+      "text": "Werkstatt wird geprüft..."
+    },
+    "aiUseThis": {
+      "en": "Use this one",
+      "text": "Diese verwenden"
+    },
+    "clearSelection": {
+      "en": "Clear selection",
+      "text": "Auswahl aufheben"
+    },
+    "cncApply": {
+      "en": "Apply",
+      "text": "Anwenden"
+    },
+    "cncFeed": {
+      "en": "Feed",
+      "text": "Vorschub"
+    },
+    "cncFeedMode": {
+      "en": "Feed Mode",
+      "text": "Vorschubmodus"
+    },
+    "cncFeedOverride": {
+      "en": "Feed Override",
+      "text": "Vorschub-Override"
+    },
+    "cncRun": {
+      "en": "Run",
+      "text": "Ausführen"
+    },
+    "cncSetupSummaryWorkType": {
+      "en": "Job type",
+      "text": "Auftragsart"
+    },
+    "devFeed": {
+      "en": "Feed",
+      "text": "Vorschub"
+    },
+    "devFrame": {
+      "en": "Frame",
+      "text": "Umriss"
+    },
+    "devHome": {
+      "en": "Home",
+      "text": "Referenzfahrt"
+    },
+    "devJob": {
+      "en": "Job",
+      "text": "Auftrag"
+    },
+    "devPickFileTitle": {
+      "en": "Choose a file",
+      "text": "Datei auswählen"
+    },
+    "devResume": {
+      "en": "Resume",
+      "text": "Fortsetzen"
+    },
+    "devSectionJob": {
+      "en": "Job and progress",
+      "text": "Auftrag und Fortschritt"
+    },
+    "deviceLoadRetry": {
+      "en": "Retry",
+      "text": "Erneut versuchen"
+    },
+    "deviceUnlinkNoteTitle": {
+      "en": "Keep in mind",
+      "text": "Hinweis"
+    },
+    "flashforgePrinterRegisterTitle": {
+      "en": "Add FlashForge printer",
+      "text": "FlashForge-Drucker hinzufügen"
+    },
+    "gamepadJogZDown": {
+      "en": "Move Z-",
+      "text": "Z- bewegen"
+    },
+    "gamepadJogZUp": {
+      "en": "Move Z+",
+      "text": "Z+ bewegen"
+    },
+    "gcodeApply": {
+      "en": "Apply",
+      "text": "Anwenden"
+    },
+    "gcodeApplyTo": {
+      "en": "Apply to",
+      "text": "Anwenden auf"
+    },
+    "gcodeConsoleClear": {
+      "en": "Clear",
+      "text": "Leeren"
+    },
+    "gcodePreFrame": {
+      "en": "Frame preview pass",
+      "text": "Umriss-Vorschaufahrt"
+    },
+    "gcodeSaveGc": {
+      "en": "Save .gc",
+      "text": ".gc speichern"
+    },
+    "generateGcode": {
+      "en": "Generate G-code",
+      "text": "G-Code generieren"
+    },
+    "goToPrinter": {
+      "en": "Go to printer",
+      "text": "Zum Drucker"
+    },
+    "guidedSetupAddAnother": {
+      "en": "Add another printer",
+      "text": "Weiteren Drucker hinzufügen"
+    },
+    "guidedSetupBadgeCompatible": {
+      "en": "Compatible",
+      "text": "Kompatibel"
+    },
+    "guidedSetupBrandElegooDesc": {
+      "en": "Connection via SDCP. Automatic detection on the local network.",
+      "text": "Verbindung über SDCP. Automatische Erkennung im lokalen Netzwerk."
+    },
+    "guidedSetupCapFilamentMapping": {
+      "en": "Filament mapping",
+      "text": "Filament-Zuordnung"
+    },
+    "guidedSetupCapResume": {
+      "en": "Resume",
+      "text": "Fortsetzen"
+    },
+    "guidedSetupCapStartPrint": {
+      "en": "Start print",
+      "text": "Druck starten"
+    },
+    "guidedSetupCheckConnectingBambu": {
+      "en": "Connecting to MQTT",
+      "text": "Verbindung zu MQTT wird hergestellt"
+    },
+    "guidedSetupCheckConnectingElegoo": {
+      "en": "Connecting to SDCP",
+      "text": "Verbindung zu SDCP wird hergestellt"
+    },
+    "guidedSetupCheckConnectingFlashforge": {
+      "en": "Connecting to HTTP",
+      "text": "Verbindung zu HTTP wird hergestellt"
+    },
+    "guidedSetupCheckValidatingId": {
+      "en": "Validating identifier",
+      "text": "Kennung wird geprüft"
+    },
+    "guidedSetupFieldCheckCode": {
+      "en": "Check code",
+      "text": "Prüfcode"
+    },
+    "guidedSetupGoDashboard": {
+      "en": "Go to dashboard",
+      "text": "Zum Dashboard"
+    },
+    "guidedSetupNextBtn": {
+      "en": "Next →",
+      "text": "Weiter →"
+    },
+    "guidedSetupPrevBtn": {
+      "en": "← Previous",
+      "text": "← Zurück"
+    },
+    "guidedSetupRetry": {
+      "en": "Retry",
+      "text": "Erneut versuchen"
+    },
+    "guidedSetupRetrySearch": {
+      "en": "Retry",
+      "text": "Erneut versuchen"
+    },
+    "guidedSetupStep3Label": {
+      "en": "Search network",
+      "text": "Netzwerk durchsuchen"
+    },
+    "guidedSetupStep3Title": {
+      "en": "Search the network",
+      "text": "Netzwerk durchsuchen"
+    },
+    "guidedSetupStep4Label": {
+      "en": "Credentials",
+      "text": "Zugangsdaten"
+    },
+    "guidedSetupStep5Label": {
+      "en": "Verify connection",
+      "text": "Verbindung prüfen"
+    },
+    "helpCatHomeTitle": {
+      "en": "Home",
+      "text": "Start"
+    },
+    "helpCommunityTitle": {
+      "en": "Need more help?",
+      "text": "Weitere Hilfe nötig?"
+    },
+    "helpGotoSection": {
+      "en": "Go to section",
+      "text": "Zum Abschnitt"
+    },
+    "helpModuleCustomizerTitle": {
+      "en": "Customize Help Page",
+      "text": "Hilfeseite anpassen"
+    },
+    "laserAirAssistOff": {
+      "en": "Turn off air",
+      "text": "Luft ausschalten"
+    },
+    "laserBoardInfo": {
+      "en": "Board information",
+      "text": "Platineninformationen"
+    },
+    "laserConsoleInputPlaceholder": {
+      "en": "Send GRBL command...",
+      "text": "GRBL-Befehl senden..."
+    },
+    "laserFeedSpeed": {
+      "en": "Feed / Power",
+      "text": "Vorschub / Leistung"
+    },
+    "laserFrameJob": {
+      "en": "Frame job",
+      "text": "Umriss abfahren"
+    },
+    "laserGamepadFrame": {
+      "en": "Frame",
+      "text": "Umriss"
+    },
+    "laserGamepadJogDown": {
+      "en": "Move Y-",
+      "text": "Y- bewegen"
+    },
+    "laserGamepadJogLeft": {
+      "en": "Move X-",
+      "text": "X- bewegen"
+    },
+    "laserGamepadJogRight": {
+      "en": "Move X+",
+      "text": "X+ bewegen"
+    },
+    "laserGamepadJogUp": {
+      "en": "Move Y+",
+      "text": "Y+ bewegen"
+    },
+    "laserGamepadListening": {
+      "en": "Press the button…",
+      "text": "Taste drücken…"
+    },
+    "laserHome": {
+      "en": "Home ($H)",
+      "text": "Referenzfahrt ($H)"
+    },
+    "laserHomeConfirmToggle": {
+      "en": "Confirm before Home",
+      "text": "Vor Referenzfahrt bestätigen"
+    },
+    "laserResume": {
+      "en": "Resume",
+      "text": "Fortsetzen"
+    },
+    "laserSdSortNameAsc": {
+      "en": "Name A-Z",
+      "text": "Name A-Z"
+    },
+    "laserSdSortNameDesc": {
+      "en": "Name Z-A",
+      "text": "Name Z-A"
+    },
+    "libraryHome": {
+      "en": "Home",
+      "text": "Start"
+    },
+    "librarySelectModel": {
+      "en": "Select a model",
+      "text": "Modell auswählen"
+    },
+    "logsConfigBackupCount": {
+      "en": "Keep logs",
+      "text": "Protokolle aufbewahren"
+    },
+    "logsConfigDedup": {
+      "en": "Group repeated messages",
+      "text": "Wiederholte Meldungen gruppieren"
+    },
+    "marlinBoardVariantLabel": {
+      "en": "Board revision",
+      "text": "Platinenrevision"
+    },
+    "marlinPrinterRegisterTitle": {
+      "en": "Add Marlin printer",
+      "text": "Marlin-Drucker hinzufügen"
+    },
+    "mobileBlockDownload": {
+      "en": "Download TUNA-Screen",
+      "text": "TUNA-Screen herunterladen"
+    },
+    "moduleCustomizerTitle": {
+      "en": "Customize Modules",
+      "text": "Module anpassen"
+    },
+    "moveHere": {
+      "en": "Move here",
+      "text": "Hierher bewegen"
+    },
+    "navGroupJobs": {
+      "en": "Jobs",
+      "text": "Aufträge"
+    },
+    "navHome": {
+      "en": "Home",
+      "text": "Start"
+    },
+    "panelAlertDismiss": {
+      "en": "Dismiss (stop showing while unchanged)",
+      "text": "Ausblenden (solange unverändert)"
+    },
+    "panelAutoHideLabel": {
+      "en": "Home top panel",
+      "text": "Oberes Panel der Startseite"
+    },
+    "panelHealthLabel": {
+      "en": "System health",
+      "text": "Systemzustand"
+    },
+    "panelHealthWarning": {
+      "en": "Fair",
+      "text": "Mittel"
+    },
+    "panelHostTitle": {
+      "en": "Host performance",
+      "text": "Host-Leistung"
+    },
+    "panelJobsTitle": {
+      "en": "Jobs in progress",
+      "text": "Laufende Aufträge"
+    },
+    "panelSystemWarning": {
+      "en": "Check warnings",
+      "text": "Warnungen prüfen"
+    },
+    "printQueue": {
+      "en": "Job History",
+      "text": "Auftragsverlauf"
+    },
+    "printerDiagTestConnection": {
+      "en": "Test connection",
+      "text": "Verbindung testen"
+    },
+    "printerSendModeNowTitle": {
+      "en": "Print immediately",
+      "text": "Sofort drucken"
+    },
+    "selectPrinter": {
+      "en": "Select a printer",
+      "text": "Drucker auswählen"
+    },
+    "settingsModuleCustomizerEmptyGroupHint": {
+      "en": "Drag cards here",
+      "text": "Karten hierher ziehen"
+    },
+    "systemControlRestartNopal": {
+      "en": "Restart NOPAL",
+      "text": "NOPAL neu starten"
+    },
+    "systemLogsSearchPlaceholder": {
+      "en": "Search the log…",
+      "text": "Protokoll durchsuchen…"
+    },
+    "tourCnc2Title": {
+      "en": "Job control",
+      "text": "Auftragssteuerung"
+    },
+    "tourCnc3Title": {
+      "en": "Jog",
+      "text": "Tippbetrieb (Jog)"
+    },
+    "tourConsole1Title": {
+      "en": "Pick a printer",
+      "text": "Drucker auswählen"
+    },
+    "tourGcode1Title": {
+      "en": "Upload G-code",
+      "text": "G-Code hochladen"
+    },
+    "tourPricing2Title": {
+      "en": "Quote steps",
+      "text": "Angebotsschritte"
+    },
+    "tourPricing3Title": {
+      "en": "File to quote",
+      "text": "Datei für das Angebot"
+    },
+    "tourQueue1Title": {
+      "en": "Search the history",
+      "text": "Verlauf durchsuchen"
+    },
+    "tunascreenAccessMore": {
+      "en": "Show {count} more",
+      "text": "{count} weitere anzeigen"
+    },
+    "tunascreenGenerateCode": {
+      "en": "Generate pairing code",
+      "text": "Kopplungscode generieren"
+    },
+    "tunascreenScopeNote": {
+      "en": "With nothing selected, the device pairs with no access. Only machines NOPAL can recognize reliably appear, even if their IP or USB port changes.",
+      "text": "Ohne Auswahl wird das Gerät ohne Zugriff gekoppelt. Es erscheinen nur Maschinen, die NOPAL zuverlässig erkennt, auch wenn sich ihre IP oder ihr USB-Port ändert."
+    },
+    "updatesCheck": {
+      "en": "Check for updates",
+      "text": "Nach Updates suchen"
+    },
+    "usersRemoveConfirm": {
+      "en": "Remove this user? They will no longer be able to sign in.",
+      "text": "Diesen Benutzer entfernen? Er kann sich danach nicht mehr anmelden."
+    }
+  },
+  "fr": {
+    "accessoriesSettingsBody": {
+      "en": "Connect extractors, fans, pumps, or compressors controlled via HTTP relay, Home Assistant, or an Arduino/ESP32 accessory, and turn them on or off from here.",
+      "text": "Connectez des extracteurs, ventilateurs, pompes ou compresseurs commandés par relais HTTP, Home Assistant ou un accessoire Arduino/ESP32, et allumez-les ou éteignez-les d'ici."
+    },
+    "accessoriesTitle": {
+      "en": "Quick actions",
+      "text": "Actions rapides"
+    },
+    "accessoryDriverHa": {
+      "en": "Home Assistant",
+      "text": "Home Assistant"
+    },
+    "accessoryHaBaseUrl": {
+      "en": "Home Assistant base URL",
+      "text": "URL de base de Home Assistant"
+    },
+    "bedTemp": {
+      "en": "Bed",
+      "text": "Plateau"
+    },
+    "cncFeed": {
+      "en": "Feed",
+      "text": "Avance"
+    },
+    "cncFeedMode": {
+      "en": "Feed Mode",
+      "text": "Mode d'avance"
+    },
+    "cncFeedOverride": {
+      "en": "Feed Override",
+      "text": "Correction d'avance"
+    },
+    "cncJobStarted": {
+      "en": "Job started",
+      "text": "Travail démarré"
+    },
+    "cncSetupSummaryWorkType": {
+      "en": "Job type",
+      "text": "Type de travail"
+    },
+    "devBed": {
+      "en": "Bed",
+      "text": "Plateau"
+    },
+    "devCool": {
+      "en": "Cool down",
+      "text": "Refroidir"
+    },
+    "devFeed": {
+      "en": "Feed",
+      "text": "Avance"
+    },
+    "devFrame": {
+      "en": "Frame",
+      "text": "Contour"
+    },
+    "devHome": {
+      "en": "Home",
+      "text": "Origine"
+    },
+    "devJob": {
+      "en": "Job",
+      "text": "Travail"
+    },
+    "devResume": {
+      "en": "Resume",
+      "text": "Reprendre"
+    },
+    "gcodeAnalysisBed": {
+      "en": "Bed",
+      "text": "Plateau"
+    },
+    "gcodeAnalysisFeed": {
+      "en": "Feed rate (F)",
+      "text": "Vitesse d'avance (F)"
+    },
+    "gcodeApply": {
+      "en": "Apply",
+      "text": "Appliquer"
+    },
+    "gcodeApplyTo": {
+      "en": "Apply to",
+      "text": "Appliquer à"
+    },
+    "gcodePreFrame": {
+      "en": "Frame preview pass",
+      "text": "Passe de contour"
+    },
+    "gcodeSignalBed": {
+      "en": "Bed temperature",
+      "text": "Température du plateau"
+    },
+    "guidedSetupCapResume": {
+      "en": "Resume",
+      "text": "Reprise"
+    },
+    "guidedSetupFieldCheckCode": {
+      "en": "Check code",
+      "text": "Code de vérification"
+    },
+    "guidedSetupStep3Label": {
+      "en": "Search network",
+      "text": "Recherche réseau"
+    },
+    "helpAboutDescription": {
+      "en": "NOPAL is a self-hosted panel that brings together your 3D printers (Klipper/Moonraker, Marlin over USB or MKS WiFi, Bambu Lab, Elegoo and FlashForge), your GRBL lasers and CNCs (network or USB), a model and G-code library, and optional plugins.",
+      "text": "NOPAL est un panneau auto-hébergé qui réunit vos imprimantes 3D (Klipper/Moonraker, Marlin par USB ou MKS WiFi, Bambu Lab, Elegoo et FlashForge), vos lasers et CNC GRBL (réseau ou USB), une bibliothèque de modèles et de G-code, et des plugins optionnels."
+    },
+    "helpCatHomeTitle": {
+      "en": "Home",
+      "text": "Accueil"
+    },
+    "laserBoardInfo": {
+      "en": "Board information",
+      "text": "Informations sur la carte"
+    },
+    "laserFeedSpeed": {
+      "en": "Feed / Power",
+      "text": "Avance / Puissance"
+    },
+    "laserFrameJob": {
+      "en": "Frame job",
+      "text": "Tracer le contour"
+    },
+    "laserGamepadFrame": {
+      "en": "Frame",
+      "text": "Contour"
+    },
+    "laserHome": {
+      "en": "Home ($H)",
+      "text": "Origine ($H)"
+    },
+    "laserHomeConfirmToggle": {
+      "en": "Confirm before Home",
+      "text": "Confirmer avant le retour à l'origine"
+    },
+    "logsConfigBackupCount": {
+      "en": "Keep logs",
+      "text": "Conserver les journaux"
+    },
+    "marlinBoardVariantLabel": {
+      "en": "Board revision",
+      "text": "Révision de la carte"
+    },
+    "marlinPrinterNoActiveJob": {
+      "en": "No active jobs.",
+      "text": "Aucun travail actif."
+    },
+    "marlinPrintersDescription": {
+      "en": "3D printers with standalone Marlin firmware connected over USB or MKS WiFi, without Klipper/Moonraker.",
+      "text": "Imprimantes 3D avec firmware Marlin autonome connectées par USB ou MKS WiFi, sans Klipper/Moonraker."
+    },
+    "moveHere": {
+      "en": "Move here",
+      "text": "Déplacer ici"
+    },
+    "navGroupJobs": {
+      "en": "Jobs",
+      "text": "Travaux"
+    },
+    "panelAlertDismiss": {
+      "en": "Dismiss (stop showing while unchanged)",
+      "text": "Ignorer (masquer tant que rien ne change)"
+    },
+    "panelHealthWarning": {
+      "en": "Fair",
+      "text": "Moyen"
+    },
+    "panelNoActiveJobs": {
+      "en": "No active jobs.",
+      "text": "Aucun travail actif."
+    },
+    "printQueue": {
+      "en": "Job History",
+      "text": "Historique des travaux"
+    },
+    "settingsModuleGroupDefaultHelp": {
+      "en": "Help",
+      "text": "Aide"
+    },
+    "systemControlHostSection": {
+      "en": "Host control",
+      "text": "Contrôle de l'hôte"
+    },
+    "systemControlServiceRestartTitle": {
+      "en": "Restart service",
+      "text": "Redémarrer le service"
+    },
+    "tourLaser2Body": {
+      "en": "Queued jobs, ready to start or remove.",
+      "text": "Tâches en file d'attente, prêtes à démarrer ou à supprimer."
+    },
+    "tourPricing3Title": {
+      "en": "File to quote",
+      "text": "Fichier à chiffrer"
+    },
+    "tunascreenScopeNote": {
+      "en": "With nothing selected, the device pairs with no access. Only machines NOPAL can recognize reliably appear, even if their IP or USB port changes.",
+      "text": "Si rien n'est sélectionné, l'appareil est associé sans accès. Seules les machines que NOPAL reconnaît de façon fiable apparaissent, même si leur IP ou leur port USB change."
+    },
+    "updatesAvailable": {
+      "en": "Update available",
+      "text": "Mise à jour disponible"
+    }
+  },
+  "pt-BR": {
+    "accessoriesSettingsBody": {
+      "en": "Connect extractors, fans, pumps, or compressors controlled via HTTP relay, Home Assistant, or an Arduino/ESP32 accessory, and turn them on or off from here.",
+      "text": "Conecte extratores, ventiladores, bombas ou compressores controlados por relé HTTP, Home Assistant ou um acessório Arduino/ESP32 e ligue-os ou desligue-os daqui."
+    },
+    "accessoriesTitle": {
+      "en": "Quick actions",
+      "text": "Ações rápidas"
+    },
+    "accessoryDriverHa": {
+      "en": "Home Assistant",
+      "text": "Home Assistant"
+    },
+    "accessoryHaBaseUrl": {
+      "en": "Home Assistant base URL",
+      "text": "URL base do Home Assistant"
+    },
+    "aiCmdActiveJobs": {
+      "en": "What jobs are active?",
+      "text": "Quais trabalhos estão ativos?"
+    },
+    "cncFeed": {
+      "en": "Feed",
+      "text": "Avanço"
+    },
+    "cncFeedMode": {
+      "en": "Feed Mode",
+      "text": "Modo de avanço"
+    },
+    "cncFeedOverride": {
+      "en": "Feed Override",
+      "text": "Ajuste de avanço"
+    },
+    "cncRun": {
+      "en": "Run",
+      "text": "Executar"
+    },
+    "cncZeroZPlotter": {
+      "en": "Pen down (Z=0)",
+      "text": "Caneta abaixada (Z=0)"
+    },
+    "dashboardRunSceneTitle": {
+      "en": "Run scene",
+      "text": "Executar cena"
+    },
+    "devCool": {
+      "en": "Cool down",
+      "text": "Resfriar"
+    },
+    "devFeed": {
+      "en": "Feed",
+      "text": "Avanço"
+    },
+    "devFrame": {
+      "en": "Frame",
+      "text": "Contorno"
+    },
+    "devHome": {
+      "en": "Home",
+      "text": "Origem"
+    },
+    "devNozzle": {
+      "en": "Nozzle",
+      "text": "Bico"
+    },
+    "devResume": {
+      "en": "Resume",
+      "text": "Retomar"
+    },
+    "devStop": {
+      "en": "Stop",
+      "text": "Parar"
+    },
+    "gcodeAnalysisFeed": {
+      "en": "Feed rate (F)",
+      "text": "Velocidade de avanço (F)"
+    },
+    "gcodeAnalysisNozzle": {
+      "en": "Nozzle",
+      "text": "Bico"
+    },
+    "gcodeApplyTo": {
+      "en": "Apply to",
+      "text": "Aplicar a"
+    },
+    "gcodePreFrame": {
+      "en": "Frame preview pass",
+      "text": "Passagem de contorno"
+    },
+    "gcodeSignalHotend": {
+      "en": "Nozzle temperature",
+      "text": "Temperatura do bico"
+    },
+    "guidedSetupCapResume": {
+      "en": "Resume",
+      "text": "Retomar"
+    },
+    "guidedSetupFieldCheckCode": {
+      "en": "Check code",
+      "text": "Código de verificação"
+    },
+    "guidedSetupStep3Label": {
+      "en": "Search network",
+      "text": "Buscar na rede"
+    },
+    "guidedSetupStep5Label": {
+      "en": "Verify connection",
+      "text": "Verificar conexão"
+    },
+    "helpAboutDescription": {
+      "en": "NOPAL is a self-hosted panel that brings together your 3D printers (Klipper/Moonraker, Marlin over USB or MKS WiFi, Bambu Lab, Elegoo and FlashForge), your GRBL lasers and CNCs (network or USB), a model and G-code library, and optional plugins.",
+      "text": "NOPAL é um painel auto-hospedado que reúne suas impressoras 3D (Klipper/Moonraker, Marlin por USB ou MKS WiFi, Bambu Lab, Elegoo e FlashForge), seus lasers e CNCs GRBL (rede ou USB), uma biblioteca de modelos e G-code e plugins opcionais."
+    },
+    "helpCatHomeTitle": {
+      "en": "Home",
+      "text": "Início"
+    },
+    "laserBoardInfo": {
+      "en": "Board information",
+      "text": "Informações da placa"
+    },
+    "laserFeedSpeed": {
+      "en": "Feed / Power",
+      "text": "Avanço / Potência"
+    },
+    "laserFrameJob": {
+      "en": "Frame job",
+      "text": "Traçar contorno"
+    },
+    "laserGamepadFrame": {
+      "en": "Frame",
+      "text": "Contorno"
+    },
+    "laserHome": {
+      "en": "Home ($H)",
+      "text": "Origem ($H)"
+    },
+    "laserHomeConfirmToggle": {
+      "en": "Confirm before Home",
+      "text": "Confirmar antes de ir à origem"
+    },
+    "marlinBoardVariantLabel": {
+      "en": "Board revision",
+      "text": "Revisão da placa"
+    },
+    "marlinPrintersDescription": {
+      "en": "3D printers with standalone Marlin firmware connected over USB or MKS WiFi, without Klipper/Moonraker.",
+      "text": "Impressoras 3D com firmware Marlin autônomo conectadas por USB ou MKS WiFi, sem Klipper/Moonraker."
+    },
+    "moveHere": {
+      "en": "Move here",
+      "text": "Mover para cá"
+    },
+    "navGroupJobs": {
+      "en": "Jobs",
+      "text": "Trabalhos"
+    },
+    "panelAutoHideLabel": {
+      "en": "Home top panel",
+      "text": "Painel superior da página inicial"
+    },
+    "panelHealthWarning": {
+      "en": "Fair",
+      "text": "Regular"
+    },
+    "printQueue": {
+      "en": "Job History",
+      "text": "Histórico de trabalhos"
+    },
+    "printerDiagTestConnection": {
+      "en": "Test connection",
+      "text": "Testar conexão"
+    },
+    "tourCnc3Title": {
+      "en": "Jog",
+      "text": "Movimento manual (Jog)"
+    },
+    "tourLaser4Title": {
+      "en": "GRBL console",
+      "text": "Console GRBL"
+    },
+    "tunascreenScopeNote": {
+      "en": "With nothing selected, the device pairs with no access. Only machines NOPAL can recognize reliably appear, even if their IP or USB port changes.",
+      "text": "Sem nada selecionado, o dispositivo é pareado sem acesso. Só aparecem as máquinas que o NOPAL reconhece de forma confiável, mesmo que o IP ou a porta USB mudem."
+    }
+  }
+}

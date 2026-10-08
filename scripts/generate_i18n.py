@@ -3,6 +3,17 @@
 
 The generated files are committed assets; NOPAL never translates at runtime
 and therefore does not need Internet access in production.
+
+The per-language cache (`.i18n-cache-<lang>.json`) stores, for every key, the
+English text it was translated from (`{"en": ..., "text": ...}`). When the
+English text changes the key is translated again; an entry without that
+source (older cache format) is treated the same way.
+
+Machine translations that are wrong or awkward are corrected in
+`i18n_overrides.json` (`{lang: {key: {"en": ..., "text": ...}}}`), applied on
+top of the cache. An override also records the English it was written for;
+if that English changes, generation stops until the override is reviewed, so
+a correction never silently outlives its source text.
 """
 
 from __future__ import annotations
@@ -22,6 +33,7 @@ ROOT = Path(__file__).resolve().parent
 PROJECT_ASSETS = ROOT.parent / "backend" / "static" / "js"
 ASSET_DIR = PROJECT_ASSETS if PROJECT_ASSETS.exists() else ROOT
 SOURCE = ASSET_DIR / "translations.js"
+OVERRIDES = ROOT / "i18n_overrides.json"
 ENDPOINT = "https://translate.googleapis.com/translate_a/single"
 LANGUAGES = {"pt-BR": "pt", "fr": "fr", "de": "de"}
 MYMEMORY_ENDPOINT = "https://api.mymemory.translated.net/get"
@@ -109,7 +121,11 @@ def request_mymemory_translation(text: str, target: str) -> str:
     return translated
 
 
-def translate_catalog(catalog: dict[str, str], language: str) -> dict[str, str]:
+def translate_catalog(catalog: dict[str, str], language: str,
+                      overrides: dict[str, str] | None = None) -> dict[str, str]:
+    """Pack for `language`: manual overrides win, and a key with an override
+    is never sent to the translation service."""
+    overrides = overrides or {}
     target = LANGUAGES[language]
     cache_path = ROOT / f".i18n-cache-{language}.json"
     try:
@@ -117,7 +133,9 @@ def translate_catalog(catalog: dict[str, str], language: str) -> dict[str, str]:
     except (OSError, json.JSONDecodeError):
         cache = {}
 
-    pending = [(key, value) for key, value in catalog.items() if key not in cache]
+    # Only entries translated from the current English text are reused.
+    pending = [(key, value) for key, value in catalog.items() if key not in overrides
+               and not (isinstance(cache.get(key), dict) and cache[key].get("en") == value)]
     batch_size = 12
     for offset in range(0, len(pending), batch_size):
         batch = pending[offset:offset + batch_size]
@@ -141,8 +159,8 @@ def translate_catalog(catalog: dict[str, str], language: str) -> dict[str, str]:
         if len(parts) != len(batch):
             parts = [request_mymemory_translation(item, target) for item in masked_items]
 
-        for (key, _value), part, item_replacements in zip(batch, parts, replacements):
-            cache[key] = restore(part.strip(), item_replacements)
+        for (key, value), part, item_replacements in zip(batch, parts, replacements):
+            cache[key] = {"en": value, "text": restore(part.strip(), item_replacements)}
 
         cache_path.write_text(
             json.dumps(cache, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -150,7 +168,33 @@ def translate_catalog(catalog: dict[str, str], language: str) -> dict[str, str]:
         )
         print(f"{language}: {min(offset + len(batch), len(pending))}/{len(pending)}", flush=True)
 
-    return {key: cache[key] for key in catalog}
+    return {key: overrides[key] if key in overrides else cache[key]["text"] for key in catalog}
+
+
+def load_overrides(catalog: dict[str, str], path: Path = OVERRIDES) -> dict[str, dict[str, str]]:
+    """Manual corrections per language. Raises if one targets a key that no
+    longer exists or was written for an English text that has changed."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    problems: list[str] = []
+    overrides: dict[str, dict[str, str]] = {}
+    for language, entries in raw.items():
+        if language not in LANGUAGES:
+            problems.append(f"{language}: unknown language")
+            continue
+        for key, entry in entries.items():
+            if key not in catalog:
+                problems.append(f"{language}.{key}: key no longer exists")
+            elif entry.get("en") != catalog[key]:
+                problems.append(f"{language}.{key}: English changed; review the override "
+                                f"(was {entry.get('en')!r}, now {catalog[key]!r})")
+            else:
+                overrides.setdefault(language, {})[key] = entry["text"]
+    if problems:
+        raise RuntimeError("Stale i18n overrides:\n  " + "\n  ".join(problems))
+    return overrides
 
 
 def write_pack(language: str, translations: dict[str, str]) -> Path:
@@ -166,12 +210,15 @@ def write_pack(language: str, translations: dict[str, str]) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("languages", nargs="*", choices=LANGUAGES, default=list(LANGUAGES))
+    # No `default=` list: with nargs="*" plus `choices`, Python 3.13's
+    # argparse validates the default list as a single value and crashes.
+    parser.add_argument("languages", nargs="*", choices=list(LANGUAGES))
     args = parser.parse_args()
     catalog = read_english_catalog()
+    overrides = load_overrides(catalog)
     print(f"English catalog: {len(catalog)} keys", flush=True)
-    for language in args.languages:
-        output = write_pack(language, translate_catalog(catalog, language))
+    for language in args.languages or list(LANGUAGES):
+        output = write_pack(language, translate_catalog(catalog, language, overrides.get(language)))
         print(f"Wrote {output.name}", flush=True)
 
 
