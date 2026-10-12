@@ -478,6 +478,22 @@ async def run_matrix_rule(rule_id: str) -> Dict[str, Any]:
     return {"ok": True, "rule_id": rule_id}
 
 
+async def show_panel_message(text: str, minutes: int = 5) -> Dict[str, Any]:
+    """Muestra un mensaje especial en el panel LED FK-8Wa (96x16) del plugin
+    Matriz LED. Reemplaza al mensaje vigente y vence solo."""
+    from backend.services.plugin_loader_service import get_loaded_plugin_module
+
+    module = get_loaded_plugin_module("matriz-led", "services.fk8wa.service")
+    if module is None:
+        raise ActionError("El panel FK-8Wa no está disponible: falta el plugin de Matriz LED o es una versión anterior")
+
+    try:
+        mensaje = module.show_message(text, minutes, "ai")
+    except ValueError as exc:
+        raise ActionError(str(exc))
+    return {"ok": True, "text": mensaje["text"], "minutes": minutes}
+
+
 async def queue_file(machine_id: str, path: str, *, machine: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Manda un archivo de la biblioteca a la cola de una máquina.
 
@@ -849,6 +865,25 @@ ACTIONS: Dict[str, Action] = {
                 "type": "object",
                 "properties": {"rule_id": {"type": "string", "description": "Id de la regla."}},
                 "required": ["rule_id"],
+            },
+            risk="low",
+            policy_actions=(PolicyAction.USE_PLUGIN,),
+            resource=LED_MATRIX_PLUGIN_RESOURCE,
+        ),
+        Action(
+            "show_panel_message",
+            "Muestra un mensaje corto en el panel LED FK-8Wa (96x16, de un color) de la Matriz LED, "
+            "por unos minutos y por encima del estado normal de las máquinas (no tapa errores ni pausas). "
+            "Es distinto de los anuncios de la pantalla iPixel (send_matrix_announcement) y de los "
+            "accesorios. Textos breves: el panel es pequeño.",
+            show_panel_message,
+            {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Mensaje, hasta 200 caracteres (mejor 1-4 palabras)."},
+                    "minutes": {"type": "integer", "description": "Cuántos minutos se muestra (1-1440). Por omisión 5."},
+                },
+                "required": ["text"],
             },
             risk="low",
             policy_actions=(PolicyAction.USE_PLUGIN,),
