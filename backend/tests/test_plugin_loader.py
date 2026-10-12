@@ -156,3 +156,99 @@ class TestLoadInstalledPluginRouters:
         response = client.get("/api/nested-plugin/value")
         assert response.status_code == 200
         assert response.json() == {"value": 84}
+
+
+# ── Ganchos de ciclo de vida (on_startup / on_shutdown) ──
+
+HOOKS_ROUTER = """from fastapi import APIRouter
+router = APIRouter()
+CALLS = []
+
+@router.get('/api/{pid}/ping')
+def ping():
+    return {{}}
+{hooks}
+"""
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _forget_lifecycle_modules():
+    """Que los plugins de prueba no queden registrados para el apagado real
+    de la sesión de tests (uno de ellos tarda 10 s a propósito)."""
+    yield
+    loader._lifecycle_modules.clear()
+
+
+def _plugin_with_hooks(plugin_id, hooks):
+    _write_plugin(plugin_id, {"router.py": HOOKS_ROUTER.format(pid=plugin_id, hooks=hooks)})
+
+
+def _module(plugin_id):
+    return loader._entry_module(plugin_id, {"backend": {"entry": "backend/router.py"}})
+
+
+class TestLifecycleHooks:
+    async def test_async_and_sync_hooks_run_in_order(self):
+        _plugin_with_hooks("hook-a", "async def on_startup():\n    CALLS.append('start')\n"
+                                     "async def on_shutdown():\n    CALLS.append('stop')\n")
+        _plugin_with_hooks("hook-b", "def on_startup():\n    CALLS.append('start')\n")
+        _mark_installed(**{"hook-a": True, "hook-b": True})
+        loader.load_installed_plugin_routers(FastAPI())
+
+        await loader.run_plugin_startup_hooks()
+        await loader.run_plugin_shutdown_hooks()
+
+        assert _module("hook-a").CALLS == ["start", "stop"]
+        assert _module("hook-b").CALLS == ["start"]
+
+    async def test_failing_hook_does_not_stop_the_others(self, caplog):
+        _plugin_with_hooks("hook-bad", "def on_startup():\n    raise RuntimeError('boom')\n")
+        _plugin_with_hooks("hook-good", "def on_startup():\n    CALLS.append('start')\n")
+        _mark_installed(**{"hook-bad": True, "hook-good": True})
+        loader.load_installed_plugin_routers(FastAPI())
+
+        await loader.run_plugin_startup_hooks()
+
+        assert _module("hook-good").CALLS == ["start"]
+        assert "[hook-bad] on_startup() falló" in caplog.text
+
+    async def test_slow_hook_is_cut(self, monkeypatch, caplog):
+        monkeypatch.setattr(loader, "HOOK_TIMEOUT_S", 0.05)
+        _plugin_with_hooks("hook-slow", "import asyncio\nasync def on_shutdown():\n    await asyncio.sleep(10)\n")
+        _mark_installed(**{"hook-slow": True})
+        loader.load_installed_plugin_routers(FastAPI())
+
+        await loader.run_plugin_shutdown_hooks()
+
+        assert "[hook-slow] on_shutdown() tardó" in caplog.text
+
+    def test_plugin_without_hooks_is_not_tracked_and_reload_resets(self):
+        _plugin_with_hooks("hook-none", "")
+        _mark_installed(**{"hook-none": True})
+        loader.load_installed_plugin_routers(FastAPI())
+        assert loader._lifecycle_modules == []
+
+        _plugin_with_hooks("hook-one", "def on_startup():\n    pass\n")
+        _mark_installed(**{"hook-none": True, "hook-one": True})
+        loader.load_installed_plugin_routers(FastAPI())
+        loader.load_installed_plugin_routers(FastAPI())
+        assert [pid for pid, _ in loader._lifecycle_modules] == ["hook-one"]
+
+    def test_disabled_plugin_hooks_never_run(self):
+        _plugin_with_hooks("hook-off", "def on_startup():\n    CALLS.append('start')\n")
+        _mark_installed(**{"hook-off": False})
+        loader.load_installed_plugin_routers(FastAPI())
+        assert loader._lifecycle_modules == []
+
+
+def test_main_wires_the_hooks():
+    """main.py llama los ganchos al arrancar (tras cargar los routers) y al detenerse."""
+    from pathlib import Path
+
+    source = (Path(loader.__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    start = source.index("load_installed_plugin_routers(app)")
+    assert source.index("run_plugin_startup_hooks()") > start
+    assert "await plugin_loader_service.run_plugin_shutdown_hooks()" in source

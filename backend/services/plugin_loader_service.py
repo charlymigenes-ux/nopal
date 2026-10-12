@@ -9,7 +9,9 @@ inválido, entry point ausente, excepción al importar) se salta con un log
 de advertencia -- nunca debe tumbar el arranque del resto de NOPAL.
 """
 
+import asyncio
 import importlib.util
+import inspect
 import logging
 import sys
 import types
@@ -21,6 +23,14 @@ from fastapi import FastAPI
 from backend.services import plugin_installer_service as installer
 
 logger = logging.getLogger(__name__)
+
+# Ganchos de ciclo de vida de los plugins cargados: (plugin_id, módulo de
+# entrada). Un plugin que necesita una tarea de fondo (p. ej. el panel FK-8Wa
+# de matriz-led, que debe actualizarse aunque nadie tenga NOPAL abierto)
+# define `on_startup()` / `on_shutdown()` en su módulo de entrada; son
+# opcionales, como `router` y `AI_TOOLS`.
+HOOK_TIMEOUT_S = 5.0
+_lifecycle_modules: List[Tuple[str, Any]] = []
 
 NAMESPACE_PACKAGE = "nopal_plugins"
 
@@ -150,6 +160,7 @@ def load_installed_plugin_routers(app: FastAPI) -> None:
     """Llamada en el startup de NOPAL (ver backend/main.py) -- registra el
     backend de cada plugin instalado y habilitado que tenga entry point de
     backend en su manifest."""
+    _lifecycle_modules.clear()
     installed = installer.read_installed_state()
     for plugin_id, state in installed.items():
         if not state.get("enabled", False):
@@ -166,3 +177,40 @@ def load_installed_plugin_routers(app: FastAPI) -> None:
         if router is not None:
             app.include_router(router)
             logger.info(f"[{plugin_id}] backend del plugin cargado")
+            module = _entry_module(plugin_id, manifest)
+            if module is not None and any(callable(getattr(module, h, None)) for h in ("on_startup", "on_shutdown")):
+                _lifecycle_modules.append((plugin_id, module))
+
+
+def _entry_module(plugin_id: str, manifest: dict) -> Optional[Any]:
+    """Módulo de entrada ya cargado por _load_plugin_router."""
+    entry = (manifest.get("backend") or {}).get("entry") or ""
+    package_name = f"{NAMESPACE_PACKAGE}.{plugin_id.replace('-', '_')}"
+    return sys.modules.get(f"{package_name}.{Path(entry).stem}")
+
+
+async def _run_hook(plugin_id: str, module: Any, name: str) -> None:
+    hook = getattr(module, name, None)
+    if not callable(hook):
+        return
+    try:
+        result = hook()
+        if inspect.isawaitable(result):
+            await asyncio.wait_for(result, timeout=HOOK_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        logger.warning(f"[{plugin_id}] {name}() tardó más de {HOOK_TIMEOUT_S:.0f} s; se sigue sin esperar")
+    except Exception:
+        logger.exception(f"[{plugin_id}] {name}() falló; NOPAL sigue normalmente")
+
+
+async def run_plugin_startup_hooks() -> None:
+    """Llama `on_startup()` de cada plugin cargado que lo defina. Un gancho
+    que falla o tarda no impide arrancar NOPAL ni a los demás plugins."""
+    for plugin_id, module in list(_lifecycle_modules):
+        await _run_hook(plugin_id, module, "on_startup")
+
+
+async def run_plugin_shutdown_hooks() -> None:
+    """Llama `on_shutdown()` de cada plugin, en orden inverso, con tope de tiempo."""
+    for plugin_id, module in reversed(list(_lifecycle_modules)):
+        await _run_hook(plugin_id, module, "on_shutdown")

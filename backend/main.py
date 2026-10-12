@@ -37,6 +37,7 @@ from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
 from backend.services.laser_service import set_main_event_loop
 from backend.services.marlin_printer_service import set_main_event_loop as set_marlin_printer_event_loop
+from backend.services import plugin_loader_service
 from backend.services.plugin_loader_service import load_installed_plugin_routers
 from backend.services import logging_config_service, tunascreen_service
 from backend.utils import get_app_version
@@ -134,6 +135,14 @@ async def _load_plugin_routers():
     instalado (ver backend/services/plugin_loader_service.py). Un plugin
     roto no debe impedir que el resto de NOPAL arranque."""
     load_installed_plugin_routers(app)
+    await plugin_loader_service.run_plugin_startup_hooks()
+
+
+@app.on_event("shutdown")
+async def _stop_plugins():
+    # Antes de "NOPAL detenido": un plugin puede querer avisar que se apaga
+    # (p. ej. el panel FK-8Wa muestra HASTA PRONTO).
+    await plugin_loader_service.run_plugin_shutdown_hooks()
 
 
 @app.on_event("shutdown")
