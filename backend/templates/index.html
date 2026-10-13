@@ -1622,6 +1622,16 @@
                                 <div class="laser-job-progress-bar"><div class="laser-job-progress-fill" id="cnc-job-progress-fill"></div></div>
                                 <span id="cnc-job-percent">0%</span>
                             </div>
+                            <div class="cnc-job-lines" id="cnc-job-lines" hidden></div>
+                            <div class="cnc-job-result" id="cnc-job-result" role="status" hidden>
+                                <div class="cnc-job-result-text">
+                                    <strong id="cnc-job-result-title"></strong>
+                                    <span id="cnc-job-result-body"></span>
+                                </div>
+                                <button type="button" class="theme-option-icon-btn" id="cnc-job-result-close" data-i18n-title="cncJobDismiss" title="Cerrar aviso">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                            </div>
                             <div class="cnc-job-buttons-row">
                                 <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-run-btn">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -1849,6 +1859,10 @@
                                     <button type="button" class="btn-file-action" id="cnc-files-upload-btn">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                                         <span data-i18n="cncFilesUpload">Subir</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action" id="cnc-files-plotter-btn" data-i18n-title="plotterOpenTitle" title="Convertir una imagen en un dibujo de plotter">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                        <span data-i18n="plotterOpen">Imagen a dibujo</span>
                                     </button>
                                     <input type="file" id="cnc-files-upload-input" accept=".nc,.tap,.cnc,.gcode,.gc,.gco" hidden>
                                     <button type="button" class="theme-option-icon-btn" id="cnc-files-refresh-btn" title="Actualizar">
@@ -4898,6 +4912,98 @@
         </div>
     </div>
 
+    <!-- Imagen a dibujo: convierte una imagen en G-code de plotter (lápiz con Z)
+         con vista previa en vivo. Lógica en app.js (plotter*). -->
+    <div id="plotter-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="plotter-title">
+        <div class="modal-backdrop" id="plotter-backdrop"></div>
+        <div class="modal-content plotter-modal-content">
+            <button type="button" class="modal-close" id="plotter-close-btn" data-i18n-aria-label="plotterClose" aria-label="Cerrar">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="plotter-title" data-i18n="plotterTitle">Imagen a dibujo</h2>
+            <div class="plotter-layout">
+                <div class="plotter-controls">
+                    <div class="plotter-dropzone" id="plotter-dropzone">
+                        <label for="plotter-file" class="plotter-label" data-i18n="plotterImage">Imagen</label>
+                        <input type="file" id="plotter-file" accept="image/*">
+                        <p class="plotter-help" data-i18n="plotterDropHint">Elige un archivo o arrástralo aquí (PNG, JPG, BMP, GIF).</p>
+                    </div>
+                    <div class="plotter-row">
+                        <div class="plotter-field">
+                            <label for="plotter-width" class="plotter-label" data-i18n="plotterWidth">Ancho (mm)</label>
+                            <input type="number" id="plotter-width" class="plotter-input" min="5" max="2000" step="1" value="80">
+                        </div>
+                        <div class="plotter-field">
+                            <label for="plotter-height" class="plotter-label" data-i18n="plotterHeight">Alto (mm)</label>
+                            <input type="number" id="plotter-height" class="plotter-input" min="5" max="2000" step="1" value="80">
+                        </div>
+                    </div>
+                    <p class="plotter-help" id="plotter-area-note"></p>
+                    <label class="plotter-check" for="plotter-invert">
+                        <input type="checkbox" id="plotter-invert">
+                        <span data-i18n="plotterInvert">Invertir (líneas claras sobre fondo oscuro)</span>
+                    </label>
+                    <div class="plotter-field">
+                        <label for="plotter-threshold" class="plotter-label"><span data-i18n="plotterThreshold">Umbral</span>: <output id="plotter-threshold-out" for="plotter-threshold">128</output></label>
+                        <input type="range" id="plotter-threshold" min="1" max="254" step="1" value="128" aria-describedby="plotter-threshold-help">
+                        <p class="plotter-help" id="plotter-threshold-help" data-i18n="plotterThresholdHelp">Qué tan oscuro debe ser un punto para dibujarse. Súbelo si faltan líneas.</p>
+                    </div>
+                    <div class="plotter-field">
+                        <label for="plotter-detail" class="plotter-label"><span data-i18n="plotterDetail">Detalle</span>: <output id="plotter-detail-out" for="plotter-detail">0.7</output></label>
+                        <input type="range" id="plotter-detail" min="0.2" max="5" step="0.1" value="0.7" aria-describedby="plotter-detail-help">
+                        <p class="plotter-help" id="plotter-detail-help" data-i18n="plotterDetailHelp">Separación entre trazos en mm. Menos es más fino pero tarda más.</p>
+                    </div>
+                    <details class="plotter-pen" id="plotter-pen">
+                        <summary data-i18n="plotterPenSection">Lápiz y velocidades</summary>
+                        <div class="plotter-row">
+                            <div class="plotter-field">
+                                <label for="plotter-pen-up" class="plotter-label" data-i18n="plotterPenUp">Z arriba (mm)</label>
+                                <input type="number" id="plotter-pen-up" class="plotter-input" step="0.5" value="3">
+                            </div>
+                            <div class="plotter-field">
+                                <label for="plotter-pen-down" class="plotter-label" data-i18n="plotterPenDown">Z abajo (mm)</label>
+                                <input type="number" id="plotter-pen-down" class="plotter-input" step="0.5" value="0">
+                            </div>
+                        </div>
+                        <div class="plotter-row">
+                            <div class="plotter-field">
+                                <label for="plotter-feed" class="plotter-label" data-i18n="plotterFeed">Dibujo (mm/min)</label>
+                                <input type="number" id="plotter-feed" class="plotter-input" min="10" max="20000" step="50" value="1500">
+                            </div>
+                            <div class="plotter-field">
+                                <label for="plotter-plunge" class="plotter-label" data-i18n="plotterPlunge">Bajada (mm/min)</label>
+                                <input type="number" id="plotter-plunge" class="plotter-input" min="10" max="20000" step="50" value="500">
+                            </div>
+                            <div class="plotter-field">
+                                <label for="plotter-travel" class="plotter-label" data-i18n="plotterTravel">Traslado (mm/min)</label>
+                                <input type="number" id="plotter-travel" class="plotter-input" min="10" max="20000" step="50" value="3000">
+                            </div>
+                        </div>
+                    </details>
+                    <div class="plotter-field">
+                        <label for="plotter-name" class="plotter-label" data-i18n="plotterName">Nombre del archivo</label>
+                        <input type="text" id="plotter-name" class="plotter-input" maxlength="80" autocomplete="off">
+                    </div>
+                </div>
+                <div class="plotter-preview-col">
+                    <canvas id="plotter-canvas" class="plotter-canvas" width="480" height="480" role="img" data-i18n-aria-label="plotterCanvasLabel" aria-label="Vista previa del dibujo en el área de trabajo"></canvas>
+                    <p class="plotter-status" id="plotter-status" role="status" aria-live="polite"></p>
+                    <p class="plotter-stats" id="plotter-stats"></p>
+                </div>
+            </div>
+            <div class="plotter-footer">
+                <label class="plotter-check" id="plotter-exceed-row" for="plotter-exceed-ack" hidden>
+                    <input type="checkbox" id="plotter-exceed-ack">
+                    <span data-i18n="plotterExceedAck">Entiendo que el dibujo excede el área de trabajo y quiero generarlo igual.</span>
+                </label>
+                <div class="plotter-buttons">
+                    <button type="button" class="btn-file-action btn-file-action-accent" id="plotter-generate-btn" data-i18n="plotterGenerate" disabled>Generar dibujo</button>
+                    <button type="button" class="btn-file-action usb-classify-cancel-btn" id="plotter-cancel-btn" data-i18n="cancelAction">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Asistente guiado CNC: 4 pasos dentro de un mismo modal, mismo
          mecanismo de pasos-dentro-de-un-modal que #usb-classify-modal. -->
     <div id="cnc-wizard-modal" class="modal">
@@ -4919,7 +5025,14 @@
 
             <div id="cnc-wizard-step-1" class="cnc-wizard-step">
                 <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep1Title">1. Elige un diseño</span></p>
-                <input type="text" id="cnc-wizard-file-search" class="usb-classify-input-icon-wrap" data-i18n-placeholder="cncFilesFilter" placeholder="Buscar archivo...">
+                <div class="plotter-wizard-search-row">
+                    <input type="text" id="cnc-wizard-file-search" class="usb-classify-input-icon-wrap" data-i18n-placeholder="cncFilesFilter" placeholder="Buscar archivo...">
+                    <button type="button" class="btn-file-action" id="cnc-wizard-plotter-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span data-i18n="plotterWizardBtn">Convertir imagen a dibujo</span>
+                    </button>
+                </div>
+                <p class="cnc-wizard-step-hint" id="cnc-wizard-selected-note" role="status" hidden></p>
                 <div class="cnc-wizard-file-list" id="cnc-wizard-file-list"></div>
             </div>
 

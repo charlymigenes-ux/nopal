@@ -1611,6 +1611,12 @@ async def _run_job(job: LaserJob):
             elif normalized.startswith("error") or normalized.startswith("alarm"):
                 job.state = "error"
                 job.error_message = f"{text} (línea {job.current + 1})"
+                # Diagnóstico: la línea que la placa rechazó y las 3 anteriores, tal como se mandaron.
+                logger.warning(
+                    f"[{job.host}] Línea rechazada {job.current + 1}: "
+                    f"{lines[job.current] if job.current < len(lines) else ''!r}; "
+                    f"anteriores: {lines[max(0, job.current - 3):job.current]!r}"
+                )
                 return
             # otras líneas (reportes de estado, etc.) se ignoran
 
@@ -1807,7 +1813,9 @@ async def get_job_status(host: str) -> Dict[str, Any]:
     resultado viejo (confirmado en vivo: pasó exactamente esto probando)."""
     job = _jobs.get(host)
     if job is not None and job.state in ("running", "paused"):
-        return job.to_dict()
+        # "elapsed" (segundos desde que arrancó) lo calcula el servidor para
+        # que el tiempo transcurrido no dependa del reloj del navegador.
+        return {**job.to_dict(), "elapsed": int(time.time() - job.started_at)}
 
     status = await get_status(host, timeout=1.5)
     external_state = _external_job_state(status.get("state") if status else None)
@@ -1862,6 +1870,17 @@ async def get_active_laser_jobs(entries: List[Dict[str, Any]]) -> List[Dict[str,
         if isinstance(job, dict) and job.get("state") in ("running", "paused")
     ]
     return own + external
+
+
+def get_last_finished_job(host: str) -> Optional[Dict[str, Any]]:
+    """Último trabajo propio de esa placa si ya terminó (error, cancelado o
+    completado); None si no hay uno o si sigue activo. get_job_status no lo
+    devuelve (cae al estado de la placa), así que sin esto la interfaz no
+    tenía forma de mostrar por qué se detuvo un trabajo. Solo lee _jobs."""
+    job = _jobs.get(host)
+    if job is None or job.state in ("running", "paused"):
+        return None
+    return {**job.to_dict(), "started_at": job.started_at}
 
 
 def get_laser_jobs_with_errors() -> List[Dict[str, Any]]:

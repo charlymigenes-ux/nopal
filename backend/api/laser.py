@@ -18,6 +18,7 @@ from backend.services.laser_service import (
     get_board_info,
     start_job,
     get_job_status,
+    get_last_finished_job,
     get_active_job_hosts,
     pause_job,
     resume_job,
@@ -359,6 +360,13 @@ async def laser_job_frame_endpoint(
 @router.get("/api/laser/job/status")
 async def laser_job_status_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
     return await get_job_status(_require_host(host))
+
+
+@router.get("/api/laser/job/last")
+async def laser_job_last_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
+    """Último trabajo terminado (error/cancelado/completado) de esa placa, o
+    {"job": null}. Lo usa la tarjeta TRABAJO de CNC para avisar cómo acabó."""
+    return {"job": get_last_finished_job(_require_host(host))}
 
 
 @router.get("/api/laser/jobs/active")

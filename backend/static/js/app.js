@@ -14809,23 +14809,105 @@ async function refreshCncParserState() {
     }
 }
 
+// Texto en español sencillo de los códigos de error/alarma de GRBL y FluidNC.
+// Códigos que no están aquí se muestran crudos (sin inventar un significado).
+function cncGrblReasonText(raw) {
+    const match = /(error|ALARM):\s*(\d+)/i.exec(raw || '');
+    if (!match) return '';
+    const key = `cncGrbl${match[1].toLowerCase() === 'error' ? 'Err' : 'Alarm'}${parseInt(match[2], 10)}`;
+    const text = t(key);
+    return text === key ? '' : text;
+}
+
+const cncJobDismissed = new Set();
+let cncJobFooterTimer = null;
+
+function cncJobFill(template, values) {
+    return Object.keys(values).reduce((text, key) => text.split(`{${key}}`).join(values[key]), template);
+}
+
+function renderCncJobResult(job, host) {
+    const box = document.getElementById('cnc-job-result');
+    if (!box) return;
+    const key = job ? `${host}|${job.started_at}` : '';
+    if (!job || cncJobDismissed.has(key)) { box.hidden = true; return; }
+    const file = job.filename || '—';
+    const line = Math.min((job.current || 0) + 1, job.total || (job.current || 0) + 1);
+    const titleEl = document.getElementById('cnc-job-result-title');
+    const bodyEl = document.getElementById('cnc-job-result-body');
+    box.dataset.key = key;
+    box.className = 'cnc-job-result cnc-job-result-' + (job.state === 'completed' ? 'ok' : job.state === 'error' ? 'error' : 'info');
+    if (job.state === 'error') {
+        const raw = job.error || '';
+        const lineMatch = /(?:línea|line)\s+(\d+)/i.exec(raw);
+        const rawCode = (/(?:error|ALARM):\s*\d+/i.exec(raw) || [raw || '—'])[0];
+        titleEl.textContent = t('cncJobFailedTitle');
+        bodyEl.textContent = cncJobFill(t('cncJobFailedBody'), {
+            file, line: lineMatch ? lineMatch[1] : line,
+            reason: cncGrblReasonText(raw) || (raw && !/^(error|ALARM):/i.test(raw.trim()) ? raw : t('cncJobFailedUnknown')),
+            raw: rawCode,
+        });
+    } else if (job.state === 'completed') {
+        titleEl.textContent = '';
+        bodyEl.textContent = cncJobFill(t('cncJobDoneBody'), { file, total: (job.total || 0).toLocaleString() });
+    } else {
+        titleEl.textContent = '';
+        bodyEl.textContent = cncJobFill(t('cncJobCancelledBody'), { file, line });
+    }
+    box.hidden = false;
+}
+
 async function refreshCncJobFooter() {
     const host = getSectionHost('cnc');
     if (!host) return;
     try {
         const response = await fetch(`/api/laser/job/status?host=${encodeURIComponent(host)}`);
         const job = await response.json();
+        const active = job?.state === 'running' || job?.state === 'paused';
+        let shown = job;
+        let finished = null;
+        if (!active) {
+            const lastResponse = await fetch(`/api/laser/job/last?host=${encodeURIComponent(host)}`);
+            finished = (await lastResponse.json())?.job || null;
+            // Un trabajo externo (LightBurn, etc.) en marcha no debe quedar tapado por el aviso viejo.
+            if (finished && job?.state === 'idle') shown = finished;
+        }
         const filenameEl = document.getElementById('cnc-job-filename');
-        if (filenameEl) filenameEl.textContent = job?.filename || '—';
-        const percent = job?.total ? Math.round((job.current / job.total) * 100) : 0;
+        if (filenameEl) filenameEl.textContent = shown?.filename || '—';
+        const percent = shown?.total ? Math.round((shown.current / shown.total) * 100) : 0;
         const fillEl = document.getElementById('cnc-job-progress-fill');
         if (fillEl) fillEl.style.width = `${percent}%`;
         const percentEl = document.getElementById('cnc-job-percent');
         if (percentEl) percentEl.textContent = `${percent}%`;
+        const linesEl = document.getElementById('cnc-job-lines');
+        if (linesEl) {
+            const showLines = !!shown?.total && shown.source !== 'external';
+            linesEl.hidden = !showLines;
+            if (showLines) {
+                linesEl.textContent = cncJobFill(t('cncJobLines'), {
+                    current: (shown.current || 0).toLocaleString(), total: shown.total.toLocaleString(),
+                });
+            }
+        }
+        const elapsedEl = document.getElementById('cnc-job-elapsed');
+        if (elapsedEl && active && job.elapsed != null) elapsedEl.textContent = formatLaserJobDuration(job.elapsed * 1000);
+        else if (elapsedEl && !active && finished && shown === finished) {
+            elapsedEl.textContent = '—';
+        }
+        renderCncJobResult(active ? null : finished, host);
+        // Mientras corre, se consulta más seguido para que línea y tiempo avancen fluido.
+        clearTimeout(cncJobFooterTimer);
+        if (active) cncJobFooterTimer = setTimeout(refreshCncJobFooter, 1500);
     } catch (error) {
         console.error(error);
     }
 }
+
+document.getElementById('cnc-job-result-close')?.addEventListener('click', () => {
+    const box = document.getElementById('cnc-job-result');
+    if (box?.dataset.key) cncJobDismissed.add(box.dataset.key);
+    if (box) box.hidden = true;
+});
 
 const cncWcsSelect = document.getElementById('cnc-wcs-select');
 if (cncWcsSelect) {
@@ -15037,6 +15119,8 @@ async function renderCncWizardFileList() {
                     path: stripSectionPrefix(row.dataset.fileId, 'gcode'),
                 };
                 cncWizardState.bounds = null;
+                const selectedNote = document.getElementById('cnc-wizard-selected-note');
+                if (selectedNote) selectedNote.hidden = true;
                 updateCncWizardNextEnabled();
             });
         });
@@ -15155,10 +15239,370 @@ function renderCncWizardSummary() {
     }
 }
 
+// ── Imagen a dibujo (plotter): convierte una imagen en G-code de lápiz con
+// vista previa en vivo. Backend: /api/plotter/preview y /api/plotter/generate. ──
+
+const plotterState = { file: null, nameTouched: false, opener: null, fromWizard: false, abort: null, timer: null, paths: null, busy: false };
+const PLOTTER_PEN_DEFAULTS = { penUp: 3, penDown: 0, feed: 1500, plunge: 500, travel: 3000 };
+const PLOTTER_PEN_FIELDS = { penUp: 'plotter-pen-up', penDown: 'plotter-pen-down', feed: 'plotter-feed', plunge: 'plotter-plunge', travel: 'plotter-travel' };
+
+function plotterEl(id) { return document.getElementById(id); }
+function plotterNum(id, fallback) {
+    const v = parseFloat(plotterEl(id)?.value);
+    return Number.isFinite(v) ? v : fallback;
+}
+
+function plotterActiveHost() {
+    return document.getElementById('cnc-host-select')?.value || '';
+}
+
+function plotterWorkArea() {
+    const device = laserHostOptions.find(item => item.host === plotterActiveHost());
+    const wa = device?.workArea;
+    return wa && wa.width && wa.height ? { width: Number(wa.width), height: Number(wa.height) } : null;
+}
+
+function plotterPenKey() { return `nopal_plotter_pen_${plotterActiveHost() || 'default'}`; }
+
+function plotterLoadPen() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(plotterPenKey()) || '{}') || {}; } catch (e) { saved = {}; }
+    Object.keys(PLOTTER_PEN_FIELDS).forEach(key => {
+        const value = Number(saved[key]);
+        const input = plotterEl(PLOTTER_PEN_FIELDS[key]);
+        if (input) input.value = Number.isFinite(value) && saved[key] !== undefined && saved[key] !== null ? value : PLOTTER_PEN_DEFAULTS[key];
+    });
+}
+
+function plotterSavePen() {
+    const data = {};
+    Object.keys(PLOTTER_PEN_FIELDS).forEach(key => { data[key] = plotterNum(PLOTTER_PEN_FIELDS[key], PLOTTER_PEN_DEFAULTS[key]); });
+    try { localStorage.setItem(plotterPenKey(), JSON.stringify(data)); } catch (e) { /* sin almacenamiento: se usan los valores por omisión */ }
+}
+
+function plotterFormData(withGenerate) {
+    const fd = new FormData();
+    fd.append('file', plotterState.file);
+    fd.append('width_mm', plotterNum('plotter-width', 80));
+    fd.append('height_mm', plotterNum('plotter-height', 80));
+    fd.append('threshold', plotterEl('plotter-threshold').value);
+    fd.append('invert', plotterEl('plotter-invert').checked ? 'true' : 'false');
+    fd.append('detail', plotterEl('plotter-detail').value);
+    fd.append('feed', plotterNum('plotter-feed', PLOTTER_PEN_DEFAULTS.feed));
+    fd.append('travel_feed', plotterNum('plotter-travel', PLOTTER_PEN_DEFAULTS.travel));
+    if (withGenerate) {
+        fd.append('name', (plotterEl('plotter-name').value || '').trim() || 'dibujo');
+        fd.append('pen_up_z', plotterNum('plotter-pen-up', PLOTTER_PEN_DEFAULTS.penUp));
+        fd.append('pen_down_z', plotterNum('plotter-pen-down', PLOTTER_PEN_DEFAULTS.penDown));
+        fd.append('plunge_feed', plotterNum('plotter-plunge', PLOTTER_PEN_DEFAULTS.plunge));
+    }
+    return fd;
+}
+
+async function plotterErrorText(response) {
+    try {
+        const data = await response.json();
+        if (typeof data.detail === 'string') return data.detail;
+        if (Array.isArray(data.detail) && data.detail[0]?.msg) return data.detail[0].msg;
+    } catch (e) { /* respuesta sin JSON */ }
+    return t('plotterError');
+}
+
+function plotterSetStatus(text, isError = false) {
+    const el = plotterEl('plotter-status');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('plotter-status-error', !!isError);
+}
+
+function plotterExceeds() {
+    const wa = plotterWorkArea();
+    if (!wa) return false;
+    return plotterNum('plotter-width', 80) > wa.width || plotterNum('plotter-height', 80) > wa.height;
+}
+
+function plotterUpdateGenerateEnabled() {
+    const btn = plotterEl('plotter-generate-btn');
+    const exceeds = plotterExceeds();
+    const w = plotterNum('plotter-width', 0);
+    const h = plotterNum('plotter-height', 0);
+    const row = plotterEl('plotter-exceed-row');
+    if (row) row.hidden = !exceeds;
+    if (!exceeds) plotterEl('plotter-exceed-ack').checked = false;
+    const note = plotterEl('plotter-area-note');
+    const wa = plotterWorkArea();
+    if (note) {
+        if (!wa) note.textContent = t('plotterAreaUnknown');
+        else note.textContent = exceeds
+            ? t('plotterExceeds').replace('{w}', wa.width).replace('{h}', wa.height)
+            : t('plotterAreaInfo').replace('{w}', wa.width).replace('{h}', wa.height);
+        note.classList.toggle('plotter-status-error', exceeds);
+    }
+    const sizeOk = w >= 5 && w <= 2000 && h >= 5 && h <= 2000;
+    if (btn) btn.disabled = plotterState.busy || !plotterState.file || !sizeOk || (exceeds && !plotterEl('plotter-exceed-ack').checked);
+}
+
+function plotterCssColor(name, fallback) {
+    const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+    return value || fallback;
+}
+
+function plotterDrawPreview() {
+    const canvas = plotterEl('plotter-canvas');
+    if (!canvas) return;
+    const w = Math.max(1, plotterNum('plotter-width', 80));
+    const h = Math.max(1, plotterNum('plotter-height', 80));
+    const wa = plotterWorkArea() || { width: w, height: h };
+    const areaW = Math.max(wa.width, w);
+    const areaH = Math.max(wa.height, h);
+    const margin = 10;
+    const maxW = 480;
+    const maxH = 420;
+    const scale = Math.min((maxW - 2 * margin) / areaW, (maxH - 2 * margin) / areaH);
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = Math.round(areaW * scale + 2 * margin);
+    const cssH = Math.round(areaH * scale + 2 * margin);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.aspectRatio = `${cssW} / ${cssH}`;
+    canvas.style.maxWidth = `${cssW}px`;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    // Y crece hacia arriba (origen abajo a la izquierda), el canvas al revés.
+    const px = x => margin + x * scale;
+    const py = y => cssH - margin - y * scale;
+    const border = plotterCssColor('--border', '#888');
+    const accent = plotterCssColor('--accent-ink', plotterCssColor('--accent', '#888'));
+    const warn = plotterCssColor('--status-warn', accent);
+    // Área de trabajo
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = border;
+    ctx.setLineDash([]);
+    ctx.strokeRect(px(0), py(wa.height), wa.width * scale, wa.height * scale);
+    // Rectángulo del dibujo
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = plotterExceeds() ? warn : border;
+    ctx.strokeRect(px(0), py(h), w * scale, h * scale);
+    ctx.setLineDash([]);
+    // Trazos
+    if (plotterState.paths) {
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.2;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        plotterState.paths.forEach(path => {
+            path.forEach((pt, i) => { if (i === 0) ctx.moveTo(px(pt[0]), py(pt[1])); else ctx.lineTo(px(pt[0]), py(pt[1])); });
+        });
+        ctx.stroke();
+    }
+}
+
+async function plotterRunPreview() {
+    if (plotterState.abort) plotterState.abort.abort();
+    plotterState.abort = null;
+    const statsEl = plotterEl('plotter-stats');
+    if (!plotterState.file) {
+        plotterState.paths = null;
+        if (statsEl) statsEl.textContent = '';
+        plotterSetStatus(t('plotterNoImage'));
+        plotterDrawPreview();
+        return;
+    }
+    const wOk = plotterNum('plotter-width', 0) >= 5 && plotterNum('plotter-height', 0) >= 5;
+    if (!wOk) return;
+    const controller = new AbortController();
+    plotterState.abort = controller;
+    plotterSetStatus(t('plotterProcessing'));
+    try {
+        const response = await fetch('/api/plotter/preview', { method: 'POST', body: plotterFormData(false), signal: controller.signal });
+        if (!response.ok) throw new Error(await plotterErrorText(response));
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        plotterState.paths = data.paths || [];
+        const s = data.stats || {};
+        if (statsEl) statsEl.textContent = t('plotterStats')
+            .replace('{strokes}', s.strokes ?? 0)
+            .replace('{mm}', Number(s.drawn_mm || 0).toFixed(0))
+            .replace('{min}', Number(s.minutes || 0).toFixed(1));
+        plotterSetStatus('');
+    } catch (error) {
+        if (error.name === 'AbortError') return;
+        plotterState.paths = null;
+        if (statsEl) statsEl.textContent = '';
+        plotterSetStatus(error.message || t('plotterError'), true);
+    }
+    plotterDrawPreview();
+}
+
+function plotterSchedulePreview() {
+    clearTimeout(plotterState.timer);
+    plotterUpdateGenerateEnabled();
+    plotterDrawPreview();
+    plotterState.timer = setTimeout(plotterRunPreview, 500);
+}
+
+function plotterSetFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type || '')) {
+        plotterSetStatus(t('plotterError'), true);
+        return;
+    }
+    plotterState.file = file;
+    const nameInput = plotterEl('plotter-name');
+    if (nameInput && !plotterState.nameTouched) nameInput.value = file.name.replace(/\.[^.]+$/, '');
+    plotterSchedulePreview();
+}
+
+function plotterTrapFocus(event) {
+    const modal = plotterEl('plotter-modal');
+    if (!modal?.classList.contains('active')) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closePlotterModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll('button, input, summary, [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function openPlotterModal(fromWizard = false) {
+    const modal = plotterEl('plotter-modal');
+    if (!modal) return;
+    plotterState.opener = document.activeElement;
+    plotterState.fromWizard = fromWizard;
+    plotterState.file = null;
+    plotterState.nameTouched = false;
+    plotterState.paths = null;
+    plotterEl('plotter-file').value = '';
+    plotterEl('plotter-name').value = '';
+    plotterEl('plotter-invert').checked = false;
+    plotterEl('plotter-threshold').value = 128;
+    plotterEl('plotter-detail').value = 0.7;
+    plotterEl('plotter-threshold-out').textContent = '128';
+    plotterEl('plotter-detail-out').textContent = '0.7';
+    plotterEl('plotter-width').value = 80;
+    plotterEl('plotter-height').value = 80;
+    plotterEl('plotter-stats').textContent = '';
+    plotterLoadPen();
+    plotterSetStatus(t('plotterNoImage'));
+    plotterUpdateGenerateEnabled();
+    modal.classList.add('active');
+    plotterDrawPreview();
+    document.addEventListener('keydown', plotterTrapFocus, true);
+    plotterEl('plotter-file').focus();
+}
+
+function closePlotterModal() {
+    clearTimeout(plotterState.timer);
+    if (plotterState.abort) plotterState.abort.abort();
+    plotterState.abort = null;
+    plotterEl('plotter-modal')?.classList.remove('active');
+    document.removeEventListener('keydown', plotterTrapFocus, true);
+    const opener = plotterState.opener;
+    plotterState.opener = null;
+    if (opener && typeof opener.focus === 'function' && document.contains(opener)) opener.focus();
+}
+
+function plotterSelectInWizard(info) {
+    cncWizardState.selectedFile = info;
+    cncWizardState.bounds = null;
+    const note = plotterEl('cnc-wizard-selected-note');
+    if (note) {
+        note.textContent = t('plotterSelectedNote').replace('{name}', info.path);
+        note.hidden = false;
+    }
+    document.querySelectorAll('#cnc-wizard-file-list .cnc-wizard-file-row').forEach(r => r.classList.remove('selected'));
+    updateCncWizardNextEnabled();
+}
+
+async function plotterGenerate() {
+    if (!plotterState.file || plotterState.busy) return;
+    const btn = plotterEl('plotter-generate-btn');
+    plotterState.busy = true;
+    plotterUpdateGenerateEnabled();
+    const label = btn.textContent;
+    btn.textContent = t('plotterGenerating');
+    plotterSavePen();
+    try {
+        const response = await fetch('/api/plotter/generate', { method: 'POST', body: plotterFormData(true) });
+        if (!response.ok) throw new Error(await plotterErrorText(response));
+        const data = await response.json();
+        const savedPath = data.path || `Dibujos/${data.filename}`;
+        const fromWizard = plotterState.fromWizard;
+        showToast(t('plotterSaved').replace('{path}', savedPath));
+        closePlotterModal();
+        renderCncFilesTable();
+        if (document.getElementById('cnc-wizard-modal')?.classList.contains('active')) renderCncWizardFileList();
+        if (fromWizard) {
+            try {
+                const folder = savedPath.includes('/') ? savedPath.slice(0, savedPath.lastIndexOf('/')) : '';
+                const listing = await (await fetch(`/api/browse?path=${encodeURIComponent(folder)}&type=gcode`)).json();
+                const file = (listing.files || []).find(f => stripSectionPrefix(f.id, 'gcode') === savedPath)
+                    || (listing.files || []).find(f => f.name === data.filename);
+                if (file) {
+                    plotterSelectInWizard({ id: file.id, url: file.file_url, name: file.name, path: stripSectionPrefix(file.id, 'gcode') });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    } catch (error) {
+        plotterSetStatus(error.message || t('plotterError'), true);
+    } finally {
+        plotterState.busy = false;
+        btn.textContent = label;
+        plotterUpdateGenerateEnabled();
+    }
+}
+
+(function initPlotterModal() {
+    const modal = plotterEl('plotter-modal');
+    if (!modal) return;
+    plotterEl('cnc-files-plotter-btn')?.addEventListener('click', () => openPlotterModal(false));
+    plotterEl('cnc-wizard-plotter-btn')?.addEventListener('click', () => openPlotterModal(true));
+    plotterEl('plotter-close-btn').addEventListener('click', closePlotterModal);
+    plotterEl('plotter-cancel-btn').addEventListener('click', closePlotterModal);
+    plotterEl('plotter-backdrop').addEventListener('click', closePlotterModal);
+    plotterEl('plotter-generate-btn').addEventListener('click', plotterGenerate);
+    plotterEl('plotter-file').addEventListener('change', event => plotterSetFile(event.target.files[0]));
+    plotterEl('plotter-name').addEventListener('input', () => { plotterState.nameTouched = true; });
+    const dz = plotterEl('plotter-dropzone');
+    ['dragenter', 'dragover'].forEach(name => dz.addEventListener(name, event => { event.preventDefault(); dz.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(name => dz.addEventListener(name, event => { event.preventDefault(); dz.classList.remove('dragover'); }));
+    dz.addEventListener('drop', event => plotterSetFile(event.dataTransfer?.files?.[0]));
+    ['plotter-width', 'plotter-height', 'plotter-invert', 'plotter-threshold', 'plotter-detail', 'plotter-feed', 'plotter-travel'].forEach(id => {
+        plotterEl(id).addEventListener('input', () => {
+            if (id === 'plotter-threshold') plotterEl('plotter-threshold-out').textContent = plotterEl(id).value;
+            if (id === 'plotter-detail') plotterEl('plotter-detail-out').textContent = Number(plotterEl(id).value).toFixed(1);
+            plotterSchedulePreview();
+        });
+    });
+    ['plotter-pen-up', 'plotter-pen-down', 'plotter-plunge'].forEach(id => plotterEl(id).addEventListener('input', plotterSavePen));
+    ['plotter-feed', 'plotter-travel'].forEach(id => plotterEl(id).addEventListener('change', plotterSavePen));
+    plotterEl('plotter-exceed-ack').addEventListener('change', plotterUpdateGenerateEnabled);
+})();
+
 function openCncWizardModal() {
     cncWizardState = { selectedFile: null, originConfirmed: false, fitOk: null, bounds: null };
     const searchInput = document.getElementById('cnc-wizard-file-search');
     if (searchInput) searchInput.value = '';
+    const selectedNote = document.getElementById('cnc-wizard-selected-note');
+    if (selectedNote) selectedNote.hidden = true;
     showCncWizardStep(1);
     renderCncWizardFileList();
     document.getElementById('cnc-wizard-modal')?.classList.add('active');

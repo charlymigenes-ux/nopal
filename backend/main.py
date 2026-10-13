@@ -14,6 +14,7 @@ from backend.errors import PrinterRegistrationError
 from backend.api.models import router as models_router
 from backend.api.status import router as status_router
 from backend.api.upload import router as upload_router
+from backend.api.plotter import router as plotter_router
 from backend.api.printers import router as printers_router
 from backend.api.console import router as console_router
 from backend.api.laser import router as laser_router
@@ -98,6 +99,7 @@ app.mount("/plugins-static", StaticFiles(directory="plugins"), name="plugins-sta
 
 app.include_router(status_router)
 app.include_router(upload_router)
+app.include_router(plotter_router)
 app.include_router(models_router)
 app.include_router(printers_router)
 app.include_router(console_router)
