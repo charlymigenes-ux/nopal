@@ -7940,15 +7940,13 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .cnc-viewer-card {
     padding: 0;
     overflow: hidden;
-    min-height: 480px;
-    flex: 1;
 }
 
 .cnc-viewer-tabs {
     display: flex;
     gap: 4px;
     padding: 10px 14px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
 }
 
@@ -7972,14 +7970,16 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .cnc-viewer-panels {
     position: relative;
     flex: 1;
-    min-height: 420px;
     display: flex;
 }
 
 .cnc-viewer-panel {
     display: none;
     width: 100%;
-    height: 100%;
+}
+
+.cnc-viewer-panel[data-viewer-panel="3d"] {
+    min-height: 260px;
 }
 
 .cnc-viewer-panel.active {
@@ -7989,75 +7989,150 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .cnc-visor-canvas-wrap {
     position: relative;
     flex: 1;
-    background: #081410;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px 10px;
+    background: var(--surface-sunken);
+}
+
+/* Barra superior en flujo normal (leyenda, lectura X/Y/Z y zoom): nunca se
+   sale del visor ni se encima con las pestañas; envuelve en anchos chicos. */
+.cnc-visor-toolbar {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 14px;
+}
+
+/* Marco = lienzo con la proporción exacta del área de trabajo (--cnc-ratio =
+   ancho/alto) + reglas a la izquierda y abajo. El alto del lienzo se limita
+   a 62vh; el ancho se deriva de la proporción, sin franjas vacías. */
+.cnc-visor-frame {
+    --cnc-ratio: 1.6667;
+    --cnc-ruler-w: 34px;
+    --cnc-ruler-h: 18px;
+    width: min(100%, calc(62vh * var(--cnc-ratio) + var(--cnc-ruler-w)));
+    display: grid;
+    grid-template-columns: var(--cnc-ruler-w) minmax(0, 1fr);
+    grid-template-rows: auto var(--cnc-ruler-h);
+}
+
+.cnc-visor-stage {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    aspect-ratio: var(--cnc-ratio);
+    overflow: hidden;
+    background: var(--surface-sunken);
+    /* Borde por fuera (sombra) para que el lienzo mida exactamente el área. */
+    box-shadow: 0 0 0 1px var(--border-control);
+}
+
+.cnc-visor-ruler {
+    position: relative;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    pointer-events: none;
+}
+
+.cnc-visor-ruler span {
+    position: absolute;
+    white-space: nowrap;
+}
+
+.cnc-visor-ruler-x {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.cnc-visor-ruler-x span {
+    top: 3px;
+    transform: translateX(-50%);
+}
+
+.cnc-visor-ruler-y {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.cnc-visor-ruler-y span {
+    right: 5px;
+    transform: translateY(-50%);
 }
 
 .cnc-visor-canvas {
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.cnc-visor-canvas canvas {
+    display: block;
 }
 
 .cnc-visor-origin-marker {
-    /* Antes tenía top/left fijos (decorativo, siempre arriba-izquierda sin
-       importar dónde estuviera X0/Y0 real) — ahora la posición la calcula
-       updateOriginMarker() en cada frame vía transform: translate(), acá
-       solo queda position:absolute como base para ese transform. */
+    /* La posición la calcula updateOriginMarker() en cada frame vía
+       transform: translate(); acá solo queda position:absolute como base. */
     position: absolute;
     top: 0;
     left: 0;
     pointer-events: none;
 }
 
+.cnc-visor-area-note,
+.cnc-sim-note {
+    width: 100%;
+    min-height: 1em;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.cnc-visor-area-note.cnc-area-note-warn,
+.cnc-sim-note {
+    color: var(--status-warn);
+}
+
 .cnc-visor-coords {
-    position: absolute;
-    top: 12px;
-    right: 12px;
     display: flex;
     gap: 12px;
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     font-size: 0.78rem;
-    background: rgba(0, 0, 0, 0.4);
-    padding: 6px 12px;
+    color: var(--text);
+    background: var(--surface-raised);
+    padding: 5px 10px;
     border-radius: 8px;
-    pointer-events: none;
 }
 
 .cnc-visor-nav-col {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 6px;
+    margin-left: auto;
 }
 
 .cnc-visor-legend {
-    position: absolute;
-    bottom: 12px;
-    right: 12px;
-    max-width: 220px;
-    background: var(--card-bg);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-lg);
-    padding: 10px 12px;
-}
-
-.cnc-visor-legend-list {
     list-style: none;
-    margin: 8px 0 0;
+    margin: 0;
     padding: 0;
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 0.76rem;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 0.74rem;
     color: var(--text);
 }
 
-.cnc-visor-legend-list li {
+.cnc-visor-legend li {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .cnc-visor-swatch {
@@ -8068,7 +8143,7 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 }
 
 .cnc-visor-swatch-rapid {
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--text-faint);
 }
 
 .cnc-visor-swatch-cut {
@@ -8076,7 +8151,7 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 }
 
 .cnc-visor-swatch-selected {
-    background: #fbbf24;
+    background: var(--text-strong);
 }
 
 .cnc-visor-empty-state {
@@ -8089,6 +8164,95 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     padding: 20px;
     color: var(--text-muted);
     font-size: 0.85rem;
+}
+
+/* Simulación */
+.cnc-sim {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px 10px;
+    background: var(--surface-sunken);
+}
+
+.cnc-sim-toolbar {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.cnc-sim-speed {
+    display: inline-flex;
+    border: 1px solid var(--border-control);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cnc-sim-speed-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 6px 9px;
+    cursor: pointer;
+}
+
+.cnc-sim-speed-btn + .cnc-sim-speed-btn {
+    border-left: 1px solid var(--border-control);
+}
+
+.cnc-sim-speed-btn.active {
+    background: var(--accent-fill);
+    color: var(--accent-on);
+}
+
+.cnc-sim-pen {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-control);
+    color: var(--text-muted);
+}
+
+.cnc-sim-pen.down {
+    color: var(--accent-ink);
+    border-color: var(--accent-ink);
+}
+
+.cnc-sim-seek {
+    width: 100%;
+    accent-color: var(--accent-fill);
+}
+
+.cnc-sim-stats {
+    width: 100%;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 6px 14px;
+}
+
+.cnc-sim-stats dt {
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.cnc-sim-stats dd {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
 }
 
 .cnc-viewer-soon {
@@ -21501,7 +21665,7 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
 
 .modal-content.plotter-modal-content {
     width: 94%;
-    max-width: 880px;
+    max-width: 1040px;
     height: auto;
     max-height: 92vh;
     overflow-y: auto;
@@ -21511,7 +21675,7 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
 
 .plotter-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
     gap: 20px;
     text-align: left;
 }
@@ -21525,6 +21689,7 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
 }
 
 .plotter-preview-col { align-items: center; }
+.plotter-preview-col .plotter-status { width: 100%; }
 
 .plotter-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 0; }
 .plotter-row { display: flex; gap: 10px; }
@@ -21573,18 +21738,74 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
 .plotter-pen summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; color: var(--text); }
 .plotter-pen[open] summary { margin-bottom: 10px; }
 .plotter-pen .plotter-row { margin-bottom: 8px; }
+.plotter-fine { display: block; }
+.plotter-fine-field { margin-bottom: 12px; }
+.plotter-fine-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.plotter-fine-value { font-size: 0.82rem; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.plotter-fine-ends { display: flex; justify-content: space-between; gap: 8px; font-size: 0.74rem; color: var(--text-muted); }
+.plotter-fine-ends span:last-child { text-align: right; }
 
-.plotter-canvas {
+.cnc-z-nudge-row .laser-step-btn { flex: 1 1 56px; white-space: nowrap; padding-left: 4px; padding-right: 4px; }
+@media (max-width: 520px) { .cnc-z-nudge-row .laser-step-btn { flex: 1 1 28%; } }
+.cnc-z-offset { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.cnc-z-offset[hidden] { display: none; }
+.cnc-z-offset-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cnc-z-offset-value { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+
+.plotter-stage {
+    position: relative;
     width: 100%;
-    height: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--bg);
+    overflow: hidden;
 }
+.plotter-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plotter-original {
+    position: absolute;
+    object-fit: fill;
+    opacity: 0.3;
+    pointer-events: none;
+    user-select: none;
+}
+.plotter-original[hidden] { display: none; }
+.plotter-stage[data-view="trace"] .plotter-original { display: none; }
+.plotter-stage[data-view="original"] .plotter-original { opacity: 1; }
+
+.plotter-view-switch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+.plotter-segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.plotter-seg-btn {
+    padding: 6px 14px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+.plotter-seg-btn:last-child { border-right: 0; }
+.plotter-seg-btn.active { background: rgba(var(--accent-rgb), 0.2); color: var(--text); font-weight: 700; box-shadow: inset 0 -2px 0 var(--accent); }
+.plotter-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .plotter-status { margin: 0; min-height: 1.2em; font-size: 0.82rem; color: var(--text-muted); text-align: center; }
 .plotter-status-error { color: var(--status-danger); }
-.plotter-stats { margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--text); text-align: center; }
+.plotter-status-notice {
+    color: var(--text);
+    padding: 8px 12px;
+    border: 1px solid var(--status-warn);
+    border-radius: 8px;
+    text-align: left;
+}
+.plotter-notes { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.plotter-note {
+    margin: 0;
+    padding: 6px 10px;
+    border-left: 3px solid var(--accent);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: left;
+}
+.plotter-stats { margin: 0; font-size: 0.76rem; color: var(--text-muted); text-align: center; }
 
 .plotter-footer { display: flex; flex-direction: column; gap: 10px; text-align: left; }
 .plotter-buttons { display: flex; justify-content: flex-end; gap: 10px; }

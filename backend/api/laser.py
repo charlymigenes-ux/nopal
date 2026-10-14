@@ -21,6 +21,7 @@ from backend.services.laser_service import (
     get_last_finished_job,
     get_active_job_hosts,
     pause_job,
+    adjust_job_z,
     resume_job,
     cancel_job,
     send_raw_command,
@@ -375,6 +376,19 @@ async def laser_active_jobs_endpoint(user: dict = Depends(require_auth)):
     el frontend no pierda de vista un corte activo aunque el usuario esté
     viendo otro láser/CNC en la interfaz."""
     return {"jobs": get_active_job_hosts()}
+
+
+@router.post("/api/laser/job/z-offset")
+async def laser_job_z_offset_endpoint(delta: float = Form(...), host: Optional[str] = Form(None),
+                                      user: dict = Depends(require_auth)):
+    """Ajuste de Z en vivo (plotter): suma `delta` mm a la Z de lápiz abajo para los trazos que faltan."""
+    if not -1.0 <= delta <= 1.0:
+        raise HTTPException(status_code=400, detail="El paso del ajuste debe estar entre -1 y 1 mm")
+    try:
+        offset = await adjust_job_z(_require_host(host), delta)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"success": True, "z_offset": offset}
 
 
 @router.post("/api/laser/job/pause")

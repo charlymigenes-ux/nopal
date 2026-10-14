@@ -741,6 +741,11 @@ def send_raw_command(host: str, command: str, *, allow_during_job: bool = False)
             timeout=HTTP_TIMEOUT,
         )
         response.raise_for_status()
+        if (response.text or "").strip() == "Error" and command not in REALTIME_SERIAL_COMMANDS:
+            # El firmware contesta HTTP 200 con el cuerpo "Error" cuando su búfer de entrada (256 bytes)
+            # está lleno y TIRA la línea: sin esta revisión NOPAL la daba por enviada y se desfasaba.
+            logger.warning(f"[{host}] La placa no aceptó la línea (búfer lleno): {command!r}")
+            return False
         # DEBUG porque '?' se manda varias veces por segundo entre todos los
         # dispositivos activos — sería puro ruido a INFO.
         logger.debug(f"[{host}] TX: {command!r}")
@@ -1511,6 +1516,35 @@ async def home(host: str, axes: Optional[str] = None) -> bool:
     return await asyncio.get_event_loop().run_in_executor(None, send_raw_command, host, "$H")
 
 
+_Z_WORD = re.compile(r"Z(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+Z_OFFSET_LIMIT_MM = 5.0
+
+
+def _lowest_z(lines: List[str]) -> Optional[float]:
+    """La Z más baja que usa el archivo, si usa al menos dos Z distintas (un plotter: lápiz arriba y
+    abajo); None si no hay Z o es una sola (un láser: no hay nada que ajustar)."""
+    values = set()
+    for line in lines:
+        text = line.split(";", 1)[0]
+        for found in _Z_WORD.findall(text):
+            values.add(float(found))
+    return min(values) if len(values) >= 2 else None
+
+
+def apply_z_offset(line: str, z_ref: Optional[float], offset: float) -> str:
+    """La línea con el desplazamiento aplicado a las Z que igualan la Z de lápiz abajo del archivo."""
+    if not offset or z_ref is None or "Z" not in line.upper():
+        return line
+
+    def shift(match):
+        value = float(match.group(1))
+        if abs(value - z_ref) < 1e-6:
+            return "Z" + f"{value + offset:.3f}".rstrip("0").rstrip(".")
+        return match.group(0)
+
+    return _Z_WORD.sub(shift, line)
+
+
 class LaserJob:
     def __init__(self, host: str, lines: List[str], filename: str = "", source: str = "stream"):
         self.host = host
@@ -1524,6 +1558,11 @@ class LaserJob:
         self.cancel_requested = False
         self.pause_requested = False
         self.started_at = time.time()
+        # Ajuste de Z en vivo (plotter: bajar o subir el lápiz con el trabajo corriendo). `z_ref` es
+        # la Z más baja del archivo (el lápiz abajo); el desplazamiento solo se aplica a las líneas
+        # que aún no se han mandado y que van a esa Z.
+        self.z_offset = 0.0
+        self.z_ref = _lowest_z(lines)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -1533,6 +1572,8 @@ class LaserJob:
             "current": self.current,
             "total": self.total,
             "error": self.error_message,
+            "z_offset": round(self.z_offset, 3),
+            "has_z": self.z_ref is not None,
         }
 
 
@@ -1541,6 +1582,8 @@ class LaserJob:
 _jobs: Dict[str, LaserJob] = {}
 
 
+SEND_RETRIES = 40            # reintentos seguidos de una misma línea antes de abortar el trabajo
+SEND_RETRY_WAIT_S = 0.2
 GRBL_RX_BUFFER_SIZE = 120  # margen seguro bajo el buffer serie real de GRBL/grblHAL (128 bytes)
 
 
@@ -1564,6 +1607,7 @@ async def _run_job(job: LaserJob):
     pending_lengths: List[int] = []  # bytes en tránsito por línea enviada, en orden
     buffer_used = 0
     idx = 0
+    send_failures = 0
 
     try:
         while idx < len(lines) or pending_lengths:
@@ -1581,15 +1625,24 @@ async def _run_job(job: LaserJob):
 
             # Llena el buffer serie con tantas líneas como entren de una vez.
             while idx < len(lines):
-                next_line = lines[idx]
+                next_line = apply_z_offset(lines[idx], job.z_ref, job.z_offset)
                 needed = len(next_line) + 1  # +1 por el salto de línea
                 if pending_lengths and buffer_used + needed > GRBL_RX_BUFFER_SIZE:
                     break
                 sent = await loop.run_in_executor(None, lambda line=next_line: send_raw_command(job.host, line, allow_during_job=True))
                 if not sent:
-                    job.state = "error"
-                    job.error_message = f"No se pudo enviar la línea {job.current + 1}"
-                    return
+                    # La placa no la aceptó (búfer de entrada lleno) o la red falló un momento: se reintenta
+                    # la MISMA línea; con líneas en vuelo, tras el siguiente "ok" (ya hay lugar).
+                    send_failures += 1
+                    if send_failures > SEND_RETRIES:
+                        job.state = "error"
+                        job.error_message = f"No se pudo enviar la línea {job.current + 1}"
+                        return
+                    if pending_lengths:
+                        break
+                    await asyncio.sleep(SEND_RETRY_WAIT_S)
+                    continue
+                send_failures = 0
                 pending_lengths.append(needed)
                 buffer_used += needed
                 idx += 1
@@ -1611,10 +1664,10 @@ async def _run_job(job: LaserJob):
             elif normalized.startswith("error") or normalized.startswith("alarm"):
                 job.state = "error"
                 job.error_message = f"{text} (línea {job.current + 1})"
-                # Diagnóstico: la línea que la placa rechazó y las 3 anteriores, tal como se mandaron.
+                # Diagnóstico: las líneas que iban en vuelo (la rechazada es la primera) y las 3 anteriores.
                 logger.warning(
-                    f"[{job.host}] Línea rechazada {job.current + 1}: "
-                    f"{lines[job.current] if job.current < len(lines) else ''!r}; "
+                    f"[{job.host}] Línea rechazada {job.current + 1} ({text}): enviadas {idx}, en vuelo "
+                    f"{len(pending_lengths)} ({buffer_used} bytes): {lines[job.current:idx]!r}; "
                     f"anteriores: {lines[max(0, job.current - 3):job.current]!r}"
                 )
                 return
@@ -1894,6 +1947,23 @@ def get_laser_jobs_with_errors() -> List[Dict[str, Any]]:
         for host, job in _jobs.items()
         if job.state == "error"
     ]
+
+
+async def adjust_job_z(host: str, delta: float) -> float:
+    """Sube o baja el lápiz (la Z de "abajo" del archivo) mientras corre el trabajo: se suma `delta` al
+    desplazamiento y vale desde el siguiente trazo. Devuelve el desplazamiento total en mm.
+    ValueError con un mensaje legible si no aplica."""
+    job = _jobs.get(host)
+    if not job or job.state not in ("running", "paused"):
+        raise ValueError("No hay un trabajo en curso")
+    if job.z_ref is None:
+        raise ValueError("Este trabajo no sube ni baja un lápiz (no tiene movimientos de Z)")
+    new = round(job.z_offset + float(delta), 3)
+    if abs(new) > Z_OFFSET_LIMIT_MM:
+        raise ValueError(f"El ajuste de Z no puede pasar de ±{Z_OFFSET_LIMIT_MM:g} mm")
+    job.z_offset = new
+    logger.info(f"[{host}] Ajuste de Z en vivo: {new:+.3f} mm (lápiz abajo en Z{job.z_ref + new:g})")
+    return new
 
 
 async def pause_job(host: str) -> bool:

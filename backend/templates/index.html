@@ -1651,10 +1651,21 @@
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 7l-5-5-5 5"/></svg>
                                     <span data-i18n="cncProbe">Probe</span>
                                 </button>
+                            </div>
+                            <div class="cnc-job-buttons-row cnc-z-nudge-row">
                                 <button type="button" class="laser-step-btn" data-z-nudge="0.5">Z +0.5</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="0.1">Z +0.1</button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="0.02">Z +0.02</button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="-0.02">Z -0.02</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.1">Z -0.1</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.5">Z -0.5</button>
+                            </div>
+                            <div class="cnc-z-offset" id="cnc-z-offset" hidden>
+                                <div class="cnc-z-offset-head">
+                                    <span class="cnc-z-offset-value" id="cnc-z-offset-value" role="status" aria-live="polite"></span>
+                                    <button type="button" class="laser-step-btn" id="cnc-z-offset-reset" data-i18n="zOffsetReset" data-i18n-aria-label="zOffsetResetAria" aria-label="Quitar el ajuste de Z del lápiz">Quitar ajuste</button>
+                                </div>
+                                <p class="plotter-help" data-i18n="zOffsetHelp">Sube o baja el lápiz del siguiente trazo en adelante. Negativo = más presión.</p>
                             </div>
                             <div class="cnc-override-block cnc-advanced-only grbl-only">
                                 <span class="cnc-override-label" data-i18n="cncFeedOverride">Feed Override</span>
@@ -1786,49 +1797,50 @@
                             <div class="cnc-viewer-panels" id="cnc-viewer-panels">
                                 <div class="cnc-viewer-panel active" id="cnc-viewer-panel-visor" data-viewer-panel="visor">
                                     <div class="cnc-visor-canvas-wrap" id="cnc-visor-canvas-wrap">
-                                        <div class="cnc-visor-canvas" id="cnc-visor-canvas"></div>
-                                        <div class="cnc-visor-origin-marker" id="cnc-visor-origin-marker" hidden>
-                                            <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
-                                                <circle cx="9" cy="25" r="3" fill="#3b82f6"/>
-                                                <line x1="9" y1="25" x2="9" y2="9" stroke="#22c55e" stroke-width="2"/>
-                                                <polyline points="5 13 9 9 13 13" stroke="#22c55e" stroke-width="2" fill="none"/>
-                                                <line x1="9" y1="25" x2="25" y2="25" stroke="#ef4444" stroke-width="2"/>
-                                                <polyline points="21 21 25 25 21 29" stroke="#ef4444" stroke-width="2" fill="none"/>
-                                            </svg>
-                                        </div>
-                                        <div class="cnc-visor-coords" id="cnc-visor-coords" hidden>
-                                            <span>X <strong id="cnc-visor-coord-x">0.000</strong></span>
-                                            <span>Y <strong id="cnc-visor-coord-y">0.000</strong></span>
-                                            <span>Z <strong id="cnc-visor-coord-z">0.000</strong></span>
-                                        </div>
-                                        <div class="cnc-visor-nav-col" id="cnc-visor-nav-col" hidden>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="fit" data-i18n-title="cncVisorFit" title="Ajustar al área">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-                                            </button>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-in" data-i18n-title="cncVisorZoomIn" title="Acercar">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                            </button>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-out" data-i18n-title="cncVisorZoomOut" title="Alejar">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                            </button>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="fullscreen" data-i18n-title="cncVisorFullscreen" title="Pantalla completa">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11 0h3a2 2 0 0 0 2-2v-3"/></svg>
-                                            </button>
-                                        </div>
-                                        <div class="cnc-visor-legend card-collapsible collapsed" id="cnc-visor-legend" hidden>
-                                            <div class="card-header-std">
-                                                <span class="card-header-std-title" data-i18n="cncVisorLegendTitle">COLORES DE CARACTERÍSTICAS</span>
-                                                <button type="button" class="card-collapse-toggle collapsed">
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                                </button>
-                                            </div>
-                                            <ul class="cnc-visor-legend-list">
+                                        <div class="cnc-visor-toolbar">
+                                            <ul class="cnc-visor-legend" id="cnc-visor-legend" hidden>
                                                 <li><span class="cnc-visor-swatch cnc-visor-swatch-rapid"></span><span data-i18n="cncVisorLegendRapid">Rápido (G0)</span></li>
                                                 <li><span class="cnc-visor-swatch cnc-visor-swatch-cut"></span><span data-i18n="cncVisorLegendCut">Corte (G1/G2/G3)</span></li>
                                                 <li><span class="cnc-visor-swatch cnc-visor-swatch-selected"></span><span data-i18n="cncVisorLegendSelected">Seleccionado</span></li>
                                             </ul>
+                                            <div class="cnc-visor-coords" id="cnc-visor-coords" hidden>
+                                                <span>X <strong id="cnc-visor-coord-x">0.000</strong></span>
+                                                <span>Y <strong id="cnc-visor-coord-y">0.000</strong></span>
+                                                <span>Z <strong id="cnc-visor-coord-z">0.000</strong></span>
+                                            </div>
+                                            <div class="cnc-visor-nav-col" id="cnc-visor-nav-col" hidden>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="fit" data-i18n-title="cncVisorFit" data-i18n-aria-label="cncVisorFit" title="Ajustar al área" aria-label="Ajustar al área">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                                                </button>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-in" data-i18n-title="cncVisorZoomIn" data-i18n-aria-label="cncVisorZoomIn" title="Acercar" aria-label="Acercar">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                                </button>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-out" data-i18n-title="cncVisorZoomOut" data-i18n-aria-label="cncVisorZoomOut" title="Alejar" aria-label="Alejar">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                                </button>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="fullscreen" data-i18n-title="cncVisorFullscreen" data-i18n-aria-label="cncVisorFullscreen" title="Pantalla completa" aria-label="Pantalla completa">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11 0h3a2 2 0 0 0 2-2v-3"/></svg>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div class="cnc-visor-empty-state" id="cnc-visor-empty-state" data-i18n="cncVisorEmptyState">Selecciona un archivo en ARCHIVOS para previsualizarlo</div>
+                                        <div class="cnc-visor-frame" id="cnc-visor-frame">
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-y" id="cnc-visor-ruler-y" aria-hidden="true"></div>
+                                            <div class="cnc-visor-stage" id="cnc-visor-stage">
+                                                <div class="cnc-visor-canvas" id="cnc-visor-canvas"></div>
+                                                <div class="cnc-visor-origin-marker" id="cnc-visor-origin-marker" hidden>
+                                                    <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                                                        <circle cx="9" cy="25" r="3" fill="var(--status-info)"/>
+                                                        <line x1="9" y1="25" x2="9" y2="9" stroke="var(--status-ok)" stroke-width="2"/>
+                                                        <polyline points="5 13 9 9 13 13" stroke="var(--status-ok)" stroke-width="2" fill="none"/>
+                                                        <line x1="9" y1="25" x2="25" y2="25" stroke="var(--status-danger)" stroke-width="2"/>
+                                                        <polyline points="21 21 25 25 21 29" stroke="var(--status-danger)" stroke-width="2" fill="none"/>
+                                                    </svg>
+                                                </div>
+                                                <div class="cnc-visor-empty-state" id="cnc-visor-empty-state" data-i18n="cncVisorEmptyState">Selecciona un archivo en ARCHIVOS para previsualizarlo</div>
+                                            </div>
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-x" id="cnc-visor-ruler-x" aria-hidden="true"></div>
+                                        </div>
+                                        <div class="cnc-visor-area-note" id="cnc-visor-area-note" role="status"></div>
                                     </div>
                                 </div>
                                 <div class="cnc-viewer-panel" id="cnc-viewer-panel-3d" data-viewer-panel="3d">
@@ -1839,10 +1851,35 @@
                                     </div>
                                 </div>
                                 <div class="cnc-viewer-panel" id="cnc-viewer-panel-sim" data-viewer-panel="sim">
-                                    <div class="cnc-viewer-soon">
-                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                                        <strong data-i18n="cncViewerSoonTitle">Próximamente</strong>
-                                        <p data-i18n="cncViewerSimSoonBody">Simulación de mecanizado con reproducción animada — en desarrollo.</p>
+                                    <div class="cnc-sim" id="cnc-sim">
+                                        <div class="cnc-sim-toolbar">
+                                            <button type="button" class="theme-option-icon-btn cnc-sim-btn" id="cnc-sim-play" title="Reproducir" aria-label="Reproducir"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+                                            <button type="button" class="theme-option-icon-btn cnc-sim-btn" id="cnc-sim-restart" data-i18n-title="cncSimRestart" data-i18n-aria-label="cncSimRestart" title="Reiniciar" aria-label="Reiniciar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+                                            <div class="cnc-sim-speed" id="cnc-sim-speed" role="group" data-i18n-aria-label="cncSimSpeed" aria-label="Velocidad">
+                                                <button type="button" class="cnc-sim-speed-btn active" data-sim-speed="1" aria-pressed="true">1×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="2" aria-pressed="false">2×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="5" aria-pressed="false">5×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="10" aria-pressed="false">10×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="50" aria-pressed="false">50×</button>
+                                            </div>
+                                            <span class="cnc-sim-pen" id="cnc-sim-pen" hidden></span>
+                                        </div>
+                                        <div class="cnc-visor-frame cnc-sim-frame" id="cnc-sim-frame">
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-y" id="cnc-sim-ruler-y" aria-hidden="true"></div>
+                                            <div class="cnc-visor-stage" id="cnc-sim-stage">
+                                                <canvas class="cnc-visor-canvas" id="cnc-sim-canvas"></canvas>
+                                                <div class="cnc-visor-empty-state" id="cnc-sim-empty" data-i18n="cncSimEmpty">Selecciona un archivo en ARCHIVOS para simularlo</div>
+                                            </div>
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-x" id="cnc-sim-ruler-x" aria-hidden="true"></div>
+                                        </div>
+                                        <input type="range" class="cnc-sim-seek" id="cnc-sim-seek" min="0" max="10000" value="0" step="1" data-i18n-aria-label="cncSimSeek" aria-label="Posición de la simulación" disabled>
+                                        <dl class="cnc-sim-stats" id="cnc-sim-stats">
+                                            <div><dt data-i18n="cncSimLines">Líneas</dt><dd id="cnc-sim-lines">—</dd></div>
+                                            <div><dt data-i18n="cncSimDrawn">Distancia dibujada</dt><dd id="cnc-sim-drawn">—</dd></div>
+                                            <div><dt data-i18n="cncSimTravel">Distancia de traslado</dt><dd id="cnc-sim-travel">—</dd></div>
+                                            <div><dt data-i18n="cncSimTime">Tiempo</dt><dd id="cnc-sim-time">—</dd></div>
+                                        </dl>
+                                        <div class="cnc-sim-note" id="cnc-sim-note" role="status"></div>
                                     </div>
                                 </div>
                             </div>
@@ -4939,20 +4976,6 @@
                         </div>
                     </div>
                     <p class="plotter-help" id="plotter-area-note"></p>
-                    <label class="plotter-check" for="plotter-invert">
-                        <input type="checkbox" id="plotter-invert">
-                        <span data-i18n="plotterInvert">Invertir (líneas claras sobre fondo oscuro)</span>
-                    </label>
-                    <div class="plotter-field">
-                        <label for="plotter-threshold" class="plotter-label"><span data-i18n="plotterThreshold">Umbral</span>: <output id="plotter-threshold-out" for="plotter-threshold">128</output></label>
-                        <input type="range" id="plotter-threshold" min="1" max="254" step="1" value="128" aria-describedby="plotter-threshold-help">
-                        <p class="plotter-help" id="plotter-threshold-help" data-i18n="plotterThresholdHelp">Qué tan oscuro debe ser un punto para dibujarse. Súbelo si faltan líneas.</p>
-                    </div>
-                    <div class="plotter-field">
-                        <label for="plotter-detail" class="plotter-label"><span data-i18n="plotterDetail">Detalle</span>: <output id="plotter-detail-out" for="plotter-detail">0.7</output></label>
-                        <input type="range" id="plotter-detail" min="0.2" max="5" step="0.1" value="0.7" aria-describedby="plotter-detail-help">
-                        <p class="plotter-help" id="plotter-detail-help" data-i18n="plotterDetailHelp">Separación entre trazos en mm. Menos es más fino pero tarda más.</p>
-                    </div>
                     <details class="plotter-pen" id="plotter-pen">
                         <summary data-i18n="plotterPenSection">Lápiz y velocidades</summary>
                         <div class="plotter-row">
@@ -4976,9 +4999,37 @@
                             </div>
                             <div class="plotter-field">
                                 <label for="plotter-travel" class="plotter-label" data-i18n="plotterTravel">Traslado (mm/min)</label>
-                                <input type="number" id="plotter-travel" class="plotter-input" min="10" max="20000" step="50" value="3000">
+                                <input type="number" id="plotter-travel" class="plotter-input" min="10" max="20000" step="50" value="2000">
                             </div>
                         </div>
+                    </details>
+                    <details class="plotter-pen plotter-fine" id="plotter-fine">
+                        <summary data-i18n="plotterFineSection">Ajustes finos (opcional)</summary>
+                    <div class="plotter-field plotter-fine-field">
+                        <div class="plotter-fine-head">
+                            <label for="plotter-smoothing" class="plotter-label" data-i18n="plotterFineSmooth">Suavidad de las líneas</label>
+                            <output class="plotter-fine-value" id="plotter-smoothing-out" for="plotter-smoothing"></output>
+                        </div>
+                        <input type="range" id="plotter-smoothing" min="0.3" max="3" step="0.1" value="1" data-fine-default="1">
+                        <div class="plotter-fine-ends" aria-hidden="true"><span data-i18n="plotterFineSmoothLo">Más fiel a la imagen</span><span data-i18n="plotterFineSmoothHi">Más suave</span></div>
+                    </div>
+                    <div class="plotter-field plotter-fine-field">
+                        <div class="plotter-fine-head">
+                            <label for="plotter-cleanup" class="plotter-label" data-i18n="plotterFineCleanup">Limpieza de detalles pequeños</label>
+                            <output class="plotter-fine-value" id="plotter-cleanup-out" for="plotter-cleanup"></output>
+                        </div>
+                        <input type="range" id="plotter-cleanup" min="0" max="4" step="0.1" value="1" data-fine-default="1">
+                        <div class="plotter-fine-ends" aria-hidden="true"><span data-i18n="plotterFineCleanupLo">Conservar todo</span><span data-i18n="plotterFineCleanupHi">Quitar detalles</span></div>
+                    </div>
+                    <div class="plotter-field plotter-fine-field">
+                        <div class="plotter-fine-head">
+                            <label for="plotter-detail" class="plotter-label" data-i18n="plotterFineDetail">Precisión del trazo</label>
+                            <output class="plotter-fine-value" id="plotter-detail-out" for="plotter-detail"></output>
+                        </div>
+                        <input type="range" id="plotter-detail" min="0.2" max="5" step="0.1" value="1" data-fine-default="1">
+                        <div class="plotter-fine-ends" aria-hidden="true"><span data-i18n="plotterFineDetailLo">Más puntos (más fino)</span><span data-i18n="plotterFineDetailHi">Menos puntos (más rápido)</span></div>
+                    </div>
+                        <button type="button" class="btn-file-action" id="plotter-fine-reset" data-i18n="plotterFineReset">Restablecer ajustes</button>
                     </details>
                     <div class="plotter-field">
                         <label for="plotter-name" class="plotter-label" data-i18n="plotterName">Nombre del archivo</label>
@@ -4986,8 +5037,20 @@
                     </div>
                 </div>
                 <div class="plotter-preview-col">
-                    <canvas id="plotter-canvas" class="plotter-canvas" width="480" height="480" role="img" data-i18n-aria-label="plotterCanvasLabel" aria-label="Vista previa del dibujo en el área de trabajo"></canvas>
+                    <div class="plotter-view-switch" role="radiogroup" aria-labelledby="plotter-view-label">
+                        <span class="plotter-label" id="plotter-view-label" data-i18n="plotterViewLabel">Vista</span>
+                        <div class="plotter-segmented">
+                            <button type="button" class="plotter-seg-btn" role="radio" aria-checked="false" data-view="trace" data-i18n="plotterViewTrace">Trazo</button>
+                            <button type="button" class="plotter-seg-btn active" role="radio" aria-checked="true" data-view="overlay" data-i18n="plotterViewOverlay">Superpuesto</button>
+                            <button type="button" class="plotter-seg-btn" role="radio" aria-checked="false" data-view="original" data-i18n="plotterViewOriginal">Original</button>
+                        </div>
+                    </div>
+                    <div class="plotter-stage" id="plotter-stage" data-view="overlay">
+                        <img id="plotter-original" class="plotter-original" alt="" hidden>
+                        <canvas id="plotter-canvas" class="plotter-canvas" width="640" height="640" role="img" data-i18n-aria-label="plotterCanvasLabel" aria-label="Vista previa del dibujo en el área de trabajo"></canvas>
+                    </div>
                     <p class="plotter-status" id="plotter-status" role="status" aria-live="polite"></p>
+                    <div class="plotter-notes" id="plotter-notes" role="status" aria-live="polite"></div>
                     <p class="plotter-stats" id="plotter-stats"></p>
                 </div>
             </div>

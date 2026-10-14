@@ -14328,31 +14328,120 @@ function computeWorkAreaFit(bounds, workArea) {
     return { fits: overflowX === 0 && overflowY === 0, designWidth, designHeight, overflowX, overflowY };
 }
 
-// Dibuja el rectángulo del área de trabajo registrada como referencia,
-// como hijo de `group` con coordenadas crudas de G-code — al ser hijo,
-// hereda la traslación del padre automáticamente, sin compensar nada a mano.
-function drawWorkAreaBounds(group, workArea, homeCorner, fits) {
-    if (!workArea || !workArea.width || !workArea.height) return null;
-    const { right, top } = parseHomeCorner(homeCorner);
-    const x0 = right ? -workArea.width : 0;
-    const y0 = top ? -workArea.height : 0;
+// Dibuja el rectángulo del área de trabajo (X0 Y0 abajo a la izquierda hasta
+// ancho × alto) en coordenadas crudas de G-code. Es el mismo rectángulo que
+// delimita el lienzo del visor en el encuadre "fit".
+function drawWorkAreaBounds(group, area, material) {
+    if (!area || !area.width || !area.height) return null;
     const points = [
-        new THREE.Vector3(x0, y0, 0),
-        new THREE.Vector3(x0 + workArea.width, y0, 0),
-        new THREE.Vector3(x0 + workArea.width, y0 + workArea.height, 0),
-        new THREE.Vector3(x0, y0 + workArea.height, 0),
-        new THREE.Vector3(x0, y0, 0),
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(area.width, 0, 0),
+        new THREE.Vector3(area.width, area.height, 0),
+        new THREE.Vector3(0, area.height, 0),
+        new THREE.Vector3(0, 0, 0),
     ];
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineDashedMaterial({
-        color: fits === false ? 0xef4444 : 0x22c55e,
-        dashSize: workArea.width * 0.01,
-        gapSize: workArea.width * 0.006,
-    });
-    const line = new THREE.Line(geometry, material);
-    line.computeLineDistances();
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material);
     group.add(line);
     return line;
+}
+
+// Área de trabajo por omisión cuando la máquina no declara una: mismo valor
+// del perfil CNC 3018 de printer_profiles.py (300 × 180 mm).
+const CNC_DEFAULT_WORK_AREA = { width: 300, height: 180 };
+
+function resolveCncWorkArea(workArea) {
+    const declared = !!(workArea && workArea.width > 0 && workArea.height > 0);
+    return {
+        declared,
+        width: declared ? Number(workArea.width) : CNC_DEFAULT_WORK_AREA.width,
+        height: declared ? Number(workArea.height) : CNC_DEFAULT_WORK_AREA.height,
+    };
+}
+
+// Lee un color del tema activo (variables CSS) para pintarlo en WebGL/canvas,
+// que no entienden var(). El fallback solo aplica si el tema no la define.
+function cncThemeColor(name, fallback) {
+    try {
+        const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+        return value || fallback;
+    } catch (error) {
+        return fallback;
+    }
+}
+
+function cncNiceStep(span, maxTicks) {
+    const raw = span / Math.max(1, maxTicks);
+    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    for (const m of [1, 2, 5, 10]) {
+        if (m * pow >= raw) return m * pow;
+    }
+    return 10 * pow;
+}
+
+// Reglas (marcas con valores en mm) alrededor del lienzo, para el rango de
+// mundo visible [x0,x1] × [y0,y1]. Origen X0/Y0 abajo a la izquierda.
+function renderCncRulers(rulerX, rulerY, stage, range) {
+    if (!rulerX || !rulerY || !stage) return;
+    const width = stage.clientWidth || 300;
+    const height = stage.clientHeight || 170;
+    const build = (min, max, maxTicks, vertical) => {
+        const step = cncNiceStep(max - min, maxTicks);
+        let html = '';
+        for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-6; v += step) {
+            const pct = ((v - min) / (max - min)) * 100;
+            const label = Number.isInteger(v) ? String(v) : v.toFixed(1);
+            html += vertical
+                ? `<span style="top:${(100 - pct).toFixed(2)}%">${label}</span>`
+                : `<span style="left:${pct.toFixed(2)}%">${label}</span>`;
+        }
+        return html;
+    };
+    rulerX.innerHTML = build(range.x0, range.x1, Math.max(2, Math.floor(width / 56)), false);
+    rulerY.innerHTML = build(range.y0, range.y1, Math.max(2, Math.floor(height / 28)), true);
+}
+
+// Encuadre compartido por VISOR y SIMULATION: el lienzo tiene exactamente la
+// proporción del área de trabajo, así que el encuadre "fit" es el área misma;
+// solo si el diseño se sale del área se amplía (conservando la proporción del
+// lienzo) para que nada quede oculto.
+function computeCncFitView(area, bounds) {
+    let minX = 0, minY = 0, maxX = area.width, maxY = area.height;
+    let overflow = false;
+    if (bounds) {
+        const eps = 1e-6;
+        overflow = bounds.minX < -eps || bounds.minY < -eps || bounds.maxX > area.width + eps || bounds.maxY > area.height + eps;
+        if (overflow) {
+            minX = Math.min(minX, bounds.minX);
+            minY = Math.min(minY, bounds.minY);
+            maxX = Math.max(maxX, bounds.maxX);
+            maxY = Math.max(maxY, bounds.maxY);
+        }
+    }
+    const ratio = area.width / area.height;
+    let w = Math.max(maxX - minX, (maxY - minY) * ratio);
+    if (overflow) w *= 1.06;
+    return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w, h: w / ratio, overflow };
+}
+
+function setCncStageRatio(area) {
+    ['cnc-visor-frame', 'cnc-sim-frame'].forEach(id => {
+        const frame = document.getElementById(id);
+        if (frame) frame.style.setProperty('--cnc-ratio', String(area.width / area.height));
+    });
+}
+
+function updateCncAreaNote(area, bounds, overflow) {
+    const note = document.getElementById('cnc-visor-area-note');
+    if (!note) return;
+    let text = t('cncViewerAreaNote').replace('{w}', area.width).replace('{h}', area.height);
+    if (!area.declared) text += ' ' + t('cncViewerAreaDefault');
+    note.classList.toggle('cnc-area-note-warn', !!overflow);
+    if (overflow && bounds) {
+        text += ' · ' + t('cncViewerOverflow')
+            .replace('{w}', (bounds.maxX - bounds.minX).toFixed(0))
+            .replace('{h}', (bounds.maxY - bounds.minY).toFixed(0));
+    }
+    note.textContent = text;
 }
 
 async function renderCncVisor(container, fileUrl, deviceInfo) {
@@ -14373,91 +14462,103 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         return { empty: true };
     }
 
+    const area = resolveCncWorkArea(deviceInfo && deviceInfo.workArea);
+    const eps = 1e-6;
+    const outsideArea = p => p.x < -eps || p.y < -eps || p.x > area.width + eps || p.y > area.height + eps;
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x081410);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0x081410, 1);
     container.appendChild(renderer.domElement);
-
-    const light = new THREE.DirectionalLight(0xffffff, 0.9);
-    light.position.set(5, 5, 5);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x999999, 1.2));
 
     const group = new THREE.Group();
     scene.add(group);
 
+    // Grilla del área (cada paso "bonito" de mm) y rectángulo del área.
+    const gridStep = cncNiceStep(Math.max(area.width, area.height), 10);
+    const gridPoints = [];
+    for (let gx = gridStep; gx < area.width; gx += gridStep) gridPoints.push(new THREE.Vector3(gx, 0, -1), new THREE.Vector3(gx, area.height, -1));
+    for (let gy = gridStep; gy < area.height; gy += gridStep) gridPoints.push(new THREE.Vector3(0, gy, -1), new THREE.Vector3(area.width, gy, -1));
+    const gridMaterial = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55 });
+    group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gridPoints), gridMaterial));
+
+    const fit = computeWorkAreaFit(toolpath.bounds, area);
+    const areaMaterial = new THREE.LineBasicMaterial();
+    const workAreaLine = drawWorkAreaBounds(group, area, areaMaterial);
+
+    const rapidMaterial = new THREE.LineDashedMaterial({ transparent: true, opacity: 0.5, dashSize: Math.max(area.width * 0.008, 1), gapSize: Math.max(area.width * 0.006, 0.8) });
     if (toolpath.rapidSegments.length) {
         const geometry = new THREE.BufferGeometry().setFromPoints(toolpath.rapidSegments);
-        const material = new THREE.LineDashedMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, dashSize: 2, gapSize: 1.5 });
-        const rapidLine = new THREE.LineSegments(geometry, material);
+        const rapidLine = new THREE.LineSegments(geometry, rapidMaterial);
         rapidLine.computeLineDistances();
         group.add(rapidLine);
     }
 
-    const CUT_COLOR = 0xf59e0b;
-    const SELECTED_COLOR = 0xfbbf24;
     const cutLines = toolpath.cutPaths.map(path => {
         const geometry = new THREE.BufferGeometry().setFromPoints(path.points);
-        const material = new THREE.LineBasicMaterial({ color: CUT_COLOR });
+        const material = new THREE.LineBasicMaterial();
         const line = new THREE.Line(geometry, material);
         line.userData.cncPath = path;
+        line.userData.outside = path.points.some(outsideArea);
         group.add(line);
         return line;
     });
 
-    // El box/center/maxDim de encuadre se calculan SOLO con el trazado real
-    // (antes de agregar el rectángulo del área de trabajo) — si el área de
-    // trabajo es mucho más grande que el diseño (caso típico), incluirla acá
-    // haría que "ajustar al área" aleje tanto la vista que el diseño quede
-    // minúsculo. El rectángulo queda como referencia visual, no afecta el zoom.
-    const box = new THREE.Box3().setFromObject(group);
-    const center = new THREE.Vector3();
-    box.getCenter(center);
+    let selectedLine = null;
+    const applyColors = () => {
+        const bg = cncThemeColor('--surface-sunken', '#081410');
+        renderer.setClearColor(new THREE.Color(bg), 1);
+        gridMaterial.color.set(cncThemeColor('--border-subtle', '#2e2f34'));
+        areaMaterial.color.set(cncThemeColor(fitView.overflow ? '--status-danger' : '--accent-ink', '#22c55e'));
+        rapidMaterial.color.set(cncThemeColor('--text-faint', '#8a8f97'));
+        const cut = cncThemeColor('--orange', '#fbbf24');
+        const danger = cncThemeColor('--status-danger', '#f87171');
+        const selected = cncThemeColor('--text-strong', '#ffffff');
+        cutLines.forEach(line => line.material.color.set(line === selectedLine ? selected : (line.userData.outside ? danger : cut)));
+    };
 
-    const fit = computeWorkAreaFit(toolpath.bounds, deviceInfo && deviceInfo.workArea);
-    const workAreaLine = drawWorkAreaBounds(group, deviceInfo && deviceInfo.workArea, deviceInfo && deviceInfo.homeCorner, fit ? fit.fits : null);
-
-    group.position.sub(center);
-
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, 1);
-    const view = { size: maxDim * 1.15, offsetX: 0, offsetY: 0 };
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, maxDim * 10 + 100);
-    camera.position.set(0, 0, maxDim * 5 + 50);
+    const maxDim = Math.max(area.width, area.height);
+    const fitView = computeCncFitView(area, toolpath.bounds);
+    const view = { cx: fitView.cx, cy: fitView.cy, w: fitView.w };
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100000);
     camera.up.set(0, 1, 0);
-    camera.lookAt(0, 0, 0);
+
+    const stage = document.getElementById('cnc-visor-stage');
+    const rulerX = document.getElementById('cnc-visor-ruler-x');
+    const rulerY = document.getElementById('cnc-visor-ruler-y');
 
     const applyFrustum = (width, height) => {
         const aspect = width / height || 1;
-        const halfHeight = view.size / 2;
-        const halfWidth = halfHeight * aspect;
-        camera.left = -halfWidth + view.offsetX;
-        camera.right = halfWidth + view.offsetX;
-        camera.top = halfHeight + view.offsetY;
-        camera.bottom = -halfHeight + view.offsetY;
+        const halfW = view.w / 2;
+        const halfH = halfW / aspect;
+        camera.left = -halfW;
+        camera.right = halfW;
+        camera.top = halfH;
+        camera.bottom = -halfH;
+        camera.position.set(view.cx, view.cy, 50000);
         camera.updateProjectionMatrix();
+        renderCncRulers(rulerX, rulerY, stage, { x0: view.cx - halfW, x1: view.cx + halfW, y0: view.cy - halfH, y1: view.cy + halfH });
     };
 
     const resize = () => {
-        const width = container.clientWidth || 320;
-        const height = container.clientHeight || 320;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
         if (!width || !height) return;
         renderer.setSize(width, height);
+        applyColors();
         applyFrustum(width, height);
     };
 
     const fitToView = () => {
-        view.size = maxDim * 1.15;
-        view.offsetX = 0;
-        view.offsetY = 0;
+        view.cx = fitView.cx;
+        view.cy = fitView.cy;
+        view.w = fitView.w;
         resize();
     };
 
     const zoomBy = factor => {
-        view.size = Math.max(maxDim * 0.08, Math.min(maxDim * 8, view.size * factor));
-        applyFrustum(container.clientWidth || 320, container.clientHeight || 320);
+        view.w = Math.max(maxDim * 0.04, Math.min(maxDim * 8, view.w * factor));
+        applyFrustum(container.clientWidth || 320, container.clientHeight || 180);
     };
 
     let isDragging = false;
@@ -14478,28 +14579,25 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         zoomBy(event.deltaY > 0 ? 1.1 : 0.9);
     };
 
-    // Raycasting: resalta la sub-trayectoria bajo el cursor y muestra su
-    // rango de Z; al mover sin arrastrar, la lectura de coordenadas sigue el
-    // punto del trazado más cercano al cursor (no la posición real de la
-    // máquina — acá se está previsualizando un archivo, no necesariamente el
-    // trabajo que tiene cargado el controlador).
+    // Raycasting: resalta la sub-trayectoria bajo el cursor; al mover sin
+    // arrastrar, la lectura de coordenadas sigue el punto del trazado más
+    // cercano al cursor (se previsualiza un archivo, no la posición real).
     const raycaster = new THREE.Raycaster();
-    raycaster.params.Line = { threshold: maxDim * 0.01 };
+    raycaster.params.Line = { threshold: maxDim * 0.006 };
     const pointerNdc = new THREE.Vector2();
-    let selectedLine = null;
     const coordX = document.getElementById('cnc-visor-coord-x');
     const coordY = document.getElementById('cnc-visor-coord-y');
     const coordZ = document.getElementById('cnc-visor-coord-z');
 
     const onPointerMove = event => {
         if (isDragging) {
-            const height = container.clientHeight || 320;
-            const scale = view.size / height;
-            view.offsetX -= (event.clientX - lastX) * scale;
-            view.offsetY += (event.clientY - lastY) * scale;
+            const width = container.clientWidth || 320;
+            const scale = view.w / width;
+            view.cx -= (event.clientX - lastX) * scale;
+            view.cy += (event.clientY - lastY) * scale;
             lastX = event.clientX;
             lastY = event.clientY;
-            applyFrustum(container.clientWidth || 320, container.clientHeight || 320);
+            applyFrustum(width, container.clientHeight || 180);
             return;
         }
         const rect = renderer.domElement.getBoundingClientRect();
@@ -14508,7 +14606,7 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         raycaster.setFromCamera(pointerNdc, camera);
         const hits = raycaster.intersectObjects(cutLines, false);
         if (hits.length) {
-            const point = hits[0].point.clone().add(center);
+            const point = hits[0].point;
             if (coordX) coordX.textContent = point.x.toFixed(3);
             if (coordY) coordY.textContent = point.y.toFixed(3);
             if (coordZ) coordZ.textContent = point.z.toFixed(3);
@@ -14521,13 +14619,8 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
         raycaster.setFromCamera(pointerNdc, camera);
         const hits = raycaster.intersectObjects(cutLines, false);
-        if (selectedLine) selectedLine.material.color.setHex(CUT_COLOR);
-        if (hits.length) {
-            selectedLine = hits[0].object;
-            selectedLine.material.color.setHex(SELECTED_COLOR);
-        } else {
-            selectedLine = null;
-        }
+        selectedLine = hits.length ? hits[0].object : null;
+        applyColors();
     };
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -14537,20 +14630,15 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     renderer.domElement.addEventListener('click', onClick);
 
-    // El marcador de origen antes vivía fijo en CSS (arriba-izquierda,
-    // decorativo) sin importar dónde estuviera realmente X0/Y0 del G-code —
-    // acá se calcula su posición real en pantalla cada frame, proyectando el
-    // origen mundial (0,0,0 de `group`, que ya arrastra el -center aplicado
-    // arriba vía localToWorld) a través de la cámara actual. Así sigue
-    // correcto durante pan/zoom sin wiring aparte.
+    // El marcador de origen se proyecta cada frame desde el origen real
+    // (0,0,0) a través de la cámara, así sigue correcto durante pan/zoom.
     const originMarkerEl = document.getElementById('cnc-visor-origin-marker');
     const MARKER_HOTSPOT = { x: 9, y: 25 };
     const updateOriginMarker = () => {
         if (!originMarkerEl) return;
-        const worldOrigin = group.localToWorld(new THREE.Vector3(0, 0, 0));
-        const ndc = worldOrigin.project(camera);
+        const ndc = new THREE.Vector3(0, 0, 0).project(camera);
         const width = container.clientWidth || 320;
-        const height = container.clientHeight || 320;
+        const height = container.clientHeight || 180;
         const px = (ndc.x * 0.5 + 0.5) * width;
         const py = (1 - (ndc.y * 0.5 + 0.5)) * height;
         const visible = ndc.z < 1 && px >= -40 && px <= width + 40 && py >= -40 && py <= height + 40;
@@ -14560,12 +14648,18 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         }
     };
 
+    updateCncAreaNote(area, toolpath.bounds, fitView.overflow);
+
     let animId = null;
     const animate = () => {
         animId = requestAnimationFrame(animate);
         renderer.render(scene, camera);
         updateOriginMarker();
     };
+    // El contenedor cambia de tamaño con la ventana/el layout (y al volver a
+    // mostrar la pestaña, cuando estaba en display:none con tamaño 0).
+    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
+    if (resizeObserver) resizeObserver.observe(container);
     resize();
     animate();
 
@@ -14580,6 +14674,7 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         getFit: () => fit,
         dispose: () => {
             if (animId) cancelAnimationFrame(animId);
+            if (resizeObserver) resizeObserver.disconnect();
             renderer.dispose();
         },
     };
@@ -14600,7 +14695,10 @@ async function loadCncViewerFile(fileUrl, filename) {
 
     const activeHost = document.getElementById('cnc-host-select')?.value;
     const device = laserHostOptions.find(item => item.host === activeHost);
-    const deviceInfo = { workArea: device?.workArea || null, homeCorner: device?.homeCorner || null };
+    const deviceInfo = { workArea: device?.workArea || null, homeCorner: device?.homeCorner || null, machineProfile: device?.machineProfile || 'router' };
+    cncViewerState.deviceInfo = deviceInfo;
+    setCncStageRatio(resolveCncWorkArea(deviceInfo.workArea));
+    cncSimSetFile(fileUrl, deviceInfo);
 
     const handle = await renderCncVisor(canvasContainer, fileUrl, deviceInfo);
     if (!handle || handle.empty) {
@@ -14613,10 +14711,527 @@ async function loadCncViewerFile(fileUrl, filename) {
     if (emptyState) emptyState.style.display = 'none';
 }
 
+// ── Visor CNC: pestaña SIMULATION (reproducción animada, solo visual) ──
+// No envía nada a la máquina. Reusa tokenizeGcodeLine/linearizeArc del parser
+// del visor (parseCncToolpath no guarda avances F ni números de línea, que
+// la simulación necesita para calcular tiempos).
+
+const CNC_SIM_MAX_SEGMENTS = 500000;   // tope para no congelar la página con G-codes de decenas de MB
+const CNC_SIM_DEFAULT_FEED = 1000;     // mm/min cuando el archivo no declara F
+const CNC_SIM_RAPID_FEED = 3000;       // mm/min para G0 (velocidad de traslado razonable en una 3018)
+const CNC_SIM_CHUNK_LINES = 20000;
+
+const cncSim = {
+    token: 0, gen: 0, pendingActivate: false, colors: null, fileUrl: null, deviceInfo: null, loadedKey: null, loading: false,
+    data: null, area: null, view: null, plotter: false,
+    playing: false, pos: 0, speed: 1, raf: null, lastTs: 0,
+    base: null, done: null, doneIdx: 0, dpr: 1, cw: 0, ch: 0, observer: null, relayoutTimer: null,
+};
+
+const cncSimTick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+async function parseCncSimulation(text, isCancelled, onProgress) {
+    const lines = text.split(/\r?\n/);
+    let cap = 20000;
+    const arr = {
+        ax: new Float32Array(cap), ay: new Float32Array(cap), az: new Float32Array(cap),
+        bx: new Float32Array(cap), by: new Float32Array(cap), bz: new Float32Array(cap),
+        kind: new Uint8Array(cap), line: new Uint32Array(cap), feed: new Float32Array(cap),
+    };
+    let n = 0;
+    const grow = () => {
+        cap *= 2;
+        for (const key of Object.keys(arr)) {
+            const next = new arr[key].constructor(cap);
+            next.set(arr[key]);
+            arr[key] = next;
+        }
+    };
+    let x = 0, y = 0, z = 0, feed = CNC_SIM_DEFAULT_FEED, absolute = true, unitsScale = 1, motion = null;
+    let truncated = false, lastLine = 0;
+    const push = (x0, y0, z0, x1, y1, z1, kind, lineNo, segFeed) => {
+        if (n >= cap) grow();
+        arr.ax[n] = x0; arr.ay[n] = y0; arr.az[n] = z0;
+        arr.bx[n] = x1; arr.by[n] = y1; arr.bz[n] = z1;
+        arr.kind[n] = kind; arr.line[n] = lineNo; arr.feed[n] = segFeed;
+        n++;
+    };
+
+    for (let i = 0; i < lines.length && !truncated; i++) {
+        if (i > 0 && i % CNC_SIM_CHUNK_LINES === 0) {
+            if (onProgress) onProgress(i / lines.length);
+            await cncSimTick();
+            if (isCancelled()) return null;
+        }
+        const line = lines[i].replace(/;.*$/, '').replace(/\(.*?\)/g, '').trim();
+        if (!line) continue;
+        const words = tokenizeGcodeLine(line);
+        let ix = null, iy = null, iz = null, ii = null, jj = null, rr = null;
+        for (const word of words) {
+            if (word.letter === 'G') {
+                if (word.value === 90) absolute = true;
+                else if (word.value === 91) absolute = false;
+                else if (word.value === 20) unitsScale = 25.4;
+                else if (word.value === 21) unitsScale = 1;
+                else if (word.value >= 0 && word.value <= 3 && Number.isInteger(word.value)) motion = word.value;
+            } else if (word.letter === 'F') { if (word.value > 0) feed = word.value * unitsScale; }
+            else if (word.letter === 'X') ix = word.value * unitsScale;
+            else if (word.letter === 'Y') iy = word.value * unitsScale;
+            else if (word.letter === 'Z') iz = word.value * unitsScale;
+            else if (word.letter === 'I') ii = word.value * unitsScale;
+            else if (word.letter === 'J') jj = word.value * unitsScale;
+            else if (word.letter === 'R') rr = word.value * unitsScale;
+        }
+        if (motion === null || (ix === null && iy === null && iz === null)) continue;
+        const nx = ix !== null ? (absolute ? ix : x + ix) : x;
+        const ny = iy !== null ? (absolute ? iy : y + iy) : y;
+        const nz = iz !== null ? (absolute ? iz : z + iz) : z;
+        const lineNo = i + 1;
+        if (motion === 0) {
+            if (nx !== x || ny !== y || nz !== z) push(x, y, z, nx, ny, nz, 0, lineNo, CNC_SIM_RAPID_FEED);
+        } else if (motion === 1) {
+            if (nx !== x || ny !== y || nz !== z) push(x, y, z, nx, ny, nz, 1, lineNo, feed);
+        } else {
+            let px = x, py = y, pz = z;
+            for (const p of linearizeArc(x, y, z, nx, ny, nz, ii, jj, rr, motion === 2)) {
+                push(px, py, pz, p.x, p.y, p.z, 1, lineNo, feed);
+                px = p.x; py = p.y; pz = p.z;
+            }
+        }
+        x = nx; y = ny; z = nz;
+        lastLine = lineNo;
+        if (n >= CNC_SIM_MAX_SEGMENTS) truncated = true;
+    }
+    return { arr, n, totalLines: lines.length, truncated, lastLine };
+}
+
+// Calcula por segmento: ¿dibuja o es traslado?, y los acumulados de tiempo y
+// distancias. En modo plotter, "lápiz abajo" = Z en la mitad inferior del
+// rango de Z del archivo; si el archivo casi no varía en Z, todo G1 dibuja.
+function finalizeCncSimulation(parsed, plotter) {
+    const { arr, n } = parsed;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < n; i++) {
+        minX = Math.min(minX, arr.ax[i], arr.bx[i]); maxX = Math.max(maxX, arr.ax[i], arr.bx[i]);
+        minY = Math.min(minY, arr.ay[i], arr.by[i]); maxY = Math.max(maxY, arr.ay[i], arr.by[i]);
+        minZ = Math.min(minZ, arr.az[i], arr.bz[i]); maxZ = Math.max(maxZ, arr.az[i], arr.bz[i]);
+    }
+    const zThreshold = (minZ + maxZ) / 2;
+    const useZ = plotter && (maxZ - minZ) > 0.01;
+    const draw = new Uint8Array(n);
+    const cumTime = new Float64Array(n);
+    const cumDraw = new Float64Array(n);
+    const cumTravel = new Float64Array(n);
+    const len = new Float32Array(n);
+    let time = 0, dDraw = 0, dTravel = 0;
+    for (let i = 0; i < n; i++) {
+        const dx = arr.bx[i] - arr.ax[i], dy = arr.by[i] - arr.ay[i], dz = arr.bz[i] - arr.az[i];
+        const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        len[i] = l;
+        const isDraw = arr.kind[i] === 1 && (!useZ || (arr.az[i] <= zThreshold && arr.bz[i] <= zThreshold));
+        draw[i] = isDraw ? 1 : 0;
+        time += l / (Math.max(arr.feed[i], 1) / 60);
+        if (isDraw) dDraw += l; else dTravel += l;
+        cumTime[i] = time; cumDraw[i] = dDraw; cumTravel[i] = dTravel;
+    }
+    const bounds = n ? { minX, maxX, minY, maxY } : null;
+    return { ...parsed, draw, cumTime, cumDraw, cumTravel, len, bounds, zThreshold, useZ, totalTime: time };
+}
+
+function cncSimFormatTime(seconds) {
+    const s = Math.max(0, Math.round(seconds));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const two = v => String(v).padStart(2, '0');
+    return h ? `${h}:${two(m)}:${two(sec)}` : `${two(m)}:${two(sec)}`;
+}
+
+function cncSimFormatDistance(mm) {
+    return mm >= 10000 ? `${(mm / 1000).toFixed(2)} m` : `${mm.toFixed(1)} mm`;
+}
+
+function cncSimEl(id) { return document.getElementById(id); }
+
+function cncSimSetNote(text) {
+    const note = cncSimEl('cnc-sim-note');
+    if (note) note.textContent = text || '';
+}
+
+function cncSimUpdatePlayButton() {
+    const btn = cncSimEl('cnc-sim-play');
+    if (!btn) return;
+    const label = t(cncSim.playing ? 'cncSimPause' : 'cncSimPlay');
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-pressed', cncSim.playing ? 'true' : 'false');
+    btn.innerHTML = cncSim.playing
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+}
+
+// Índice del primer segmento cuyo tiempo acumulado alcanza `pos`.
+function cncSimFindSegment(data, pos) {
+    let lo = 0, hi = data.n - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (data.cumTime[mid] >= pos) hi = mid; else lo = mid + 1;
+    }
+    return lo;
+}
+
+function cncSimOutside(data, i, area) {
+    const { arr } = data;
+    const eps = 1e-6;
+    return arr.ax[i] < -eps || arr.ay[i] < -eps || arr.ax[i] > area.width + eps || arr.ay[i] > area.height + eps
+        || arr.bx[i] < -eps || arr.by[i] < -eps || arr.bx[i] > area.width + eps || arr.by[i] > area.height + eps;
+}
+
+// Dibuja los segmentos [from,to) en ctx agrupados en 4 trazados (dibujo /
+// traslado × dentro / fuera del área) para pocas llamadas de stroke.
+function cncSimDrawSegments(ctx, from, to, alphaDraw, alphaTravel, colors) {
+    const data = cncSim.data;
+    const { arr } = data;
+    const v = cncSim.view;
+    const sx = cncSim.cw / v.w, sy = cncSim.ch / v.h;
+    const ox = v.cx - v.w / 2, oy = v.cy - v.h / 2;
+    const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+    for (let i = from; i < to; i++) {
+        const p = paths[(data.draw[i] ? 0 : 1) + (cncSimOutside(data, i, cncSim.area) ? 2 : 0)];
+        p.moveTo((arr.ax[i] - ox) * sx, cncSim.ch - (arr.ay[i] - oy) * sy);
+        p.lineTo((arr.bx[i] - ox) * sx, cncSim.ch - (arr.by[i] - oy) * sy);
+    }
+    const dpr = cncSim.dpr;
+    const styles = [
+        [colors.ink, alphaDraw, 1.6 * dpr, []],
+        [colors.ink, alphaTravel, 0.8 * dpr, [3 * dpr, 3 * dpr]],
+        [colors.danger, alphaDraw, 1.6 * dpr, []],
+        [colors.danger, alphaTravel, 0.8 * dpr, [3 * dpr, 3 * dpr]],
+    ];
+    ctx.save();
+    ctx.lineCap = 'round';
+    styles.forEach(([color, alpha, width, dash], k) => {
+        ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.setLineDash(dash);
+        ctx.stroke(paths[k]);
+    });
+    ctx.restore();
+}
+
+function cncSimColors() {
+    return {
+        bg: cncThemeColor('--surface-sunken', '#081410'),
+        grid: cncThemeColor('--border-subtle', '#2e2f34'),
+        pending: cncThemeColor('--text-faint', '#8a8f97'),
+        ink: cncThemeColor('--accent-ink', '#4ade80'),
+        danger: cncThemeColor('--status-danger', '#f87171'),
+        marker: cncThemeColor('--status-warn', '#fbbf24'),
+    };
+}
+
+// Capa base: fondo, grilla, borde del área y todo el trayecto atenuado
+// (pendiente). Se arma por lotes para no bloquear en archivos grandes.
+async function cncSimBuildBase(token) {
+    const data = cncSim.data;
+    if (!data || !cncSim.cw) return;
+    const base = document.createElement('canvas');
+    base.width = cncSim.cw; base.height = cncSim.ch;
+    const ctx = base.getContext('2d');
+    const colors = cncSimColors();
+    cncSim.colors = colors;
+    const v = cncSim.view, area = cncSim.area;
+    const sx = cncSim.cw / v.w, sy = cncSim.ch / v.h;
+    const ox = v.cx - v.w / 2, oy = v.cy - v.h / 2;
+    ctx.fillStyle = colors.bg;
+    ctx.fillRect(0, 0, cncSim.cw, cncSim.ch);
+    const step = cncNiceStep(Math.max(area.width, area.height), 10);
+    ctx.strokeStyle = colors.grid; ctx.globalAlpha = 0.55; ctx.lineWidth = cncSim.dpr; ctx.beginPath();
+    for (let gx = step; gx < area.width; gx += step) { ctx.moveTo((gx - ox) * sx, 0); ctx.lineTo((gx - ox) * sx, cncSim.ch); }
+    for (let gy = step; gy < area.height; gy += step) { ctx.moveTo(0, cncSim.ch - (gy - oy) * sy); ctx.lineTo(cncSim.cw, cncSim.ch - (gy - oy) * sy); }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    const CHUNK = 40000;
+    for (let from = 0; from < data.n; from += CHUNK) {
+        cncSimDrawSegments(ctx, from, Math.min(data.n, from + CHUNK), 0.5, 0.35, { ink: colors.pending, danger: colors.danger });
+        if (from + CHUNK < data.n) {
+            await cncSimTick();
+            if (token !== cncSim.token) return;
+        }
+    }
+    ctx.strokeStyle = v.overflow ? colors.danger : colors.ink;
+    ctx.lineWidth = 2 * cncSim.dpr;
+    ctx.strokeRect((0 - ox) * sx, cncSim.ch - (area.height - oy) * sy, area.width * sx, area.height * sy);
+    if (token !== cncSim.token) return;
+    cncSim.base = base;
+    cncSim.done = null;
+    cncSim.doneIdx = 0;
+    cncSimRender();
+}
+
+function cncSimSizeCanvas() {
+    const canvas = cncSimEl('cnc-sim-canvas');
+    const stage = cncSimEl('cnc-sim-stage');
+    if (!canvas || !stage || !stage.clientWidth || !stage.clientHeight) return false;
+    cncSim.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cncSim.cw = Math.round(stage.clientWidth * cncSim.dpr);
+    cncSim.ch = Math.round(stage.clientHeight * cncSim.dpr);
+    canvas.width = cncSim.cw; canvas.height = cncSim.ch;
+    return true;
+}
+
+function cncSimRelayout() {
+    const data = cncSim.data;
+    if (!data || !cncSimSizeCanvas()) return;
+    const v = cncSim.view;
+    renderCncRulers(cncSimEl('cnc-sim-ruler-x'), cncSimEl('cnc-sim-ruler-y'), cncSimEl('cnc-sim-stage'),
+        { x0: v.cx - v.w / 2, x1: v.cx + v.w / 2, y0: v.cy - v.h / 2, y1: v.cy + v.h / 2 });
+    cncSim.base = null; cncSim.done = null; cncSim.doneIdx = 0;
+    cncSim.token++;
+    cncSimBuildBase(cncSim.token);
+}
+
+function cncSimRender() {
+    const canvas = cncSimEl('cnc-sim-canvas');
+    const data = cncSim.data;
+    if (!canvas || !data || !cncSim.base) return;
+    const ctx = canvas.getContext('2d');
+    const colors = cncSim.colors || cncSimColors();
+    const total = data.totalTime;
+    const pos = Math.min(Math.max(cncSim.pos, 0), total);
+    const idx = data.n ? cncSimFindSegment(data, pos) : 0;
+    const startT = idx > 0 ? data.cumTime[idx - 1] : 0;
+    const segT = data.cumTime[idx] - startT;
+    const frac = pos <= 0 ? 0 : (segT > 0 ? Math.min(1, (pos - startT) / segT) : 1);
+
+    // Capa de lo ya recorrido: incremental hacia adelante, se rehace hacia atrás.
+    if (!cncSim.done || idx < cncSim.doneIdx) {
+        cncSim.done = document.createElement('canvas');
+        cncSim.done.width = cncSim.cw; cncSim.done.height = cncSim.ch;
+        cncSim.doneIdx = 0;
+    }
+    if (idx > cncSim.doneIdx) {
+        cncSimDrawSegments(cncSim.done.getContext('2d'), cncSim.doneIdx, idx, 1, 0.75, colors);
+        cncSim.doneIdx = idx;
+    }
+
+    ctx.clearRect(0, 0, cncSim.cw, cncSim.ch);
+    ctx.drawImage(cncSim.base, 0, 0);
+    ctx.drawImage(cncSim.done, 0, 0);
+
+    const { arr } = data;
+    const v = cncSim.view;
+    const sx = cncSim.cw / v.w, sy = cncSim.ch / v.h;
+    const ox = v.cx - v.w / 2, oy = v.cy - v.h / 2;
+    const px = arr.ax[idx] + (arr.bx[idx] - arr.ax[idx]) * frac;
+    const py = arr.ay[idx] + (arr.by[idx] - arr.ay[idx]) * frac;
+    const pz = arr.az[idx] + (arr.bz[idx] - arr.az[idx]) * frac;
+    const mx = (px - ox) * sx, my = cncSim.ch - (py - oy) * sy;
+    if (frac > 0) {
+        const head = new Path2D();
+        head.moveTo((arr.ax[idx] - ox) * sx, cncSim.ch - (arr.ay[idx] - oy) * sy);
+        head.lineTo(mx, my);
+        ctx.save();
+        ctx.strokeStyle = cncSimOutsideColor(data, idx, colors); ctx.lineWidth = (data.draw[idx] ? 1.6 : 0.8) * cncSim.dpr;
+        ctx.setLineDash(data.draw[idx] ? [] : [3 * cncSim.dpr, 3 * cncSim.dpr]);
+        ctx.stroke(head);
+        ctx.restore();
+    }
+    const penDown = data.useZ ? pz <= data.zThreshold : !!data.draw[idx];
+    ctx.save();
+    ctx.fillStyle = colors.marker; ctx.strokeStyle = colors.bg; ctx.lineWidth = 2 * cncSim.dpr;
+    ctx.beginPath(); ctx.arc(mx, my, (penDown ? 4.5 : 3.5) * cncSim.dpr, 0, Math.PI * 2);
+    if (penDown) ctx.fill(); else { ctx.strokeStyle = colors.marker; ctx.stroke(); }
+    ctx.restore();
+
+    // Lecturas.
+    const prevDraw = idx > 0 ? data.cumDraw[idx - 1] : 0;
+    const prevTravel = idx > 0 ? data.cumTravel[idx - 1] : 0;
+    const part = data.len[idx] * frac;
+    const drawn = prevDraw + (data.draw[idx] ? part : 0);
+    const travel = prevTravel + (data.draw[idx] ? 0 : part);
+    const lineNo = pos <= 0 ? 0 : arr.line[idx];
+    const set = (id, text) => { const el = cncSimEl(id); if (el) el.textContent = text; };
+    set('cnc-sim-lines', `${lineNo.toLocaleString()} / ${data.totalLines.toLocaleString()}`);
+    set('cnc-sim-drawn', cncSimFormatDistance(drawn));
+    set('cnc-sim-travel', cncSimFormatDistance(travel));
+    set('cnc-sim-time', `${cncSimFormatTime(pos)} / ${cncSimFormatTime(total)}`);
+    const pen = cncSimEl('cnc-sim-pen');
+    if (pen) {
+        pen.hidden = !cncSim.plotter;
+        pen.textContent = t(penDown ? 'cncSimPenDown' : 'cncSimPenUp');
+        pen.classList.toggle('down', penDown);
+    }
+    const seek = cncSimEl('cnc-sim-seek');
+    if (seek && document.activeElement !== seek) seek.value = total > 0 ? Math.round((pos / total) * 10000) : 0;
+}
+
+function cncSimOutsideColor(data, i, colors) {
+    return cncSimOutside(data, i, cncSim.area) ? colors.danger : colors.ink;
+}
+
+function cncSimStop() {
+    cncSim.playing = false;
+    if (cncSim.raf) cancelAnimationFrame(cncSim.raf);
+    cncSim.raf = null;
+    cncSimUpdatePlayButton();
+}
+
+function cncSimLoop(ts) {
+    if (!cncSim.playing) return;
+    const dt = cncSim.lastTs ? Math.min((ts - cncSim.lastTs) / 1000, 0.1) : 0;
+    cncSim.lastTs = ts;
+    cncSim.pos += dt * cncSim.speed;
+    if (cncSim.pos >= cncSim.data.totalTime) {
+        cncSim.pos = cncSim.data.totalTime;
+        cncSimRender();
+        cncSimStop();
+        return;
+    }
+    cncSimRender();
+    cncSim.raf = requestAnimationFrame(cncSimLoop);
+}
+
+function cncSimTogglePlay(force) {
+    if (!cncSim.data || !cncSim.data.n) return;
+    const next = typeof force === 'boolean' ? force : !cncSim.playing;
+    if (!next) { cncSimStop(); return; }
+    if (cncSim.pos >= cncSim.data.totalTime) cncSim.pos = 0;
+    cncSim.playing = true;
+    cncSim.lastTs = 0;
+    cncSimUpdatePlayButton();
+    cncSim.raf = requestAnimationFrame(cncSimLoop);
+}
+
+function cncSimReset(message) {
+    cncSim.token++;
+    cncSim.gen++;
+    cncSimStop();
+    cncSim.data = null; cncSim.base = null; cncSim.done = null; cncSim.doneIdx = 0; cncSim.pos = 0; cncSim.loadedKey = null;
+    const empty = cncSimEl('cnc-sim-empty');
+    if (empty) { empty.style.display = 'flex'; empty.textContent = message || t('cncSimEmpty'); }
+    const seek = cncSimEl('cnc-sim-seek');
+    if (seek) { seek.value = 0; seek.disabled = true; }
+    ['cnc-sim-lines', 'cnc-sim-drawn', 'cnc-sim-travel', 'cnc-sim-time'].forEach(id => { const el = cncSimEl(id); if (el) el.textContent = '—'; });
+    const pen = cncSimEl('cnc-sim-pen');
+    if (pen) pen.hidden = true;
+    cncSimSetNote('');
+    const canvas = cncSimEl('cnc-sim-canvas');
+    if (canvas && canvas.width) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// Llamado por loadCncViewerFile: cambia el archivo (o la máquina) a simular.
+function cncSimSetFile(fileUrl, deviceInfo) {
+    cncSim.fileUrl = fileUrl;
+    cncSim.deviceInfo = deviceInfo;
+    cncSimReset();
+    const panel = cncSimEl('cnc-viewer-panel-sim');
+    if (panel && panel.classList.contains('active')) cncSimActivate();
+}
+
+async function cncSimActivate() {
+    const area = resolveCncWorkArea(cncSim.deviceInfo && cncSim.deviceInfo.workArea);
+    const plotter = (cncSim.deviceInfo && cncSim.deviceInfo.machineProfile) === 'plotter';
+    const key = `${cncSim.fileUrl}|${area.width}x${area.height}|${plotter}`;
+    if (!cncSim.fileUrl) return;
+    if (cncSim.loadedKey === key && cncSim.data) { cncSimRelayout(); return; }
+    if (cncSim.loading) { cncSim.pendingActivate = true; return; }
+    cncSim.loading = true;
+    const token = ++cncSim.token;
+    const gen = cncSim.gen;
+    const cancelled = () => token !== cncSim.token;
+    const empty = cncSimEl('cnc-sim-empty');
+    if (empty) { empty.style.display = 'flex'; empty.textContent = t('cncSimLoading'); }
+    try {
+        const response = await fetch(cncSim.fileUrl);
+        const text = await response.text();
+        const parsed = await parseCncSimulation(text, cancelled, fraction => {
+            if (empty) empty.textContent = `${t('cncSimLoading')} ${Math.round(fraction * 100)}%`;
+        });
+        if (!parsed || cancelled()) return;
+        const data = finalizeCncSimulation(parsed, plotter);
+        if (!data.n) {
+            cncSim.loadedKey = null;
+            if (empty) empty.textContent = t('cncSimNoMotion');
+            return;
+        }
+        cncSim.data = data; cncSim.area = area; cncSim.plotter = plotter;
+        cncSim.view = computeCncFitView(area, data.bounds);
+        cncSim.pos = 0; cncSim.loadedKey = key;
+        setCncStageRatio(area);
+        if (empty) empty.style.display = 'none';
+        const seek = cncSimEl('cnc-sim-seek');
+        if (seek) seek.disabled = false;
+        cncSimSetNote(data.truncated
+            ? t('cncSimTruncated').replace('{n}', data.n.toLocaleString()).replace('{line}', data.lastLine.toLocaleString()).replace('{total}', data.totalLines.toLocaleString())
+            : (cncSim.view.overflow ? t('cncViewerOverflow').replace('{w}', (data.bounds.maxX - data.bounds.minX).toFixed(0)).replace('{h}', (data.bounds.maxY - data.bounds.minY).toFixed(0)) : ''));
+        cncSimUpdatePlayButton();
+        cncSimRelayout();
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced) {
+            // Espera a que la capa base esté lista antes de arrancar.
+            const startWhenReady = () => {
+                if (gen !== cncSim.gen) return;
+                if (cncSim.base) cncSimTogglePlay(true); else setTimeout(startWhenReady, 50);
+            };
+            startWhenReady();
+        }
+    } catch (error) {
+        console.error(error);
+        if (empty) empty.textContent = t('cncSimNoMotion');
+    } finally {
+        cncSim.loading = false;
+        if (cncSim.pendingActivate) { cncSim.pendingActivate = false; cncSimActivate(); }
+    }
+}
+
+function initCncSimulation() {
+    const panel = cncSimEl('cnc-viewer-panel-sim');
+    if (!panel || panel.dataset.wired) return;
+    panel.dataset.wired = 'true';
+    cncSimUpdatePlayButton();
+    cncSimEl('cnc-sim-play')?.addEventListener('click', () => cncSimTogglePlay());
+    cncSimEl('cnc-sim-restart')?.addEventListener('click', () => {
+        if (!cncSim.data) return;
+        cncSim.pos = 0;
+        cncSimRender();
+    });
+    cncSimEl('cnc-sim-seek')?.addEventListener('input', event => {
+        if (!cncSim.data) return;
+        cncSim.pos = (Number(event.target.value) / 10000) * cncSim.data.totalTime;
+        cncSimRender();
+    });
+    document.querySelectorAll('#cnc-sim-speed [data-sim-speed]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            cncSim.speed = Number(btn.dataset.simSpeed) || 1;
+            document.querySelectorAll('#cnc-sim-speed [data-sim-speed]').forEach(b => {
+                b.classList.toggle('active', b === btn);
+                b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+            });
+        });
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key !== ' ' || !panel.classList.contains('active')) return;
+        const el = event.target;
+        const tag = el && el.tagName;
+        if (tag === 'INPUT' && el.type !== 'range') return;
+        if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A' || (el && el.isContentEditable)) return;
+        event.preventDefault();
+        cncSimTogglePlay();
+    });
+    const stage = cncSimEl('cnc-sim-stage');
+    if (stage && typeof ResizeObserver === 'function') {
+        cncSim.observer = new ResizeObserver(() => {
+            clearTimeout(cncSim.relayoutTimer);
+            cncSim.relayoutTimer = setTimeout(() => {
+                if (panel.classList.contains('active')) cncSimRelayout();
+            }, 120);
+        });
+        cncSim.observer.observe(stage);
+    }
+}
+
 function initCncViewerTabs() {
     const tabsWrap = document.getElementById('cnc-viewer-tabs');
     if (!tabsWrap || tabsWrap.dataset.wired) return;
     tabsWrap.dataset.wired = 'true';
+    initCncSimulation();
 
     tabsWrap.querySelectorAll('.cnc-viewer-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -14633,6 +15248,8 @@ function initCncViewerTabs() {
             if (target === 'visor' && cncViewerState.visorHandle) {
                 cncViewerState.visorHandle.resize();
             }
+            if (target === 'sim') cncSimActivate();
+            else cncSimStop();
         });
     });
 
@@ -14684,6 +15301,8 @@ if (cncHostSelect) {
             rememberSectionMachine('cnc', null, cncHostSelect.value);
             const activeDevice = laserHostOptions.find(device => device.host === cncHostSelect.value);
             applyCncMachineProfile(activeDevice?.machineProfile);
+            // El área de trabajo y el perfil dependen de la máquina: recalcular el visor.
+            if (cncViewerState.currentFileUrl) loadCncViewerFile(cncViewerState.currentFileUrl, cncViewerState.currentFilename);
             refreshCncStatus();
             refreshCncParserState();
             renderCncFilesTable();
@@ -14857,6 +15476,42 @@ function renderCncJobResult(job, host) {
     box.hidden = false;
 }
 
+// ── Ajuste de la Z de "lápiz abajo" con el trabajo en curso ──
+const cncZState = { live: false, offset: 0 };
+function cncZOffsetRender(live, offset) {
+    cncZState.live = !!live;
+    cncZState.offset = Number(offset) || 0;
+    const box = document.getElementById('cnc-z-offset');
+    if (box) box.hidden = !live;
+    const out = document.getElementById('cnc-z-offset-value');
+    if (!out || !live) return;
+    const v = Math.round((Number(offset) || 0) * 100) / 100;
+    out.textContent = v === 0 ? t('zOffsetNone')
+        : t('zOffsetValue').replace('{v}', `${v > 0 ? '+' : '-'}${Math.abs(v).toFixed(2)}`);
+}
+
+async function cncZOffsetSend(delta) {
+    const host = getSectionHost('cnc');
+    if (!host) return false;
+    try {
+        const formData = new FormData();
+        formData.append('host', host);
+        formData.append('delta', delta);
+        const response = await fetch('/api/laser/job/z-offset', { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            appAlert(data.detail || t('zOffsetError'), '', 'warning');
+            return false;
+        }
+        cncZOffsetRender(true, data.z_offset);
+        return true;
+    } catch (error) {
+        console.error(error);
+        appAlert(t('zOffsetError'), '', 'warning');
+        return false;
+    }
+}
+
 async function refreshCncJobFooter() {
     const host = getSectionHost('cnc');
     if (!host) return;
@@ -14895,6 +15550,7 @@ async function refreshCncJobFooter() {
             elapsedEl.textContent = '—';
         }
         renderCncJobResult(active ? null : finished, host);
+        cncZOffsetRender(active && job.has_z, job.z_offset);
         // Mientras corre, se consulta más seguido para que línea y tiempo avancen fluido.
         clearTimeout(cncJobFooterTimer);
         if (active) cncJobFooterTimer = setTimeout(refreshCncJobFooter, 1500);
@@ -14988,9 +15644,25 @@ document.getElementById('cnc-probe-btn')?.addEventListener('click', async () => 
 document.querySelectorAll('[data-z-nudge]').forEach(btn => {
     btn.addEventListener('click', async () => {
         const amount = parseFloat(btn.dataset.zNudge);
+        if (cncZState.live) {
+            await cncZOffsetSend(amount);
+            return;
+        }
         await sendLaserJog('Z', amount, 500);
         refreshCncStatus();
     });
+});
+
+document.getElementById('cnc-z-offset-reset')?.addEventListener('click', async () => {
+    const total = Math.round(cncZState.offset * 100) / 100;
+    if (!total) return;
+    // El backend limita cada pedido a ±1 mm: se resta en tandas.
+    let left = -total;
+    while (Math.abs(left) > 0.0001) {
+        const step = Math.max(-1, Math.min(1, left));
+        if (!await cncZOffsetSend(Math.round(step * 100) / 100)) break;
+        left = Math.round((left - step) * 100) / 100;
+    }
 });
 
 async function applyCncManualShift() {
@@ -15242,8 +15914,8 @@ function renderCncWizardSummary() {
 // ── Imagen a dibujo (plotter): convierte una imagen en G-code de lápiz con
 // vista previa en vivo. Backend: /api/plotter/preview y /api/plotter/generate. ──
 
-const plotterState = { file: null, nameTouched: false, opener: null, fromWizard: false, abort: null, timer: null, paths: null, busy: false };
-const PLOTTER_PEN_DEFAULTS = { penUp: 3, penDown: 0, feed: 1500, plunge: 500, travel: 3000 };
+const plotterState = { file: null, nameTouched: false, opener: null, fromWizard: false, abort: null, timer: null, paths: null, busy: false, view: 'overlay', imageUrl: null, ok: false };
+const PLOTTER_PEN_DEFAULTS = { penUp: 3, penDown: 0, feed: 1500, plunge: 500, travel: 2000 };
 const PLOTTER_PEN_FIELDS = { penUp: 'plotter-pen-up', penDown: 'plotter-pen-down', feed: 'plotter-feed', plunge: 'plotter-plunge', travel: 'plotter-travel' };
 
 function plotterEl(id) { return document.getElementById(id); }
@@ -15285,11 +15957,11 @@ function plotterFormData(withGenerate) {
     fd.append('file', plotterState.file);
     fd.append('width_mm', plotterNum('plotter-width', 80));
     fd.append('height_mm', plotterNum('plotter-height', 80));
-    fd.append('threshold', plotterEl('plotter-threshold').value);
-    fd.append('invert', plotterEl('plotter-invert').checked ? 'true' : 'false');
-    fd.append('detail', plotterEl('plotter-detail').value);
     fd.append('feed', plotterNum('plotter-feed', PLOTTER_PEN_DEFAULTS.feed));
     fd.append('travel_feed', plotterNum('plotter-travel', PLOTTER_PEN_DEFAULTS.travel));
+    fd.append('smoothing', plotterNum('plotter-smoothing', 1));
+    fd.append('cleanup', plotterNum('plotter-cleanup', 1));
+    fd.append('detail', plotterNum('plotter-detail', 1));
     if (withGenerate) {
         fd.append('name', (plotterEl('plotter-name').value || '').trim() || 'dibujo');
         fd.append('pen_up_z', plotterNum('plotter-pen-up', PLOTTER_PEN_DEFAULTS.penUp));
@@ -15308,11 +15980,47 @@ async function plotterErrorText(response) {
     return t('plotterError');
 }
 
-function plotterSetStatus(text, isError = false) {
+// kind: '' (neutro), 'error' o 'notice' (aviso amable, p. ej. una fotografía).
+function plotterSetStatus(text, kind = '') {
     const el = plotterEl('plotter-status');
     if (!el) return;
+    if (kind === true) kind = 'error';
     el.textContent = text || '';
-    el.classList.toggle('plotter-status-error', !!isError);
+    el.classList.toggle('plotter-status-error', kind === 'error');
+    el.classList.toggle('plotter-status-notice', kind === 'notice');
+}
+
+function plotterSetNotes(notes) {
+    const box = plotterEl('plotter-notes');
+    if (!box) return;
+    box.textContent = '';
+    (notes || []).forEach(text => {
+        const p = document.createElement('p');
+        p.className = 'plotter-note';
+        p.textContent = String(text);
+        box.appendChild(p);
+    });
+}
+
+function plotterSetImageUrl(file) {
+    if (plotterState.imageUrl) URL.revokeObjectURL(plotterState.imageUrl);
+    plotterState.imageUrl = file ? URL.createObjectURL(file) : null;
+    const img = plotterEl('plotter-original');
+    if (!img) return;
+    if (plotterState.imageUrl) { img.src = plotterState.imageUrl; img.hidden = false; }
+    else { img.removeAttribute('src'); img.hidden = true; }
+}
+
+function plotterSetView(view) {
+    plotterState.view = view;
+    plotterEl('plotter-stage')?.setAttribute('data-view', view);
+    document.querySelectorAll('.plotter-seg-btn').forEach(btn => {
+        const on = btn.dataset.view === view;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+        btn.tabIndex = on ? 0 : -1;
+    });
+    plotterDrawPreview();
 }
 
 function plotterExceeds() {
@@ -15339,7 +16047,7 @@ function plotterUpdateGenerateEnabled() {
         note.classList.toggle('plotter-status-error', exceeds);
     }
     const sizeOk = w >= 5 && w <= 2000 && h >= 5 && h <= 2000;
-    if (btn) btn.disabled = plotterState.busy || !plotterState.file || !sizeOk || (exceeds && !plotterEl('plotter-exceed-ack').checked);
+    if (btn) btn.disabled = plotterState.busy || !plotterState.file || !plotterState.ok || !sizeOk || (exceeds && !plotterEl('plotter-exceed-ack').checked);
 }
 
 function plotterCssColor(name, fallback) {
@@ -15352,20 +16060,32 @@ function plotterDrawPreview() {
     if (!canvas) return;
     const w = Math.max(1, plotterNum('plotter-width', 80));
     const h = Math.max(1, plotterNum('plotter-height', 80));
-    const wa = plotterWorkArea() || { width: w, height: h };
-    const areaW = Math.max(wa.width, w);
-    const areaH = Math.max(wa.height, h);
-    const margin = 10;
-    const maxW = 480;
-    const maxH = 420;
+    // La vista previa se ajusta al rectángulo del dibujo para juzgar la calidad;
+    // el área de trabajo de la CNC se avisa aparte (plotterUpdateGenerateEnabled).
+    const areaW = w;
+    const areaH = h;
+    const margin = 6;
+    const maxW = 640;
+    const maxH = 640;
     const scale = Math.min((maxW - 2 * margin) / areaW, (maxH - 2 * margin) / areaH);
     const dpr = window.devicePixelRatio || 1;
     const cssW = Math.round(areaW * scale + 2 * margin);
     const cssH = Math.round(areaH * scale + 2 * margin);
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
-    canvas.style.aspectRatio = `${cssW} / ${cssH}`;
-    canvas.style.maxWidth = `${cssW}px`;
+    const stage = plotterEl('plotter-stage');
+    if (stage) {
+        stage.style.aspectRatio = `${cssW} / ${cssH}`;
+        stage.style.maxWidth = `${cssW}px`;
+    }
+    // La imagen original ocupa exactamente el rectángulo del dibujo (ancho × alto en mm).
+    const img = plotterEl('plotter-original');
+    if (img) {
+        img.style.left = `${(margin / cssW) * 100}%`;
+        img.style.top = `${((cssH - margin - h * scale) / cssH) * 100}%`;
+        img.style.width = `${(w * scale / cssW) * 100}%`;
+        img.style.height = `${(h * scale / cssH) * 100}%`;
+    }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -15376,20 +16096,16 @@ function plotterDrawPreview() {
     const border = plotterCssColor('--border', '#888');
     const accent = plotterCssColor('--accent-ink', plotterCssColor('--accent', '#888'));
     const warn = plotterCssColor('--status-warn', accent);
-    // Área de trabajo
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = border;
-    ctx.setLineDash([]);
-    ctx.strokeRect(px(0), py(wa.height), wa.width * scale, wa.height * scale);
     // Rectángulo del dibujo
+    ctx.lineWidth = 1;
     ctx.setLineDash([4, 3]);
     ctx.strokeStyle = plotterExceeds() ? warn : border;
     ctx.strokeRect(px(0), py(h), w * scale, h * scale);
     ctx.setLineDash([]);
     // Trazos
-    if (plotterState.paths) {
+    if (plotterState.paths && plotterState.view !== 'original') {
         ctx.strokeStyle = accent;
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = 1.25;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -15404,8 +16120,11 @@ async function plotterRunPreview() {
     if (plotterState.abort) plotterState.abort.abort();
     plotterState.abort = null;
     const statsEl = plotterEl('plotter-stats');
+    plotterState.ok = false;
+    plotterSetNotes([]);
     if (!plotterState.file) {
         plotterState.paths = null;
+        plotterUpdateGenerateEnabled();
         if (statsEl) statsEl.textContent = '';
         plotterSetStatus(t('plotterNoImage'));
         plotterDrawPreview();
@@ -15415,6 +16134,10 @@ async function plotterRunPreview() {
     if (!wOk) return;
     const controller = new AbortController();
     plotterState.abort = controller;
+    plotterState.paths = null;
+    if (statsEl) statsEl.textContent = '';
+    plotterUpdateGenerateEnabled();
+    plotterDrawPreview();
     plotterSetStatus(t('plotterProcessing'));
     try {
         const response = await fetch('/api/plotter/preview', { method: 'POST', body: plotterFormData(false), signal: controller.signal });
@@ -15423,19 +16146,52 @@ async function plotterRunPreview() {
         if (controller.signal.aborted) return;
         plotterState.paths = data.paths || [];
         const s = data.stats || {};
+        plotterState.ok = plotterState.paths.length > 0;
         if (statsEl) statsEl.textContent = t('plotterStats')
             .replace('{strokes}', s.strokes ?? 0)
             .replace('{mm}', Number(s.drawn_mm || 0).toFixed(0))
+            .replace('{travel}', Number(s.travel_mm || 0).toFixed(0))
             .replace('{min}', Number(s.minutes || 0).toFixed(1));
-        plotterSetStatus('');
+        plotterSetStatus(plotterState.ok ? '' : t('plotterNoStrokes'), plotterState.ok ? '' : 'notice');
+        plotterSetNotes(data.notes);
     } catch (error) {
         if (error.name === 'AbortError') return;
         plotterState.paths = null;
         if (statsEl) statsEl.textContent = '';
-        plotterSetStatus(error.message || t('plotterError'), true);
+        const message = error.message || t('plotterError');
+        // Una fotografía no es un fallo: se explica con calma.
+        if (/fotograf/i.test(message)) plotterSetStatus(t('plotterPhoto'), 'notice');
+        else plotterSetStatus(message, 'error');
     }
+    plotterUpdateGenerateEnabled();
     plotterDrawPreview();
 }
+
+const PLOTTER_FINE_IDS = ['plotter-smoothing', 'plotter-cleanup', 'plotter-detail'];
+function plotterFineSync() {
+    PLOTTER_FINE_IDS.forEach(id => {
+        const input = plotterEl(id);
+        const out = plotterEl(`${id}-out`);
+        if (input && out) out.textContent = Number(input.value).toFixed(1);
+    });
+}
+function plotterFineReset() {
+    PLOTTER_FINE_IDS.forEach(id => {
+        const input = plotterEl(id);
+        if (input) input.value = input.dataset.fineDefault || 1;
+    });
+    plotterFineSync();
+}
+PLOTTER_FINE_IDS.forEach(id => {
+    plotterEl(id)?.addEventListener('input', () => {
+        plotterFineSync();
+        if (plotterState.file) plotterSchedulePreview();
+    });
+});
+plotterEl('plotter-fine-reset')?.addEventListener('click', () => {
+    plotterFineReset();
+    if (plotterState.file) plotterSchedulePreview();
+});
 
 function plotterSchedulePreview() {
     clearTimeout(plotterState.timer);
@@ -15451,6 +16207,8 @@ function plotterSetFile(file) {
         return;
     }
     plotterState.file = file;
+    plotterState.ok = false;
+    plotterSetImageUrl(file);
     const nameInput = plotterEl('plotter-name');
     if (nameInput && !plotterState.nameTouched) nameInput.value = file.name.replace(/\.[^.]+$/, '');
     plotterSchedulePreview();
@@ -15490,15 +16248,15 @@ function openPlotterModal(fromWizard = false) {
     plotterState.paths = null;
     plotterEl('plotter-file').value = '';
     plotterEl('plotter-name').value = '';
-    plotterEl('plotter-invert').checked = false;
-    plotterEl('plotter-threshold').value = 128;
-    plotterEl('plotter-detail').value = 0.7;
-    plotterEl('plotter-threshold-out').textContent = '128';
-    plotterEl('plotter-detail-out').textContent = '0.7';
+    plotterState.ok = false;
+    plotterSetImageUrl(null);
+    plotterSetNotes([]);
+    plotterSetView('overlay');
     plotterEl('plotter-width').value = 80;
     plotterEl('plotter-height').value = 80;
     plotterEl('plotter-stats').textContent = '';
     plotterLoadPen();
+    plotterFineReset();
     plotterSetStatus(t('plotterNoImage'));
     plotterUpdateGenerateEnabled();
     modal.classList.add('active');
@@ -15511,6 +16269,7 @@ function closePlotterModal() {
     clearTimeout(plotterState.timer);
     if (plotterState.abort) plotterState.abort.abort();
     plotterState.abort = null;
+    plotterSetImageUrl(null);
     plotterEl('plotter-modal')?.classList.remove('active');
     document.removeEventListener('keydown', plotterTrapFocus, true);
     const opener = plotterState.opener;
@@ -15585,11 +16344,19 @@ async function plotterGenerate() {
     ['dragenter', 'dragover'].forEach(name => dz.addEventListener(name, event => { event.preventDefault(); dz.classList.add('dragover'); }));
     ['dragleave', 'drop'].forEach(name => dz.addEventListener(name, event => { event.preventDefault(); dz.classList.remove('dragover'); }));
     dz.addEventListener('drop', event => plotterSetFile(event.dataTransfer?.files?.[0]));
-    ['plotter-width', 'plotter-height', 'plotter-invert', 'plotter-threshold', 'plotter-detail', 'plotter-feed', 'plotter-travel'].forEach(id => {
-        plotterEl(id).addEventListener('input', () => {
-            if (id === 'plotter-threshold') plotterEl('plotter-threshold-out').textContent = plotterEl(id).value;
-            if (id === 'plotter-detail') plotterEl('plotter-detail-out').textContent = Number(plotterEl(id).value).toFixed(1);
-            plotterSchedulePreview();
+    ['plotter-width', 'plotter-height', 'plotter-feed', 'plotter-travel'].forEach(id => {
+        plotterEl(id).addEventListener('input', plotterSchedulePreview);
+    });
+    document.querySelectorAll('.plotter-seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => plotterSetView(btn.dataset.view));
+        btn.addEventListener('keydown', event => {
+            const order = ['trace', 'overlay', 'original'];
+            const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+            if (!step) return;
+            event.preventDefault();
+            const next = order[(order.indexOf(btn.dataset.view) + step + order.length) % order.length];
+            plotterSetView(next);
+            document.querySelector(`.plotter-seg-btn[data-view="${next}"]`)?.focus();
         });
     });
     ['plotter-pen-up', 'plotter-pen-down', 'plotter-plunge'].forEach(id => plotterEl(id).addEventListener('input', plotterSavePen));
