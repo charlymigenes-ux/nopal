@@ -1617,6 +1617,14 @@
                                 </div>
                             </div>
                             <div class="laser-queue-list cnc-queue-list" id="cnc-queue-list"></div>
+                            <div class="cnc-sd-row" id="cnc-sd-row">
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="cnc-sd-switch" aria-describedby="cnc-sd-hint" disabled>
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="cncSdLabel">Correr desde la SD de la placa (recomendado)</span>
+                                </label>
+                                <p class="plotter-help" id="cnc-sd-hint" role="status"></p>
+                            </div>
                             <div class="cnc-job-progress-row">
                                 <span id="cnc-job-elapsed">00:00</span>
                                 <div class="laser-job-progress-bar"><div class="laser-job-progress-fill" id="cnc-job-progress-fill"></div></div>
@@ -1660,6 +1668,7 @@
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.1">Z -0.1</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.5">Z -0.5</button>
                             </div>
+                            <p class="plotter-help cnc-z-sd-note" id="cnc-z-sd-note" role="status" data-i18n="cncSdZNote" hidden>Con un trabajo desde la SD no se puede ajustar el Z; detén el trabajo y regenera el dibujo con otro Z abajo.</p>
                             <div class="cnc-z-offset" id="cnc-z-offset" hidden>
                                 <div class="cnc-z-offset-head">
                                     <span class="cnc-z-offset-value" id="cnc-z-offset-value" role="status" aria-live="polite"></span>

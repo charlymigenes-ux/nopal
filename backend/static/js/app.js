@@ -15278,6 +15278,7 @@ async function loadCncSection() {
     refreshCncParserState();
     renderCncFilesTable();
     refreshCncQueue();
+    refreshCncSdSwitch(true);
     stopCncPolling();
     cncStatusPollInterval = setInterval(refreshCncStatus, 600);
     cncSlowPollInterval = setInterval(() => {
@@ -15306,6 +15307,8 @@ if (cncHostSelect) {
             refreshCncStatus();
             refreshCncParserState();
             renderCncFilesTable();
+            refreshCncSdSwitch();
+            refreshCncJobFooter();
         } catch (error) {
             console.error(error);
         }
@@ -15456,28 +15459,29 @@ function renderCncJobResult(job, host) {
     const bodyEl = document.getElementById('cnc-job-result-body');
     box.dataset.key = key;
     box.className = 'cnc-job-result cnc-job-result-' + (job.state === 'completed' ? 'ok' : job.state === 'error' ? 'error' : 'info');
+    const sd = job.source === 'sd';
     if (job.state === 'error') {
         const raw = job.error || '';
         const lineMatch = /(?:línea|line)\s+(\d+)/i.exec(raw);
         const rawCode = (/(?:error|ALARM):\s*\d+/i.exec(raw) || [raw || '—'])[0];
         titleEl.textContent = t('cncJobFailedTitle');
-        bodyEl.textContent = cncJobFill(t('cncJobFailedBody'), {
+        bodyEl.textContent = cncJobFill(t(sd && !/(?:línea|line)\s+\d+/i.test(job.error || '') ? 'cncSdFailedBody' : 'cncJobFailedBody'), {
             file, line: lineMatch ? lineMatch[1] : line,
             reason: cncGrblReasonText(raw) || (raw && !/^(error|ALARM):/i.test(raw.trim()) ? raw : t('cncJobFailedUnknown')),
             raw: rawCode,
         });
     } else if (job.state === 'completed') {
         titleEl.textContent = '';
-        bodyEl.textContent = cncJobFill(t('cncJobDoneBody'), { file, total: (job.total || 0).toLocaleString() });
+        bodyEl.textContent = cncJobFill(t(sd ? 'cncSdDoneBody' : 'cncJobDoneBody'), { file, total: (job.total || 0).toLocaleString() });
     } else {
         titleEl.textContent = '';
-        bodyEl.textContent = cncJobFill(t('cncJobCancelledBody'), { file, line });
+        bodyEl.textContent = cncJobFill(t(sd ? 'cncSdCancelledBody' : 'cncJobCancelledBody'), { file, line });
     }
     box.hidden = false;
 }
 
 // ── Ajuste de la Z de "lápiz abajo" con el trabajo en curso ──
-const cncZState = { live: false, offset: 0 };
+const cncZState = { live: false, offset: 0, sd: false };
 function cncZOffsetRender(live, offset) {
     cncZState.live = !!live;
     cncZState.offset = Number(offset) || 0;
@@ -15529,6 +15533,8 @@ async function refreshCncJobFooter() {
         }
         const filenameEl = document.getElementById('cnc-job-filename');
         if (filenameEl) filenameEl.textContent = shown?.filename || '—';
+        const isSd = shown?.source === 'sd';
+        const uploading = isSd && shown?.phase === 'uploading' && active;
         const percent = shown?.total ? Math.round((shown.current / shown.total) * 100) : 0;
         const fillEl = document.getElementById('cnc-job-progress-fill');
         if (fillEl) fillEl.style.width = `${percent}%`;
@@ -15536,9 +15542,11 @@ async function refreshCncJobFooter() {
         if (percentEl) percentEl.textContent = `${percent}%`;
         const linesEl = document.getElementById('cnc-job-lines');
         if (linesEl) {
-            const showLines = !!shown?.total && shown.source !== 'external';
+            const showLines = !!shown?.total && shown.source !== 'external' && (!isSd || uploading);
             linesEl.hidden = !showLines;
-            if (showLines) {
+            if (uploading) {
+                linesEl.textContent = cncJobFill(t('cncSdUploading'), { percent });
+            } else if (showLines) {
                 linesEl.textContent = cncJobFill(t('cncJobLines'), {
                     current: (shown.current || 0).toLocaleString(), total: shown.total.toLocaleString(),
                 });
@@ -15551,6 +15559,9 @@ async function refreshCncJobFooter() {
         }
         renderCncJobResult(active ? null : finished, host);
         cncZOffsetRender(active && job.has_z, job.z_offset);
+        cncZState.sd = !!(active && job.source === 'sd');
+        const zNote = document.getElementById('cnc-z-sd-note');
+        if (zNote) zNote.hidden = !cncZState.sd;
         // Mientras corre, se consulta más seguido para que línea y tiempo avancen fluido.
         clearTimeout(cncJobFooterTimer);
         if (active) cncJobFooterTimer = setTimeout(refreshCncJobFooter, 1500);
@@ -15644,6 +15655,7 @@ document.getElementById('cnc-probe-btn')?.addEventListener('click', async () => 
 document.querySelectorAll('[data-z-nudge]').forEach(btn => {
     btn.addEventListener('click', async () => {
         const amount = parseFloat(btn.dataset.zNudge);
+        if (cncZState.sd) return; // trabajo desde la SD: el aviso ya explica por qué no se ajusta
         if (cncZState.live) {
             await cncZOffsetSend(amount);
             return;
@@ -15701,20 +15713,92 @@ document.getElementById('cnc-zero-z-btn')?.addEventListener('click', async () =>
 
 // Compartido entre el botón "Correr" de la tabla ARCHIVOS y el paso final
 // del asistente guiado, para no duplicar la lógica de arrancar un trabajo.
+// Decide cómo correr: desde la SD de la placa (por omisión si la tiene) o por streaming.
+const CNC_SD_CACHE_MS = 60000;
+const cncSdCache = new Map();
+
+async function cncSdPresent(host, force) {
+    if (!host) return false;
+    const hit = cncSdCache.get(host);
+    if (!force && hit && Date.now() - hit.at < CNC_SD_CACHE_MS) return hit.present;
+    let present = false;
+    try {
+        const response = await fetch(`/api/laser/sd/status?host=${encodeURIComponent(host)}`);
+        present = response.ok && !!(await response.json())?.present;
+    } catch (error) {
+        console.error(error);
+    }
+    cncSdCache.set(host, { present, at: Date.now() });
+    return present;
+}
+
+function cncSdPrefKey(host) { return `cncRunFromSd:${host}`; }
+
+function cncSdPrefGet(host) {
+    try {
+        return localStorage.getItem(cncSdPrefKey(host)) !== '0';
+    } catch (error) {
+        return true;
+    }
+}
+
+function cncSdPrefSet(host, value) {
+    try { localStorage.setItem(cncSdPrefKey(host), value ? '1' : '0'); } catch (error) { /* sin almacenamiento */ }
+}
+
+async function refreshCncSdSwitch(force) {
+    const input = document.getElementById('cnc-sd-switch');
+    const hint = document.getElementById('cnc-sd-hint');
+    if (!input) return;
+    const host = getSectionHost('cnc');
+    const present = await cncSdPresent(host, force);
+    input.disabled = !present;
+    input.checked = present && cncSdPrefGet(host);
+    if (hint) hint.textContent = t(present ? 'cncSdHint' : 'cncSdNoCard');
+}
+
+document.getElementById('cnc-sd-switch')?.addEventListener('change', event => {
+    const host = getSectionHost('cnc');
+    if (host) cncSdPrefSet(host, event.currentTarget.checked);
+});
+
 async function startCncJob(path, host) {
     const targetHost = host || getSectionHost('cnc');
     if (!targetHost) {
         appAlert(t('laserNoMachineSelected'), '', 'warning');
         return;
     }
-    const formData = new FormData();
-    formData.append('path', path);
-    formData.append('host', targetHost);
+    const post = (url) => {
+        const formData = new FormData();
+        formData.append('path', path);
+        formData.append('host', targetHost);
+        return fetch(url, { method: 'POST', body: formData });
+    };
     try {
-        await fetch('/api/laser/job/start', { method: 'POST', body: formData });
-        showToast(t('cncJobStarted'));
+        let useSd = (await cncSdPresent(targetHost)) && cncSdPrefGet(targetHost);
+        let response = await post(useSd ? '/api/laser/job/start-sd' : '/api/laser/job/start');
+        if (useSd && response.status === 409) {
+            const data = await response.json().catch(() => ({}));
+            const detail = data.detail || t('cncSdUnavailable');
+            // 409 también es "ya hay un trabajo en curso": solo se ofrece streaming si ya no se ve la SD.
+            if (await cncSdPresent(targetHost, true)) {
+                appAlert(detail, '', 'warning');
+                return;
+            }
+            refreshCncSdSwitch();
+            if (!(await appConfirm(`${detail}\n\n${t('cncSdFallbackConfirm')}`, t('cncRun'), 'warning'))) return;
+            useSd = false;
+            response = await post('/api/laser/job/start');
+        }
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            appAlert(data.detail || t('cncSdStartError'), '', 'danger');
+        } else {
+            showToast(t(useSd ? 'cncSdUploadStarted' : 'cncJobStarted'));
+        }
     } catch (error) {
         console.error(error);
+        appAlert(t('cncSdStartError'), '', 'danger');
     }
     refreshCncJobFooter();
 }

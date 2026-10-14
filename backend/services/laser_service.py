@@ -1563,6 +1563,7 @@ class LaserJob:
         # que aún no se han mandado y que van a esa Z.
         self.z_offset = 0.0
         self.z_ref = _lowest_z(lines)
+        self.phase = "running"        # "uploading" mientras un trabajo desde SD sube su archivo
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -1574,6 +1575,7 @@ class LaserJob:
             "error": self.error_message,
             "z_offset": round(self.z_offset, 3),
             "has_z": self.z_ref is not None,
+            "phase": self.phase,
         }
 
 
@@ -1819,6 +1821,75 @@ async def _run_marlin_job(job: "LaserJob"):
     elif job.state == "error":
         logger.warning(f"[{job.host}] Trabajo (Marlin) terminó con error: {job.error_message}")
     record_laser_job_history(job)
+
+
+def sd_card_present(host: str) -> bool:
+    """¿La placa de red tiene una tarjeta SD lista? `[ESP200]` es el comando de estado de la SD del
+    firmware (ESP3D/Grbl_Esp32); su respuesta llega en el cuerpo HTTP ("SD card detected")."""
+    if _is_usb_host(host) or _firmware_for_host(host) == "marlin":
+        return False
+    try:
+        response = requests.get(_command_url(host), params={"commandText": "[ESP200]"}, timeout=HTTP_TIMEOUT)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] No se pudo consultar el estado de la SD: {e}")
+        return False
+    return "detected" in (response.text or "").lower() and "no sd" not in (response.text or "").lower()
+
+
+def start_job_via_sd(host: str, filename: str, data: bytes, check_sd: bool = True) -> Dict[str, Any]:
+    """Corre un archivo desde la SD de la placa: lo sube y arranca `$SD/Run=`. El trabajo corre
+    dentro de la placa, así que ya no depende de que el WiFi entregue cada línea a tiempo (el
+    streaming por HTTP puede perder o desfasar líneas con el búfer de entrada de la placa lleno).
+    Mientras sube, `phase` es "uploading" y current/total son los bytes enviados."""
+    if _firmware_for_host(host) == "marlin":
+        raise RuntimeError("SD nativa no soportada para Marlin en esta versión")
+    existing = _jobs.get(host)
+    if existing is not None and existing.state in ("running", "paused"):
+        raise RuntimeError("Ya hay un trabajo en curso en este láser")
+    if check_sd and not sd_card_present(host):
+        raise RuntimeError("La placa no tiene una tarjeta SD lista")
+    job = LaserJob(host, [], filename, source="sd")
+    job.phase = "uploading"
+    job.total = len(data)
+    _jobs[host] = job
+    logger.info(f"[{host}] Trabajo iniciado (SD): subiendo {filename} ({len(data)} bytes)")
+    asyncio.create_task(_upload_and_run_sd(job, data))
+    return job.to_dict()
+
+
+async def _upload_and_run_sd(job: "LaserJob", data: bytes) -> None:
+    loop = asyncio.get_event_loop()
+    upload_id = f"job-{job.host}-{int(job.started_at * 1000)}"
+    upload = loop.run_in_executor(None, sd_upload_file_tracked, job.host, "/", job.filename, data, upload_id)
+    try:
+        while not upload.done():
+            progress = get_sd_upload_progress(upload_id)
+            if progress:
+                job.current = int(progress.get("sent", 0))
+            if job.cancel_requested:
+                job.state = "cancelled"
+                return
+            await asyncio.sleep(0.5)
+        await upload
+        progress = get_sd_upload_progress(upload_id) or {}
+        if progress.get("status") != "done":
+            job.state = "error"
+            job.error_message = f"No se pudo subir el archivo a la SD ({progress.get('error') or 'sin respuesta'})"
+            logger.warning(f"[{job.host}] Trabajo (SD) terminó con error: {job.error_message}")
+            record_laser_job_history(job)
+            return
+    except Exception as e:
+        logger.exception(f"[{job.host}] Excepción subiendo el archivo a la SD")
+        job.state = "error"
+        job.error_message = str(e)
+        record_laser_job_history(job)
+        return
+    finally:
+        clear_sd_upload_progress(upload_id)
+    job.phase = "running"
+    job.current, job.total = 0, 0
+    await _run_sd_job(job)
 
 
 def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:

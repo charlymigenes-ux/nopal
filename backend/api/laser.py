@@ -53,6 +53,8 @@ from backend.services.laser_service import (
     clear_sd_upload_progress,
     sd_format_card,
     start_sd_job,
+    start_job_via_sd,
+    sd_card_present,
     has_sd_card,
     get_laser_history,
     attach_laser_history_snapshot,
@@ -312,6 +314,35 @@ async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = 
         raise HTTPException(status_code=409, detail=str(e))
 
     return job
+
+
+@router.get("/api/laser/sd/status")
+async def laser_sd_status_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
+    """¿La placa tiene una tarjeta SD lista? (la pantalla ofrece correr desde la SD si la hay)."""
+    target = _require_host(host)
+    loop = asyncio.get_event_loop()
+    return {"present": await loop.run_in_executor(None, sd_card_present, target)}
+
+
+@router.post("/api/laser/job/start-sd")
+async def laser_job_start_sd_endpoint(path: str = Form(...), host: Optional[str] = Form(None),
+                                      user: dict = Depends(require_auth)):
+    """Corre un archivo de la biblioteca DESDE la SD de la placa: lo sube y lo arranca ahí. Es más
+    firme que el envío línea por línea por WiFi (el trabajo corre dentro de la placa). No admite el
+    ajuste de Z en vivo (NOPAL ya no ve las líneas)."""
+    target = _require_host(host)
+    file_path = safe_section_path("gcode", path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    loop = asyncio.get_event_loop()
+    if not await loop.run_in_executor(None, sd_card_present, target):
+        raise HTTPException(status_code=409, detail="La placa no tiene una tarjeta SD lista")
+    with open(file_path, "rb") as handle:
+        data = handle.read()
+    try:
+        return start_job_via_sd(target, os.path.basename(path), data, check_sd=False)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.post("/api/laser/job/frame")

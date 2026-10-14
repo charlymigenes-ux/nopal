@@ -99,3 +99,80 @@ class TestBoardRefusesTheLine:
             assert laser_service.send_raw_command(HOST, "G1 X1 Y1") is True
         monkeypatch.setattr(laser_service.requests, "get", lambda *a, **k: _Reply("Error"))
         assert laser_service.send_raw_command(HOST, "?") is True
+
+
+class TestRunFromSd:
+    """Correr desde la SD de la placa: sube el archivo y arranca $SD/Run (todo simulado)."""
+
+    def test_sd_presence_is_read_from_esp200(self, monkeypatch):
+        monkeypatch.setattr(laser_service, "_jobs", {})
+        for body, expected in (("SD card detected", True), ("No SD card", False), ("SD card not enabled", False), ("", False)):
+            monkeypatch.setattr(laser_service.requests, "get", lambda *a, _b=body, **k: _Reply(_b))
+            assert laser_service.sd_card_present(HOST) is expected, body
+
+    def test_uploads_then_runs_and_reports_the_phase(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(laser_service, "_jobs", {})
+        monkeypatch.setattr(laser_service, "sd_card_present", lambda host: True)
+
+        def fake_upload(host, path, filename, data, upload_id):
+            calls.append(("upload", path, filename, len(data)))
+            laser_service._sd_upload_progress[upload_id] = {"sent": len(data), "total": len(data), "status": "done", "error": None}
+
+        async def fake_run(job):
+            calls.append(("run", job.filename, job.phase))
+            job.state = "completed"
+
+        monkeypatch.setattr(laser_service, "sd_upload_file_tracked", fake_upload)
+        monkeypatch.setattr(laser_service, "_run_sd_job", fake_run)
+
+        async def go():
+            info = laser_service.start_job_via_sd(HOST, "dibujo.gc", b"G0 X1\n" * 10)
+            assert info["phase"] == "uploading" and info["total"] == 60 and info["source"] == "sd"
+            for _ in range(50):
+                await asyncio.sleep(0.05)
+                if laser_service._jobs[HOST].state == "completed":
+                    break
+            return laser_service._jobs[HOST]
+
+        job = asyncio.run(go())
+        assert calls == [("upload", "/", "dibujo.gc", 60), ("run", "dibujo.gc", "running")]
+        assert job.state == "completed" and job.to_dict()["has_z"] is False
+
+    def test_a_failed_upload_is_a_readable_error(self, monkeypatch):
+        monkeypatch.setattr(laser_service, "_jobs", {})
+        monkeypatch.setattr(laser_service, "sd_card_present", lambda host: True)
+        monkeypatch.setattr(laser_service, "record_laser_job_history", lambda job: None)
+        monkeypatch.setattr(laser_service, "sd_upload_file_tracked", lambda host, path, name, data, upload_id: laser_service._sd_upload_progress.__setitem__(
+            upload_id, {"sent": 0, "total": 1, "status": "error", "error": "HTTP 500"}))
+
+        async def go():
+            laser_service.start_job_via_sd(HOST, "dibujo.gc", b"G0 X1\n")
+            for _ in range(50):
+                await asyncio.sleep(0.05)
+                if laser_service._jobs[HOST].state == "error":
+                    break
+            return laser_service._jobs[HOST]
+
+        job = asyncio.run(go())
+        assert job.state == "error" and "subir el archivo a la SD" in job.error_message and "HTTP 500" in job.error_message
+
+    def test_no_sd_card_and_busy_board_are_refused(self, monkeypatch):
+        monkeypatch.setattr(laser_service, "_jobs", {})
+        monkeypatch.setattr(laser_service, "sd_card_present", lambda host: False)
+        with pytest.raises(RuntimeError, match="tarjeta SD"):
+            laser_service.start_job_via_sd(HOST, "dibujo.gc", b"G0 X1\n")
+        monkeypatch.setattr(laser_service, "sd_card_present", lambda host: True)
+        monkeypatch.setattr(laser_service, "_jobs", {HOST: _job()})
+        with pytest.raises(RuntimeError, match="en curso"):
+            laser_service.start_job_via_sd(HOST, "dibujo.gc", b"G0 X1\n")
+
+    def test_endpoints(self, client, as_operator, monkeypatch):
+        monkeypatch.setattr(laser_service, "sd_card_present", lambda host: True)
+        import backend.api.laser as laser_api
+        monkeypatch.setattr(laser_api, "sd_card_present", lambda host: True)
+        assert client.get("/api/laser/sd/status", params={"host": HOST}).json() == {"present": True}
+        monkeypatch.setattr(laser_api, "sd_card_present", lambda host: False)
+        assert client.get("/api/laser/sd/status", params={"host": HOST}).json() == {"present": False}
+        r = client.post("/api/laser/job/start-sd", data={"host": HOST, "path": "no-existe.gc"})
+        assert r.status_code == 404

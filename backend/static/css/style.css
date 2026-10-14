@@ -21749,6 +21749,14 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
 @media (max-width: 520px) { .cnc-z-nudge-row .laser-step-btn { flex: 1 1 28%; } }
 .cnc-z-offset { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .cnc-z-offset[hidden] { display: none; }
+.cnc-z-sd-note[hidden] { display: none; }
+.cnc-sd-row { display: flex; flex-direction: column; gap: 4px; }
+.cnc-sd-row .settings-switch { align-items: flex-start; }
+.cnc-sd-row .switch-label { white-space: normal; }
+.cnc-sd-row .settings-switch { position: relative; }
+.cnc-sd-row .settings-switch input[type="checkbox"] { display: block; position: absolute; opacity: 0; width: 42px; height: 24px; margin: 0; cursor: pointer; }
+.cnc-sd-row .settings-switch input:focus-visible + .switch-slider { outline: 2px solid var(--green-dark); outline-offset: 2px; }
+.cnc-sd-row .settings-switch input:disabled + .switch-slider { opacity: 0.55; cursor: not-allowed; }
 .cnc-z-offset-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cnc-z-offset-value { font-size: 0.85rem; font-weight: 600; color: var(--text); }
 
