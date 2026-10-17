@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import itertools
 import json
 import logging
@@ -7,6 +8,7 @@ import re
 import socket
 import threading
 import time
+import uuid
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
@@ -27,7 +29,7 @@ HTTP_TIMEOUT = 4
 WS_PORT = 81
 REGISTRY_PATH = "laser_registry.json"
 HISTORY_PATH = "laser_history.json"
-HISTORY_MAX_ENTRIES = 200
+HISTORY_MAX_ENTRIES = 1000
 
 STATUS_RE = re.compile(r"<(?P<state>\w+)(?::\d+)?\|(?P<fields>[^>]*)>")
 
@@ -240,33 +242,80 @@ def _save_history(entries: List[Dict[str, Any]]):
         pass
 
 
+def legacy_entry_id(entry: Dict[str, Any]) -> str:
+    """Id estable de una entrada vieja (anterior al registro de control) a partir de sus datos."""
+    basis = f"{entry.get('host')}|{entry.get('started_at')}|{entry.get('filename')}"
+    return "h" + hashlib.sha1(basis.encode("utf-8")).hexdigest()[:11]
+
+
 def get_laser_history(limit: int = 50) -> List[Dict[str, Any]]:
-    """Trabajos láser más recientes primero."""
+    """Trabajos láser más recientes primero (cada entrada con su `id`)."""
     entries = _load_history()
+    for entry in entries[:limit]:
+        entry.setdefault("id", legacy_entry_id(entry))
     return entries[:limit]
 
 
-def record_laser_job_history(job: "LaserJob"):
-    """Guarda el resultado final de un trabajo (completado, cancelado o con
-    error) en el historial persistente, más reciente primero."""
-    entries = _load_history()
+def _history_entry(job: "LaserJob", final: bool) -> Dict[str, Any]:
     machine = next((e for e in _load_registry() if e.get("host") == job.host), None)
-    entry = {
+    return {
+        "id": job.job_id,
         "host": job.host,
         # Vínculo estable a la máquina (id interno); `host` queda solo como
         # dato de la dirección que tenía al cortar.
         "machine_id": f"laser:{machine['id']}" if machine else None,
         "filename": job.filename,
         "source": job.source,
-        "state": job.state,
+        "state": job.state if final else "running",
         "current": job.current,
         "total": job.total,
         "error": job.error_message,
+        "user": job.user,
         "started_at": job.started_at,
-        "completed_at": time.time(),
+        "completed_at": time.time() if final else None,
     }
-    entries.insert(0, entry)
+
+
+def begin_laser_job_history(job: "LaserJob"):
+    """Registra el trabajo en cuanto se manda (estado "running"): así ningún trabajo enviado queda fuera
+    del control, aunque NOPAL se reinicie antes de que termine (ver reconcile_laser_history)."""
+    entries = _load_history()
+    entries.insert(0, _history_entry(job, final=False))
     _save_history(entries[:HISTORY_MAX_ENTRIES])
+
+
+def record_laser_job_history(job: "LaserJob"):
+    """Guarda el resultado final de un trabajo (completado, cancelado o con
+    error) en el historial persistente, más reciente primero."""
+    entries = _load_history()
+    final = _history_entry(job, final=True)
+    for index, entry in enumerate(entries):
+        if entry.get("id") == job.job_id:
+            final["snapshot"] = entry.get("snapshot")
+            if final["snapshot"] is None:
+                final.pop("snapshot")
+            entries[index] = final
+            break
+    else:
+        entries.insert(0, final)
+    _save_history(entries[:HISTORY_MAX_ENTRIES])
+
+
+def reconcile_laser_history() -> int:
+    """Al arrancar NOPAL: los trabajos que quedaron "running" sin un trabajo vivo se cierran como
+    "incomplete" (el proceso se reinició a media ejecución). Devuelve cuántos se corrigieron."""
+    entries = _load_history()
+    live = {job.job_id for job in _jobs.values() if job.state in ("running", "paused")}
+    fixed = 0
+    for entry in entries:
+        if entry.get("state") == "running" and entry.get("id") not in live:
+            entry["state"] = "incomplete"
+            entry["error"] = entry.get("error") or "El trabajo no terminó (NOPAL se reinició)"
+            entry["completed_at"] = entry.get("completed_at") or time.time()
+            fixed += 1
+    if fixed:
+        _save_history(entries)
+    return fixed
 
 
 def attach_laser_history_snapshot(host: str, snapshot: str) -> bool:
@@ -1546,8 +1595,10 @@ def apply_z_offset(line: str, z_ref: Optional[float], offset: float) -> str:
 
 
 class LaserJob:
-    def __init__(self, host: str, lines: List[str], filename: str = "", source: str = "stream"):
+    def __init__(self, host: str, lines: List[str], filename: str = "", source: str = "stream", user: str = ""):
         self.host = host
+        self.job_id = uuid.uuid4().hex[:12]     # vínculo estable con su entrada del historial de control
+        self.user = user or ""                  # quién lo mandó desde NOPAL (vacío: no se sabe)
         self.lines = lines
         self.filename = filename
         self.source = source  # "stream" (línea por línea vía WiFi/USB) o "sd" (corre local desde la SD)
@@ -1576,6 +1627,8 @@ class LaserJob:
             "z_offset": round(self.z_offset, 3),
             "has_z": self.z_ref is not None,
             "phase": self.phase,
+            "job_id": self.job_id,
+            "user": self.user,
         }
 
 
@@ -1786,7 +1839,7 @@ async def _run_sd_job(job: LaserJob):
         record_laser_job_history(job)
 
 
-def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:
+def start_job(host: str, gcode_text: str, filename: str = "", user: str = "") -> Dict[str, Any]:
     """Inicia streaming línea por línea (WiFi/USB) — para placas sin SD.
 
     No detecta si ya hay un trabajo EXTERNO en curso (ej. mandado por
@@ -1800,8 +1853,9 @@ def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:
         raise RuntimeError("Ya hay un trabajo en curso en este láser")
 
     lines = gcode_text.splitlines()
-    job = LaserJob(host, lines, filename, source="stream")
+    job = LaserJob(host, lines, filename, source="stream", user=user)
     _jobs[host] = job
+    begin_laser_job_history(job)
     logger.info(f"[{host}] Trabajo iniciado: {filename or '(stream)'} ({len(lines)} líneas)")
     if _firmware_for_host(host) == "marlin":
         asyncio.create_task(_run_marlin_job(job))
@@ -1837,7 +1891,7 @@ def sd_card_present(host: str) -> bool:
     return "detected" in (response.text or "").lower() and "no sd" not in (response.text or "").lower()
 
 
-def start_job_via_sd(host: str, filename: str, data: bytes, check_sd: bool = True) -> Dict[str, Any]:
+def start_job_via_sd(host: str, filename: str, data: bytes, check_sd: bool = True, user: str = "") -> Dict[str, Any]:
     """Corre un archivo desde la SD de la placa: lo sube y arranca `$SD/Run=`. El trabajo corre
     dentro de la placa, así que ya no depende de que el WiFi entregue cada línea a tiempo (el
     streaming por HTTP puede perder o desfasar líneas con el búfer de entrada de la placa lleno).
@@ -1849,10 +1903,11 @@ def start_job_via_sd(host: str, filename: str, data: bytes, check_sd: bool = Tru
         raise RuntimeError("Ya hay un trabajo en curso en este láser")
     if check_sd and not sd_card_present(host):
         raise RuntimeError("La placa no tiene una tarjeta SD lista")
-    job = LaserJob(host, [], filename, source="sd")
+    job = LaserJob(host, [], filename, source="sd", user=user)
     job.phase = "uploading"
     job.total = len(data)
     _jobs[host] = job
+    begin_laser_job_history(job)
     logger.info(f"[{host}] Trabajo iniciado (SD): subiendo {filename} ({len(data)} bytes)")
     asyncio.create_task(_upload_and_run_sd(job, data))
     return job.to_dict()
@@ -1892,7 +1947,7 @@ async def _upload_and_run_sd(job: "LaserJob", data: bytes) -> None:
     await _run_sd_job(job)
 
 
-def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:
+def start_sd_job(host: str, sd_filename: str, user: str = "") -> Dict[str, Any]:
     """Inicia un trabajo ya subido a la SD, corriéndolo localmente en la placa."""
     if _firmware_for_host(host) == "marlin":
         raise RuntimeError("SD nativa no soportada para Marlin en esta versión")
@@ -1902,8 +1957,9 @@ def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:
         logger.warning(f"[{host}] No se pudo iniciar '{sd_filename}' (SD): ya hay un trabajo en curso")
         raise RuntimeError("Ya hay un trabajo en curso en este láser")
 
-    job = LaserJob(host, [], sd_filename, source="sd")
+    job = LaserJob(host, [], sd_filename, source="sd", user=user)
     _jobs[host] = job
+    begin_laser_job_history(job)
     logger.info(f"[{host}] Trabajo iniciado (SD): {sd_filename}")
     asyncio.create_task(_run_sd_job(job))
     return job.to_dict()

@@ -2007,133 +2007,750 @@ function getJobStatusLabel(status) {
     return labels[status] || status;
 }
 
-function filterRecentPrinterFiles(query) {
-    if (!query) return recentPrinterFiles;
-    const needle = query.toLowerCase();
-    return recentPrinterFiles
-        .map(group => ({
-            ...group,
-            jobs: group.jobs.filter(job => job.filename.toLowerCase().includes(needle)),
-        }))
-        .filter(group => group.jobs.length > 0);
+// ── Historial de trabajos (sección "queue") ──
+// Los datos salen del historial unificado y con control del servidor
+// (/api/jobs/history): filtro por tipo, periodo, búsqueda y paginación son del
+// lado del servidor. Si un dato no existe (miniatura, duración, usuario) el
+// fragmento se omite o se muestra "—"; nada se inventa en el cliente.
+let jobHistoryQueue = [];
+const jobHistoryState = { type: 'all', period: 30, query: '', page: 1 };
+const JOB_HISTORY_PAGE_SIZE = 8;
+let jobHistoryData = { items: [], total: 0, page: 1, pages: 1, summary: { '3d': 0, laser: 0, cnc: 0, total: 0 }, can_delete: false };
+let jobHistoryLoaded = false;
+let jobHistoryError = false;
+let jobHistoryToken = 0;
+let jobHistorySearchTimer = null;
+
+
+const JH_ICONS = {
+    '3d': '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg>',
+    laser: '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg>',
+    cnc: '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>',
+    ok: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
+    cancel: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>',
+    error: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 17h.01"/></svg>',
+    clock: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    chevron: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
+    chevronLeft: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>',
+    menu: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
+    file: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>',
+};
+
+function jhIcon(name, size = 18) {
+    return (JH_ICONS[name] || '').replace(/\{s\}/g, size);
 }
 
-function renderRecentPrinterFiles(groups) {
-    if (!modelsGrid) return;
+function jhTypeLabel(type) {
+    return type === '3d' ? '3D' : (type === 'cnc' ? t('cnc') : t('laser'));
+}
 
-    if (!groups || groups.length === 0) {
-        modelsGrid.innerHTML = `<div class="empty-state">${t('noPrintersFound')}</div>`;
-        return;
+function jhFormatDuration(seconds) {
+    if (!seconds || Number.isNaN(seconds) || seconds < 1) return '';
+    const total = Math.round(seconds);
+    if (total < 60) return `${total} s`;
+    const mins = Math.floor(total / 60);
+    if (mins < 60) return `${mins} min`;
+    const hours = Math.floor(mins / 60);
+    const rest = mins % 60;
+    return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}
+
+Object.assign(JH_ICONS, {
+    warn: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+    run: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></svg>',
+    sent: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>',
+    user: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+    download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>',
+    log: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="M9 12h6M9 8h6M9 16h3"/></svg>',
+    trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>',
+    reprint: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>',
+    eye: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+});
+
+// Cada estado lleva color + icono + texto (nunca solo color).
+const JH_STATES = {
+    completed: { tone: 'ok', icon: 'ok', label: () => t('completed') },
+    error: { tone: 'danger', icon: 'error', label: () => t('jhStateError') },
+    cancelled: { tone: 'soft', icon: 'cancel', label: () => t('cancelled') },
+    incomplete: { tone: 'warn', icon: 'warn', label: () => t('jhStateIncomplete') },
+    running: { tone: 'info', icon: 'run', label: () => t('jhStateRunning') },
+    sent: { tone: 'neutral', icon: 'sent', label: () => t('jhStateSent') },
+};
+
+function jhStateInfo(status) {
+    return JH_STATES[status] || JH_STATES.incomplete;
+}
+
+// Por qué una acción del menú ⋮ no está disponible (null = disponible).
+function jhReprintReason(item) {
+    if (item.status === 'running') return t('jhReprintRunning');
+    const lib = item.library;
+    if (item.kind === '3d') {
+        if (lib || (item.remote_path && item.port != null)) return null;
+        return t('jhReprintNoFile');
     }
-
-    modelsGrid.innerHTML = `
-        <div class="recent-printer-groups">
-            ${groups.map(group => `
-                <div class="recent-printer-group">
-                    <h3 class="recent-printer-group-title">${group.printer}</h3>
-                    <div class="recent-printer-jobs">
-                        ${group.jobs.length === 0
-                            ? `<div class="empty-state-small">${t('noFilesFound')}</div>`
-                            : group.jobs.map(job => {
-                                const visualState = getJobVisualState(job.status);
-                                const durationMinutes = job.print_duration ? Math.round(job.print_duration / 60) : 0;
-                                return `
-                                    <div class="recent-job-card" data-file-url="${job.file_url || ''}" title="${job.file_url ? t('open') : ''}">
-                                        <div class="recent-job-thumb">
-                                            ${job.thumbnail_url
-                                                ? `<img src="${job.thumbnail_url}" alt="${job.filename}" loading="lazy" onerror="this.closest('.recent-job-thumb').classList.add('no-thumb')">`
-                                                : ''}
-                                            <svg class="recent-job-thumb-fallback" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                        </div>
-                                        <div class="recent-job-info">
-                                            <div class="printer-status-line ${visualState}">
-                                                <span class="printer-status-dot ${visualState}"></span>${getJobStatusLabel(job.status)}
-                                            </div>
-                                            <h4 class="recent-job-name" title="${job.filename}">${job.filename}</h4>
-                                            <div class="recent-job-meta">
-                                                <span>${formatDate(job.end_time)}</span>
-                                                <span>${formatEstimatedTime(durationMinutes)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('')}
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-    `;
-
-    modelsGrid.querySelectorAll('.recent-job-card').forEach(card => {
-        const fileUrl = card.dataset.fileUrl;
-        if (!fileUrl) return;
-        card.addEventListener('click', () => window.open(fileUrl, '_blank'));
-    });
+    return lib && lib.section === 'gcode' ? null : t('jhReprintNoFile');
 }
 
-async function loadRecentPrinterFiles() {
-    try {
-        const response = await fetch('/api/printers/recent-files');
-        if (!response.ok) throw new Error('No se pudo cargar el historial de impresoras');
-        const data = await response.json();
-        recentPrinterFiles = data.printers || [];
-        renderRecentPrinterFiles(recentPrinterFiles);
-    } catch (error) {
-        console.error(error);
-        if (modelsGrid) modelsGrid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
-    }
+function jhDeleteReason(item) {
+    return item.deletable ? null : t('jhDeleteOnlyFailed');
 }
 
-function laserHistoryStateLabel(state) {
-    if (state === 'completed') return t('completed');
-    if (state === 'cancelled') return t('cancelled');
-    return t('laserHistoryStateError');
+function jhMenuItemHtml(action, index, icon, label, reason) {
+    return `<button type="button" role="menuitem" class="jh-menu-item${action === 'delete' ? ' is-danger' : ''}" data-jh-action="${action}" data-jh-index="${index}" tabindex="-1"${reason ? ` aria-disabled="true" title="${escapeHtml(reason)}"` : ''}>
+        ${jhIcon(icon)}<span class="jh-menu-text"><span>${escapeHtml(label)}</span>${reason ? `<small>${escapeHtml(reason)}</small>` : ''}</span></button>`;
 }
 
-function renderLaserHistory(jobs) {
-    const container = document.getElementById('laser-history-list');
-    if (!container) return;
-    if (!jobs || !jobs.length) {
-        container.innerHTML = `<div class="empty-state">${t('laserHistoryEmpty')}</div>`;
-        return;
-    }
-    container.innerHTML = jobs.map(job => {
-        const visualState = getJobVisualState(job.state);
-        const hostLabel = laserHostLabel(job.host) || job.host;
-        return `
-            <div class="recent-job-card laser-history-card">
-                <div class="recent-job-thumb">
-                    ${job.snapshot
-                        ? `<img src="${job.snapshot}" alt="" loading="lazy">`
-                        : '<svg class="recent-job-thumb-fallback" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>'}
-                </div>
-                <div class="recent-job-info">
-                    <div class="printer-status-line ${visualState}">
-                        <span class="printer-status-dot ${visualState}"></span>${laserHistoryStateLabel(job.state)}
-                    </div>
-                    <h4 class="recent-job-name" title="${escapeHtml(job.filename || '')}">${escapeHtml(job.filename || '—')}</h4>
-                    <div class="recent-job-meta">
-                        <span>${escapeHtml(hostLabel)}</span>
-                        <span>${formatDate(job.completed_at)}</span>
-                    </div>
-                </div>
+function jhRowHtml(item, index) {
+    const state = jhStateInfo(item.status);
+    const type = ['3d', 'laser', 'cnc'].includes(item.kind) ? item.kind : 'laser';
+    const duration = jhFormatDuration(item.duration_s);
+    const thumbSrc = item.thumbnail || item.thumbnail_url || '';
+    const thumb = thumbSrc ? `<img src="${escapeHtml(thumbSrc)}" alt="" loading="lazy">` : '';
+    const detail = [item.machine, item.status === 'error' ? item.error : ''].filter(Boolean).map(escapeHtml).join(' · ');
+    const ts = item.ended_at || item.started_at || null;
+    const user = item.user ? escapeHtml(item.user) : '—';
+    const items = [jhMenuItemHtml('reprint', index, 'reprint', t('jhReprint'), jhReprintReason(item))];
+    if (item.file_url) items.push(jhMenuItemHtml('open', index, 'eye', t('jhViewFile'), null));
+    if (jobHistoryData.can_delete) items.push(jhMenuItemHtml('delete', index, 'trash', t('jhDelete'), jhDeleteReason(item)));
+    return `
+        <li class="jh-row jh-t-${type}">
+            <div class="jh-thumb${thumb ? '' : ' no-thumb'}">${thumb}<span class="jh-thumb-fallback">${jhIcon(type, 22)}</span></div>
+            <div class="jh-info">
+                <span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span>
+                <p class="jh-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</p>
+                ${detail ? `<p class="jh-detail">${detail}</p>` : ''}
             </div>
-        `;
+            <div class="jh-state">
+                <span class="jh-state-line jh-tone-${state.tone}">${jhIcon(state.icon)}${escapeHtml(state.label())}</span>
+                ${duration ? `<span class="jh-dur">${jhIcon('clock')}${escapeHtml(duration)}</span>` : ''}
+            </div>
+            <div class="jh-when">
+                <time class="jh-date"${ts ? ` datetime="${new Date(ts * 1000).toISOString()}"` : ''}>${formatDate(ts)}</time>
+                <span class="jh-user" title="${escapeHtml(t('jhUserLabel'))}">${jhIcon('user')}<span class="jh-sr">${escapeHtml(t('jhUserLabel'))}: </span><span class="jh-user-name">${user}</span></span>
+            </div>
+            <div class="jh-menu-wrap">
+                <button type="button" class="jh-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="${escapeHtml(t('jhMenuLabel'))}: ${escapeHtml(item.name)}">${jhIcon('menu')}</button>
+                <div class="jh-menu" role="menu" aria-label="${escapeHtml(t('jhMenuLabel'))}" hidden>${items.join('')}</div>
+            </div>
+        </li>`;
+}
+
+function jhPagerPages(current, total) {
+    const pages = new Set([1, total, current, current - 1, current + 1]);
+    const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+    const out = [];
+    sorted.forEach((p, i) => {
+        if (i && p - sorted[i - 1] > 1) out.push('…');
+        out.push(p);
+    });
+    return out;
+}
+
+function renderJobHistory() {
+    const wrap = document.getElementById('jh-list-wrap');
+    if (!wrap) return;
+    const data = jobHistoryData;
+    const pageItems = data.items || [];
+    const countEl = document.getElementById('jh-count');
+    if (countEl) countEl.textContent = String(data.total || 0);
+    const logBtn = document.getElementById('jh-log-btn');
+    if (logBtn) logBtn.hidden = !data.can_delete;
+
+    if (!jobHistoryLoaded && !jobHistoryError) {
+        wrap.innerHTML = `<div class="jh-empty" role="status">${jhIcon('file')}<p>${escapeHtml(t('jhLoading'))}</p></div>`;
+    } else if (jobHistoryError && !pageItems.length) {
+        wrap.innerHTML = `<div class="jh-empty" role="alert">${jhIcon('file')}<p>${escapeHtml(t('jhLoadError'))}</p></div>`;
+    } else if (pageItems.length) {
+        wrap.innerHTML = `<ul class="jh-list" aria-labelledby="jh-recent-title">${pageItems.map(jhRowHtml).join('')}</ul>`;
+    } else {
+        const filtered = jobHistoryState.type !== 'all' || jobHistoryState.query.trim() || (data.summary && data.summary.total);
+        wrap.innerHTML = `<div class="jh-empty">${jhIcon('file')}<p>${escapeHtml(t(filtered ? 'jhEmptyFiltered' : 'jhEmpty'))}</p></div>`;
+    }
+    wrap.querySelectorAll('.jh-thumb img').forEach(img => {
+        img.addEventListener('error', () => img.closest('.jh-thumb').classList.add('no-thumb'));
+    });
+
+    const pages = Math.max(1, data.pages || 1);
+    const pager = document.getElementById('jh-pager');
+    if (pager) {
+        pager.hidden = pages <= 1;
+        const cur = data.page || 1;
+        pager.innerHTML = pages <= 1 ? '' : `
+            <button type="button" class="jh-page-btn" data-jh-page="${cur - 1}" aria-label="${escapeHtml(t('jhPrev'))}"${cur <= 1 ? ' disabled' : ''}>${jhIcon('chevronLeft')}</button>
+            ${jhPagerPages(cur, pages).map(p => p === '…'
+                ? '<span class="jh-page-gap" aria-hidden="true">…</span>'
+                : `<button type="button" class="jh-page-btn${p === cur ? ' is-current' : ''}" data-jh-page="${p}"${p === cur ? ' aria-current="page"' : ''} aria-label="${escapeHtml(t('jhPage'))} ${p}">${p}</button>`).join('')}
+            <button type="button" class="jh-page-btn" data-jh-page="${cur + 1}" aria-label="${escapeHtml(t('jhNext'))}"${cur >= pages ? ' disabled' : ''}>${jhIcon('chevron')}</button>`;
+    }
+
+    renderJobHistorySummary(data.summary || {});
+    renderJobHistoryMachines();
+    renderJobHistoryQueue();
+    renderJobHistoryActions();
+}
+
+function renderJobHistorySummary(summary) {
+    const el = document.getElementById('jh-summary');
+    if (!el) return;
+    el.innerHTML = ['3d', 'laser', 'cnc'].map(type => {
+        const n = Number(summary[type]) || 0;
+        return `
+            <div class="jh-tile jh-t-${type}">
+                <span class="jh-tile-label">${jhIcon(type, 18)}${escapeHtml(jhTypeLabel(type))}</span>
+                <strong class="jh-tile-num">${n}</strong>
+                <span class="jh-tile-sub">${escapeHtml(t(n === 1 ? 'jhJobOne' : 'jhJobMany'))}</span>
+            </div>`;
     }).join('');
 }
 
-async function loadLaserHistory() {
-    const container = document.getElementById('laser-history-list');
-    try {
-        const response = await fetch('/api/laser/history?limit=50');
-        if (!response.ok) throw new Error('No se pudo cargar el historial del láser');
-        const data = await response.json();
-        renderLaserHistory(data.jobs || []);
-    } catch (error) {
-        console.error(error);
-        if (container) container.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
+const JH_VISUAL_BY_PRIORITY = ['printing', 'paused', 'error', 'idle', 'offline'];
+
+function jhCollectMachines() {
+    const rows = [];
+    (allPrinters || []).forEach(printer => {
+        const stateValue = getPrinterEffectiveStateValue(printer);
+        const online = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
+        rows.push({ kind: '3d', name: printer.name || String(printer.port), visual: online ? getPrinterVisualState(stateValue, true) : 'offline' });
+    });
+    const registries = {
+        marlin: [typeof marlinPrintersRegistryCache !== 'undefined' ? marlinPrintersRegistryCache : [], 'device'],
+        elegoo: [typeof elegooPrintersRegistryCache !== 'undefined' ? elegooPrintersRegistryCache : [], 'id'],
+        flashforge: [typeof flashforgePrintersRegistryCache !== 'undefined' ? flashforgePrintersRegistryCache : [], 'id'],
+        bambu: [typeof bambuPrintersRegistryCache !== 'undefined' ? bambuPrintersRegistryCache : [], 'id'],
+    };
+    (dashboardStandalonePrinterEntries || []).forEach(entry => {
+        const [list, key] = registries[entry.type] || [[], 'id'];
+        const found = list.find(p => String(p[key]) === String(entry.id));
+        rows.push({ kind: '3d', name: (found && found.name) || String(entry.id), visual: JH_VISUAL_BY_PRIORITY[entry.sortPriority] || 'idle' });
+    });
+    (dashboardLaserEntries || []).forEach(entry => {
+        rows.push({ kind: entry.kind === 'cnc' ? 'cnc' : 'laser', name: laserHostLabel(entry.host) || entry.host, visual: getLaserVisualState(entry.status) });
+    });
+    return rows;
+}
+
+function renderJobHistoryMachines() {
+    const card = document.getElementById('jh-status-card');
+    const list = document.getElementById('jh-machines');
+    if (!card || !list) return;
+    const rows = jhCollectMachines();
+    card.hidden = !rows.length;
+    const labels = { printing: t('printing'), paused: t('paused'), error: t('jhStateError'), offline: t('offline'), idle: t('jhStateReady') };
+    const tones = { printing: 'info', paused: 'soft', error: 'danger', offline: 'soft', idle: 'ok' };
+    list.innerHTML = rows.map(row => `
+        <li><button type="button" class="jh-machine jh-t-${row.kind}" data-jh-go="${row.kind}">
+            <span class="jh-machine-icon">${jhIcon(row.kind, 18)}</span>
+            <span class="jh-machine-name">${escapeHtml(row.name)}</span>
+            <span class="jh-pill jh-tone-${tones[row.visual] || 'ok'}"><span class="jh-dot" aria-hidden="true"></span>${escapeHtml(labels[row.visual] || row.visual)}</span>
+            <span class="jh-machine-go">${jhIcon('chevron')}</span>
+        </button></li>`).join('');
+}
+
+function renderJobHistoryQueue() {
+    const el = document.getElementById('jh-queue');
+    if (!el) return;
+    if (!jobHistoryQueue.length) {
+        el.innerHTML = `<div class="jh-empty jh-empty-small">${jhIcon('file')}<strong>${escapeHtml(t('jhQueueEmptyTitle'))}</strong><p>${escapeHtml(t('jhQueueEmptyBody'))}</p></div>`;
+        return;
+    }
+    el.innerHTML = `<ul class="jh-queue-list">${jobHistoryQueue.map(item => {
+        const type = item.kind === 'cnc' ? 'cnc' : 'laser';
+        return `<li class="jh-queue-row jh-t-${type}"><span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span><span class="jh-name" title="${escapeHtml(item.filename || '')}">${escapeHtml(item.filename || '—')}</span></li>`;
+    }).join('')}</ul>`;
+}
+
+function jhNavItem(section) {
+    return document.querySelector(`.nav-item[data-section="${section}"]`);
+}
+
+function renderJobHistoryActions() {
+    const el = document.getElementById('jh-actions');
+    if (!el) return;
+    const defs = [['3d', 'models', 'jhNew3d'], ['laser', 'laser', 'jhNewLaser'], ['cnc', 'cnc', 'jhNewCnc']];
+    el.innerHTML = defs.filter(([, section]) => {
+        const nav = jhNavItem(section);
+        return nav && !nav.hidden;
+    }).map(([type, section, key]) => `
+        <button type="button" class="jh-action jh-t-${type}" data-jh-go="${section === 'models' ? '3d' : type}">${jhIcon(type, 26)}<span>${escapeHtml(t(key))}</span></button>`).join('');
+}
+
+function jhGo(kind) {
+    const section = kind === '3d' ? 'models' : kind;
+    jhNavItem(section)?.click();
+}
+
+// ── Menú ⋮ de cada fila ──
+function jhCloseMenus(except) {
+    document.querySelectorAll('.jh-menu').forEach(menu => {
+        if (menu === except) return;
+        menu.hidden = true;
+        menu.parentElement.querySelector('.jh-menu-btn, .jh-tool-btn')?.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function jhOpenMenu(btn) {
+    const menu = btn.parentElement.querySelector('.jh-menu');
+    if (!menu) return;
+    const open = menu.hidden;
+    jhCloseMenus(menu);
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) menu.querySelector('[role="menuitem"]')?.focus();
+}
+
+function jhMenuKeydown(event) {
+    const menu = event.target.closest('.jh-menu');
+    if (!menu || menu.hidden) return;
+    const items = [...menu.querySelectorAll('[role="menuitem"]')];
+    const at = items.indexOf(document.activeElement);
+    let next = null;
+    if (event.key === 'ArrowDown') next = items[(at + 1) % items.length];
+    else if (event.key === 'ArrowUp') next = items[(at - 1 + items.length) % items.length];
+    else if (event.key === 'Home') next = items[0];
+    else if (event.key === 'End') next = items[items.length - 1];
+    if (next) { event.preventDefault(); next.focus(); return; }
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        const btn = menu.parentElement.querySelector('.jh-menu-btn, .jh-tool-btn');
+        jhCloseMenus();
+        btn?.focus();
+    } else if (event.key === 'Tab') {
+        jhCloseMenus();
     }
 }
+
+// ── Diálogos (role=dialog, foco atrapado, Escape cierra, el foco vuelve al botón) ──
+const JH_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+function jhDialog(html, opener, { labelId = 'jh-dlg-title', canClose = () => true } = {}) {
+    const modal = document.createElement('div');
+    modal.className = 'modal active jh-modal';
+    modal.innerHTML = `<div class="modal-backdrop"></div>
+        <div class="modal-content jh-dlg" role="dialog" aria-modal="true" aria-labelledby="${labelId}">${html}</div>`;
+    document.body.appendChild(modal);
+    const dlg = modal.querySelector('.jh-dlg');
+    const close = () => {
+        modal.removeEventListener('keydown', onKey);
+        modal.remove();
+        if (opener && document.contains(opener)) opener.focus();
+    };
+    const onKey = event => {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            if (canClose()) close();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = [...dlg.querySelectorAll(JH_FOCUSABLE)].filter(el => el.offsetParent !== null);
+        if (!focusable.length) { event.preventDefault(); return; }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && (document.activeElement === first || !dlg.contains(document.activeElement))) {
+            event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !dlg.contains(document.activeElement))) {
+            event.preventDefault(); first.focus();
+        }
+    };
+    modal.addEventListener('keydown', onKey);
+    modal.querySelector('.modal-backdrop').addEventListener('click', () => { if (canClose()) close(); });
+    dlg.querySelectorAll('[data-jh-dlg-close]').forEach(el => el.addEventListener('click', () => { if (canClose()) close(); }));
+    (dlg.querySelector('[data-autofocus]') || dlg.querySelector(JH_FOCUSABLE))?.focus();
+    return { modal, dlg, close };
+}
+
+function jhDialogHead(titleKey, icon, extraClass = '') {
+    return `<div class="jh-dlg-head ${extraClass}">
+        <span class="jh-dlg-icon" aria-hidden="true">${jhIcon(icon, 22)}</span>
+        <h2 id="jh-dlg-title">${escapeHtml(t(titleKey))}</h2>
+        <button type="button" class="jh-dlg-x" data-jh-dlg-close aria-label="${escapeHtml(t('jhClose'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>`;
+}
+
+function jhJobSummaryHtml(item) {
+    const type = ['3d', 'laser', 'cnc'].includes(item.kind) ? item.kind : 'laser';
+    return `<div class="jh-dlg-job jh-t-${type}"><span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span>
+        <strong class="jh-dlg-job-name">${escapeHtml(item.name)}</strong>
+        ${item.machine ? `<span class="jh-dlg-job-sub">${escapeHtml(item.machine)}</span>` : ''}</div>`;
+}
+
+// ── Eliminar con motivo ──
+const JH_REASON_MIN = 3;
+const JH_REASON_MAX = 300;
+
+function jhOpenDelete(item, opener) {
+    const html = `${jhDialogHead('jhDeleteTitle', 'trash', 'is-danger')}
+        <form class="jh-dlg-body" id="jh-del-form" novalidate>
+            ${jhJobSummaryHtml(item)}
+            <label class="jh-field-label" for="jh-del-reason">${escapeHtml(t('jhDeleteReasonLabel'))} <span class="jh-req" aria-hidden="true">*</span></label>
+            <textarea id="jh-del-reason" class="jh-textarea" rows="3" maxlength="${JH_REASON_MAX}" required aria-required="true" aria-describedby="jh-del-hint jh-del-err" data-autofocus></textarea>
+            <div class="jh-field-meta"><span id="jh-del-hint">${escapeHtml(t('jhDeleteReasonHint'))}</span><span id="jh-del-count" aria-hidden="true">0/${JH_REASON_MAX}</span></div>
+            <p id="jh-del-err" class="jh-field-error" role="alert" hidden></p>
+            <p class="jh-dlg-note">${jhIcon('log', 16)}<span>${escapeHtml(t('jhDeleteNotice'))}</span></p>
+            <p id="jh-del-fail" class="jh-field-error" role="alert" hidden></p>
+            <div class="jh-dlg-actions">
+                <button type="button" class="jh-btn" data-jh-dlg-close>${escapeHtml(t('cancelAction'))}</button>
+                <button type="submit" class="jh-btn jh-btn-danger" id="jh-del-submit">${escapeHtml(t('jhDelete'))}</button>
+            </div>
+        </form>`;
+    let busy = false;
+    const { dlg, close } = jhDialog(html, opener, { canClose: () => !busy });
+    const area = dlg.querySelector('#jh-del-reason');
+    const err = dlg.querySelector('#jh-del-err');
+    const fail = dlg.querySelector('#jh-del-fail');
+    const submit = dlg.querySelector('#jh-del-submit');
+    const showErr = show => {
+        err.hidden = !show;
+        err.textContent = show ? t('jhDeleteReasonShort') : '';
+        area.setAttribute('aria-invalid', show ? 'true' : 'false');
+        area.classList.toggle('is-invalid', show);
+    };
+    area.addEventListener('input', () => {
+        dlg.querySelector('#jh-del-count').textContent = `${area.value.length}/${JH_REASON_MAX}`;
+        if (!err.hidden && area.value.trim().length >= JH_REASON_MIN) showErr(false);
+    });
+    dlg.querySelector('#jh-del-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (busy) return;
+        fail.hidden = true;
+        const reason = area.value.trim();
+        if (reason.length < JH_REASON_MIN) { showErr(true); area.focus(); return; }
+        showErr(false);
+        busy = true;
+        submit.disabled = true;
+        submit.classList.add('is-loading');
+        submit.textContent = t('jhDeleting');
+        try {
+            const body = new FormData();
+            body.append('id', item.id);
+            body.append('reason', reason);
+            const response = await fetch('/api/jobs/history/delete', { method: 'POST', body });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || t('jhDeleteFail'));
+            busy = false;
+            close();
+            showToast(t('jhDeleteDone'));
+            loadJobHistory();
+        } catch (error) {
+            busy = false;
+            submit.disabled = false;
+            submit.classList.remove('is-loading');
+            submit.textContent = t('jhDelete');
+            fail.textContent = error.message || t('jhDeleteFail');
+            fail.hidden = false;
+        }
+    });
+}
+
+// ── Reimprimir: siempre se elige la máquina destino ──
+async function jhReprintTargets(item) {
+    const targets = [];
+    if (item.kind === '3d') {
+        let entries = await loadPrinterSendEntries();
+        if (!item.library) entries = entries.filter(entry => entry.type === 'klipper' && String(entry.id) === String(item.port));
+        entries.forEach(entry => {
+            const printer = entry.printer || {};
+            const state = getPrinterEffectiveStateValue(printer);
+            targets.push({
+                entry, name: getPrinterDisplayName(printer), online: printer.status === 'online',
+                busy: state === 'printing' || state === 'paused',
+                original: item.machine_id === `klipper:${entry.id}` || String(item.machine_id) === String(entry.id),
+            });
+        });
+    } else {
+        const response = await fetch('/api/laser/registry/status');
+        const data = response.ok ? await response.json() : { lasers: [] };
+        (data.lasers || []).filter(l => (l.kind === 'cnc') === (item.kind === 'cnc')).forEach(l => {
+            targets.push({
+                entry: l, name: l.name || laserHostLabel(l.host) || l.host, online: l.online !== false, busy: false,
+                original: item.machine_id === `laser:${l.id}` || (!!item.host && l.host === item.host),
+            });
+        });
+    }
+    return targets;
+}
+
+async function jhSendReprint(item, target) {
+    const failWith = async response => {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || t('jhReprintFail'));
+    };
+    if (item.kind === 'laser') {
+        const body = new FormData();
+        body.append('path', item.library.path);
+        body.append('host', target.entry.host);
+        const response = await fetch('/api/laser/job/start', { method: 'POST', body });
+        if (!response.ok) await failWith(response);
+        return true;
+    }
+    if (item.kind === 'cnc') {
+        await startCncJob(item.library.path, target.entry.host);   // decide SD o streaming y avisa por su cuenta
+        return false;
+    }
+    const entry = target.entry;
+    const body = new FormData();
+    let url;
+    if (!item.library) {
+        body.append('port', entry.id);
+        body.append('path', item.remote_path);
+        url = '/api/jobs/reprint-klipper';
+    } else {
+        body.append('path', item.library.path);
+        body.append('section', item.library.section || 'gcode');
+        if (entry.type === 'klipper') { body.append('mode', 'print'); url = `/api/printers/${entry.id}/send`; }
+        else if (entry.type === 'marlin') { body.append('device', entry.id); url = '/api/marlin-printers/print/start'; }
+        else url = `/api/${entry.type === 'elegoo' ? 'elegoo' : entry.type}/printers/${encodeURIComponent(entry.id)}/send`;
+    }
+    const response = await fetch(url, { method: 'POST', body });
+    if (!response.ok) await failWith(response);
+    return true;
+}
+
+async function jhOpenReprint(item, opener) {
+    const html = `${jhDialogHead('jhReprintTitle', 'reprint')}
+        <form class="jh-dlg-body" id="jh-rp-form" novalidate>
+            ${jhJobSummaryHtml(item)}
+            <fieldset class="jh-pick-set" id="jh-rp-set" aria-describedby="jh-rp-legend-note">
+                <legend id="jh-rp-legend-note">${escapeHtml(t('jhReprintPick'))}</legend>
+                <div id="jh-rp-list" role="status">${escapeHtml(t('jhLoading'))}</div>
+            </fieldset>
+            <p id="jh-rp-fail" class="jh-field-error" role="alert" hidden></p>
+            <div class="jh-dlg-actions">
+                <button type="button" class="jh-btn" data-jh-dlg-close>${escapeHtml(t('cancelAction'))}</button>
+                <button type="submit" class="jh-btn jh-btn-primary" id="jh-rp-submit" disabled>${escapeHtml(t('jhReprintConfirm'))}</button>
+            </div>
+        </form>`;
+    let busy = false;
+    const { dlg, close } = jhDialog(html, opener, { canClose: () => !busy });
+    const list = dlg.querySelector('#jh-rp-list');
+    const submit = dlg.querySelector('#jh-rp-submit');
+    const fail = dlg.querySelector('#jh-rp-fail');
+    let targets = [];
+    try {
+        targets = await jhReprintTargets(item);
+    } catch (error) {
+        console.error(error);
+    }
+    if (!document.contains(dlg)) return;
+    list.removeAttribute('role');
+    if (!targets.length) {
+        list.innerHTML = `<p class="jh-pick-empty">${escapeHtml(t('jhReprintNoMachines'))}</p>`;
+        return;
+    }
+    list.innerHTML = targets.map((tg, i) => {
+        const disabled = !tg.online || tg.busy;
+        const note = !tg.online ? t('jhReprintOffline') : (tg.busy ? t('jhReprintBusy') : t('online'));
+        return `<label class="jh-pick${disabled ? ' is-disabled' : ''}">
+            <input type="radio" name="jh-target" value="${i}"${disabled ? ' disabled' : ''}${tg.original && !disabled ? ' checked' : ''}>
+            <span class="jh-pick-main"><strong>${escapeHtml(tg.name)}</strong><small>${escapeHtml(note)}</small></span>
+            ${tg.original ? `<span class="jh-pick-tag">${escapeHtml(t('jhReprintOriginal'))}</span>` : ''}
+        </label>`;
+    }).join('');
+    const sync = () => { submit.disabled = busy || !dlg.querySelector('input[name="jh-target"]:checked'); };
+    list.addEventListener('change', sync);
+    sync();
+    (dlg.querySelector('input[name="jh-target"]:checked') || dlg.querySelector('input[name="jh-target"]:not(:disabled)'))?.focus();
+    dlg.querySelector('#jh-rp-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const picked = dlg.querySelector('input[name="jh-target"]:checked');
+        if (!picked || busy) return;
+        const target = targets[Number(picked.value)];
+        busy = true;
+        fail.hidden = true;
+        submit.disabled = true;
+        submit.classList.add('is-loading');
+        submit.textContent = t('jhReprintSending');
+        try {
+            const confirmed = await jhSendReprint(item, target);
+            busy = false;
+            close();
+            if (confirmed) showToast(t('jhReprintSent').replace('{machine}', target.name));
+            refreshJobHistory();
+        } catch (error) {
+            busy = false;
+            submit.classList.remove('is-loading');
+            submit.textContent = t('jhReprintConfirm');
+            sync();
+            fail.textContent = error.message || t('jhReprintFail');
+            fail.hidden = false;
+        }
+    });
+}
+
+// ── Registro de control (solo administrador) ──
+async function jhOpenControlLog(opener) {
+    const html = `${jhDialogHead('jhControlLog', 'log')}
+        <div class="jh-dlg-body">
+            <p class="jh-dlg-sub">${escapeHtml(t('jhControlLogSub'))} <span id="jh-log-total"></span></p>
+            <div id="jh-log-list" class="jh-log-wrap" tabindex="0" role="region" aria-label="${escapeHtml(t('jhControlLog'))}"><p class="jh-pick-empty" role="status">${escapeHtml(t('jhLoading'))}</p></div>
+            <div class="jh-dlg-actions"><button type="button" class="jh-btn" data-jh-dlg-close>${escapeHtml(t('jhClose'))}</button></div>
+        </div>`;
+    const { dlg } = jhDialog(html, opener);
+    const box = dlg.querySelector('#jh-log-list');
+    try {
+        const response = await fetch('/api/jobs/deletions?limit=200');
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || t('jhLoadError'));
+        const rows = data.deletions || [];
+        dlg.querySelector('#jh-log-total').textContent = rows.length ? `· ${t('jhControlTotal').replace('{n}', data.total ?? rows.length)}` : '';
+        box.innerHTML = rows.length ? `<ul class="jh-log">${rows.map(row => {
+            const job = row.job || {};
+            const type = ['3d', 'laser', 'cnc'].includes(job.kind) ? job.kind : 'laser';
+            const state = jhStateInfo(job.status);
+            return `<li class="jh-log-row jh-t-${type}">
+                <div class="jh-log-job"><span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span>
+                    <strong title="${escapeHtml(job.name || '')}">${escapeHtml(job.name || '—')}</strong>
+                    <span class="jh-log-sub">${escapeHtml(job.machine || '—')} · <span class="jh-tone-${state.tone} jh-log-state">${jhIcon(state.icon)}${escapeHtml(state.label())}</span></span></div>
+                <p class="jh-log-why"><span class="jh-log-k">${escapeHtml(t('jhControlWhy'))}:</span> ${escapeHtml(row.reason || '—')}</p>
+                <p class="jh-log-meta"><time datetime="${row.deleted_at ? new Date(row.deleted_at * 1000).toISOString() : ''}">${formatDate(row.deleted_at)}</time> · ${jhIcon('user')}<span class="jh-log-k">${escapeHtml(t('jhControlBy'))}:</span> ${escapeHtml(row.deleted_by || '—')}</p>
+            </li>`;
+        }).join('')}</ul>` : `<p class="jh-pick-empty">${escapeHtml(t('jhControlEmpty'))}</p>`;
+    } catch (error) {
+        box.innerHTML = `<p class="jh-field-error" role="alert">${escapeHtml(error.message || t('jhLoadError'))}</p>`;
+    }
+}
+
+// ── Exportar con los mismos filtros de la lista ──
+function jhExport(format) {
+    const params = new URLSearchParams({ format, kind: jobHistoryState.type, days: String(jobHistoryState.period), q: jobHistoryState.query.trim() });
+    const link = document.createElement('a');
+    link.href = `/api/jobs/history/export?${params}`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+function jhRunAction(action, item, opener) {
+    if (!item) return;
+    if (action === 'open') { if (item.file_url) window.open(item.file_url, '_blank', 'noopener'); opener?.focus(); }
+    else if (action === 'reprint') jhOpenReprint(item, opener);
+    else if (action === 'delete') jhOpenDelete(item, opener);
+}
+
+function initJobHistory() {
+    const section = document.getElementById('queue-section');
+    if (!section) return;
+    document.getElementById('search-recent')?.addEventListener('input', event => {
+        jobHistoryState.query = event.target.value;
+        jobHistoryState.page = 1;
+        clearTimeout(jobHistorySearchTimer);
+        jobHistorySearchTimer = setTimeout(loadJobHistory, 300);
+    });
+    document.getElementById('jh-period')?.addEventListener('change', event => {
+        jobHistoryState.period = Number(event.target.value) || 0;
+        jobHistoryState.page = 1;
+        loadJobHistory();
+    });
+    document.getElementById('jh-filters')?.addEventListener('click', event => {
+        const btn = event.target.closest('[data-jh-type]');
+        if (!btn) return;
+        jobHistoryState.type = btn.dataset.jhType;
+        jobHistoryState.page = 1;
+        document.querySelectorAll('#jh-filters .jh-seg-btn').forEach(b => {
+            const on = b === btn;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        loadJobHistory();
+    });
+    document.getElementById('jh-log-btn')?.addEventListener('click', event => jhOpenControlLog(event.currentTarget));
+    section.addEventListener('click', event => {
+        const pageBtn = event.target.closest('[data-jh-page]');
+        if (pageBtn && !pageBtn.disabled) {
+            jobHistoryState.page = Number(pageBtn.dataset.jhPage);
+            loadJobHistory();
+            document.getElementById('jh-recent-title')?.scrollIntoView({ block: 'nearest' });
+            return;
+        }
+        const go = event.target.closest('[data-jh-go]');
+        if (go) { jhGo(go.dataset.jhGo); return; }
+        const exportItem = event.target.closest('[data-jh-export]');
+        if (exportItem) {
+            const btn = exportItem.closest('.jh-menu-wrap').querySelector('.jh-tool-btn');
+            jhCloseMenus();
+            jhExport(exportItem.dataset.jhExport);
+            btn?.focus();
+            return;
+        }
+        const menuBtn = event.target.closest('.jh-menu-btn, .jh-tool-btn[aria-haspopup]');
+        if (menuBtn) { jhOpenMenu(menuBtn); return; }
+        const actionBtn = event.target.closest('[data-jh-action]');
+        if (actionBtn) {
+            if (actionBtn.getAttribute('aria-disabled') === 'true') return;
+            const opener = actionBtn.closest('.jh-menu-wrap').querySelector('.jh-menu-btn');
+            const item = jobHistoryData.items[Number(actionBtn.dataset.jhIndex)];
+            jhCloseMenus();
+            jhRunAction(actionBtn.dataset.jhAction, item, opener);
+            return;
+        }
+        jhCloseMenus();
+    });
+    document.addEventListener('click', event => {
+        if (!event.target.closest('.jh-menu-wrap')) jhCloseMenus();
+    });
+    section.addEventListener('keydown', event => {
+        const btn = event.target.closest('.jh-menu-btn, .jh-tool-btn[aria-haspopup]');
+        if (btn && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            event.preventDefault();
+            if (btn.getAttribute('aria-expanded') !== 'true') jhOpenMenu(btn);
+            return;
+        }
+        jhMenuKeydown(event);
+    });
+    window.addEventListener('nopal:language-changed', renderJobHistory);
+}
+
+async function loadJobHistory() {
+    const token = ++jobHistoryToken;
+    const params = new URLSearchParams({
+        kind: jobHistoryState.type, days: String(jobHistoryState.period), q: jobHistoryState.query.trim(),
+        page: String(jobHistoryState.page), page_size: String(JOB_HISTORY_PAGE_SIZE),
+    });
+    try {
+        const response = await fetch(`/api/jobs/history?${params}`);
+        if (!response.ok) throw new Error('No se pudo cargar el historial de trabajos');
+        const data = await response.json();
+        if (token !== jobHistoryToken) return;      // llegó una respuesta más nueva
+        jobHistoryData = data;
+        jobHistoryState.page = data.page || 1;
+        jobHistoryLoaded = true;
+        jobHistoryError = false;
+    } catch (error) {
+        if (token !== jobHistoryToken) return;
+        console.error(error);
+        jobHistoryError = true;
+        jobHistoryLoaded = true;
+    }
+    renderJobHistory();
+}
+
+// Nombres que otras partes de la app todavía invocan.
+function renderRecentPrinterFiles() {
+    renderJobHistory();
+}
+
+function loadRecentPrinterFiles() {
+    return loadJobHistory();
+}
+
+async function loadJobHistoryQueue() {
+    try {
+        const response = await fetch('/api/laser/queue');
+        const data = await response.json();
+        jobHistoryQueue = data.queue || [];
+    } catch (error) {
+        console.error(error);
+    }
+    renderJobHistoryQueue();
+}
+
+function refreshJobHistory() {
+    loadJobHistory();
+    loadJobHistoryQueue();
+}
+
+initJobHistory();
 
 let currentGcodePath = '';
 let currentGcodeData = { folders: [], files: [] };
@@ -7688,12 +8305,17 @@ async function refreshDeviceCameras() {
     }
 }
 
+// true si el plugin de materiales respondió (para ofrecer "Abrir Materiales"
+// en el módulo Carrete del detalle solo cuando existe esa sección).
+let spoolmanPluginAvailable = false;
+
 async function refreshDeviceSpools() {
     try {
         const respuesta = await fetch('/api/spoolman/printers/active-spools?resolve=true');
-        if (!respuesta.ok) return;                       // plugin ausente: la ficha va sin material
+        spoolmanPluginAvailable = respuesta.ok;
+        if (!respuesta.ok) return;                       // plugin ausente: el módulo Carrete queda vacío
         deviceSpoolsByPort = (await respuesta.json()).links || {};
-    } catch (_) { /* sin materiales: la ficha se queda sin ese dato, no sin ficha */ }
+    } catch (_) { spoolmanPluginAvailable = false; /* sin materiales: el detalle se queda sin ese dato */ }
 }
 
 function deviceTiempoCorto(minutos) {
@@ -7734,7 +8356,6 @@ function klipperDeviceModel(printer, datos) {
     const claveCamara = `klipper:${printerName}`;
     const job = printer.job || {};
     const enTrabajo = deviceIsBusy(state);
-    const spool = deviceSpoolsByPort[String(printer.port)];
 
     const etiquetas = {
         offline: t('offline'), printing: t('printing'), paused: t('paused'),
@@ -7814,7 +8435,6 @@ function klipperDeviceModel(printer, datos) {
         jobLabel: t('devFile'),
         metrics,
         info,
-        material,
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         // Las olas térmicas: el color y la velocidad salen de la temperatura
@@ -7829,6 +8449,9 @@ function klipperDeviceModel(printer, datos) {
             state === 'offline',
             printer.port,
         ),
+        // Moonraker no expone en /api/printers si el enlace es cable o WiFi:
+        // se asume red cableada (confirmado por el usuario).
+        conn: 'ethernet',
         dataAttr: `data-port="${escapeHtml(String(printer.port))}"`,
     };
 }
@@ -7934,6 +8557,8 @@ function laserDeviceModel(entry, jobsByHost) {
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         waves: deviceStateThermalWave(state, host),
+        // Mismo criterio que el registro: el host `usb:<ruta>` es serie.
+        conn: String(host || '').startsWith('usb:') ? 'usb' : 'wifi',
         dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}" data-machine-uid="${escapeHtml(id || '')}"`,
     };
 }
@@ -8058,6 +8683,8 @@ function marlinDeviceModel(printer, status, job) {
         actions,
         cameraSlot: claveCamara && deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         waves: printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, state, !enLinea, printer.id || device),
+        // device `tcp://host:puerto` = módulo MKS WiFi; cualquier otra ruta es serie.
+        conn: (printer.transport === 'mks_wifi' || String(device || '').startsWith('tcp://')) ? 'wifi' : 'usb',
         // data-marlin-device (la ruta/host) es lo que usan el panel de
         // detalle y la reconciliación de la grilla; data-machine-uid (id
         // interno) lo usan las alertas LED. data-heat-progress alimenta el
@@ -8124,6 +8751,10 @@ const DEVICE_ICONS = {
     spool: '<ellipse cx="12" cy="5" rx="7" ry="2.5"/><ellipse cx="12" cy="19" rx="7" ry="2.5"/><path d="M5 5v14"/><path d="M19 5v14"/><path d="M8 8.5c1.6 1 6.4 1 8 0M8 12c1.6 1 6.4 1 8 0M8 15.5c1.6 1 6.4 1 8 0"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     wifi: '<path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+    // Puerto RJ45 (red cableada): conector con muesca y pines.
+    ethernet: '<path d="M5 4h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-3v3H8v-3H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M8 4v4"/><path d="M12 4v4"/><path d="M16 4v4"/><path d="M12 21v-3"/>',
+    // USB: tridente clásico (círculo, cuadrado y flecha).
+    usb: '<circle cx="10" cy="19" r="2"/><path d="M10 17V5"/><path d="M10 5l-2 2.5h4z"/><path d="M10 12l5-3v-1.5"/><rect x="13.5" y="5" width="3" height="3"/><path d="M10 14.5l-4-2.5v-2"/><circle cx="6" cy="8.5" r="1.4"/>',
     pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
     play: '<polygon points="6 3 20 12 6 21 6 3"/>',
     stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
@@ -8772,12 +9403,6 @@ if (printerModalClose) {
 }
 if (printerModalBackdrop) {
     printerModalBackdrop.addEventListener('click', closePrinterModal);
-}
-
-if (searchRecentInput) {
-    searchRecentInput.addEventListener('input', event => {
-        renderRecentPrinterFiles(filterRecentPrinterFiles(event.target.value));
-    });
 }
 
 if (searchGcodeInput) {
@@ -19169,8 +19794,8 @@ const TOUR_STEPS = {
     ],
     queue: [
         { selector: '#search-recent', titleKey: 'tourQueue1Title', bodyKey: 'tourQueue1Body' },
-        { selector: '#models', titleKey: 'tourQueue2Title', bodyKey: 'tourQueue2Body' },
-        { selector: '#laser-history-list', titleKey: 'tourQueue3Title', bodyKey: 'tourQueue3Body' },
+        { selector: '#jh-list-wrap', titleKey: 'tourQueue2Title', bodyKey: 'tourQueue2Body' },
+        { selector: '#jh-side', titleKey: 'tourQueue3Title', bodyKey: 'tourQueue3Body' },
     ],
     pricing: [
         { selector: '#pricing-new-quote-btn', titleKey: 'tourPricing1Title', bodyKey: 'tourPricing1Body' },
@@ -19446,6 +20071,9 @@ function switchSection(sectionName) {
     // Handle models section
     if (sectionName === 'models') {
         loadModelsFolder(currentModelsPath);
+    }
+    if (sectionName === 'queue') {
+        refreshJobHistory();
     }
     if (sectionName === 'gcode') {
         loadGcodeFolder(currentGcodePath);
@@ -22106,7 +22734,6 @@ loadModels();
 loadPrinters();
 loadDashboardStandalonePrinters();
 loadRecentPrinterFiles();
-loadLaserHistory();
 loadDashboardPanel();
 updatePanelClock();
 refreshDashboardLaserCard();

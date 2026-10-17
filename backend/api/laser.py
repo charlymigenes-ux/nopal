@@ -309,7 +309,7 @@ async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = 
         gcode_text = handle.read()
 
     try:
-        job = start_job(target, gcode_text, filename=os.path.basename(path))
+        job = start_job(target, gcode_text, filename=os.path.basename(path), user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -340,7 +340,7 @@ async def laser_job_start_sd_endpoint(path: str = Form(...), host: Optional[str]
     with open(file_path, "rb") as handle:
         data = handle.read()
     try:
-        return start_job_via_sd(target, os.path.basename(path), data, check_sd=False)
+        return start_job_via_sd(target, os.path.basename(path), data, check_sd=False, user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -382,7 +382,7 @@ async def laser_job_frame_endpoint(
 
     try:
         job = start_job(target, build_frame_gcode(bounds, power=power),
-                        filename=f"encuadre · {os.path.basename(path)}")
+                        filename=f"encuadre · {os.path.basename(path)}", user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -549,7 +549,7 @@ async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = 
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
             gcode_text = handle.read()
-        job = start_job(target, gcode_text, filename=entry["filename"])
+        job = start_job(target, gcode_text, filename=entry["filename"], user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -590,7 +590,7 @@ async def laser_sd_run_endpoint(
         # eventos real (mismo criterio que start_job en /api/laser/queue/start,
         # unas líneas más arriba en este archivo) -- en un hilo de executor
         # no habría loop corriendo y create_task fallaría.
-        return start_sd_job(target, full_path)
+        return start_sd_job(target, full_path, user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 

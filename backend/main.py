@@ -15,6 +15,7 @@ from backend.api.models import router as models_router
 from backend.api.status import router as status_router
 from backend.api.upload import router as upload_router
 from backend.api.plotter import router as plotter_router
+from backend.api.jobs import router as jobs_router
 from backend.api.printers import router as printers_router
 from backend.api.console import router as console_router
 from backend.api.laser import router as laser_router
@@ -36,6 +37,7 @@ from backend.api.logging_config import router as logging_config_router
 from backend.services.auth_service import get_or_create_session_secret
 from backend.auth_deps import require_auth
 from backend.services.klipper_service import run_due_scheduled_prints
+from backend.services import laser_service
 from backend.services.laser_service import set_main_event_loop
 from backend.services.marlin_printer_service import set_main_event_loop as set_marlin_printer_event_loop
 from backend.services import plugin_loader_service
@@ -100,6 +102,7 @@ app.mount("/plugins-static", StaticFiles(directory="plugins"), name="plugins-sta
 app.include_router(status_router)
 app.include_router(upload_router)
 app.include_router(plotter_router)
+app.include_router(jobs_router)
 app.include_router(models_router)
 app.include_router(printers_router)
 app.include_router(console_router)
@@ -128,6 +131,18 @@ app.include_router(logging_config_router)
 @app.on_event("startup")
 async def _log_startup():
     logger.info("NOPAL iniciado")
+
+
+@app.on_event("startup")
+async def _reconcile_job_history():
+    """Un trabajo láser/CNC que quedó "en curso" cuando NOPAL se detuvo pasa a "incompleto": ningún
+    trabajo enviado queda sin cerrar en el historial de control."""
+    try:
+        fixed = laser_service.reconcile_laser_history()
+        if fixed:
+            logger.warning(f"Historial: {fixed} trabajo(s) quedaron sin terminar al reiniciar; se marcaron incompletos")
+    except Exception:
+        logger.exception("No se pudo reconciliar el historial de trabajos")
 
 
 @app.on_event("startup")

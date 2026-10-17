@@ -15,6 +15,7 @@ from backend.services.elegoo_service import (
 )
 from backend.utils import sanitize_device_name, validate_printer_ip
 
+from backend.services import job_control_service as job_control
 router = APIRouter()
 
 
@@ -99,4 +100,5 @@ async def elegoo_send_endpoint(
     result = await send_gcode_to_printer(printer_id, path, section)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "No se pudo enviar el archivo"))
+    job_control.record_print_sent("elegoo", printer_id, job_control.machine_name("elegoo", printer_id), path, user.get("username", ""))
     return result

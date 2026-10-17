@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=356">
+    <link rel="stylesheet" href="/static/css/style.css?v=357">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -190,10 +190,6 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                             <span data-i18n="navSystemConsole">Consola del sistema</span>
                         </button>
-                        <button class="nav-item" data-section="ai" id="nav-ai-btn" data-i18n-title="navAi" title="NOPAL Intelligence" hidden>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>
-                            <span data-i18n="navAi">NOPAL Intelligence</span>
-                        </button>
                     </div>
                 </div>
 
@@ -211,13 +207,13 @@
                 </div>
             </nav>
 
-            <!-- Marca NOPAL Intelligence: solo con la IA encendida. Se degrada
-                 con gracia -- si el logotipo aún no está en /static/img/, el
-                 degradado del texto conserva la identidad. -->
-            <div class="sidebar-ai-brand" data-ai-only>
-                <img class="sidebar-ai-brand-logo" src="/static/img/LOGOTEXTO_IA.webp" alt="NOPAL Intelligence">
-                <img class="sidebar-ai-brand-mark" src="/static/img/LOGOSOLO_IA.webp" alt="NOPAL Intelligence">
-            </div>
+            <!-- NOPAL Intelligence: acceso de ancho completo arriba de las
+                 acciones; antes vivía en Herramientas y aquí iba el logotipo.
+                 Sigue oculto hasta que aiUpdateNavVisibility() lo muestra. -->
+            <button class="nav-item sidebar-ai-btn" data-section="ai" id="nav-ai-btn" data-i18n-title="navAi" title="NOPAL Intelligence" hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>
+                <span data-i18n="navAi">NOPAL Intelligence</span>
+            </button>
 
             <div class="sidebar-logo-gap">
                 <img class="sidebar-logo-bg" src="/static/img/Logo_O2.png" alt="">
@@ -1505,10 +1501,6 @@
                 <main class="main-content cnc-main">
                     <div class="cnc-topbar">
                         <div class="cnc-topbar-brand">
-                            <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
-                                <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(245,158,11,0.12)" stroke="var(--orange)" stroke-width="2"/>
-                                <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" fill="none"/>
-                            </svg>
                             <span>NOPAL CNC</span>
                             <span class="cnc-state-pill" id="cnc-state-pill">IDLE</span>
                         </div>
@@ -2057,40 +2049,73 @@
             </section>
 
             <section id="queue-section" class="view-section" style="display: none;">
-                <main class="main-content history-split-main">
-                    <div class="history-split-topbar">
-                        <section class="page-header history-split-header">
-                            <h1 data-i18n="printHistory3d">Historial de impresión 3D</h1>
-                            <p data-i18n="printHistory3dDescription">Archivos ya impresos por cada impresora.</p>
-                        </section>
-                        <section class="page-header history-split-header">
-                            <h1 data-i18n="laserHistoryTitle">Historial del láser</h1>
-                            <p data-i18n="laserHistoryDescription">Trabajos láser completados, cancelados o con error.</p>
-                        </section>
-                    </div>
-                    <div class="history-split-body">
-                        <div class="history-split-half">
-                            <div class="recent-section">
-                                <div class="section-title">
-                                    <div class="section-search">
-                                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                        <input id="search-recent" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
-                                    </div>
-                                    <div class="view-controls">
-                                        <button class="btn-view-toggle btn-view-toggle-active" id="view-grid" title="Grid view" data-view="grid">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                                        </button>
-                                        <button class="btn-view-toggle" id="view-list" title="List view" data-view="list">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div id="models"></div>
+                <main class="main-content jh-main">
+                    <div class="jh-header">
+                        <div class="jh-title-wrap">
+                            <span class="jh-title-icon" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg></span>
+                            <div class="jh-title-text">
+                                <h1 data-i18n="jhTitle">Historial de trabajos</h1>
+                                <p data-i18n="jhSubtitle">Revisa el estado y los archivos de tus trabajos de impresión 3D, corte láser y CNC.</p>
                             </div>
                         </div>
-                        <div class="history-split-half">
-                            <div class="laser-history-list" id="laser-history-list"></div>
+                        <div class="jh-toolbar">
+                            <div class="jh-search">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input id="search-recent" type="search" autocomplete="off" data-i18n-placeholder="jhSearchPlaceholder" placeholder="Buscar por nombre de archivo…" data-i18n-aria-label="jhSearchPlaceholder" aria-label="Buscar por nombre de archivo…">
+                            </div>
+                            <div class="jh-seg" id="jh-filters" role="group" data-i18n-aria-label="jhFilterGroup" aria-label="Filtrar por tipo de trabajo">
+                                <button type="button" class="jh-seg-btn is-active" data-jh-type="all" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span data-i18n="jhFilterAll">Todos</span></button>
+                                <button type="button" class="jh-seg-btn" data-jh-type="3d" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg><span>3D</span></button>
+                                <button type="button" class="jh-seg-btn" data-jh-type="laser" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg><span data-i18n="laser">Láser</span></button>
+                                <button type="button" class="jh-seg-btn" data-jh-type="cnc" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg><span>CNC</span></button>
+                            </div>
+                            <label class="jh-period">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                <select id="jh-period" data-i18n-aria-label="jhPeriodLabel" aria-label="Periodo">
+                                    <option value="7" data-i18n="jhPeriod7">Últimos 7 días</option>
+                                    <option value="30" data-i18n="jhPeriod30" selected>Últimos 30 días</option>
+                                    <option value="90" data-i18n="jhPeriod90">Últimos 90 días</option>
+                                    <option value="0" data-i18n="jhPeriodAll">Todo el historial</option>
+                                </select>
+                            </label>
+                            <div class="jh-menu-wrap jh-export">
+                                <button type="button" class="jh-tool-btn" id="jh-export-btn" aria-haspopup="menu" aria-expanded="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg><span data-i18n="jhExport">Exportar resumen</span></button>
+                                <div class="jh-menu" role="menu" data-i18n-aria-label="jhExport" aria-label="Exportar resumen" hidden>
+                                    <button type="button" role="menuitem" class="jh-menu-item" data-jh-export="pdf" tabindex="-1"><span class="jh-menu-text"><span data-i18n="jhExportPdf">PDF</span><small data-i18n="jhExportHint">Con los filtros vigentes</small></span></button>
+                                    <button type="button" role="menuitem" class="jh-menu-item" data-jh-export="xml" tabindex="-1"><span class="jh-menu-text"><span data-i18n="jhExportXml">XML</span><small data-i18n="jhExportHint">Con los filtros vigentes</small></span></button>
+                                </div>
+                            </div>
+                            <button type="button" class="jh-tool-btn" id="jh-log-btn" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="M9 12h6M9 8h6M9 16h3"/></svg><span data-i18n="jhControlLog">Registro de control</span></button>
                         </div>
+                    </div>
+                    <div class="jh-layout">
+                        <section class="jh-card jh-recent" aria-labelledby="jh-recent-title">
+                            <div class="jh-card-head">
+                                <svg class="jh-card-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>
+                                <h2 id="jh-recent-title" data-i18n="jhRecent">Trabajos recientes</h2>
+                                <span class="jh-count" id="jh-count">0</span>
+                            </div>
+                            <div id="jh-list-wrap" class="jh-list-wrap"></div>
+                            <nav class="jh-pager" id="jh-pager" data-i18n-aria-label="jhPagination" aria-label="Paginación" hidden></nav>
+                        </section>
+                        <aside class="jh-side" id="jh-side">
+                            <section class="jh-card" aria-labelledby="jh-summary-title">
+                                <div class="jh-card-head"><h2 id="jh-summary-title" data-i18n="jhSummaryTitle">Resumen por tipo</h2></div>
+                                <div class="jh-summary" id="jh-summary"></div>
+                            </section>
+                            <section class="jh-card" id="jh-status-card" aria-labelledby="jh-status-title" hidden>
+                                <div class="jh-card-head"><h2 id="jh-status-title" data-i18n="jhStatusTitle">Estado actual</h2></div>
+                                <ul class="jh-machines" id="jh-machines"></ul>
+                            </section>
+                            <section class="jh-card" aria-labelledby="jh-queue-title">
+                                <div class="jh-card-head"><h2 id="jh-queue-title" data-i18n="jhQueueTitle">Trabajos en cola</h2></div>
+                                <div id="jh-queue"></div>
+                            </section>
+                            <section class="jh-card" aria-labelledby="jh-actions-title">
+                                <div class="jh-card-head"><h2 id="jh-actions-title" data-i18n="jhActionsTitle">Acciones rápidas</h2></div>
+                                <div class="jh-actions" id="jh-actions"></div>
+                            </section>
+                        </aside>
                     </div>
                 </main>
             </section>
@@ -3677,17 +3702,19 @@
                 </div>
             </div>
             <div class="modal-body printer-modal-body">
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="toolhead">
                     <div id="marlin-printer-modal-toolhead"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="temperatures">
                     <div id="marlin-printer-modal-temperatures"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="print">
                     <div id="marlin-printer-modal-print"></div>
+                </div>
+                <div class="printer-modal-column" data-module="console">
                     <div id="marlin-printer-modal-console"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="camera">
                     <div id="marlin-printer-modal-camera"></div>
                 </div>
             </div>
@@ -5615,11 +5642,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=50"></script>
+    <script src="/static/js/translations.js?v=51"></script>
     <script src="/static/js/translations-pt-BR.js?v=8"></script>
     <script src="/static/js/translations-fr.js?v=8"></script>
     <script src="/static/js/translations-de.js?v=8"></script>
-    <script src="/static/js/app.js?v=289"></script>
+    <script src="/static/js/app.js?v=290"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
