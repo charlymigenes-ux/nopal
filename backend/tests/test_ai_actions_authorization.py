@@ -41,6 +41,7 @@ OPERATOR_CASES = [
     ("activate_scene", {"scene_id": "scene01"}, PolicyAction.USE_PLUGIN, "plugin:arduino-accessories"),
     ("send_matrix_announcement", {"announcement_id": "a1"}, PolicyAction.USE_PLUGIN, "plugin:matriz-led"),
     ("run_matrix_rule", {"rule_id": "r1"}, PolicyAction.USE_PLUGIN, "plugin:matriz-led"),
+    ("show_panel_message", {"text": "TODO BIEN"}, PolicyAction.USE_PLUGIN, "plugin:matriz-led"),
     ("queue_file", {"machine_id": "ET4", "path": "a.gcode"}, PolicyAction.START_JOB, "printer:klipper:7125"),
     ("preheat_machine", {"machine_id": "ET4", "nozzle": 200}, PolicyAction.SET_TEMPERATURE, "printer:klipper:7125"),
     ("control_print", {"machine_id": "ET4", "action": "pause"}, PolicyAction.PAUSE, "printer:klipper:7125"),
@@ -317,6 +318,7 @@ class TestRiskIsNotPermission:
             "set_accessory_power": "low", "activate_scene": "low",
             "create_scene": "confirm", "update_scene": "confirm",
             "send_matrix_announcement": "low", "set_machine_alerts": "low", "run_matrix_rule": "low",
+            "show_panel_message": "low",
             "queue_file": "low", "preheat_machine": "confirm", "control_print": "confirm",
             "assign_spool": "low",
         }

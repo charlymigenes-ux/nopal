@@ -25,3 +25,9 @@ httpx==0.28.1
 # la API key del proveedor de IA: base64 no es protección, así que se cifra
 # con Fernet y una clave derivada de la frase del usuario.
 cryptography==49.0.0
+# Imagen a dibujo (backend/services/plotter_service.py): vectorización de line art
+# (adelgazado, grafo de trazos y suavizado). Única dependencia nueva de esa función; sin
+# ella NOPAL arranca igual y la pantalla avisa. numpy 2.0.x es la última con Python 3.9;
+# 2.2.x cubre 3.10 a 3.13. Ruedas disponibles para Debian y Raspberry Pi (aarch64/armv7).
+numpy==2.0.2; python_version < "3.10"
+numpy==2.2.6; python_version >= "3.10"

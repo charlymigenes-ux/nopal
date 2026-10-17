@@ -37,6 +37,7 @@ from backend.services.marlin_printer_service import (
 )
 from backend.utils import safe_section_path
 
+from backend.services import job_control_service as job_control
 router = APIRouter()
 
 
@@ -305,6 +306,7 @@ async def marlin_printers_print_start_endpoint(
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
+    job_control.record_print_sent("marlin", device, job_control.machine_name("marlin", device), path, user.get("username", ""))
     return job
 
 
@@ -327,9 +329,11 @@ async def marlin_printers_sd_print_start_endpoint(
     # Ruta migrada a la Authorization Policy (ADR-006): variante SD de start_job.
     ensure_authorized(user, Action.START_JOB, _marlin_resource(device))
     try:
-        return await start_sd_print(device, filename)
+        result = await start_sd_print(device, filename)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    job_control.record_print_sent("marlin", device, job_control.machine_name("marlin", device), filename, user.get("username", ""))
+    return result
 
 
 @router.get("/api/marlin-printers/sd/available")
@@ -365,9 +369,11 @@ async def marlin_printers_sd_upload_and_print_endpoint(
         gcode_text = handle.read()
 
     try:
-        return await upload_and_start_sd_print(device, os.path.basename(path), gcode_text, preheat=preheat)
+        result = await upload_and_start_sd_print(device, os.path.basename(path), gcode_text, preheat=preheat)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    job_control.record_print_sent("marlin", device, job_control.machine_name("marlin", device), path, user.get("username", ""))
+    return result
 
 
 @router.get("/api/marlin-printers/print/status")

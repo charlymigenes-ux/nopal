@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 
 import backend.services.ai_config_service as ai_config_service
 import backend.services.gcode_bounds as gcode_bounds
+import backend.services.job_control_service as job_control_service
+import backend.services.laser_service as laser_service
 import backend.services.logging_config_service as logging_config_service
 import backend.services.machine_identity as machine_identity
 import backend.services.ai_conversations_service as ai_conversations_service
@@ -110,6 +112,10 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     monkeypatch.setattr(ai_config_service, "CONFIG_PATH", str(tmp_path / "ai_config.json"))
     monkeypatch.setattr(ai_conversations_service, "STORE_PATH", str(tmp_path / "ai_conversations.json"))
     monkeypatch.setattr(gcode_bounds, "CACHE_PATH", str(tmp_path / "gcode_bounds_cache.json"))
+    # Historial de trabajos con control: el de láser/CNC, el registro de envíos 3D y el de bajas.
+    monkeypatch.setattr(laser_service, "HISTORY_PATH", str(tmp_path / "laser_history.json"))
+    monkeypatch.setattr(job_control_service, "PRINT_LOG_PATH", str(tmp_path / "job_print_log.json"))
+    monkeypatch.setattr(job_control_service, "DELETIONS_PATH", str(tmp_path / "job_deletions.json"))
     # Las variables NOPAL_AI_* pisan al archivo (ver ai_config_service):
     # sin limpiarlas, el entorno de quien corre la suite decidiría el
     # resultado de los tests de configuración.

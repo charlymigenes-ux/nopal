@@ -251,6 +251,20 @@ body.custom {
     --orange-rgb: 251, 191, 36;
     --purple: var(--violet);
     --purple-rgb: 139, 92, 246;
+
+    /* Color por tipo de máquina en toda la interfaz: 3D azul, láser morado,
+       CNC naranja. Los temas claros los redefinen más abajo con tonos más
+       oscuros para que el texto cumpla contraste AA. -soft y -border son
+       fondo y borde sobre transparente, válidos en cualquier superficie. */
+    --type-3d: var(--status-info);
+    --type-laser: var(--purple);
+    --type-cnc: var(--orange);
+    --type-3d-soft: color-mix(in srgb, var(--type-3d) 14%, transparent);
+    --type-laser-soft: color-mix(in srgb, var(--type-laser) 14%, transparent);
+    --type-cnc-soft: color-mix(in srgb, var(--type-cnc) 14%, transparent);
+    --type-3d-border: color-mix(in srgb, var(--type-3d) 45%, transparent);
+    --type-laser-border: color-mix(in srgb, var(--type-laser) 45%, transparent);
+    --type-cnc-border: color-mix(in srgb, var(--type-cnc) 45%, transparent);
 }
 
 body {
@@ -367,6 +381,17 @@ body.light {
     --orange-rgb: 182, 106, 31;
     --purple: var(--state-purple);
     --purple-rgb: 138, 99, 210;
+    /* Colores por tipo (ver el bloque compartido de arriba), con tonos más
+       oscuros para contraste AA sobre superficies claras. */
+    --type-3d: #2F6FAE;
+    --type-laser: #7447C4;
+    --type-cnc: #9A5818;
+    --type-3d-soft: color-mix(in srgb, var(--type-3d) 14%, transparent);
+    --type-laser-soft: color-mix(in srgb, var(--type-laser) 14%, transparent);
+    --type-cnc-soft: color-mix(in srgb, var(--type-cnc) 14%, transparent);
+    --type-3d-border: color-mix(in srgb, var(--type-3d) 45%, transparent);
+    --type-laser-border: color-mix(in srgb, var(--type-laser) 45%, transparent);
+    --type-cnc-border: color-mix(in srgb, var(--type-cnc) 45%, transparent);
     /* --black se usa como texto/fondo de alto contraste (nav lateral,
        botones íconos, .button) -- el valor literal "black" de la paleta
        Kotlin (crema #FDF8EC) quedaba casi blanco sobre el sidebar claro,
@@ -585,6 +610,9 @@ body.green .sidebar {
     padding: 0 8px;
 }
 
+.brand-logo[role="link"] { cursor: pointer; border-radius: 10px; }
+.brand-logo[role="link"]:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 3px; }
+
 .brand-logo {
     width: auto;
     height: auto;
@@ -753,7 +781,12 @@ body.green .global-topbar {
    .active svg más abajo) ya basta para marcar cuál está activo. */
 .app-shell.sidebar-collapsed .nav-item.active,
 .app-shell.sidebar-collapsed .nav-item[data-section="cnc"].active,
-.app-shell.sidebar-collapsed .nav-item[data-section="laser"].active {
+.app-shell.sidebar-collapsed .nav-item[data-section="laser"].active,
+.app-shell.sidebar-collapsed .nav-item[data-section="models"].active,
+.app-shell.sidebar-collapsed .nav-item[data-section="marlin"].active,
+.app-shell.sidebar-collapsed .nav-item[data-section="elegoo"].active,
+.app-shell.sidebar-collapsed .nav-item[data-section="flashforge"].active,
+.app-shell.sidebar-collapsed .nav-item[data-section="bambu"].active {
     background: none;
     border-color: transparent;
     box-shadow: none;
@@ -782,8 +815,12 @@ body.green .global-topbar {
     color: var(--accent);
 }
 
-.app-shell.sidebar-collapsed .nav-item[data-section="models"] svg {
-    color: var(--accent);
+.app-shell.sidebar-collapsed .nav-item[data-section="models"] svg,
+.app-shell.sidebar-collapsed .nav-item[data-section="marlin"] svg,
+.app-shell.sidebar-collapsed .nav-item[data-section="elegoo"] svg,
+.app-shell.sidebar-collapsed .nav-item[data-section="flashforge"] svg,
+.app-shell.sidebar-collapsed .nav-item[data-section="bambu"] svg {
+    color: var(--type-3d);
 }
 
 .app-shell.sidebar-collapsed .nav-item[data-section="cnc"] svg {
@@ -1048,6 +1085,44 @@ body.green .global-topbar {
     box-shadow: 0 0 14px rgba(var(--purple-rgb), 0.4);
 }
 
+/* Ítems de 3D (Impresión 3D e impresoras por marca): azul de tipo, con el
+   mismo tratamiento que Láser (morado) y CNC (naranja). */
+.nav-item[data-section="models"],
+.nav-item[data-section="marlin"],
+.nav-item[data-section="elegoo"],
+.nav-item[data-section="flashforge"],
+.nav-item[data-section="bambu"] {
+    background: color-mix(in srgb, var(--type-3d) 8%, transparent);
+    border-color: color-mix(in srgb, var(--type-3d) 35%, transparent);
+}
+
+.nav-item[data-section="models"]:not(.active):hover,
+.nav-item[data-section="models"]:not(.active):focus-visible,
+.nav-item[data-section="marlin"]:not(.active):hover,
+.nav-item[data-section="marlin"]:not(.active):focus-visible,
+.nav-item[data-section="elegoo"]:not(.active):hover,
+.nav-item[data-section="elegoo"]:not(.active):focus-visible,
+.nav-item[data-section="flashforge"]:not(.active):hover,
+.nav-item[data-section="flashforge"]:not(.active):focus-visible,
+.nav-item[data-section="bambu"]:not(.active):hover,
+.nav-item[data-section="bambu"]:not(.active):focus-visible {
+    background: color-mix(in srgb, var(--type-3d) 14%, transparent);
+    border-color: color-mix(in srgb, var(--type-3d) 60%, transparent);
+    color: var(--type-3d);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--type-3d) 22%, transparent);
+}
+
+.nav-item[data-section="models"].active,
+.nav-item[data-section="marlin"].active,
+.nav-item[data-section="elegoo"].active,
+.nav-item[data-section="flashforge"].active,
+.nav-item[data-section="bambu"].active {
+    background: color-mix(in srgb, var(--type-3d) 22%, transparent);
+    border-color: var(--type-3d);
+    color: var(--type-3d);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--type-3d) 40%, transparent);
+}
+
 /* ── Indicador de plugin en el sidebar ──
    Todo botón que un plugin agrega a sí mismo al sidebar trae
    data-plugin-nav="<id-del-plugin>" (ver mount() en cada frontend/*.js de
@@ -1072,6 +1147,91 @@ body.green .global-topbar {
 .nav-item[data-plugin-nav="arduino-accessories"] { --plugin-nav-rgb: 59, 130, 246; }
 .nav-item[data-plugin-nav="camera-viewer"] { --plugin-nav-rgb: 236, 72, 153; }
 .nav-item[data-plugin-nav="spoolman"] { --plugin-nav-rgb: 20, 184, 166; }
+
+/* ── Plugins en mosaico ──
+   Los accesos del grupo "Plugins" se muestran como fichas: ícono arriba,
+   nombre corto abajo, en 2 columnas, sin marco (solo un fondo sutil del
+   tema). El ícono conserva el tinte de --plugin-nav-rgb de arriba. El
+   activo se marca con un fondo más claro y el color de acento. Los
+   plugins siguen insertando sus botones como .nav-item en este mismo
+   contenedor, así que nada cambia del lado de los plugins. ── */
+.nav-category[data-group="plugins"] .nav-category-items {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.nav-category[data-group="plugins"] .nav-item {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 68px;
+    padding: 10px 2px 8px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: rgba(var(--accent-rgb), 0.07);
+    box-shadow: none;
+    text-align: center;
+    font-size: 0.66rem;
+    font-weight: 500;
+    line-height: 1.15;
+}
+
+.nav-category[data-group="plugins"] .nav-item span {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    overflow-wrap: break-word;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.nav-category[data-group="plugins"] .nav-item:not(.active):hover,
+.nav-category[data-group="plugins"] .nav-item:not(.active):focus-visible {
+    background: rgba(var(--accent-rgb), 0.14);
+    border: none;
+    box-shadow: none;
+    color: var(--accent);
+}
+
+.nav-category[data-group="plugins"] .nav-item:focus-visible {
+    outline: 2px solid rgba(var(--accent-rgb), 0.6);
+    outline-offset: -2px;
+}
+
+.nav-category[data-group="plugins"] .nav-item.active {
+    background: rgba(var(--accent-rgb), 0.22);
+    border: none;
+    box-shadow: none;
+    color: var(--accent);
+}
+
+/* Contraído (escritorio): una sola columna de íconos, igual que el resto
+   de los accesos; el nombre completo queda en el title del botón. */
+@media (min-width: 769px) {
+    .app-shell.sidebar-collapsed .nav-category[data-group="plugins"] .nav-category-items {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .app-shell.sidebar-collapsed .nav-category[data-group="plugins"] .nav-item,
+    .app-shell.sidebar-collapsed .nav-category[data-group="plugins"] .nav-item:not(.active):hover,
+    .app-shell.sidebar-collapsed .nav-category[data-group="plugins"] .nav-item:not(.active):focus-visible,
+    .app-shell.sidebar-collapsed .nav-category[data-group="plugins"] .nav-item.active {
+        flex-direction: row;
+        justify-content: center;
+        min-height: 0;
+        padding: 12px 8px;
+        background: none;
+    }
+
+    .app-shell.sidebar-collapsed .nav-category[data-group="plugins"] .nav-item span {
+        display: none;
+    }
+}
 
 .sidebar-actions-card {
     display: flex;
@@ -1452,24 +1612,73 @@ body.green .global-topbar {
     padding: 0;
     border: none;
     border-radius: 0 0 10px 10px;
-    /* Semitransparente de verdad (no un color fijo) -- color-mix con la
-       variable del tema activo hace que se vea bien en los 5 temas sin
-       hardcodear ningún valor. Amarillo/--orange a propósito: marca visualmente
-       el control que colapsa/expande el panel superior. */
-    background: color-mix(in srgb, var(--orange) 20%, transparent);
-    color: var(--text-secondary);
+    /* Barra neón: el relleno es sólido y discreto (translúcido, sin barrido);
+       el neón y la luz que recorre viven solo en el filo (::before enmascarado
+       a un contorno de 2px) y en un resplandor exterior suave. */
+    --neon: var(--orange);
+    background: color-mix(in srgb, var(--neon) 12%, transparent);
+    box-shadow:
+        0 0 4px 0 color-mix(in srgb, var(--neon) 38%, transparent),
+        0 0 9px 1px color-mix(in srgb, var(--neon) 20%, transparent);
+    color: var(--text);
     cursor: pointer;
     position: relative;
     z-index: 2;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.panel-hero-toggle-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg,
+            transparent 0%,
+            var(--neon) 45%,
+            var(--neon) 55%,
+            transparent 100%) 0 0 / 40% 100% no-repeat,
+        color-mix(in srgb, var(--neon) 55%, transparent);
+    background-position: -40% 0, 0 0;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: panel-hero-neon-sweep 3.6s linear infinite;
 }
 
 .panel-hero-toggle-btn:hover {
-    background: color-mix(in srgb, var(--orange) 32%, transparent);
-    color: var(--text);
+    box-shadow:
+        0 0 5px 0 color-mix(in srgb, var(--neon) 50%, transparent),
+        0 0 12px 2px color-mix(in srgb, var(--neon) 28%, transparent);
+}
+
+.panel-hero-toggle-btn:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+}
+
+@keyframes panel-hero-neon-sweep {
+    from { background-position: -40% 0, 0 0; }
+    to   { background-position: 140% 0, 0 0; }
+}
+
+@keyframes panel-hero-chevron-pulse {
+    0%, 100% { opacity: .75; translate: 0 0; }
+    50%      { opacity: 1; translate: 0 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel-hero-toggle-btn::before { animation: none; background-position: 30% 0, 0 0; }
+    .panel-hero-toggle-btn svg { animation: none !important; }
 }
 
 .panel-hero-toggle-btn svg {
+    animation: panel-hero-chevron-pulse 1.8s ease-in-out infinite;
+    filter: drop-shadow(0 0 2px var(--neon));
+    position: relative;
     transition: transform 0.32s ease;
     /* Abierto (estado por defecto, sin .collapsed) = flecha hacia arriba. */
     transform: rotate(180deg);
@@ -1573,41 +1782,89 @@ body.green .global-topbar {
     color: var(--accent);
 }
 
-/* Estado del sistema — logo hexagonal a la izquierda, filas ícono+label/valor
-   apiladas a la derecha (íconos y valores en verde acento, como el resto de
+/* Estado del sistema — logo hexagonal en el cruce de la cruz de 4 fichas ícono+label/valor (íconos y valores en verde acento, como el resto de
    la ficha; solo el valor de "Salud del sistema" cambia de color si hay
    advertencias/errores). */
 
-.panel-health-body {
+.panel-card-pos-estado {
     display: flex;
-    align-items: center;
-    gap: 18px;
+    flex-direction: column;
 }
 
+.panel-health-body {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+/* Logo en el cruce de la cruz: disco del color de la tarjeta con un margen
+   (padding) para que las líneas parezcan interrumpirse alrededor. */
 .panel-health-logo {
-    flex-shrink: 0;
-    width: 78px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    box-sizing: content-box;
+    width: 64px;
+    padding: 7px;
+    border-radius: 50%;
+    background: var(--panel-bg, var(--card-bg));
+    pointer-events: none;
 }
 
 .panel-health-logo img {
     width: 100%;
     height: auto;
     display: block;
-    filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.35));
+    filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.35));
 }
 
+/* Cruz de datos: sin marco ni fondo por ficha; solo divisores finos entre
+   cuadrantes. Las celdas crecen parejas y su contenido va centrado en su
+   cuadrante, con relleno extra hacia el cruce para no chocar con el logo. */
 .panel-info-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 11px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 1fr;
+    gap: 0;
     flex: 1;
+    align-self: stretch;
+    align-content: center;
     min-width: 0;
 }
 
 .panel-info-row {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
+    min-width: 0;
+    padding: 12px 12px;
+}
+
+.panel-info-row:nth-child(odd) { border-right: 1px solid var(--border); padding-right: 44px; }
+.panel-info-row:nth-child(even) { padding-left: 44px; }
+.panel-info-row:nth-child(-n+2) { border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+.panel-info-row:nth-child(n+3) { padding-top: 20px; }
+
+@media (max-width: 599px) {
+    .panel-health-body { flex-direction: column; gap: 10px; }
+    .panel-health-logo {
+        position: static;
+        transform: none;
+        padding: 0;
+        width: 64px;
+        background: none;
+    }
+    .panel-info-grid { grid-template-columns: minmax(0, 1fr); width: 100%; }
+    .panel-info-row,
+    .panel-info-row:nth-child(odd),
+    .panel-info-row:nth-child(even),
+    .panel-info-row:nth-child(n+3) { border-right: none; padding: 12px; }
+    .panel-info-row:nth-child(-n+3) { border-bottom: 1px solid var(--border); }
+    .panel-info-row:nth-child(4) { border-bottom: none; }
 }
 
 .panel-info-row svg {
@@ -1618,6 +1875,8 @@ body.green .global-topbar {
 .panel-info-row-text {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    text-align: center;
     gap: 2px;
     min-width: 0;
 }
@@ -1628,7 +1887,7 @@ body.green .global-topbar {
 }
 
 .panel-info-row-value {
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: var(--accent);
     white-space: nowrap;
@@ -1932,13 +2191,13 @@ body.green .global-topbar {
 }
 
 .panel-job-icon-laser {
-    background: rgba(var(--purple-rgb), 0.14);
-    color: var(--purple);
+    background: var(--type-laser-soft);
+    color: var(--type-laser);
 }
 
 .panel-job-icon-cnc {
-    background: rgba(245, 158, 11, 0.14);
-    color: var(--orange);
+    background: var(--type-cnc-soft);
+    color: var(--type-cnc);
 }
 
 .panel-job-info {
@@ -3437,12 +3696,20 @@ body.green .settings-card {
     background: rgba(239, 68, 68, 0.28);
 }
 
+/* Detalle de impresora: paneles tipo rompecabezas. Cada módulo es una carpeta
+   con su título en una pestaña que sobresale arriba a la izquierda; la unión
+   pestaña/panel es cóncava (esquina invertida con radial-gradient) y el borde
+   y el fondo son continuos. La malla es densa y de separación mínima. */
 .modal-body.printer-modal-body {
+    --tab-h: 32px;
+    --tab-r: 12px;
+    --tab-line: var(--border);
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: row dense;
     align-items: stretch;
-    gap: 6px;
-    padding: 6px;
+    gap: 4px;
+    padding: 8px;
     overflow-y: auto;
 }
 
@@ -3471,19 +3738,102 @@ body.green .settings-card {
     min-height: 0;
 }
 
-.printer-modal-column .temp-card {
-    flex: 1;
-    min-height: 0;
-    max-height: none;
-    display: flex;
-    flex-direction: column;
-}
-
 .printer-modal-column .temp-card-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
 }
+
+.printer-modal-body .temp-card {
+    --tab-fill: var(--card-bg);
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    margin-top: var(--tab-h);
+    background-color: var(--tab-fill);
+    border: 1px solid var(--tab-line);
+    border-radius: 0 16px 16px 16px;
+}
+
+.printer-modal-body .temp-card.toolhead-card {
+    --tab-line: color-mix(in srgb, var(--accent) 55%, var(--border));
+    background-color: var(--tab-fill);
+}
+
+/* El encabezado en flujo solo conserva las acciones (a la derecha); el título
+   es la pestaña, colgada del borde superior del panel. */
+.printer-modal-body .temp-card .temp-card-header {
+    justify-content: flex-end;
+    padding: 0;
+    background: none;
+    position: static;
+    overflow: visible;
+}
+
+.printer-modal-body .temp-card .temp-card-header > :not(.temp-card-header-left) {
+    margin: 8px 10px 0 auto;
+}
+
+.printer-modal-body .temp-card .temp-card-header-left {
+    position: absolute;
+    left: -1px;
+    bottom: 100%;
+    z-index: 2;
+    box-sizing: border-box;
+    height: var(--tab-h);
+    max-width: calc(100% - var(--tab-r) - 8px);
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .9rem;
+    font-weight: 700;
+    color: var(--text-strong);
+    background: var(--tab-fill);
+    border: 1px solid var(--tab-line);
+    border-bottom: 0;
+    border-radius: var(--tab-r) var(--tab-r) 0 0;
+}
+
+.printer-modal-body .temp-card .temp-card-header-left > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.printer-modal-body .temp-card .temp-card-header-left > svg { flex-shrink: 0; }
+
+/* Esquina cóncava: el panel "abraza" la pestaña con una curva invertida. */
+.printer-modal-body .temp-card .temp-card-header-left::after {
+    content: "";
+    position: absolute;
+    left: 100%;
+    bottom: -1px;
+    width: var(--tab-r);
+    height: var(--tab-r);
+    pointer-events: none;
+    background: radial-gradient(circle at 100% 0,
+        transparent calc(var(--tab-r) - 1px),
+        var(--tab-line) calc(var(--tab-r) - 1px),
+        var(--tab-line) var(--tab-r),
+        var(--tab-fill) var(--tab-r));
+}
+
+.printer-modal-body .temp-card-warm,
+.printer-modal-body .temp-card-cool { background-color: var(--tab-fill); }
+
+.printer-modal-body .temp-card-warm .temp-card-header-left,
+.printer-modal-body .temp-card-cool .temp-card-header-left,
+.printer-modal-body .toolhead-card .temp-card-header-left { color: var(--text-strong); }
+
+/* La ficha de Toolhead ya no es un fondo oscuro fijo: el texto sigue al tema. */
+.printer-modal-body .toolhead-card .temp-card-body { color: var(--text-strong); }
+.printer-modal-body .toolhead-card .temp-icon-btn { color: var(--text-strong); }
 
 .printer-modal-topbar {
     display: grid;
@@ -3502,11 +3852,19 @@ body.green .settings-card {
     min-width: 0;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1023px) {
     .modal-body.printer-modal-body {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+}
 
+@media (max-width: 640px) {
+    .modal-body.printer-modal-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 860px) {
     .printer-modal-topbar {
         grid-template-columns: 1fr;
         align-items: start;
@@ -3578,6 +3936,34 @@ body.green .settings-card {
     color: var(--text);
     border: 1px solid var(--border);
 }
+
+/* El diálogo de módulos se abre sobre el detalle de Marlin, que está más
+   abajo en el DOM y tiene el mismo z-index base. */
+#module-customizer-modal { z-index: 1010; }
+
+/* Módulo "Carrete" del detalle de impresora. */
+#printer-modal-spool { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.spool-module-row { align-items: stretch; flex-wrap: wrap; }
+.spool-module-row .dev-material-icon { align-self: center; }
+.spool-module-list {
+    margin: 0; padding: 0; flex: 1 1 200px; min-width: 0;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px;
+}
+.spool-tile {
+    display: flex; min-width: 0; padding: 8px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: color-mix(in srgb, var(--text-strong) 6%, var(--card-bg));
+}
+.spool-tile-wide { grid-column: 1 / -1; }
+.spool-tile-ink { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 2px 6px; border-radius: 7px; }
+.spool-tile-color { flex-wrap: wrap; align-items: flex-end; }
+.spool-tile-color .spool-tile-ink { background: var(--card-bg); }
+.spool-tile dt { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.spool-tile dd { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-strong); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.spool-tile dd small { font-size: .75rem; font-weight: 600; color: var(--text-muted); }
+.spool-module-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; text-align: center; color: var(--text-muted); }
+.spool-module-empty strong { color: var(--text-strong); }
+.spool-module-hint { font-size: .85rem; }
 
 /* ── "Personalizar Módulos": editor de módulos del modal de impresora ── */
 
@@ -5335,9 +5721,9 @@ body.green .settings-card {
     font-weight: 800;
 }
 
-.gcode-type-badge.is-laser { border-color: rgba(168, 85, 247, 0.55); background: rgba(126, 34, 206, 0.22); color: #d8b4fe; }
-.gcode-type-badge.is-print3d { border-color: rgba(59, 130, 246, 0.55); background: rgba(37, 99, 235, 0.2); color: #bfdbfe; }
-.gcode-type-badge.is-cnc { border-color: rgba(245, 158, 11, 0.55); background: rgba(180, 83, 9, 0.2); color: #fde68a; }
+.gcode-type-badge.is-laser { border-color: var(--type-laser-border); background: var(--type-laser-soft); color: var(--type-laser); }
+.gcode-type-badge.is-print3d { border-color: var(--type-3d-border); background: var(--type-3d-soft); color: var(--type-3d); }
+.gcode-type-badge.is-cnc { border-color: var(--type-cnc-border); background: var(--type-cnc-soft); color: var(--type-cnc); }
 
 .gcode-analysis-summary {
     margin: 0 0 14px;
@@ -7253,18 +7639,6 @@ body.green .settings-card {
     flex-shrink: 0;
 }
 
-.cnc-topbar-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(245, 158, 11, 0.18);
-    color: var(--orange);
-    font-size: 0.72rem;
-    font-weight: 800;
-}
 
 .cnc-main-layout {
     display: grid;
@@ -7425,6 +7799,83 @@ body.green .settings-card {
 
 .cnc-job-progress-row .laser-job-progress-bar {
     flex: 1;
+}
+
+.cnc-job-lines {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.cnc-job-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    background: var(--bg-card);
+    color: var(--text);
+    font-size: 0.8rem;
+}
+
+.cnc-job-result[hidden] {
+    display: none;
+}
+
+.cnc-job-result-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.cnc-job-result-error {
+    border-left-color: var(--status-danger);
+}
+
+/* Aviso de resultado: la X va fuera del flujo y el texto reserva su espacio */
+.cnc-job-result {
+    position: relative;
+    padding-right: 34px;
+}
+
+.cnc-job-result > .theme-option-icon-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
+
+/* Tarjeta TRABAJO: título arriba y los dos botones de ayuda a partes iguales */
+#cnc-job-card > .cnc-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+#cnc-job-card .cnc-card-header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+#cnc-job-card .cnc-card-header-actions .btn-file-action {
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+    padding: 8px 6px;
+    font-size: 0.76rem;
+    line-height: 1.2;
+    text-wrap: balance;
+    overflow-wrap: break-word;
+}
+
+.cnc-job-result-ok {
+    border-left-color: var(--status-ok);
 }
 
 .cnc-job-buttons-row {
@@ -7778,15 +8229,13 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .cnc-viewer-card {
     padding: 0;
     overflow: hidden;
-    min-height: 480px;
-    flex: 1;
 }
 
 .cnc-viewer-tabs {
     display: flex;
     gap: 4px;
     padding: 10px 14px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
 }
 
@@ -7810,14 +8259,16 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .cnc-viewer-panels {
     position: relative;
     flex: 1;
-    min-height: 420px;
     display: flex;
 }
 
 .cnc-viewer-panel {
     display: none;
     width: 100%;
-    height: 100%;
+}
+
+.cnc-viewer-panel[data-viewer-panel="3d"] {
+    min-height: 260px;
 }
 
 .cnc-viewer-panel.active {
@@ -7827,75 +8278,150 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 .cnc-visor-canvas-wrap {
     position: relative;
     flex: 1;
-    background: #081410;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px 10px;
+    background: var(--surface-sunken);
+}
+
+/* Barra superior en flujo normal (leyenda, lectura X/Y/Z y zoom): nunca se
+   sale del visor ni se encima con las pestañas; envuelve en anchos chicos. */
+.cnc-visor-toolbar {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 14px;
+}
+
+/* Marco = lienzo con la proporción exacta del área de trabajo (--cnc-ratio =
+   ancho/alto) + reglas a la izquierda y abajo. El alto del lienzo se limita
+   a 62vh; el ancho se deriva de la proporción, sin franjas vacías. */
+.cnc-visor-frame {
+    --cnc-ratio: 1.6667;
+    --cnc-ruler-w: 34px;
+    --cnc-ruler-h: 18px;
+    width: min(100%, calc(62vh * var(--cnc-ratio) + var(--cnc-ruler-w)));
+    display: grid;
+    grid-template-columns: var(--cnc-ruler-w) minmax(0, 1fr);
+    grid-template-rows: auto var(--cnc-ruler-h);
+}
+
+.cnc-visor-stage {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    aspect-ratio: var(--cnc-ratio);
+    overflow: hidden;
+    background: var(--surface-sunken);
+    /* Borde por fuera (sombra) para que el lienzo mida exactamente el área. */
+    box-shadow: 0 0 0 1px var(--border-control);
+}
+
+.cnc-visor-ruler {
+    position: relative;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    pointer-events: none;
+}
+
+.cnc-visor-ruler span {
+    position: absolute;
+    white-space: nowrap;
+}
+
+.cnc-visor-ruler-x {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.cnc-visor-ruler-x span {
+    top: 3px;
+    transform: translateX(-50%);
+}
+
+.cnc-visor-ruler-y {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.cnc-visor-ruler-y span {
+    right: 5px;
+    transform: translateY(-50%);
 }
 
 .cnc-visor-canvas {
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.cnc-visor-canvas canvas {
+    display: block;
 }
 
 .cnc-visor-origin-marker {
-    /* Antes tenía top/left fijos (decorativo, siempre arriba-izquierda sin
-       importar dónde estuviera X0/Y0 real) — ahora la posición la calcula
-       updateOriginMarker() en cada frame vía transform: translate(), acá
-       solo queda position:absolute como base para ese transform. */
+    /* La posición la calcula updateOriginMarker() en cada frame vía
+       transform: translate(); acá solo queda position:absolute como base. */
     position: absolute;
     top: 0;
     left: 0;
     pointer-events: none;
 }
 
+.cnc-visor-area-note,
+.cnc-sim-note {
+    width: 100%;
+    min-height: 1em;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.cnc-visor-area-note.cnc-area-note-warn,
+.cnc-sim-note {
+    color: var(--status-warn);
+}
+
 .cnc-visor-coords {
-    position: absolute;
-    top: 12px;
-    right: 12px;
     display: flex;
     gap: 12px;
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     font-size: 0.78rem;
-    background: rgba(0, 0, 0, 0.4);
-    padding: 6px 12px;
+    color: var(--text);
+    background: var(--surface-raised);
+    padding: 5px 10px;
     border-radius: 8px;
-    pointer-events: none;
 }
 
 .cnc-visor-nav-col {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 6px;
+    margin-left: auto;
 }
 
 .cnc-visor-legend {
-    position: absolute;
-    bottom: 12px;
-    right: 12px;
-    max-width: 220px;
-    background: var(--card-bg);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-lg);
-    padding: 10px 12px;
-}
-
-.cnc-visor-legend-list {
     list-style: none;
-    margin: 8px 0 0;
+    margin: 0;
     padding: 0;
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 0.76rem;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 0.74rem;
     color: var(--text);
 }
 
-.cnc-visor-legend-list li {
+.cnc-visor-legend li {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .cnc-visor-swatch {
@@ -7906,7 +8432,7 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 }
 
 .cnc-visor-swatch-rapid {
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--text-faint);
 }
 
 .cnc-visor-swatch-cut {
@@ -7914,7 +8440,7 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
 }
 
 .cnc-visor-swatch-selected {
-    background: #fbbf24;
+    background: var(--text-strong);
 }
 
 .cnc-visor-empty-state {
@@ -7927,6 +8453,95 @@ body:not([data-machine-firmware="marlin"]) .cnc-marlin-only {
     padding: 20px;
     color: var(--text-muted);
     font-size: 0.85rem;
+}
+
+/* Simulación */
+.cnc-sim {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px 10px;
+    background: var(--surface-sunken);
+}
+
+.cnc-sim-toolbar {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.cnc-sim-speed {
+    display: inline-flex;
+    border: 1px solid var(--border-control);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cnc-sim-speed-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 6px 9px;
+    cursor: pointer;
+}
+
+.cnc-sim-speed-btn + .cnc-sim-speed-btn {
+    border-left: 1px solid var(--border-control);
+}
+
+.cnc-sim-speed-btn.active {
+    background: var(--accent-fill);
+    color: var(--accent-on);
+}
+
+.cnc-sim-pen {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-control);
+    color: var(--text-muted);
+}
+
+.cnc-sim-pen.down {
+    color: var(--accent-ink);
+    border-color: var(--accent-ink);
+}
+
+.cnc-sim-seek {
+    width: 100%;
+    accent-color: var(--accent-fill);
+}
+
+.cnc-sim-stats {
+    width: 100%;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 6px 14px;
+}
+
+.cnc-sim-stats dt {
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.cnc-sim-stats dd {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
 }
 
 .cnc-viewer-soon {
@@ -14508,58 +15123,774 @@ main {
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.history-split-main {
+/* ── Historial de trabajos (#queue-section) ──
+   Todo con variables del tema: el color por tipo sale de --status-info (3D),
+   --orange (láser) y --purple (CNC); el acento, de --accent. */
+.jh-main {
+    padding: 24px 32px 32px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    gap: 20px;
 }
 
-.history-split-topbar {
+.jh-header {
     display: flex;
-    gap: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px 24px;
+}
+
+.jh-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    flex: 1 1 460px;
+}
+
+.jh-title-icon {
+    display: inline-flex;
     flex-shrink: 0;
-    padding: 24px 32px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--accent-ink);
 }
 
-.history-split-header.page-header {
+.jh-title-text h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--text);
+}
+
+.jh-title-text p {
+    margin-top: 4px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.jh-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.jh-search,
+.jh-period {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+}
+
+.jh-search { flex: 1 1 220px; min-width: 180px; }
+
+.jh-search:focus-within,
+.jh-period:focus-within {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.jh-search input,
+.jh-period select {
     flex: 1;
     min-width: 0;
-    padding: 0;
-    border-bottom: none;
+    height: 42px;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.88rem;
 }
 
-.history-split-body {
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    flex: 1;
-    min-height: 0;
+.jh-period select { cursor: pointer; }
+.jh-period select option { background: var(--card-bg); color: var(--text); }
+
+.jh-seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.jh-seg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius-md) - 3px);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.jh-seg-btn:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.jh-seg-btn.is-active {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border-color: var(--accent);
+}
+
+.jh-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
     gap: 20px;
-    padding: 0 32px 24px;
+    align-items: start;
 }
 
-.history-split-half {
-    flex: 1;
+.jh-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
     min-width: 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
 }
 
-.laser-history-list {
+.jh-card[hidden] { display: none; }
+
+.jh-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.jh-card-head h2 {
     flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.jh-card-icon { color: var(--accent-ink); flex-shrink: 0; }
+
+.jh-count {
+    min-width: 28px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.jh-list {
+    list-style: none;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 20px;
-    background: color-mix(in srgb, var(--card-bg) 55%, transparent);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-lg);
+}
+
+.jh-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) minmax(130px, 190px) 168px 44px;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 8px 8px 8px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+/* Filtros por tipo: el icono lleva el color de su tipo. */
+.jh-seg-btn[data-jh-type="3d"] svg { color: var(--type-3d); }
+.jh-seg-btn[data-jh-type="laser"] svg { color: var(--type-laser); }
+.jh-seg-btn[data-jh-type="cnc"] svg { color: var(--type-cnc); }
+
+.jh-t-3d { --jh-c: var(--type-3d); }
+.jh-t-laser { --jh-c: var(--type-laser); }
+.jh-t-cnc { --jh-c: var(--type-cnc); }
+
+.jh-thumb {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--jh-c, var(--accent)) 14%, var(--card-bg));
+    border: 1px solid color-mix(in srgb, var(--jh-c, var(--accent)) 40%, var(--border));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--jh-c, var(--text));
+}
+
+.jh-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.jh-thumb-fallback { display: none; }
+.jh-thumb.no-thumb .jh-thumb-fallback,
+.jh-thumb:not(:has(img)) .jh-thumb-fallback { display: inline-flex; }
+.jh-thumb.no-thumb img { display: none; }
+
+.jh-info { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+
+.jh-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--jh-c, var(--text));
+    background: color-mix(in srgb, var(--jh-c, var(--accent)) 22%, transparent);
+    border: 1px solid var(--jh-c, var(--accent));
+}
+
+.jh-name {
+    max-width: 100%;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.jh-detail {
+    max-width: 100%;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.jh-state { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+.jh-state-line,
+.jh-dur {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+}
+
+.jh-state-line { font-weight: 600; }
+.jh-state-line { align-items: flex-start; }
+.jh-state-line svg { flex-shrink: 0; margin-top: 2px; }
+.jh-dur { color: var(--text-secondary); }
+.jh-tone-ok { color: var(--status-ok); }
+.jh-tone-danger { color: var(--status-danger); }
+.jh-tone-info { color: var(--status-info); }
+.jh-tone-soft { color: var(--text-secondary); }
+.jh-tone-warn { color: var(--status-warn); }
+.jh-tone-neutral { color: var(--text); }
+
+.jh-date {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-align: right;
+    white-space: nowrap;
+}
+
+.jh-when { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; }
+
+.jh-user {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.jh-user svg { flex-shrink: 0; }
+.jh-user-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.jh-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.jh-menu-wrap { position: relative; width: 44px; height: 44px; }
+
+.jh-menu-btn {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.jh-menu-btn:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.jh-menu {
+    position: absolute;
+    top: 46px;
+    right: 0;
+    z-index: 20;
+    min-width: 170px;
+    padding: 6px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.jh-menu[hidden] { display: none; }
+
+.jh-menu-item {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+
+.jh-menu-item:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+.jh-menu-item { display: flex; align-items: center; gap: 10px; padding: 6px 12px; }
+.jh-menu-item svg { flex-shrink: 0; color: var(--text-secondary); }
+.jh-menu-text { display: flex; flex-direction: column; min-width: 0; }
+.jh-menu-text small { font-size: 0.72rem; line-height: 1.25; color: var(--text-secondary); white-space: normal; }
+.jh-menu-item.is-danger, .jh-menu-item.is-danger svg { color: var(--status-danger); }
+.jh-menu-item[aria-disabled="true"] { cursor: not-allowed; }
+.jh-menu-item[aria-disabled="true"] > svg,
+.jh-menu-item[aria-disabled="true"] .jh-menu-text > span { opacity: 0.55; }
+.jh-menu-item[aria-disabled="true"]:hover { background: transparent; }
+.jh-menu-item:focus-visible { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.jh-menu { min-width: 230px; max-width: min(300px, calc(100vw - 32px)); }
+
+/* Botones de la barra: exportar y registro de control. */
+.jh-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.jh-tool-btn[hidden] { display: none; }
+.jh-tool-btn svg { color: var(--accent-ink); flex-shrink: 0; }
+.jh-tool-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--card-bg)); border-color: var(--accent); }
+.jh-menu-wrap.jh-export { width: auto; height: auto; }
+.jh-export .jh-menu { top: 48px; }
+
+.jh-pager {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 16px;
+}
+
+.jh-pager[hidden] { display: none; }
+
+.jh-page-btn {
+    min-width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.jh-page-btn:hover:not(:disabled) { color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.jh-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.jh-page-btn.is-current {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border-color: var(--accent);
+}
+
+.jh-page-gap { color: var(--text-secondary); padding: 0 4px; }
+
+.jh-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.jh-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+
+.jh-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 12px 6px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--jh-c) 12%, var(--card-bg));
+    border: 1px solid var(--jh-c);
+    color: var(--text);
+}
+
+.jh-tile-label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 700; }
+.jh-tile-label svg { color: var(--jh-c); }
+.jh-tile-num { font-size: 1.7rem; line-height: 1.2; }
+.jh-tile-sub { font-size: 0.75rem; color: var(--text-secondary); }
+
+.jh-machines { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+
+.jh-machine {
+    width: 100%;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.jh-machine:hover { border-color: var(--accent); }
+.jh-machine-icon { display: inline-flex; color: var(--jh-c); }
+.jh-machine-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jh-machine-go { display: inline-flex; color: var(--text-secondary); }
+
+.jh-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.jh-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+.jh-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 28px 12px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+}
+
+.jh-empty-small strong { color: var(--text); font-size: 0.9rem; }
+.jh-empty-small p { font-size: 0.8rem; }
+
+.jh-queue-list { list-style: none; display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
+
+.jh-queue-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 6px 10px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.jh-queue-row .jh-name { font-size: 0.85rem; }
+
+.jh-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+
+.jh-action {
+    min-height: 76px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 6px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--jh-c) 12%, var(--card-bg));
+    border: 1px solid var(--jh-c);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.jh-action svg { color: var(--jh-c); }
+.jh-action:hover { background: color-mix(in srgb, var(--jh-c) 22%, var(--card-bg)); }
+
+.jh-tool-btn:focus-visible,
+.jh-btn:focus-visible,
+.jh-dlg-x:focus-visible,
+.jh-textarea:focus-visible,
+.jh-pick:focus-within,
+.jh-log-wrap:focus-visible,
+.jh-seg-btn:focus-visible,
+.jh-menu-btn:focus-visible,
+.jh-menu-item:focus-visible,
+.jh-page-btn:focus-visible,
+.jh-machine:focus-visible,
+.jh-action:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+@media (max-width: 1100px) {
+    .jh-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+    .jh-main { padding: 16px 16px 24px; }
+    .jh-toolbar { width: 100%; }
+    .jh-search { flex-basis: 100%; }
+    .jh-seg { flex: 1; }
+    .jh-seg-btn { flex: 1; justify-content: center; padding: 0 8px; }
+    .jh-seg-btn svg { display: none; }
+    .jh-period { flex: 1 1 100%; }
+    .jh-row {
+        grid-template-columns: 56px minmax(0, 1fr) 44px;
+        grid-template-areas: "thumb info menu" "state state state" "date date date";
+        gap: 8px 12px;
+    }
+    .jh-thumb { grid-area: thumb; width: 56px; height: 56px; }
+    .jh-info { grid-area: info; }
+    .jh-menu-wrap { grid-area: menu; align-self: start; }
+    .jh-state { grid-area: state; flex-direction: row; flex-wrap: wrap; gap: 4px 14px; }
+    .jh-when { grid-area: date; align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: 2px 14px; }
+    .jh-date { text-align: left; }
+    .jh-tool-btn { flex: 1 1 auto; justify-content: center; }
+    .jh-menu-wrap.jh-export { flex: 1 1 auto; display: flex; }
+    .jh-menu-wrap.jh-export .jh-tool-btn { flex: 1; }
+    .jh-export .jh-menu { left: 0; right: auto; }
+}
+
+/* Diálogos del historial: eliminar con motivo, reimprimir, registro de control. */
+.modal-content.jh-dlg {
+    width: calc(100% - 32px);
+    max-width: 540px;
+    height: auto;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding: 22px;
+    gap: 14px;
+    border-radius: var(--radius-lg, 20px);
+}
+
+.jh-dlg-head { display: flex; align-items: center; gap: 12px; }
+.jh-dlg-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 1.1rem; color: var(--text); }
+
+.jh-dlg-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    color: var(--accent-ink);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.jh-dlg-head.is-danger .jh-dlg-icon {
+    color: var(--status-danger);
+    background: color-mix(in srgb, var(--status-danger) 16%, transparent);
+}
+
+.jh-dlg-x {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.jh-dlg-x:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.jh-dlg-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.jh-dlg-sub { margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
+
+.jh-dlg-job {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 10px 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--jh-c, var(--accent));
+    border-radius: var(--radius-md);
+}
+
+.jh-dlg-job-name { min-width: 0; overflow-wrap: anywhere; color: var(--text); }
+.jh-dlg-job-sub { flex-basis: 100%; font-size: 0.8rem; color: var(--text-secondary); }
+
+.jh-field-label { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.jh-req { color: var(--status-danger); }
+
+.jh-textarea {
+    width: 100%;
+    min-height: 88px;
+    padding: 10px 12px;
+    resize: vertical;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+.jh-textarea.is-invalid { border-color: var(--status-danger); }
+.jh-field-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 0.76rem; color: var(--text-secondary); }
+
+.jh-field-error {
+    margin: 0;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--status-danger);
+    background: color-mix(in srgb, var(--status-danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--status-danger) 45%, transparent);
+    border-radius: var(--radius-md);
+}
+
+.jh-field-error[hidden] { display: none; }
+
+.jh-dlg-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.jh-dlg-note svg { flex-shrink: 0; color: var(--accent-ink); }
+
+.jh-dlg-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+
+.jh-btn {
+    min-height: 44px;
+    padding: 0 18px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.jh-btn:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card-bg)); }
+.jh-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.jh-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--card-bg); }
+.jh-btn-primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+.jh-btn-danger { background: var(--status-danger); border-color: var(--status-danger); color: var(--card-bg); }
+.jh-btn-danger:hover:not(:disabled) { background: var(--status-danger); filter: brightness(1.1); }
+.jh-btn.is-loading { cursor: progress; }
+
+.jh-pick-set { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.jh-pick-set legend { padding: 0; margin-bottom: 8px; font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.jh-pick-set #jh-rp-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; }
+.jh-pick-empty { margin: 0; padding: 16px 0; text-align: center; font-size: 0.88rem; color: var(--text-secondary); }
+
+.jh-pick {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+.jh-pick:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel-bg)); }
+.jh-pick.is-disabled { cursor: not-allowed; opacity: 0.6; }
+.jh-pick input { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+.jh-pick-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.jh-pick-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.jh-pick-main small { font-size: 0.76rem; color: var(--text-secondary); }
+
+.jh-pick-tag {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--accent-ink);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+}
+
+.modal-content.jh-dlg:has(.jh-log-wrap) { max-width: 680px; }
+.jh-log-wrap { max-height: min(52vh, 420px); overflow-y: auto; padding-right: 2px; }
+.jh-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.jh-log-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--jh-c, var(--accent));
+    border-radius: var(--radius-md);
+}
+
+.jh-log-job { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.jh-log-job strong { min-width: 0; overflow-wrap: anywhere; color: var(--text); }
+.jh-log-sub { flex-basis: 100%; font-size: 0.8rem; color: var(--text-secondary); }
+.jh-log-state { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.jh-log-why { margin: 0; font-size: 0.85rem; color: var(--text); overflow-wrap: anywhere; }
+.jh-log-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; font-size: 0.78rem; color: var(--text-secondary); }
+.jh-log-k { font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+    .jh-main * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
 
 .section-title {
@@ -15769,15 +17100,15 @@ body.green .option-switch {
 }
 
 .machines-column-title-printer {
-    color: var(--accent);
+    color: var(--type-3d);
 }
 
 .machines-column-title-laser {
-    color: #8b5cf6;
+    color: var(--type-laser);
 }
 
 .machines-column-title-cnc {
-    color: #f59e0b;
+    color: var(--type-cnc);
 }
 
 /* Carga inicial de dispositivos. Se muestra solo durante el primer sondeo;
@@ -16368,15 +17699,15 @@ body.green .option-switch {
 }
 
 .printer-card-type-3d.printing::before {
-    --card-wave-color: #22c55e;
+    --card-wave-color: var(--type-3d);
 }
 
 .printer-card-type-laser.printing::before {
-    --card-wave-color: #8b5cf6;
+    --card-wave-color: var(--type-laser);
 }
 
 .printer-card-type-cnc.printing::before {
-    --card-wave-color: var(--orange);
+    --card-wave-color: var(--type-cnc);
 }
 
 @keyframes cardBorderWave {
@@ -16395,7 +17726,7 @@ body.green .option-switch {
 
 /* Acento por tipo de máquina */
 .printer-card-type-3d {
-    border-left-color: #22c55e;
+    border-left-color: var(--type-3d);
 }
 
 /* Marlin comparte la columna de impresoras 3D con Klipper y las marcas de
@@ -16410,11 +17741,11 @@ body.green .option-switch {
 }
 
 .printer-card-type-laser {
-    border-left-color: #8b5cf6;
+    border-left-color: var(--type-laser);
 }
 
 .printer-card-type-cnc {
-    border-left-color: var(--orange);
+    border-left-color: var(--type-cnc);
 }
 
 /* Fondo tintado por estado */
@@ -18283,6 +19614,17 @@ body.ai {
     --green-emphasis: #16A34A;
     --violet: #8B5CF6;
 
+    /* Colores por tipo, tonos para contraste AA sobre superficie blanca. */
+    --type-3d: #0B79B0;
+    --type-laser: #6D42D3;
+    --type-cnc: #9A5A0C;
+    --type-3d-soft: color-mix(in srgb, var(--type-3d) 14%, transparent);
+    --type-laser-soft: color-mix(in srgb, var(--type-laser) 14%, transparent);
+    --type-cnc-soft: color-mix(in srgb, var(--type-cnc) 14%, transparent);
+    --type-3d-border: color-mix(in srgb, var(--type-3d) 45%, transparent);
+    --type-laser-border: color-mix(in srgb, var(--type-laser) 45%, transparent);
+    --type-cnc-border: color-mix(in srgb, var(--type-cnc) 45%, transparent);
+
     /* Arena Desert: solo detalles, nunca superficie. Es el guiño al resto de
        la identidad NOPAL dentro de un tema por lo demás frío. */
     --ai-sand: #E7DCC6;
@@ -18441,34 +19783,28 @@ body[data-ai-active="true"] .content { padding-bottom: 78px; }
 .ai-capability:hover, .ai-capability:focus-visible { color: var(--text-strong); }
 .ai-capability + .ai-capability { border-left: 1px solid var(--border-subtle); padding-left: 28px; }
 
-/* Marca de la barra lateral: con la IA encendida el logotipo pasa a
-   NOPAL Intelligence. Si el archivo del logotipo aún no está en
-   /static/img/, el degradado del texto mantiene la identidad y nada se rompe. */
-body[data-ai-active="true"] .sidebar-ai-brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 2px 10px;
+/* Acceso a NOPAL Intelligence: botón de ancho completo anclado al fondo,
+   justo arriba de la barra de acciones. La lista de navegación (flex:1, con
+   scroll propio) se queda con todo el espacio sobrante, así que el botón
+   nunca la tapa. El margen negativo absorbe parte del gap de la barra para
+   que no quede un hueco raro entre ambos. Su relleno de marca sale de la
+   regla de [data-section="ai"] de arriba. */
+.sidebar-ai-btn {
+    flex-shrink: 0;
+    margin-top: auto;
+    margin-bottom: -18px;
+    width: 100%;
+    justify-content: flex-start;
 }
-.sidebar-ai-brand-text {
-    font-size: .68rem;
-    font-weight: 700;
-    letter-spacing: .18em;
-    text-transform: uppercase;
-    background: linear-gradient(90deg, var(--ai-grad-from), var(--ai-grad-to));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
+/* Barra colapsada: el botón pasa al fondo, debajo del hueco flexible del
+   logo girado, para quedar encima de las acciones. */
+.app-shell.sidebar-collapsed .sidebar-ai-btn { order: 1; margin-top: 0; }
+.app-shell.sidebar-collapsed .sidebar-actions-card { order: 2; }
 
-/* Marca de la barra lateral en modo IA: el logotipo completo cuando hay
-   ancho, el isotipo solo cuando la barra está colapsada o en móvil. */
-.sidebar-ai-brand-logo { max-width: 100%; height: auto; display: block; }
-.sidebar-ai-brand-mark { width: 34px; height: auto; display: none; }
-.sidebar.collapsed .sidebar-ai-brand-logo,
-.sidebar-collapsed .sidebar-ai-brand-logo { display: none; }
-.sidebar.collapsed .sidebar-ai-brand-mark,
-.sidebar-collapsed .sidebar-ai-brand-mark { display: block; margin: 0 auto; }
+/* Con poca altura se compacta (sin tapar la navegación, que conserva su scroll). */
+@media (max-height: 640px) {
+    .sidebar-ai-btn { padding-top: 8px; padding-bottom: 8px; margin-bottom: -22px; }
+}
 
 /* Las tarjetas del panel ya heredan la paleta del modo IA por las variables,
    así que aquí solo van los ajustes que el modelo de muestra pide y que las
@@ -18834,9 +20170,9 @@ body.ai .dashboard-dock-section .section-title h2 {
    (modo mixto, una sola grilla para todo tipo de máquina) el borde cae al
    neutro de siempre -- no hay un atributo de "tipo" uniforme en la ficha
    para colorear ahí sin una columna que lo indique. */
-#printers-grid .dev-card { --dev-category: var(--accent); }
-#lasers-grid .dev-card { --dev-category: var(--purple); }
-#cnc-grid .dev-card { --dev-category: var(--orange); }
+#printers-grid .dev-card { --dev-category: var(--type-3d); }
+#lasers-grid .dev-card { --dev-category: var(--type-laser); }
+#cnc-grid .dev-card { --dev-category: var(--type-cnc); }
 
 @keyframes devCardCategoryPulse {
     0%, 100% { border-color: color-mix(in srgb, var(--dev-category, var(--border-subtle)) 40%, var(--border-subtle)); }
@@ -19068,7 +20404,13 @@ body.ai .dashboard-dock-section .section-title h2 {
 .dev-metrics + .dev-info { border-top: 1px solid var(--border-subtle); }
 
 /* Acciones */
-.dev-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 9px; margin-top: 2px; }
+/* Mosaico regular: siempre 2 columnas de filas parejas. Si la cuenta de
+   botones es impar, el último de los normales ocupa el ancho completo (con
+   o sin el botón primario "Iniciar" detrás, que ya va a ancho completo). */
+.dev-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(64px, auto); gap: 9px; margin-top: 2px; }
+.dev-actions > .dev-action { min-height: 64px; min-width: 0; }
+.dev-actions > .dev-action:nth-child(odd):last-child,
+.dev-actions > .dev-action:nth-child(odd):nth-last-child(2):has(+ .dev-action-primary) { grid-column: 1 / -1; }
 .dev-action {
     display: flex;
     flex-direction: column;
@@ -19231,10 +20573,12 @@ body.ai .dashboard-dock-section .section-title h2 {
    siga sabiendo qué hace cada una. */
 .printers-grid.list-view .dev-actions {
     display: flex;
+    grid-auto-rows: auto;
     gap: 6px;
     margin: 0;
     flex-shrink: 0;
 }
+.printers-grid.list-view .dev-actions > .dev-action { min-height: 44px; min-width: 44px; }
 .printers-grid.list-view .dev-action { padding: 9px; border-radius: 11px; }
 .printers-grid.list-view .dev-action span { display: none; }
 .printers-grid.list-view .dev-action svg { width: 18px; height: 18px; }
@@ -21303,4 +22647,176 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
     .gv-chip { padding: 0 7px; }
     .gv-actions { grid-template-columns: 1fr 1fr; }
     #gv-ed-save { grid-column: 1 / -1; }
+}
+
+/* ── Imagen a dibujo (plotter) ── */
+
+#plotter-modal { z-index: 1100; }
+
+.modal-content.plotter-modal-content {
+    width: 94%;
+    max-width: 1040px;
+    height: auto;
+    max-height: 92vh;
+    overflow-y: auto;
+    padding: 24px;
+    gap: 12px;
+}
+
+.plotter-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 20px;
+    text-align: left;
+}
+
+.plotter-controls,
+.plotter-preview-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.plotter-preview-col { align-items: center; }
+.plotter-preview-col .plotter-status { width: 100%; }
+
+.plotter-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 0; }
+.plotter-row { display: flex; gap: 10px; }
+
+.plotter-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+
+.plotter-input {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.plotter-input:focus-visible,
+.plotter-controls input[type="range"]:focus-visible,
+.plotter-controls input[type="file"]:focus-visible,
+.plotter-pen summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.plotter-help { margin: 0; font-size: 0.76rem; color: var(--text-muted); }
+
+.plotter-check { display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: var(--text); cursor: pointer; }
+.plotter-check input { margin-top: 3px; accent-color: var(--accent); }
+
+.plotter-controls input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+.plotter-dropzone {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+}
+
+.plotter-dropzone.dragover { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.08); }
+
+.plotter-dropzone input[type="file"] { max-width: 100%; color: var(--text); font-size: 0.82rem; }
+
+.plotter-pen { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; }
+.plotter-pen summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; color: var(--text); }
+.plotter-pen[open] summary { margin-bottom: 10px; }
+.plotter-pen .plotter-row { margin-bottom: 8px; }
+.plotter-fine { display: block; }
+.plotter-fine-field { margin-bottom: 12px; }
+.plotter-fine-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.plotter-fine-value { font-size: 0.82rem; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.plotter-fine-ends { display: flex; justify-content: space-between; gap: 8px; font-size: 0.74rem; color: var(--text-muted); }
+.plotter-fine-ends span:last-child { text-align: right; }
+
+.cnc-z-nudge-row .laser-step-btn { flex: 1 1 56px; white-space: nowrap; padding-left: 4px; padding-right: 4px; }
+@media (max-width: 520px) { .cnc-z-nudge-row .laser-step-btn { flex: 1 1 28%; } }
+.cnc-z-offset { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.cnc-z-offset[hidden] { display: none; }
+.cnc-z-sd-note[hidden] { display: none; }
+.cnc-sd-row { display: flex; flex-direction: column; gap: 4px; }
+.cnc-sd-row .settings-switch { align-items: flex-start; }
+.cnc-sd-row .switch-label { white-space: normal; }
+.cnc-sd-row .settings-switch { position: relative; }
+.cnc-sd-row .settings-switch input[type="checkbox"] { display: block; position: absolute; opacity: 0; width: 42px; height: 24px; margin: 0; cursor: pointer; }
+.cnc-sd-row .settings-switch input:focus-visible + .switch-slider { outline: 2px solid var(--green-dark); outline-offset: 2px; }
+.cnc-sd-row .settings-switch input:disabled + .switch-slider { opacity: 0.55; cursor: not-allowed; }
+.cnc-z-offset-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cnc-z-offset-value { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+
+.plotter-stage {
+    position: relative;
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    overflow: hidden;
+}
+.plotter-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plotter-original {
+    position: absolute;
+    object-fit: fill;
+    opacity: 0.3;
+    pointer-events: none;
+    user-select: none;
+}
+.plotter-original[hidden] { display: none; }
+.plotter-stage[data-view="trace"] .plotter-original { display: none; }
+.plotter-stage[data-view="original"] .plotter-original { opacity: 1; }
+
+.plotter-view-switch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+.plotter-segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.plotter-seg-btn {
+    padding: 6px 14px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+.plotter-seg-btn:last-child { border-right: 0; }
+.plotter-seg-btn.active { background: rgba(var(--accent-rgb), 0.2); color: var(--text); font-weight: 700; box-shadow: inset 0 -2px 0 var(--accent); }
+.plotter-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.plotter-status { margin: 0; min-height: 1.2em; font-size: 0.82rem; color: var(--text-muted); text-align: center; }
+.plotter-status-error { color: var(--status-danger); }
+.plotter-status-notice {
+    color: var(--text);
+    padding: 8px 12px;
+    border: 1px solid var(--status-warn);
+    border-radius: 8px;
+    text-align: left;
+}
+.plotter-notes { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.plotter-note {
+    margin: 0;
+    padding: 6px 10px;
+    border-left: 3px solid var(--accent);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: left;
+}
+.plotter-stats { margin: 0; font-size: 0.76rem; color: var(--text-muted); text-align: center; }
+
+.plotter-footer { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.plotter-buttons { display: flex; justify-content: flex-end; gap: 10px; }
+
+.plotter-wizard-search-row { display: flex; gap: 8px; width: 100%; align-items: center; }
+.plotter-wizard-search-row .usb-classify-input-icon-wrap { flex: 1 1 auto; min-width: 0; }
+.plotter-wizard-search-row .btn-file-action { flex: 0 0 auto; white-space: nowrap; }
+
+@media (max-width: 720px) {
+    .modal-content.plotter-modal-content { padding: 16px; }
+    .plotter-layout { grid-template-columns: 1fr; }
+    .plotter-row { flex-direction: column; }
+    .plotter-buttons { flex-direction: column-reverse; }
+    .plotter-buttons .btn-file-action { width: 100%; justify-content: center; }
+    .plotter-wizard-search-row { flex-direction: column; align-items: stretch; }
 }

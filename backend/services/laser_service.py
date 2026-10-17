@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import itertools
 import json
 import logging
@@ -7,6 +8,7 @@ import re
 import socket
 import threading
 import time
+import uuid
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
@@ -27,7 +29,7 @@ HTTP_TIMEOUT = 4
 WS_PORT = 81
 REGISTRY_PATH = "laser_registry.json"
 HISTORY_PATH = "laser_history.json"
-HISTORY_MAX_ENTRIES = 200
+HISTORY_MAX_ENTRIES = 1000
 
 STATUS_RE = re.compile(r"<(?P<state>\w+)(?::\d+)?\|(?P<fields>[^>]*)>")
 
@@ -240,33 +242,80 @@ def _save_history(entries: List[Dict[str, Any]]):
         pass
 
 
+def legacy_entry_id(entry: Dict[str, Any]) -> str:
+    """Id estable de una entrada vieja (anterior al registro de control) a partir de sus datos."""
+    basis = f"{entry.get('host')}|{entry.get('started_at')}|{entry.get('filename')}"
+    return "h" + hashlib.sha1(basis.encode("utf-8")).hexdigest()[:11]
+
+
 def get_laser_history(limit: int = 50) -> List[Dict[str, Any]]:
-    """Trabajos láser más recientes primero."""
+    """Trabajos láser más recientes primero (cada entrada con su `id`)."""
     entries = _load_history()
+    for entry in entries[:limit]:
+        entry.setdefault("id", legacy_entry_id(entry))
     return entries[:limit]
 
 
-def record_laser_job_history(job: "LaserJob"):
-    """Guarda el resultado final de un trabajo (completado, cancelado o con
-    error) en el historial persistente, más reciente primero."""
-    entries = _load_history()
+def _history_entry(job: "LaserJob", final: bool) -> Dict[str, Any]:
     machine = next((e for e in _load_registry() if e.get("host") == job.host), None)
-    entry = {
+    return {
+        "id": job.job_id,
         "host": job.host,
         # Vínculo estable a la máquina (id interno); `host` queda solo como
         # dato de la dirección que tenía al cortar.
         "machine_id": f"laser:{machine['id']}" if machine else None,
         "filename": job.filename,
         "source": job.source,
-        "state": job.state,
+        "state": job.state if final else "running",
         "current": job.current,
         "total": job.total,
         "error": job.error_message,
+        "user": job.user,
         "started_at": job.started_at,
-        "completed_at": time.time(),
+        "completed_at": time.time() if final else None,
     }
-    entries.insert(0, entry)
+
+
+def begin_laser_job_history(job: "LaserJob"):
+    """Registra el trabajo en cuanto se manda (estado "running"): así ningún trabajo enviado queda fuera
+    del control, aunque NOPAL se reinicie antes de que termine (ver reconcile_laser_history)."""
+    entries = _load_history()
+    entries.insert(0, _history_entry(job, final=False))
     _save_history(entries[:HISTORY_MAX_ENTRIES])
+
+
+def record_laser_job_history(job: "LaserJob"):
+    """Guarda el resultado final de un trabajo (completado, cancelado o con
+    error) en el historial persistente, más reciente primero."""
+    entries = _load_history()
+    final = _history_entry(job, final=True)
+    for index, entry in enumerate(entries):
+        if entry.get("id") == job.job_id:
+            final["snapshot"] = entry.get("snapshot")
+            if final["snapshot"] is None:
+                final.pop("snapshot")
+            entries[index] = final
+            break
+    else:
+        entries.insert(0, final)
+    _save_history(entries[:HISTORY_MAX_ENTRIES])
+
+
+def reconcile_laser_history() -> int:
+    """Al arrancar NOPAL: los trabajos que quedaron "running" sin un trabajo vivo se cierran como
+    "incomplete" (el proceso se reinició a media ejecución). Devuelve cuántos se corrigieron."""
+    entries = _load_history()
+    live = {job.job_id for job in _jobs.values() if job.state in ("running", "paused")}
+    fixed = 0
+    for entry in entries:
+        if entry.get("state") == "running" and entry.get("id") not in live:
+            entry["state"] = "incomplete"
+            entry["error"] = entry.get("error") or "El trabajo no terminó (NOPAL se reinició)"
+            entry["completed_at"] = entry.get("completed_at") or time.time()
+            fixed += 1
+    if fixed:
+        _save_history(entries)
+    return fixed
 
 
 def attach_laser_history_snapshot(host: str, snapshot: str) -> bool:
@@ -741,6 +790,11 @@ def send_raw_command(host: str, command: str, *, allow_during_job: bool = False)
             timeout=HTTP_TIMEOUT,
         )
         response.raise_for_status()
+        if (response.text or "").strip() == "Error" and command not in REALTIME_SERIAL_COMMANDS:
+            # El firmware contesta HTTP 200 con el cuerpo "Error" cuando su búfer de entrada (256 bytes)
+            # está lleno y TIRA la línea: sin esta revisión NOPAL la daba por enviada y se desfasaba.
+            logger.warning(f"[{host}] La placa no aceptó la línea (búfer lleno): {command!r}")
+            return False
         # DEBUG porque '?' se manda varias veces por segundo entre todos los
         # dispositivos activos — sería puro ruido a INFO.
         logger.debug(f"[{host}] TX: {command!r}")
@@ -1511,9 +1565,40 @@ async def home(host: str, axes: Optional[str] = None) -> bool:
     return await asyncio.get_event_loop().run_in_executor(None, send_raw_command, host, "$H")
 
 
+_Z_WORD = re.compile(r"Z(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+Z_OFFSET_LIMIT_MM = 5.0
+
+
+def _lowest_z(lines: List[str]) -> Optional[float]:
+    """La Z más baja que usa el archivo, si usa al menos dos Z distintas (un plotter: lápiz arriba y
+    abajo); None si no hay Z o es una sola (un láser: no hay nada que ajustar)."""
+    values = set()
+    for line in lines:
+        text = line.split(";", 1)[0]
+        for found in _Z_WORD.findall(text):
+            values.add(float(found))
+    return min(values) if len(values) >= 2 else None
+
+
+def apply_z_offset(line: str, z_ref: Optional[float], offset: float) -> str:
+    """La línea con el desplazamiento aplicado a las Z que igualan la Z de lápiz abajo del archivo."""
+    if not offset or z_ref is None or "Z" not in line.upper():
+        return line
+
+    def shift(match):
+        value = float(match.group(1))
+        if abs(value - z_ref) < 1e-6:
+            return "Z" + f"{value + offset:.3f}".rstrip("0").rstrip(".")
+        return match.group(0)
+
+    return _Z_WORD.sub(shift, line)
+
+
 class LaserJob:
-    def __init__(self, host: str, lines: List[str], filename: str = "", source: str = "stream"):
+    def __init__(self, host: str, lines: List[str], filename: str = "", source: str = "stream", user: str = ""):
         self.host = host
+        self.job_id = uuid.uuid4().hex[:12]     # vínculo estable con su entrada del historial de control
+        self.user = user or ""                  # quién lo mandó desde NOPAL (vacío: no se sabe)
         self.lines = lines
         self.filename = filename
         self.source = source  # "stream" (línea por línea vía WiFi/USB) o "sd" (corre local desde la SD)
@@ -1524,6 +1609,12 @@ class LaserJob:
         self.cancel_requested = False
         self.pause_requested = False
         self.started_at = time.time()
+        # Ajuste de Z en vivo (plotter: bajar o subir el lápiz con el trabajo corriendo). `z_ref` es
+        # la Z más baja del archivo (el lápiz abajo); el desplazamiento solo se aplica a las líneas
+        # que aún no se han mandado y que van a esa Z.
+        self.z_offset = 0.0
+        self.z_ref = _lowest_z(lines)
+        self.phase = "running"        # "uploading" mientras un trabajo desde SD sube su archivo
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -1533,6 +1624,11 @@ class LaserJob:
             "current": self.current,
             "total": self.total,
             "error": self.error_message,
+            "z_offset": round(self.z_offset, 3),
+            "has_z": self.z_ref is not None,
+            "phase": self.phase,
+            "job_id": self.job_id,
+            "user": self.user,
         }
 
 
@@ -1541,6 +1637,8 @@ class LaserJob:
 _jobs: Dict[str, LaserJob] = {}
 
 
+SEND_RETRIES = 40            # reintentos seguidos de una misma línea antes de abortar el trabajo
+SEND_RETRY_WAIT_S = 0.2
 GRBL_RX_BUFFER_SIZE = 120  # margen seguro bajo el buffer serie real de GRBL/grblHAL (128 bytes)
 
 
@@ -1564,6 +1662,7 @@ async def _run_job(job: LaserJob):
     pending_lengths: List[int] = []  # bytes en tránsito por línea enviada, en orden
     buffer_used = 0
     idx = 0
+    send_failures = 0
 
     try:
         while idx < len(lines) or pending_lengths:
@@ -1581,15 +1680,24 @@ async def _run_job(job: LaserJob):
 
             # Llena el buffer serie con tantas líneas como entren de una vez.
             while idx < len(lines):
-                next_line = lines[idx]
+                next_line = apply_z_offset(lines[idx], job.z_ref, job.z_offset)
                 needed = len(next_line) + 1  # +1 por el salto de línea
                 if pending_lengths and buffer_used + needed > GRBL_RX_BUFFER_SIZE:
                     break
                 sent = await loop.run_in_executor(None, lambda line=next_line: send_raw_command(job.host, line, allow_during_job=True))
                 if not sent:
-                    job.state = "error"
-                    job.error_message = f"No se pudo enviar la línea {job.current + 1}"
-                    return
+                    # La placa no la aceptó (búfer de entrada lleno) o la red falló un momento: se reintenta
+                    # la MISMA línea; con líneas en vuelo, tras el siguiente "ok" (ya hay lugar).
+                    send_failures += 1
+                    if send_failures > SEND_RETRIES:
+                        job.state = "error"
+                        job.error_message = f"No se pudo enviar la línea {job.current + 1}"
+                        return
+                    if pending_lengths:
+                        break
+                    await asyncio.sleep(SEND_RETRY_WAIT_S)
+                    continue
+                send_failures = 0
                 pending_lengths.append(needed)
                 buffer_used += needed
                 idx += 1
@@ -1611,6 +1719,12 @@ async def _run_job(job: LaserJob):
             elif normalized.startswith("error") or normalized.startswith("alarm"):
                 job.state = "error"
                 job.error_message = f"{text} (línea {job.current + 1})"
+                # Diagnóstico: las líneas que iban en vuelo (la rechazada es la primera) y las 3 anteriores.
+                logger.warning(
+                    f"[{job.host}] Línea rechazada {job.current + 1} ({text}): enviadas {idx}, en vuelo "
+                    f"{len(pending_lengths)} ({buffer_used} bytes): {lines[job.current:idx]!r}; "
+                    f"anteriores: {lines[max(0, job.current - 3):job.current]!r}"
+                )
                 return
             # otras líneas (reportes de estado, etc.) se ignoran
 
@@ -1725,7 +1839,7 @@ async def _run_sd_job(job: LaserJob):
         record_laser_job_history(job)
 
 
-def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:
+def start_job(host: str, gcode_text: str, filename: str = "", user: str = "") -> Dict[str, Any]:
     """Inicia streaming línea por línea (WiFi/USB) — para placas sin SD.
 
     No detecta si ya hay un trabajo EXTERNO en curso (ej. mandado por
@@ -1739,8 +1853,9 @@ def start_job(host: str, gcode_text: str, filename: str = "") -> Dict[str, Any]:
         raise RuntimeError("Ya hay un trabajo en curso en este láser")
 
     lines = gcode_text.splitlines()
-    job = LaserJob(host, lines, filename, source="stream")
+    job = LaserJob(host, lines, filename, source="stream", user=user)
     _jobs[host] = job
+    begin_laser_job_history(job)
     logger.info(f"[{host}] Trabajo iniciado: {filename or '(stream)'} ({len(lines)} líneas)")
     if _firmware_for_host(host) == "marlin":
         asyncio.create_task(_run_marlin_job(job))
@@ -1762,7 +1877,77 @@ async def _run_marlin_job(job: "LaserJob"):
     record_laser_job_history(job)
 
 
-def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:
+def sd_card_present(host: str) -> bool:
+    """¿La placa de red tiene una tarjeta SD lista? `[ESP200]` es el comando de estado de la SD del
+    firmware (ESP3D/Grbl_Esp32); su respuesta llega en el cuerpo HTTP ("SD card detected")."""
+    if _is_usb_host(host) or _firmware_for_host(host) == "marlin":
+        return False
+    try:
+        response = requests.get(_command_url(host), params={"commandText": "[ESP200]"}, timeout=HTTP_TIMEOUT)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[{host}] No se pudo consultar el estado de la SD: {e}")
+        return False
+    return "detected" in (response.text or "").lower() and "no sd" not in (response.text or "").lower()
+
+
+def start_job_via_sd(host: str, filename: str, data: bytes, check_sd: bool = True, user: str = "") -> Dict[str, Any]:
+    """Corre un archivo desde la SD de la placa: lo sube y arranca `$SD/Run=`. El trabajo corre
+    dentro de la placa, así que ya no depende de que el WiFi entregue cada línea a tiempo (el
+    streaming por HTTP puede perder o desfasar líneas con el búfer de entrada de la placa lleno).
+    Mientras sube, `phase` es "uploading" y current/total son los bytes enviados."""
+    if _firmware_for_host(host) == "marlin":
+        raise RuntimeError("SD nativa no soportada para Marlin en esta versión")
+    existing = _jobs.get(host)
+    if existing is not None and existing.state in ("running", "paused"):
+        raise RuntimeError("Ya hay un trabajo en curso en este láser")
+    if check_sd and not sd_card_present(host):
+        raise RuntimeError("La placa no tiene una tarjeta SD lista")
+    job = LaserJob(host, [], filename, source="sd", user=user)
+    job.phase = "uploading"
+    job.total = len(data)
+    _jobs[host] = job
+    begin_laser_job_history(job)
+    logger.info(f"[{host}] Trabajo iniciado (SD): subiendo {filename} ({len(data)} bytes)")
+    asyncio.create_task(_upload_and_run_sd(job, data))
+    return job.to_dict()
+
+
+async def _upload_and_run_sd(job: "LaserJob", data: bytes) -> None:
+    loop = asyncio.get_event_loop()
+    upload_id = f"job-{job.host}-{int(job.started_at * 1000)}"
+    upload = loop.run_in_executor(None, sd_upload_file_tracked, job.host, "/", job.filename, data, upload_id)
+    try:
+        while not upload.done():
+            progress = get_sd_upload_progress(upload_id)
+            if progress:
+                job.current = int(progress.get("sent", 0))
+            if job.cancel_requested:
+                job.state = "cancelled"
+                return
+            await asyncio.sleep(0.5)
+        await upload
+        progress = get_sd_upload_progress(upload_id) or {}
+        if progress.get("status") != "done":
+            job.state = "error"
+            job.error_message = f"No se pudo subir el archivo a la SD ({progress.get('error') or 'sin respuesta'})"
+            logger.warning(f"[{job.host}] Trabajo (SD) terminó con error: {job.error_message}")
+            record_laser_job_history(job)
+            return
+    except Exception as e:
+        logger.exception(f"[{job.host}] Excepción subiendo el archivo a la SD")
+        job.state = "error"
+        job.error_message = str(e)
+        record_laser_job_history(job)
+        return
+    finally:
+        clear_sd_upload_progress(upload_id)
+    job.phase = "running"
+    job.current, job.total = 0, 0
+    await _run_sd_job(job)
+
+
+def start_sd_job(host: str, sd_filename: str, user: str = "") -> Dict[str, Any]:
     """Inicia un trabajo ya subido a la SD, corriéndolo localmente en la placa."""
     if _firmware_for_host(host) == "marlin":
         raise RuntimeError("SD nativa no soportada para Marlin en esta versión")
@@ -1772,8 +1957,9 @@ def start_sd_job(host: str, sd_filename: str) -> Dict[str, Any]:
         logger.warning(f"[{host}] No se pudo iniciar '{sd_filename}' (SD): ya hay un trabajo en curso")
         raise RuntimeError("Ya hay un trabajo en curso en este láser")
 
-    job = LaserJob(host, [], sd_filename, source="sd")
+    job = LaserJob(host, [], sd_filename, source="sd", user=user)
     _jobs[host] = job
+    begin_laser_job_history(job)
     logger.info(f"[{host}] Trabajo iniciado (SD): {sd_filename}")
     asyncio.create_task(_run_sd_job(job))
     return job.to_dict()
@@ -1807,7 +1993,9 @@ async def get_job_status(host: str) -> Dict[str, Any]:
     resultado viejo (confirmado en vivo: pasó exactamente esto probando)."""
     job = _jobs.get(host)
     if job is not None and job.state in ("running", "paused"):
-        return job.to_dict()
+        # "elapsed" (segundos desde que arrancó) lo calcula el servidor para
+        # que el tiempo transcurrido no dependa del reloj del navegador.
+        return {**job.to_dict(), "elapsed": int(time.time() - job.started_at)}
 
     status = await get_status(host, timeout=1.5)
     external_state = _external_job_state(status.get("state") if status else None)
@@ -1864,6 +2052,17 @@ async def get_active_laser_jobs(entries: List[Dict[str, Any]]) -> List[Dict[str,
     return own + external
 
 
+def get_last_finished_job(host: str) -> Optional[Dict[str, Any]]:
+    """Último trabajo propio de esa placa si ya terminó (error, cancelado o
+    completado); None si no hay uno o si sigue activo. get_job_status no lo
+    devuelve (cae al estado de la placa), así que sin esto la interfaz no
+    tenía forma de mostrar por qué se detuvo un trabajo. Solo lee _jobs."""
+    job = _jobs.get(host)
+    if job is None or job.state in ("running", "paused"):
+        return None
+    return {**job.to_dict(), "started_at": job.started_at}
+
+
 def get_laser_jobs_with_errors() -> List[Dict[str, Any]]:
     """Trabajos propios con estado "error" — para el badge de notificaciones.
     A propósito una función aparte de get_active_job_hosts (que solo mira
@@ -1875,6 +2074,23 @@ def get_laser_jobs_with_errors() -> List[Dict[str, Any]]:
         for host, job in _jobs.items()
         if job.state == "error"
     ]
+
+
+async def adjust_job_z(host: str, delta: float) -> float:
+    """Sube o baja el lápiz (la Z de "abajo" del archivo) mientras corre el trabajo: se suma `delta` al
+    desplazamiento y vale desde el siguiente trazo. Devuelve el desplazamiento total en mm.
+    ValueError con un mensaje legible si no aplica."""
+    job = _jobs.get(host)
+    if not job or job.state not in ("running", "paused"):
+        raise ValueError("No hay un trabajo en curso")
+    if job.z_ref is None:
+        raise ValueError("Este trabajo no sube ni baja un lápiz (no tiene movimientos de Z)")
+    new = round(job.z_offset + float(delta), 3)
+    if abs(new) > Z_OFFSET_LIMIT_MM:
+        raise ValueError(f"El ajuste de Z no puede pasar de ±{Z_OFFSET_LIMIT_MM:g} mm")
+    job.z_offset = new
+    logger.info(f"[{host}] Ajuste de Z en vivo: {new:+.3f} mm (lápiz abajo en Z{job.z_ref + new:g})")
+    return new
 
 
 async def pause_job(host: str) -> bool:

@@ -13,6 +13,8 @@ database/
 logs/
 laser_registry.json
 laser_history.json
+job_print_log.json
+job_deletions.json
 marlin_printer_registry.json
 elegoo_printer_registry.json
 flashforge_printer_registry.json

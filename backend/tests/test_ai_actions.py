@@ -310,3 +310,48 @@ def _maquina_falsa(machine):
     async def _resolver(machine_id):
         return machine
     return _resolver
+
+
+# --------------------------------------------------------------------------
+# Panel FK-8Wa (plugin Matriz LED): mensaje especial desde la IA
+# --------------------------------------------------------------------------
+
+async def test_show_panel_message_calls_the_plugin(monkeypatch):
+    llamadas = []
+
+    class Servicio:
+        @staticmethod
+        def show_message(text, minutes, source):
+            llamadas.append((text, minutes, source))
+            return {"text": text, "source": source}
+
+    import backend.services.plugin_loader_service as loader
+    monkeypatch.setattr(loader, "get_loaded_plugin_module",
+                        lambda pid, mod: Servicio if (pid, mod) == ("matriz-led", "services.fk8wa.service") else None)
+    assert await ai_actions.show_panel_message("TODO BIEN", 10) == {"ok": True, "text": "TODO BIEN", "minutes": 10}
+    assert llamadas == [("TODO BIEN", 10, "ai")]
+
+
+async def test_show_panel_message_without_plugin(monkeypatch):
+    import backend.services.plugin_loader_service as loader
+    monkeypatch.setattr(loader, "get_loaded_plugin_module", lambda pid, mod: None)
+    with pytest.raises(ai_actions.ActionError, match="FK-8Wa"):
+        await ai_actions.show_panel_message("hola")
+
+
+async def test_show_panel_message_invalid_text(monkeypatch):
+    class Servicio:
+        @staticmethod
+        def show_message(text, minutes, source):
+            raise ValueError("El mensaje está vacío")
+
+    import backend.services.plugin_loader_service as loader
+    monkeypatch.setattr(loader, "get_loaded_plugin_module", lambda pid, mod: Servicio)
+    with pytest.raises(ai_actions.ActionError, match="vacío"):
+        await ai_actions.show_panel_message("")
+
+
+def test_panel_message_is_not_confused_with_ipixel_or_accessories():
+    accion = ai_actions.ACTIONS["show_panel_message"]
+    assert "FK-8Wa" in accion.description and "send_matrix_announcement" in accion.description
+    assert accion.risk == "low"

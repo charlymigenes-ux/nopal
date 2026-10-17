@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=356">
+    <link rel="stylesheet" href="/static/css/style.css?v=357">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -16,7 +16,7 @@
         <div class="mobile-block-card">
             <div class="mobile-block-icon">🖥️</div>
             <h1 data-i18n="mobileBlockTitle">NOPAL funciona mejor en escritorio o tablet</h1>
-            <p data-i18n="mobileBlockBody">El panel completo no está pensado para pantallas de celular. Desde tu teléfono, usá la app TUNA-Screen para controlar tus máquinas.</p>
+            <p data-i18n="mobileBlockBody">El panel completo no está pensado para pantallas de celular. Desde tu teléfono, usa la app TUNA-Screen para controlar tus máquinas.</p>
             <a class="btn btn-primary" href="https://github.com/charlymigenes-ux/TUNA-Screen/releases" target="_blank" rel="noopener" data-i18n="mobileBlockDownload">Descargar TUNA-Screen</a>
         </div>
     </div>
@@ -98,7 +98,7 @@
         </header>
         <aside class="sidebar">
             <div class="brand">
-                <img class="brand-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <img class="brand-logo" id="brand-logo-home" src="/static/img/algonopal_cabezado.png" alt="NOPAL" role="link" tabindex="0" aria-label="Ir al panel principal" title="Ir al panel principal" data-i18n-aria-label="brandGoHome" data-i18n-title="brandGoHome">
                 <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Contraer/expandir menú">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
@@ -190,10 +190,6 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                             <span data-i18n="navSystemConsole">Consola del sistema</span>
                         </button>
-                        <button class="nav-item" data-section="ai" id="nav-ai-btn" data-i18n-title="navAi" title="NOPAL Intelligence" hidden>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>
-                            <span data-i18n="navAi">NOPAL Intelligence</span>
-                        </button>
                     </div>
                 </div>
 
@@ -211,13 +207,13 @@
                 </div>
             </nav>
 
-            <!-- Marca NOPAL Intelligence: solo con la IA encendida. Se degrada
-                 con gracia -- si el logotipo aún no está en /static/img/, el
-                 degradado del texto conserva la identidad. -->
-            <div class="sidebar-ai-brand" data-ai-only>
-                <img class="sidebar-ai-brand-logo" src="/static/img/LOGOTEXTO_IA.webp" alt="NOPAL Intelligence">
-                <img class="sidebar-ai-brand-mark" src="/static/img/LOGOSOLO_IA.webp" alt="NOPAL Intelligence">
-            </div>
+            <!-- NOPAL Intelligence: acceso de ancho completo arriba de las
+                 acciones; antes vivía en Herramientas y aquí iba el logotipo.
+                 Sigue oculto hasta que aiUpdateNavVisibility() lo muestra. -->
+            <button class="nav-item sidebar-ai-btn" data-section="ai" id="nav-ai-btn" data-i18n-title="navAi" title="NOPAL Intelligence" hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/><path d="M12 8v8"/><path d="M9 12h6"/></svg>
+                <span data-i18n="navAi">NOPAL Intelligence</span>
+            </button>
 
             <div class="sidebar-logo-gap">
                 <img class="sidebar-logo-bg" src="/static/img/Logo_O2.png" alt="">
@@ -1505,10 +1501,6 @@
                 <main class="main-content cnc-main">
                     <div class="cnc-topbar">
                         <div class="cnc-topbar-brand">
-                            <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
-                                <path d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z" fill="rgba(245,158,11,0.12)" stroke="var(--orange)" stroke-width="2"/>
-                                <path d="M16 10 v12 M16 14 c0 -3 -3 -4 -3 -4 M16 17 c0 -3 3 -4 3 -4" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" fill="none"/>
-                            </svg>
                             <span>NOPAL CNC</span>
                             <span class="cnc-state-pill" id="cnc-state-pill">IDLE</span>
                         </div>
@@ -1537,10 +1529,9 @@
                             <button type="button" class="theme-option-icon-btn" id="cnc-refresh-btn" title="Actualizar">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                             </button>
-                            <button type="button" class="theme-option-icon-btn cnc-topbar-settings-btn" id="cnc-settings-btn" title="Configuración">
+                            <button type="button" class="theme-option-icon-btn cnc-topbar-settings-btn" id="cnc-settings-btn" data-i18n-title="laserSettings" title="Configuración GRBL" aria-haspopup="dialog">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                             </button>
-                            <div class="cnc-topbar-avatar" title="NOPAL">NP</div>
                         </div>
                     </div>
 
@@ -1617,10 +1608,28 @@
                                 </div>
                             </div>
                             <div class="laser-queue-list cnc-queue-list" id="cnc-queue-list"></div>
+                            <div class="cnc-sd-row" id="cnc-sd-row">
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="cnc-sd-switch" aria-describedby="cnc-sd-hint" disabled>
+                                    <span class="switch-slider"></span>
+                                    <span class="switch-label" data-i18n="cncSdLabel">Correr desde la SD de la placa (recomendado)</span>
+                                </label>
+                                <p class="plotter-help" id="cnc-sd-hint" role="status"></p>
+                            </div>
                             <div class="cnc-job-progress-row">
                                 <span id="cnc-job-elapsed">00:00</span>
                                 <div class="laser-job-progress-bar"><div class="laser-job-progress-fill" id="cnc-job-progress-fill"></div></div>
                                 <span id="cnc-job-percent">0%</span>
+                            </div>
+                            <div class="cnc-job-lines" id="cnc-job-lines" hidden></div>
+                            <div class="cnc-job-result" id="cnc-job-result" role="status" hidden>
+                                <div class="cnc-job-result-text">
+                                    <strong id="cnc-job-result-title"></strong>
+                                    <span id="cnc-job-result-body"></span>
+                                </div>
+                                <button type="button" class="theme-option-icon-btn" id="cnc-job-result-close" data-i18n-title="cncJobDismiss" title="Cerrar aviso">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
                             </div>
                             <div class="cnc-job-buttons-row">
                                 <button type="button" class="btn-file-action btn-file-action-accent" id="cnc-run-btn">
@@ -1641,10 +1650,22 @@
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 7l-5-5-5 5"/></svg>
                                     <span data-i18n="cncProbe">Probe</span>
                                 </button>
+                            </div>
+                            <div class="cnc-job-buttons-row cnc-z-nudge-row">
                                 <button type="button" class="laser-step-btn" data-z-nudge="0.5">Z +0.5</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="0.1">Z +0.1</button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="0.02">Z +0.02</button>
+                                <button type="button" class="laser-step-btn" data-z-nudge="-0.02">Z -0.02</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.1">Z -0.1</button>
                                 <button type="button" class="laser-step-btn" data-z-nudge="-0.5">Z -0.5</button>
+                            </div>
+                            <p class="plotter-help cnc-z-sd-note" id="cnc-z-sd-note" role="status" data-i18n="cncSdZNote" hidden>Con un trabajo desde la SD no se puede ajustar el Z; detén el trabajo y regenera el dibujo con otro Z abajo.</p>
+                            <div class="cnc-z-offset" id="cnc-z-offset" hidden>
+                                <div class="cnc-z-offset-head">
+                                    <span class="cnc-z-offset-value" id="cnc-z-offset-value" role="status" aria-live="polite"></span>
+                                    <button type="button" class="laser-step-btn" id="cnc-z-offset-reset" data-i18n="zOffsetReset" data-i18n-aria-label="zOffsetResetAria" aria-label="Quitar el ajuste de Z del lápiz">Quitar ajuste</button>
+                                </div>
+                                <p class="plotter-help" data-i18n="zOffsetHelp">Sube o baja el lápiz del siguiente trazo en adelante. Negativo = más presión.</p>
                             </div>
                             <div class="cnc-override-block cnc-advanced-only grbl-only">
                                 <span class="cnc-override-label" data-i18n="cncFeedOverride">Feed Override</span>
@@ -1776,49 +1797,50 @@
                             <div class="cnc-viewer-panels" id="cnc-viewer-panels">
                                 <div class="cnc-viewer-panel active" id="cnc-viewer-panel-visor" data-viewer-panel="visor">
                                     <div class="cnc-visor-canvas-wrap" id="cnc-visor-canvas-wrap">
-                                        <div class="cnc-visor-canvas" id="cnc-visor-canvas"></div>
-                                        <div class="cnc-visor-origin-marker" id="cnc-visor-origin-marker" hidden>
-                                            <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
-                                                <circle cx="9" cy="25" r="3" fill="#3b82f6"/>
-                                                <line x1="9" y1="25" x2="9" y2="9" stroke="#22c55e" stroke-width="2"/>
-                                                <polyline points="5 13 9 9 13 13" stroke="#22c55e" stroke-width="2" fill="none"/>
-                                                <line x1="9" y1="25" x2="25" y2="25" stroke="#ef4444" stroke-width="2"/>
-                                                <polyline points="21 21 25 25 21 29" stroke="#ef4444" stroke-width="2" fill="none"/>
-                                            </svg>
-                                        </div>
-                                        <div class="cnc-visor-coords" id="cnc-visor-coords" hidden>
-                                            <span>X <strong id="cnc-visor-coord-x">0.000</strong></span>
-                                            <span>Y <strong id="cnc-visor-coord-y">0.000</strong></span>
-                                            <span>Z <strong id="cnc-visor-coord-z">0.000</strong></span>
-                                        </div>
-                                        <div class="cnc-visor-nav-col" id="cnc-visor-nav-col" hidden>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="fit" data-i18n-title="cncVisorFit" title="Ajustar al área">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-                                            </button>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-in" data-i18n-title="cncVisorZoomIn" title="Acercar">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                            </button>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-out" data-i18n-title="cncVisorZoomOut" title="Alejar">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                                            </button>
-                                            <button type="button" class="theme-option-icon-btn" data-visor-action="fullscreen" data-i18n-title="cncVisorFullscreen" title="Pantalla completa">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11 0h3a2 2 0 0 0 2-2v-3"/></svg>
-                                            </button>
-                                        </div>
-                                        <div class="cnc-visor-legend card-collapsible collapsed" id="cnc-visor-legend" hidden>
-                                            <div class="card-header-std">
-                                                <span class="card-header-std-title" data-i18n="cncVisorLegendTitle">COLORES DE CARACTERÍSTICAS</span>
-                                                <button type="button" class="card-collapse-toggle collapsed">
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                                </button>
-                                            </div>
-                                            <ul class="cnc-visor-legend-list">
+                                        <div class="cnc-visor-toolbar">
+                                            <ul class="cnc-visor-legend" id="cnc-visor-legend" hidden>
                                                 <li><span class="cnc-visor-swatch cnc-visor-swatch-rapid"></span><span data-i18n="cncVisorLegendRapid">Rápido (G0)</span></li>
                                                 <li><span class="cnc-visor-swatch cnc-visor-swatch-cut"></span><span data-i18n="cncVisorLegendCut">Corte (G1/G2/G3)</span></li>
                                                 <li><span class="cnc-visor-swatch cnc-visor-swatch-selected"></span><span data-i18n="cncVisorLegendSelected">Seleccionado</span></li>
                                             </ul>
+                                            <div class="cnc-visor-coords" id="cnc-visor-coords" hidden>
+                                                <span>X <strong id="cnc-visor-coord-x">0.000</strong></span>
+                                                <span>Y <strong id="cnc-visor-coord-y">0.000</strong></span>
+                                                <span>Z <strong id="cnc-visor-coord-z">0.000</strong></span>
+                                            </div>
+                                            <div class="cnc-visor-nav-col" id="cnc-visor-nav-col" hidden>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="fit" data-i18n-title="cncVisorFit" data-i18n-aria-label="cncVisorFit" title="Ajustar al área" aria-label="Ajustar al área">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                                                </button>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-in" data-i18n-title="cncVisorZoomIn" data-i18n-aria-label="cncVisorZoomIn" title="Acercar" aria-label="Acercar">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                                </button>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="zoom-out" data-i18n-title="cncVisorZoomOut" data-i18n-aria-label="cncVisorZoomOut" title="Alejar" aria-label="Alejar">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                                                </button>
+                                                <button type="button" class="theme-option-icon-btn" data-visor-action="fullscreen" data-i18n-title="cncVisorFullscreen" data-i18n-aria-label="cncVisorFullscreen" title="Pantalla completa" aria-label="Pantalla completa">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11 0h3a2 2 0 0 0 2-2v-3"/></svg>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div class="cnc-visor-empty-state" id="cnc-visor-empty-state" data-i18n="cncVisorEmptyState">Selecciona un archivo en ARCHIVOS para previsualizarlo</div>
+                                        <div class="cnc-visor-frame" id="cnc-visor-frame">
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-y" id="cnc-visor-ruler-y" aria-hidden="true"></div>
+                                            <div class="cnc-visor-stage" id="cnc-visor-stage">
+                                                <div class="cnc-visor-canvas" id="cnc-visor-canvas"></div>
+                                                <div class="cnc-visor-origin-marker" id="cnc-visor-origin-marker" hidden>
+                                                    <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                                                        <circle cx="9" cy="25" r="3" fill="var(--status-info)"/>
+                                                        <line x1="9" y1="25" x2="9" y2="9" stroke="var(--status-ok)" stroke-width="2"/>
+                                                        <polyline points="5 13 9 9 13 13" stroke="var(--status-ok)" stroke-width="2" fill="none"/>
+                                                        <line x1="9" y1="25" x2="25" y2="25" stroke="var(--status-danger)" stroke-width="2"/>
+                                                        <polyline points="21 21 25 25 21 29" stroke="var(--status-danger)" stroke-width="2" fill="none"/>
+                                                    </svg>
+                                                </div>
+                                                <div class="cnc-visor-empty-state" id="cnc-visor-empty-state" data-i18n="cncVisorEmptyState">Selecciona un archivo en ARCHIVOS para previsualizarlo</div>
+                                            </div>
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-x" id="cnc-visor-ruler-x" aria-hidden="true"></div>
+                                        </div>
+                                        <div class="cnc-visor-area-note" id="cnc-visor-area-note" role="status"></div>
                                     </div>
                                 </div>
                                 <div class="cnc-viewer-panel" id="cnc-viewer-panel-3d" data-viewer-panel="3d">
@@ -1829,10 +1851,35 @@
                                     </div>
                                 </div>
                                 <div class="cnc-viewer-panel" id="cnc-viewer-panel-sim" data-viewer-panel="sim">
-                                    <div class="cnc-viewer-soon">
-                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                                        <strong data-i18n="cncViewerSoonTitle">Próximamente</strong>
-                                        <p data-i18n="cncViewerSimSoonBody">Simulación de mecanizado con reproducción animada — en desarrollo.</p>
+                                    <div class="cnc-sim" id="cnc-sim">
+                                        <div class="cnc-sim-toolbar">
+                                            <button type="button" class="theme-option-icon-btn cnc-sim-btn" id="cnc-sim-play" title="Reproducir" aria-label="Reproducir"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+                                            <button type="button" class="theme-option-icon-btn cnc-sim-btn" id="cnc-sim-restart" data-i18n-title="cncSimRestart" data-i18n-aria-label="cncSimRestart" title="Reiniciar" aria-label="Reiniciar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+                                            <div class="cnc-sim-speed" id="cnc-sim-speed" role="group" data-i18n-aria-label="cncSimSpeed" aria-label="Velocidad">
+                                                <button type="button" class="cnc-sim-speed-btn active" data-sim-speed="1" aria-pressed="true">1×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="2" aria-pressed="false">2×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="5" aria-pressed="false">5×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="10" aria-pressed="false">10×</button>
+                                                <button type="button" class="cnc-sim-speed-btn" data-sim-speed="50" aria-pressed="false">50×</button>
+                                            </div>
+                                            <span class="cnc-sim-pen" id="cnc-sim-pen" hidden></span>
+                                        </div>
+                                        <div class="cnc-visor-frame cnc-sim-frame" id="cnc-sim-frame">
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-y" id="cnc-sim-ruler-y" aria-hidden="true"></div>
+                                            <div class="cnc-visor-stage" id="cnc-sim-stage">
+                                                <canvas class="cnc-visor-canvas" id="cnc-sim-canvas"></canvas>
+                                                <div class="cnc-visor-empty-state" id="cnc-sim-empty" data-i18n="cncSimEmpty">Selecciona un archivo en ARCHIVOS para simularlo</div>
+                                            </div>
+                                            <div class="cnc-visor-ruler cnc-visor-ruler-x" id="cnc-sim-ruler-x" aria-hidden="true"></div>
+                                        </div>
+                                        <input type="range" class="cnc-sim-seek" id="cnc-sim-seek" min="0" max="10000" value="0" step="1" data-i18n-aria-label="cncSimSeek" aria-label="Posición de la simulación" disabled>
+                                        <dl class="cnc-sim-stats" id="cnc-sim-stats">
+                                            <div><dt data-i18n="cncSimLines">Líneas</dt><dd id="cnc-sim-lines">—</dd></div>
+                                            <div><dt data-i18n="cncSimDrawn">Distancia dibujada</dt><dd id="cnc-sim-drawn">—</dd></div>
+                                            <div><dt data-i18n="cncSimTravel">Distancia de traslado</dt><dd id="cnc-sim-travel">—</dd></div>
+                                            <div><dt data-i18n="cncSimTime">Tiempo</dt><dd id="cnc-sim-time">—</dd></div>
+                                        </dl>
+                                        <div class="cnc-sim-note" id="cnc-sim-note" role="status"></div>
                                     </div>
                                 </div>
                             </div>
@@ -1849,6 +1896,10 @@
                                     <button type="button" class="btn-file-action" id="cnc-files-upload-btn">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                                         <span data-i18n="cncFilesUpload">Subir</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action" id="cnc-files-plotter-btn" data-i18n-title="plotterOpenTitle" title="Convertir una imagen en un dibujo de plotter">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                        <span data-i18n="plotterOpen">Imagen a dibujo</span>
                                     </button>
                                     <input type="file" id="cnc-files-upload-input" accept=".nc,.tap,.cnc,.gcode,.gc,.gco" hidden>
                                     <button type="button" class="theme-option-icon-btn" id="cnc-files-refresh-btn" title="Actualizar">
@@ -1997,40 +2048,73 @@
             </section>
 
             <section id="queue-section" class="view-section" style="display: none;">
-                <main class="main-content history-split-main">
-                    <div class="history-split-topbar">
-                        <section class="page-header history-split-header">
-                            <h1 data-i18n="printHistory3d">Historial de impresión 3D</h1>
-                            <p data-i18n="printHistory3dDescription">Archivos ya impresos por cada impresora.</p>
-                        </section>
-                        <section class="page-header history-split-header">
-                            <h1 data-i18n="laserHistoryTitle">Historial del láser</h1>
-                            <p data-i18n="laserHistoryDescription">Trabajos láser completados, cancelados o con error.</p>
-                        </section>
-                    </div>
-                    <div class="history-split-body">
-                        <div class="history-split-half">
-                            <div class="recent-section">
-                                <div class="section-title">
-                                    <div class="section-search">
-                                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                        <input id="search-recent" data-i18n-placeholder="searchFiles" placeholder="Buscar archivos...">
-                                    </div>
-                                    <div class="view-controls">
-                                        <button class="btn-view-toggle btn-view-toggle-active" id="view-grid" title="Grid view" data-view="grid">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                                        </button>
-                                        <button class="btn-view-toggle" id="view-list" title="List view" data-view="list">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div id="models"></div>
+                <main class="main-content jh-main">
+                    <div class="jh-header">
+                        <div class="jh-title-wrap">
+                            <span class="jh-title-icon" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg></span>
+                            <div class="jh-title-text">
+                                <h1 data-i18n="jhTitle">Historial de trabajos</h1>
+                                <p data-i18n="jhSubtitle">Revisa el estado y los archivos de tus trabajos de impresión 3D, corte láser y CNC.</p>
                             </div>
                         </div>
-                        <div class="history-split-half">
-                            <div class="laser-history-list" id="laser-history-list"></div>
+                        <div class="jh-toolbar">
+                            <div class="jh-search">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input id="search-recent" type="search" autocomplete="off" data-i18n-placeholder="jhSearchPlaceholder" placeholder="Buscar por nombre de archivo…" data-i18n-aria-label="jhSearchPlaceholder" aria-label="Buscar por nombre de archivo…">
+                            </div>
+                            <div class="jh-seg" id="jh-filters" role="group" data-i18n-aria-label="jhFilterGroup" aria-label="Filtrar por tipo de trabajo">
+                                <button type="button" class="jh-seg-btn is-active" data-jh-type="all" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span data-i18n="jhFilterAll">Todos</span></button>
+                                <button type="button" class="jh-seg-btn" data-jh-type="3d" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg><span>3D</span></button>
+                                <button type="button" class="jh-seg-btn" data-jh-type="laser" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg><span data-i18n="laser">Láser</span></button>
+                                <button type="button" class="jh-seg-btn" data-jh-type="cnc" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg><span>CNC</span></button>
+                            </div>
+                            <label class="jh-period">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                <select id="jh-period" data-i18n-aria-label="jhPeriodLabel" aria-label="Periodo">
+                                    <option value="7" data-i18n="jhPeriod7">Últimos 7 días</option>
+                                    <option value="30" data-i18n="jhPeriod30" selected>Últimos 30 días</option>
+                                    <option value="90" data-i18n="jhPeriod90">Últimos 90 días</option>
+                                    <option value="0" data-i18n="jhPeriodAll">Todo el historial</option>
+                                </select>
+                            </label>
+                            <div class="jh-menu-wrap jh-export">
+                                <button type="button" class="jh-tool-btn" id="jh-export-btn" aria-haspopup="menu" aria-expanded="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg><span data-i18n="jhExport">Exportar resumen</span></button>
+                                <div class="jh-menu" role="menu" data-i18n-aria-label="jhExport" aria-label="Exportar resumen" hidden>
+                                    <button type="button" role="menuitem" class="jh-menu-item" data-jh-export="pdf" tabindex="-1"><span class="jh-menu-text"><span data-i18n="jhExportPdf">PDF</span><small data-i18n="jhExportHint">Con los filtros vigentes</small></span></button>
+                                    <button type="button" role="menuitem" class="jh-menu-item" data-jh-export="xml" tabindex="-1"><span class="jh-menu-text"><span data-i18n="jhExportXml">XML</span><small data-i18n="jhExportHint">Con los filtros vigentes</small></span></button>
+                                </div>
+                            </div>
+                            <button type="button" class="jh-tool-btn" id="jh-log-btn" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="M9 12h6M9 8h6M9 16h3"/></svg><span data-i18n="jhControlLog">Registro de control</span></button>
                         </div>
+                    </div>
+                    <div class="jh-layout">
+                        <section class="jh-card jh-recent" aria-labelledby="jh-recent-title">
+                            <div class="jh-card-head">
+                                <svg class="jh-card-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>
+                                <h2 id="jh-recent-title" data-i18n="jhRecent">Trabajos recientes</h2>
+                                <span class="jh-count" id="jh-count">0</span>
+                            </div>
+                            <div id="jh-list-wrap" class="jh-list-wrap"></div>
+                            <nav class="jh-pager" id="jh-pager" data-i18n-aria-label="jhPagination" aria-label="Paginación" hidden></nav>
+                        </section>
+                        <aside class="jh-side" id="jh-side">
+                            <section class="jh-card" aria-labelledby="jh-summary-title">
+                                <div class="jh-card-head"><h2 id="jh-summary-title" data-i18n="jhSummaryTitle">Resumen por tipo</h2></div>
+                                <div class="jh-summary" id="jh-summary"></div>
+                            </section>
+                            <section class="jh-card" id="jh-status-card" aria-labelledby="jh-status-title" hidden>
+                                <div class="jh-card-head"><h2 id="jh-status-title" data-i18n="jhStatusTitle">Estado actual</h2></div>
+                                <ul class="jh-machines" id="jh-machines"></ul>
+                            </section>
+                            <section class="jh-card" aria-labelledby="jh-queue-title">
+                                <div class="jh-card-head"><h2 id="jh-queue-title" data-i18n="jhQueueTitle">Trabajos en cola</h2></div>
+                                <div id="jh-queue"></div>
+                            </section>
+                            <section class="jh-card" aria-labelledby="jh-actions-title">
+                                <div class="jh-card-head"><h2 id="jh-actions-title" data-i18n="jhActionsTitle">Acciones rápidas</h2></div>
+                                <div class="jh-actions" id="jh-actions"></div>
+                            </section>
+                        </aside>
                     </div>
                 </main>
             </section>
@@ -3402,6 +3486,9 @@
                 <div class="printer-modal-column" data-module="camera">
                     <div id="printer-modal-camera"></div>
                 </div>
+                <div class="printer-modal-column" data-module="spool">
+                    <div id="printer-modal-spool"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -3489,12 +3576,12 @@
          visual, no participa del reordenamiento real. -->
     <div id="module-customizer-modal" class="modal">
         <div class="modal-backdrop" id="module-customizer-modal-backdrop"></div>
-        <div class="modal-content module-customizer-modal-content">
-            <button class="modal-close" id="module-customizer-modal-close">
+        <div class="modal-content module-customizer-modal-content" role="dialog" aria-modal="true" aria-labelledby="module-customizer-title">
+            <button class="modal-close" id="module-customizer-modal-close" type="button" aria-label="Cerrar" data-i18n-aria-label="jhClose">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="module-customizer-header">
-                <h2 data-i18n="moduleCustomizerTitle">Personalizar Módulos</h2>
+                <h2 id="module-customizer-title" data-i18n="moduleCustomizerTitle">Personalizar Módulos</h2>
                 <p class="module-customizer-subtitle" data-i18n="moduleCustomizerSubtitle">Elige qué información quieres ver en tu escritorio.</p>
             </div>
 
@@ -3604,6 +3691,9 @@
     <div id="marlin-printer-modal" class="modal">
         <div class="modal-backdrop" id="marlin-printer-modal-backdrop"></div>
         <div class="modal-content printer-modal-content" id="marlin-printer-modal-content">
+            <button class="modal-close printer-modal-settings-btn" id="marlin-printer-modal-settings-btn" data-i18n-title="moduleCustomizerTitle" title="Personalizar Módulos" aria-label="Personalizar Módulos" data-i18n-aria-label="moduleCustomizerTitle">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
             <button class="modal-close" id="marlin-printer-modal-close">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -3617,17 +3707,19 @@
                 </div>
             </div>
             <div class="modal-body printer-modal-body">
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="toolhead">
                     <div id="marlin-printer-modal-toolhead"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="temperatures">
                     <div id="marlin-printer-modal-temperatures"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="print">
                     <div id="marlin-printer-modal-print"></div>
+                </div>
+                <div class="printer-modal-column" data-module="console">
                     <div id="marlin-printer-modal-console"></div>
                 </div>
-                <div class="printer-modal-column">
+                <div class="printer-modal-column" data-module="camera">
                     <div id="marlin-printer-modal-camera"></div>
                 </div>
             </div>
@@ -4898,6 +4990,124 @@
         </div>
     </div>
 
+    <!-- Imagen a dibujo: convierte una imagen en G-code de plotter (lápiz con Z)
+         con vista previa en vivo. Lógica en app.js (plotter*). -->
+    <div id="plotter-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="plotter-title">
+        <div class="modal-backdrop" id="plotter-backdrop"></div>
+        <div class="modal-content plotter-modal-content">
+            <button type="button" class="modal-close" id="plotter-close-btn" data-i18n-aria-label="plotterClose" aria-label="Cerrar">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="plotter-title" data-i18n="plotterTitle">Imagen a dibujo</h2>
+            <div class="plotter-layout">
+                <div class="plotter-controls">
+                    <div class="plotter-dropzone" id="plotter-dropzone">
+                        <label for="plotter-file" class="plotter-label" data-i18n="plotterImage">Imagen</label>
+                        <input type="file" id="plotter-file" accept="image/*">
+                        <p class="plotter-help" data-i18n="plotterDropHint">Elige un archivo o arrástralo aquí (PNG, JPG, BMP, GIF).</p>
+                    </div>
+                    <div class="plotter-row">
+                        <div class="plotter-field">
+                            <label for="plotter-width" class="plotter-label" data-i18n="plotterWidth">Ancho (mm)</label>
+                            <input type="number" id="plotter-width" class="plotter-input" min="5" max="2000" step="1" value="80">
+                        </div>
+                        <div class="plotter-field">
+                            <label for="plotter-height" class="plotter-label" data-i18n="plotterHeight">Alto (mm)</label>
+                            <input type="number" id="plotter-height" class="plotter-input" min="5" max="2000" step="1" value="80">
+                        </div>
+                    </div>
+                    <p class="plotter-help" id="plotter-area-note"></p>
+                    <details class="plotter-pen" id="plotter-pen">
+                        <summary data-i18n="plotterPenSection">Lápiz y velocidades</summary>
+                        <div class="plotter-row">
+                            <div class="plotter-field">
+                                <label for="plotter-pen-up" class="plotter-label" data-i18n="plotterPenUp">Z arriba (mm)</label>
+                                <input type="number" id="plotter-pen-up" class="plotter-input" step="0.5" value="3">
+                            </div>
+                            <div class="plotter-field">
+                                <label for="plotter-pen-down" class="plotter-label" data-i18n="plotterPenDown">Z abajo (mm)</label>
+                                <input type="number" id="plotter-pen-down" class="plotter-input" step="0.5" value="0">
+                            </div>
+                        </div>
+                        <div class="plotter-row">
+                            <div class="plotter-field">
+                                <label for="plotter-feed" class="plotter-label" data-i18n="plotterFeed">Dibujo (mm/min)</label>
+                                <input type="number" id="plotter-feed" class="plotter-input" min="10" max="20000" step="50" value="1500">
+                            </div>
+                            <div class="plotter-field">
+                                <label for="plotter-plunge" class="plotter-label" data-i18n="plotterPlunge">Bajada (mm/min)</label>
+                                <input type="number" id="plotter-plunge" class="plotter-input" min="10" max="20000" step="50" value="500">
+                            </div>
+                            <div class="plotter-field">
+                                <label for="plotter-travel" class="plotter-label" data-i18n="plotterTravel">Traslado (mm/min)</label>
+                                <input type="number" id="plotter-travel" class="plotter-input" min="10" max="20000" step="50" value="2000">
+                            </div>
+                        </div>
+                    </details>
+                    <details class="plotter-pen plotter-fine" id="plotter-fine">
+                        <summary data-i18n="plotterFineSection">Ajustes finos (opcional)</summary>
+                    <div class="plotter-field plotter-fine-field">
+                        <div class="plotter-fine-head">
+                            <label for="plotter-smoothing" class="plotter-label" data-i18n="plotterFineSmooth">Suavidad de las líneas</label>
+                            <output class="plotter-fine-value" id="plotter-smoothing-out" for="plotter-smoothing"></output>
+                        </div>
+                        <input type="range" id="plotter-smoothing" min="0.3" max="3" step="0.1" value="1" data-fine-default="1">
+                        <div class="plotter-fine-ends" aria-hidden="true"><span data-i18n="plotterFineSmoothLo">Más fiel a la imagen</span><span data-i18n="plotterFineSmoothHi">Más suave</span></div>
+                    </div>
+                    <div class="plotter-field plotter-fine-field">
+                        <div class="plotter-fine-head">
+                            <label for="plotter-cleanup" class="plotter-label" data-i18n="plotterFineCleanup">Limpieza de detalles pequeños</label>
+                            <output class="plotter-fine-value" id="plotter-cleanup-out" for="plotter-cleanup"></output>
+                        </div>
+                        <input type="range" id="plotter-cleanup" min="0" max="4" step="0.1" value="1" data-fine-default="1">
+                        <div class="plotter-fine-ends" aria-hidden="true"><span data-i18n="plotterFineCleanupLo">Conservar todo</span><span data-i18n="plotterFineCleanupHi">Quitar detalles</span></div>
+                    </div>
+                    <div class="plotter-field plotter-fine-field">
+                        <div class="plotter-fine-head">
+                            <label for="plotter-detail" class="plotter-label" data-i18n="plotterFineDetail">Precisión del trazo</label>
+                            <output class="plotter-fine-value" id="plotter-detail-out" for="plotter-detail"></output>
+                        </div>
+                        <input type="range" id="plotter-detail" min="0.2" max="5" step="0.1" value="1" data-fine-default="1">
+                        <div class="plotter-fine-ends" aria-hidden="true"><span data-i18n="plotterFineDetailLo">Más puntos (más fino)</span><span data-i18n="plotterFineDetailHi">Menos puntos (más rápido)</span></div>
+                    </div>
+                        <button type="button" class="btn-file-action" id="plotter-fine-reset" data-i18n="plotterFineReset">Restablecer ajustes</button>
+                    </details>
+                    <div class="plotter-field">
+                        <label for="plotter-name" class="plotter-label" data-i18n="plotterName">Nombre del archivo</label>
+                        <input type="text" id="plotter-name" class="plotter-input" maxlength="80" autocomplete="off">
+                    </div>
+                </div>
+                <div class="plotter-preview-col">
+                    <div class="plotter-view-switch" role="radiogroup" aria-labelledby="plotter-view-label">
+                        <span class="plotter-label" id="plotter-view-label" data-i18n="plotterViewLabel">Vista</span>
+                        <div class="plotter-segmented">
+                            <button type="button" class="plotter-seg-btn" role="radio" aria-checked="false" data-view="trace" data-i18n="plotterViewTrace">Trazo</button>
+                            <button type="button" class="plotter-seg-btn active" role="radio" aria-checked="true" data-view="overlay" data-i18n="plotterViewOverlay">Superpuesto</button>
+                            <button type="button" class="plotter-seg-btn" role="radio" aria-checked="false" data-view="original" data-i18n="plotterViewOriginal">Original</button>
+                        </div>
+                    </div>
+                    <div class="plotter-stage" id="plotter-stage" data-view="overlay">
+                        <img id="plotter-original" class="plotter-original" alt="" hidden>
+                        <canvas id="plotter-canvas" class="plotter-canvas" width="640" height="640" role="img" data-i18n-aria-label="plotterCanvasLabel" aria-label="Vista previa del dibujo en el área de trabajo"></canvas>
+                    </div>
+                    <p class="plotter-status" id="plotter-status" role="status" aria-live="polite"></p>
+                    <div class="plotter-notes" id="plotter-notes" role="status" aria-live="polite"></div>
+                    <p class="plotter-stats" id="plotter-stats"></p>
+                </div>
+            </div>
+            <div class="plotter-footer">
+                <label class="plotter-check" id="plotter-exceed-row" for="plotter-exceed-ack" hidden>
+                    <input type="checkbox" id="plotter-exceed-ack">
+                    <span data-i18n="plotterExceedAck">Entiendo que el dibujo excede el área de trabajo y quiero generarlo igual.</span>
+                </label>
+                <div class="plotter-buttons">
+                    <button type="button" class="btn-file-action btn-file-action-accent" id="plotter-generate-btn" data-i18n="plotterGenerate" disabled>Generar dibujo</button>
+                    <button type="button" class="btn-file-action usb-classify-cancel-btn" id="plotter-cancel-btn" data-i18n="cancelAction">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Asistente guiado CNC: 4 pasos dentro de un mismo modal, mismo
          mecanismo de pasos-dentro-de-un-modal que #usb-classify-modal. -->
     <div id="cnc-wizard-modal" class="modal">
@@ -4919,7 +5129,14 @@
 
             <div id="cnc-wizard-step-1" class="cnc-wizard-step">
                 <p class="cnc-wizard-step-title"><span data-i18n="cncWizardStep1Title">1. Elige un diseño</span></p>
-                <input type="text" id="cnc-wizard-file-search" class="usb-classify-input-icon-wrap" data-i18n-placeholder="cncFilesFilter" placeholder="Buscar archivo...">
+                <div class="plotter-wizard-search-row">
+                    <input type="text" id="cnc-wizard-file-search" class="usb-classify-input-icon-wrap" data-i18n-placeholder="cncFilesFilter" placeholder="Buscar archivo...">
+                    <button type="button" class="btn-file-action" id="cnc-wizard-plotter-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span data-i18n="plotterWizardBtn">Convertir imagen a dibujo</span>
+                    </button>
+                </div>
+                <p class="cnc-wizard-step-hint" id="cnc-wizard-selected-note" role="status" hidden></p>
                 <div class="cnc-wizard-file-list" id="cnc-wizard-file-list"></div>
             </div>
 
@@ -5430,11 +5647,11 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=50"></script>
+    <script src="/static/js/translations.js?v=51"></script>
     <script src="/static/js/translations-pt-BR.js?v=8"></script>
     <script src="/static/js/translations-fr.js?v=8"></script>
     <script src="/static/js/translations-de.js?v=8"></script>
-    <script src="/static/js/app.js?v=289"></script>
+    <script src="/static/js/app.js?v=290"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

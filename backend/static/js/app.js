@@ -2007,133 +2007,750 @@ function getJobStatusLabel(status) {
     return labels[status] || status;
 }
 
-function filterRecentPrinterFiles(query) {
-    if (!query) return recentPrinterFiles;
-    const needle = query.toLowerCase();
-    return recentPrinterFiles
-        .map(group => ({
-            ...group,
-            jobs: group.jobs.filter(job => job.filename.toLowerCase().includes(needle)),
-        }))
-        .filter(group => group.jobs.length > 0);
+// ── Historial de trabajos (sección "queue") ──
+// Los datos salen del historial unificado y con control del servidor
+// (/api/jobs/history): filtro por tipo, periodo, búsqueda y paginación son del
+// lado del servidor. Si un dato no existe (miniatura, duración, usuario) el
+// fragmento se omite o se muestra "—"; nada se inventa en el cliente.
+let jobHistoryQueue = [];
+const jobHistoryState = { type: 'all', period: 30, query: '', page: 1 };
+const JOB_HISTORY_PAGE_SIZE = 8;
+let jobHistoryData = { items: [], total: 0, page: 1, pages: 1, summary: { '3d': 0, laser: 0, cnc: 0, total: 0 }, can_delete: false };
+let jobHistoryLoaded = false;
+let jobHistoryError = false;
+let jobHistoryToken = 0;
+let jobHistorySearchTimer = null;
+
+
+const JH_ICONS = {
+    '3d': '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg>',
+    laser: '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg>',
+    cnc: '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>',
+    ok: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
+    cancel: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>',
+    error: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 17h.01"/></svg>',
+    clock: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    chevron: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
+    chevronLeft: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>',
+    menu: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
+    file: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>',
+};
+
+function jhIcon(name, size = 18) {
+    return (JH_ICONS[name] || '').replace(/\{s\}/g, size);
 }
 
-function renderRecentPrinterFiles(groups) {
-    if (!modelsGrid) return;
+function jhTypeLabel(type) {
+    return type === '3d' ? '3D' : (type === 'cnc' ? t('cnc') : t('laser'));
+}
 
-    if (!groups || groups.length === 0) {
-        modelsGrid.innerHTML = `<div class="empty-state">${t('noPrintersFound')}</div>`;
-        return;
+function jhFormatDuration(seconds) {
+    if (!seconds || Number.isNaN(seconds) || seconds < 1) return '';
+    const total = Math.round(seconds);
+    if (total < 60) return `${total} s`;
+    const mins = Math.floor(total / 60);
+    if (mins < 60) return `${mins} min`;
+    const hours = Math.floor(mins / 60);
+    const rest = mins % 60;
+    return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}
+
+Object.assign(JH_ICONS, {
+    warn: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+    run: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></svg>',
+    sent: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>',
+    user: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+    download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>',
+    log: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="M9 12h6M9 8h6M9 16h3"/></svg>',
+    trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>',
+    reprint: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>',
+    eye: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+});
+
+// Cada estado lleva color + icono + texto (nunca solo color).
+const JH_STATES = {
+    completed: { tone: 'ok', icon: 'ok', label: () => t('completed') },
+    error: { tone: 'danger', icon: 'error', label: () => t('jhStateError') },
+    cancelled: { tone: 'soft', icon: 'cancel', label: () => t('cancelled') },
+    incomplete: { tone: 'warn', icon: 'warn', label: () => t('jhStateIncomplete') },
+    running: { tone: 'info', icon: 'run', label: () => t('jhStateRunning') },
+    sent: { tone: 'neutral', icon: 'sent', label: () => t('jhStateSent') },
+};
+
+function jhStateInfo(status) {
+    return JH_STATES[status] || JH_STATES.incomplete;
+}
+
+// Por qué una acción del menú ⋮ no está disponible (null = disponible).
+function jhReprintReason(item) {
+    if (item.status === 'running') return t('jhReprintRunning');
+    const lib = item.library;
+    if (item.kind === '3d') {
+        if (lib || (item.remote_path && item.port != null)) return null;
+        return t('jhReprintNoFile');
     }
-
-    modelsGrid.innerHTML = `
-        <div class="recent-printer-groups">
-            ${groups.map(group => `
-                <div class="recent-printer-group">
-                    <h3 class="recent-printer-group-title">${group.printer}</h3>
-                    <div class="recent-printer-jobs">
-                        ${group.jobs.length === 0
-                            ? `<div class="empty-state-small">${t('noFilesFound')}</div>`
-                            : group.jobs.map(job => {
-                                const visualState = getJobVisualState(job.status);
-                                const durationMinutes = job.print_duration ? Math.round(job.print_duration / 60) : 0;
-                                return `
-                                    <div class="recent-job-card" data-file-url="${job.file_url || ''}" title="${job.file_url ? t('open') : ''}">
-                                        <div class="recent-job-thumb">
-                                            ${job.thumbnail_url
-                                                ? `<img src="${job.thumbnail_url}" alt="${job.filename}" loading="lazy" onerror="this.closest('.recent-job-thumb').classList.add('no-thumb')">`
-                                                : ''}
-                                            <svg class="recent-job-thumb-fallback" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                        </div>
-                                        <div class="recent-job-info">
-                                            <div class="printer-status-line ${visualState}">
-                                                <span class="printer-status-dot ${visualState}"></span>${getJobStatusLabel(job.status)}
-                                            </div>
-                                            <h4 class="recent-job-name" title="${job.filename}">${job.filename}</h4>
-                                            <div class="recent-job-meta">
-                                                <span>${formatDate(job.end_time)}</span>
-                                                <span>${formatEstimatedTime(durationMinutes)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('')}
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-    `;
-
-    modelsGrid.querySelectorAll('.recent-job-card').forEach(card => {
-        const fileUrl = card.dataset.fileUrl;
-        if (!fileUrl) return;
-        card.addEventListener('click', () => window.open(fileUrl, '_blank'));
-    });
+    return lib && lib.section === 'gcode' ? null : t('jhReprintNoFile');
 }
 
-async function loadRecentPrinterFiles() {
-    try {
-        const response = await fetch('/api/printers/recent-files');
-        if (!response.ok) throw new Error('No se pudo cargar el historial de impresoras');
-        const data = await response.json();
-        recentPrinterFiles = data.printers || [];
-        renderRecentPrinterFiles(recentPrinterFiles);
-    } catch (error) {
-        console.error(error);
-        if (modelsGrid) modelsGrid.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
-    }
+function jhDeleteReason(item) {
+    return item.deletable ? null : t('jhDeleteOnlyFailed');
 }
 
-function laserHistoryStateLabel(state) {
-    if (state === 'completed') return t('completed');
-    if (state === 'cancelled') return t('cancelled');
-    return t('laserHistoryStateError');
+function jhMenuItemHtml(action, index, icon, label, reason) {
+    return `<button type="button" role="menuitem" class="jh-menu-item${action === 'delete' ? ' is-danger' : ''}" data-jh-action="${action}" data-jh-index="${index}" tabindex="-1"${reason ? ` aria-disabled="true" title="${escapeHtml(reason)}"` : ''}>
+        ${jhIcon(icon)}<span class="jh-menu-text"><span>${escapeHtml(label)}</span>${reason ? `<small>${escapeHtml(reason)}</small>` : ''}</span></button>`;
 }
 
-function renderLaserHistory(jobs) {
-    const container = document.getElementById('laser-history-list');
-    if (!container) return;
-    if (!jobs || !jobs.length) {
-        container.innerHTML = `<div class="empty-state">${t('laserHistoryEmpty')}</div>`;
-        return;
-    }
-    container.innerHTML = jobs.map(job => {
-        const visualState = getJobVisualState(job.state);
-        const hostLabel = laserHostLabel(job.host) || job.host;
-        return `
-            <div class="recent-job-card laser-history-card">
-                <div class="recent-job-thumb">
-                    ${job.snapshot
-                        ? `<img src="${job.snapshot}" alt="" loading="lazy">`
-                        : '<svg class="recent-job-thumb-fallback" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6"/><path d="M5 22h14l-1.5-9h-11z"/><path d="M9 13v3"/><path d="M15 13v3"/></svg>'}
-                </div>
-                <div class="recent-job-info">
-                    <div class="printer-status-line ${visualState}">
-                        <span class="printer-status-dot ${visualState}"></span>${laserHistoryStateLabel(job.state)}
-                    </div>
-                    <h4 class="recent-job-name" title="${escapeHtml(job.filename || '')}">${escapeHtml(job.filename || '—')}</h4>
-                    <div class="recent-job-meta">
-                        <span>${escapeHtml(hostLabel)}</span>
-                        <span>${formatDate(job.completed_at)}</span>
-                    </div>
-                </div>
+function jhRowHtml(item, index) {
+    const state = jhStateInfo(item.status);
+    const type = ['3d', 'laser', 'cnc'].includes(item.kind) ? item.kind : 'laser';
+    const duration = jhFormatDuration(item.duration_s);
+    const thumbSrc = item.thumbnail || item.thumbnail_url || '';
+    const thumb = thumbSrc ? `<img src="${escapeHtml(thumbSrc)}" alt="" loading="lazy">` : '';
+    const detail = [item.machine, item.status === 'error' ? item.error : ''].filter(Boolean).map(escapeHtml).join(' · ');
+    const ts = item.ended_at || item.started_at || null;
+    const user = item.user ? escapeHtml(item.user) : '—';
+    const items = [jhMenuItemHtml('reprint', index, 'reprint', t('jhReprint'), jhReprintReason(item))];
+    if (item.file_url) items.push(jhMenuItemHtml('open', index, 'eye', t('jhViewFile'), null));
+    if (jobHistoryData.can_delete) items.push(jhMenuItemHtml('delete', index, 'trash', t('jhDelete'), jhDeleteReason(item)));
+    return `
+        <li class="jh-row jh-t-${type}">
+            <div class="jh-thumb${thumb ? '' : ' no-thumb'}">${thumb}<span class="jh-thumb-fallback">${jhIcon(type, 22)}</span></div>
+            <div class="jh-info">
+                <span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span>
+                <p class="jh-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</p>
+                ${detail ? `<p class="jh-detail">${detail}</p>` : ''}
             </div>
-        `;
+            <div class="jh-state">
+                <span class="jh-state-line jh-tone-${state.tone}">${jhIcon(state.icon)}${escapeHtml(state.label())}</span>
+                ${duration ? `<span class="jh-dur">${jhIcon('clock')}${escapeHtml(duration)}</span>` : ''}
+            </div>
+            <div class="jh-when">
+                <time class="jh-date"${ts ? ` datetime="${new Date(ts * 1000).toISOString()}"` : ''}>${formatDate(ts)}</time>
+                <span class="jh-user" title="${escapeHtml(t('jhUserLabel'))}">${jhIcon('user')}<span class="jh-sr">${escapeHtml(t('jhUserLabel'))}: </span><span class="jh-user-name">${user}</span></span>
+            </div>
+            <div class="jh-menu-wrap">
+                <button type="button" class="jh-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="${escapeHtml(t('jhMenuLabel'))}: ${escapeHtml(item.name)}">${jhIcon('menu')}</button>
+                <div class="jh-menu" role="menu" aria-label="${escapeHtml(t('jhMenuLabel'))}" hidden>${items.join('')}</div>
+            </div>
+        </li>`;
+}
+
+function jhPagerPages(current, total) {
+    const pages = new Set([1, total, current, current - 1, current + 1]);
+    const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+    const out = [];
+    sorted.forEach((p, i) => {
+        if (i && p - sorted[i - 1] > 1) out.push('…');
+        out.push(p);
+    });
+    return out;
+}
+
+function renderJobHistory() {
+    const wrap = document.getElementById('jh-list-wrap');
+    if (!wrap) return;
+    const data = jobHistoryData;
+    const pageItems = data.items || [];
+    const countEl = document.getElementById('jh-count');
+    if (countEl) countEl.textContent = String(data.total || 0);
+    const logBtn = document.getElementById('jh-log-btn');
+    if (logBtn) logBtn.hidden = !data.can_delete;
+
+    if (!jobHistoryLoaded && !jobHistoryError) {
+        wrap.innerHTML = `<div class="jh-empty" role="status">${jhIcon('file')}<p>${escapeHtml(t('jhLoading'))}</p></div>`;
+    } else if (jobHistoryError && !pageItems.length) {
+        wrap.innerHTML = `<div class="jh-empty" role="alert">${jhIcon('file')}<p>${escapeHtml(t('jhLoadError'))}</p></div>`;
+    } else if (pageItems.length) {
+        wrap.innerHTML = `<ul class="jh-list" aria-labelledby="jh-recent-title">${pageItems.map(jhRowHtml).join('')}</ul>`;
+    } else {
+        const filtered = jobHistoryState.type !== 'all' || jobHistoryState.query.trim() || (data.summary && data.summary.total);
+        wrap.innerHTML = `<div class="jh-empty">${jhIcon('file')}<p>${escapeHtml(t(filtered ? 'jhEmptyFiltered' : 'jhEmpty'))}</p></div>`;
+    }
+    wrap.querySelectorAll('.jh-thumb img').forEach(img => {
+        img.addEventListener('error', () => img.closest('.jh-thumb').classList.add('no-thumb'));
+    });
+
+    const pages = Math.max(1, data.pages || 1);
+    const pager = document.getElementById('jh-pager');
+    if (pager) {
+        pager.hidden = pages <= 1;
+        const cur = data.page || 1;
+        pager.innerHTML = pages <= 1 ? '' : `
+            <button type="button" class="jh-page-btn" data-jh-page="${cur - 1}" aria-label="${escapeHtml(t('jhPrev'))}"${cur <= 1 ? ' disabled' : ''}>${jhIcon('chevronLeft')}</button>
+            ${jhPagerPages(cur, pages).map(p => p === '…'
+                ? '<span class="jh-page-gap" aria-hidden="true">…</span>'
+                : `<button type="button" class="jh-page-btn${p === cur ? ' is-current' : ''}" data-jh-page="${p}"${p === cur ? ' aria-current="page"' : ''} aria-label="${escapeHtml(t('jhPage'))} ${p}">${p}</button>`).join('')}
+            <button type="button" class="jh-page-btn" data-jh-page="${cur + 1}" aria-label="${escapeHtml(t('jhNext'))}"${cur >= pages ? ' disabled' : ''}>${jhIcon('chevron')}</button>`;
+    }
+
+    renderJobHistorySummary(data.summary || {});
+    renderJobHistoryMachines();
+    renderJobHistoryQueue();
+    renderJobHistoryActions();
+}
+
+function renderJobHistorySummary(summary) {
+    const el = document.getElementById('jh-summary');
+    if (!el) return;
+    el.innerHTML = ['3d', 'laser', 'cnc'].map(type => {
+        const n = Number(summary[type]) || 0;
+        return `
+            <div class="jh-tile jh-t-${type}">
+                <span class="jh-tile-label">${jhIcon(type, 18)}${escapeHtml(jhTypeLabel(type))}</span>
+                <strong class="jh-tile-num">${n}</strong>
+                <span class="jh-tile-sub">${escapeHtml(t(n === 1 ? 'jhJobOne' : 'jhJobMany'))}</span>
+            </div>`;
     }).join('');
 }
 
-async function loadLaserHistory() {
-    const container = document.getElementById('laser-history-list');
-    try {
-        const response = await fetch('/api/laser/history?limit=50');
-        if (!response.ok) throw new Error('No se pudo cargar el historial del láser');
-        const data = await response.json();
-        renderLaserHistory(data.jobs || []);
-    } catch (error) {
-        console.error(error);
-        if (container) container.innerHTML = `<div class="empty-state">${t('errorLoadingModels')}</div>`;
+const JH_VISUAL_BY_PRIORITY = ['printing', 'paused', 'error', 'idle', 'offline'];
+
+function jhCollectMachines() {
+    const rows = [];
+    (allPrinters || []).forEach(printer => {
+        const stateValue = getPrinterEffectiveStateValue(printer);
+        const online = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
+        rows.push({ kind: '3d', name: printer.name || String(printer.port), visual: online ? getPrinterVisualState(stateValue, true) : 'offline' });
+    });
+    const registries = {
+        marlin: [typeof marlinPrintersRegistryCache !== 'undefined' ? marlinPrintersRegistryCache : [], 'device'],
+        elegoo: [typeof elegooPrintersRegistryCache !== 'undefined' ? elegooPrintersRegistryCache : [], 'id'],
+        flashforge: [typeof flashforgePrintersRegistryCache !== 'undefined' ? flashforgePrintersRegistryCache : [], 'id'],
+        bambu: [typeof bambuPrintersRegistryCache !== 'undefined' ? bambuPrintersRegistryCache : [], 'id'],
+    };
+    (dashboardStandalonePrinterEntries || []).forEach(entry => {
+        const [list, key] = registries[entry.type] || [[], 'id'];
+        const found = list.find(p => String(p[key]) === String(entry.id));
+        rows.push({ kind: '3d', name: (found && found.name) || String(entry.id), visual: JH_VISUAL_BY_PRIORITY[entry.sortPriority] || 'idle' });
+    });
+    (dashboardLaserEntries || []).forEach(entry => {
+        rows.push({ kind: entry.kind === 'cnc' ? 'cnc' : 'laser', name: laserHostLabel(entry.host) || entry.host, visual: getLaserVisualState(entry.status) });
+    });
+    return rows;
+}
+
+function renderJobHistoryMachines() {
+    const card = document.getElementById('jh-status-card');
+    const list = document.getElementById('jh-machines');
+    if (!card || !list) return;
+    const rows = jhCollectMachines();
+    card.hidden = !rows.length;
+    const labels = { printing: t('printing'), paused: t('paused'), error: t('jhStateError'), offline: t('offline'), idle: t('jhStateReady') };
+    const tones = { printing: 'info', paused: 'soft', error: 'danger', offline: 'soft', idle: 'ok' };
+    list.innerHTML = rows.map(row => `
+        <li><button type="button" class="jh-machine jh-t-${row.kind}" data-jh-go="${row.kind}">
+            <span class="jh-machine-icon">${jhIcon(row.kind, 18)}</span>
+            <span class="jh-machine-name">${escapeHtml(row.name)}</span>
+            <span class="jh-pill jh-tone-${tones[row.visual] || 'ok'}"><span class="jh-dot" aria-hidden="true"></span>${escapeHtml(labels[row.visual] || row.visual)}</span>
+            <span class="jh-machine-go">${jhIcon('chevron')}</span>
+        </button></li>`).join('');
+}
+
+function renderJobHistoryQueue() {
+    const el = document.getElementById('jh-queue');
+    if (!el) return;
+    if (!jobHistoryQueue.length) {
+        el.innerHTML = `<div class="jh-empty jh-empty-small">${jhIcon('file')}<strong>${escapeHtml(t('jhQueueEmptyTitle'))}</strong><p>${escapeHtml(t('jhQueueEmptyBody'))}</p></div>`;
+        return;
+    }
+    el.innerHTML = `<ul class="jh-queue-list">${jobHistoryQueue.map(item => {
+        const type = item.kind === 'cnc' ? 'cnc' : 'laser';
+        return `<li class="jh-queue-row jh-t-${type}"><span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span><span class="jh-name" title="${escapeHtml(item.filename || '')}">${escapeHtml(item.filename || '—')}</span></li>`;
+    }).join('')}</ul>`;
+}
+
+function jhNavItem(section) {
+    return document.querySelector(`.nav-item[data-section="${section}"]`);
+}
+
+function renderJobHistoryActions() {
+    const el = document.getElementById('jh-actions');
+    if (!el) return;
+    const defs = [['3d', 'models', 'jhNew3d'], ['laser', 'laser', 'jhNewLaser'], ['cnc', 'cnc', 'jhNewCnc']];
+    el.innerHTML = defs.filter(([, section]) => {
+        const nav = jhNavItem(section);
+        return nav && !nav.hidden;
+    }).map(([type, section, key]) => `
+        <button type="button" class="jh-action jh-t-${type}" data-jh-go="${section === 'models' ? '3d' : type}">${jhIcon(type, 26)}<span>${escapeHtml(t(key))}</span></button>`).join('');
+}
+
+function jhGo(kind) {
+    const section = kind === '3d' ? 'models' : kind;
+    jhNavItem(section)?.click();
+}
+
+// ── Menú ⋮ de cada fila ──
+function jhCloseMenus(except) {
+    document.querySelectorAll('.jh-menu').forEach(menu => {
+        if (menu === except) return;
+        menu.hidden = true;
+        menu.parentElement.querySelector('.jh-menu-btn, .jh-tool-btn')?.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function jhOpenMenu(btn) {
+    const menu = btn.parentElement.querySelector('.jh-menu');
+    if (!menu) return;
+    const open = menu.hidden;
+    jhCloseMenus(menu);
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) menu.querySelector('[role="menuitem"]')?.focus();
+}
+
+function jhMenuKeydown(event) {
+    const menu = event.target.closest('.jh-menu');
+    if (!menu || menu.hidden) return;
+    const items = [...menu.querySelectorAll('[role="menuitem"]')];
+    const at = items.indexOf(document.activeElement);
+    let next = null;
+    if (event.key === 'ArrowDown') next = items[(at + 1) % items.length];
+    else if (event.key === 'ArrowUp') next = items[(at - 1 + items.length) % items.length];
+    else if (event.key === 'Home') next = items[0];
+    else if (event.key === 'End') next = items[items.length - 1];
+    if (next) { event.preventDefault(); next.focus(); return; }
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        const btn = menu.parentElement.querySelector('.jh-menu-btn, .jh-tool-btn');
+        jhCloseMenus();
+        btn?.focus();
+    } else if (event.key === 'Tab') {
+        jhCloseMenus();
     }
 }
+
+// ── Diálogos (role=dialog, foco atrapado, Escape cierra, el foco vuelve al botón) ──
+const JH_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+function jhDialog(html, opener, { labelId = 'jh-dlg-title', canClose = () => true } = {}) {
+    const modal = document.createElement('div');
+    modal.className = 'modal active jh-modal';
+    modal.innerHTML = `<div class="modal-backdrop"></div>
+        <div class="modal-content jh-dlg" role="dialog" aria-modal="true" aria-labelledby="${labelId}">${html}</div>`;
+    document.body.appendChild(modal);
+    const dlg = modal.querySelector('.jh-dlg');
+    const close = () => {
+        modal.removeEventListener('keydown', onKey);
+        modal.remove();
+        if (opener && document.contains(opener)) opener.focus();
+    };
+    const onKey = event => {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            if (canClose()) close();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = [...dlg.querySelectorAll(JH_FOCUSABLE)].filter(el => el.offsetParent !== null);
+        if (!focusable.length) { event.preventDefault(); return; }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && (document.activeElement === first || !dlg.contains(document.activeElement))) {
+            event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !dlg.contains(document.activeElement))) {
+            event.preventDefault(); first.focus();
+        }
+    };
+    modal.addEventListener('keydown', onKey);
+    modal.querySelector('.modal-backdrop').addEventListener('click', () => { if (canClose()) close(); });
+    dlg.querySelectorAll('[data-jh-dlg-close]').forEach(el => el.addEventListener('click', () => { if (canClose()) close(); }));
+    (dlg.querySelector('[data-autofocus]') || dlg.querySelector(JH_FOCUSABLE))?.focus();
+    return { modal, dlg, close };
+}
+
+function jhDialogHead(titleKey, icon, extraClass = '') {
+    return `<div class="jh-dlg-head ${extraClass}">
+        <span class="jh-dlg-icon" aria-hidden="true">${jhIcon(icon, 22)}</span>
+        <h2 id="jh-dlg-title">${escapeHtml(t(titleKey))}</h2>
+        <button type="button" class="jh-dlg-x" data-jh-dlg-close aria-label="${escapeHtml(t('jhClose'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>`;
+}
+
+function jhJobSummaryHtml(item) {
+    const type = ['3d', 'laser', 'cnc'].includes(item.kind) ? item.kind : 'laser';
+    return `<div class="jh-dlg-job jh-t-${type}"><span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span>
+        <strong class="jh-dlg-job-name">${escapeHtml(item.name)}</strong>
+        ${item.machine ? `<span class="jh-dlg-job-sub">${escapeHtml(item.machine)}</span>` : ''}</div>`;
+}
+
+// ── Eliminar con motivo ──
+const JH_REASON_MIN = 3;
+const JH_REASON_MAX = 300;
+
+function jhOpenDelete(item, opener) {
+    const html = `${jhDialogHead('jhDeleteTitle', 'trash', 'is-danger')}
+        <form class="jh-dlg-body" id="jh-del-form" novalidate>
+            ${jhJobSummaryHtml(item)}
+            <label class="jh-field-label" for="jh-del-reason">${escapeHtml(t('jhDeleteReasonLabel'))} <span class="jh-req" aria-hidden="true">*</span></label>
+            <textarea id="jh-del-reason" class="jh-textarea" rows="3" maxlength="${JH_REASON_MAX}" required aria-required="true" aria-describedby="jh-del-hint jh-del-err" data-autofocus></textarea>
+            <div class="jh-field-meta"><span id="jh-del-hint">${escapeHtml(t('jhDeleteReasonHint'))}</span><span id="jh-del-count" aria-hidden="true">0/${JH_REASON_MAX}</span></div>
+            <p id="jh-del-err" class="jh-field-error" role="alert" hidden></p>
+            <p class="jh-dlg-note">${jhIcon('log', 16)}<span>${escapeHtml(t('jhDeleteNotice'))}</span></p>
+            <p id="jh-del-fail" class="jh-field-error" role="alert" hidden></p>
+            <div class="jh-dlg-actions">
+                <button type="button" class="jh-btn" data-jh-dlg-close>${escapeHtml(t('cancelAction'))}</button>
+                <button type="submit" class="jh-btn jh-btn-danger" id="jh-del-submit">${escapeHtml(t('jhDelete'))}</button>
+            </div>
+        </form>`;
+    let busy = false;
+    const { dlg, close } = jhDialog(html, opener, { canClose: () => !busy });
+    const area = dlg.querySelector('#jh-del-reason');
+    const err = dlg.querySelector('#jh-del-err');
+    const fail = dlg.querySelector('#jh-del-fail');
+    const submit = dlg.querySelector('#jh-del-submit');
+    const showErr = show => {
+        err.hidden = !show;
+        err.textContent = show ? t('jhDeleteReasonShort') : '';
+        area.setAttribute('aria-invalid', show ? 'true' : 'false');
+        area.classList.toggle('is-invalid', show);
+    };
+    area.addEventListener('input', () => {
+        dlg.querySelector('#jh-del-count').textContent = `${area.value.length}/${JH_REASON_MAX}`;
+        if (!err.hidden && area.value.trim().length >= JH_REASON_MIN) showErr(false);
+    });
+    dlg.querySelector('#jh-del-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (busy) return;
+        fail.hidden = true;
+        const reason = area.value.trim();
+        if (reason.length < JH_REASON_MIN) { showErr(true); area.focus(); return; }
+        showErr(false);
+        busy = true;
+        submit.disabled = true;
+        submit.classList.add('is-loading');
+        submit.textContent = t('jhDeleting');
+        try {
+            const body = new FormData();
+            body.append('id', item.id);
+            body.append('reason', reason);
+            const response = await fetch('/api/jobs/history/delete', { method: 'POST', body });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || t('jhDeleteFail'));
+            busy = false;
+            close();
+            showToast(t('jhDeleteDone'));
+            loadJobHistory();
+        } catch (error) {
+            busy = false;
+            submit.disabled = false;
+            submit.classList.remove('is-loading');
+            submit.textContent = t('jhDelete');
+            fail.textContent = error.message || t('jhDeleteFail');
+            fail.hidden = false;
+        }
+    });
+}
+
+// ── Reimprimir: siempre se elige la máquina destino ──
+async function jhReprintTargets(item) {
+    const targets = [];
+    if (item.kind === '3d') {
+        let entries = await loadPrinterSendEntries();
+        if (!item.library) entries = entries.filter(entry => entry.type === 'klipper' && String(entry.id) === String(item.port));
+        entries.forEach(entry => {
+            const printer = entry.printer || {};
+            const state = getPrinterEffectiveStateValue(printer);
+            targets.push({
+                entry, name: getPrinterDisplayName(printer), online: printer.status === 'online',
+                busy: state === 'printing' || state === 'paused',
+                original: item.machine_id === `klipper:${entry.id}` || String(item.machine_id) === String(entry.id),
+            });
+        });
+    } else {
+        const response = await fetch('/api/laser/registry/status');
+        const data = response.ok ? await response.json() : { lasers: [] };
+        (data.lasers || []).filter(l => (l.kind === 'cnc') === (item.kind === 'cnc')).forEach(l => {
+            targets.push({
+                entry: l, name: l.name || laserHostLabel(l.host) || l.host, online: l.online !== false, busy: false,
+                original: item.machine_id === `laser:${l.id}` || (!!item.host && l.host === item.host),
+            });
+        });
+    }
+    return targets;
+}
+
+async function jhSendReprint(item, target) {
+    const failWith = async response => {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || t('jhReprintFail'));
+    };
+    if (item.kind === 'laser') {
+        const body = new FormData();
+        body.append('path', item.library.path);
+        body.append('host', target.entry.host);
+        const response = await fetch('/api/laser/job/start', { method: 'POST', body });
+        if (!response.ok) await failWith(response);
+        return true;
+    }
+    if (item.kind === 'cnc') {
+        await startCncJob(item.library.path, target.entry.host);   // decide SD o streaming y avisa por su cuenta
+        return false;
+    }
+    const entry = target.entry;
+    const body = new FormData();
+    let url;
+    if (!item.library) {
+        body.append('port', entry.id);
+        body.append('path', item.remote_path);
+        url = '/api/jobs/reprint-klipper';
+    } else {
+        body.append('path', item.library.path);
+        body.append('section', item.library.section || 'gcode');
+        if (entry.type === 'klipper') { body.append('mode', 'print'); url = `/api/printers/${entry.id}/send`; }
+        else if (entry.type === 'marlin') { body.append('device', entry.id); url = '/api/marlin-printers/print/start'; }
+        else url = `/api/${entry.type === 'elegoo' ? 'elegoo' : entry.type}/printers/${encodeURIComponent(entry.id)}/send`;
+    }
+    const response = await fetch(url, { method: 'POST', body });
+    if (!response.ok) await failWith(response);
+    return true;
+}
+
+async function jhOpenReprint(item, opener) {
+    const html = `${jhDialogHead('jhReprintTitle', 'reprint')}
+        <form class="jh-dlg-body" id="jh-rp-form" novalidate>
+            ${jhJobSummaryHtml(item)}
+            <fieldset class="jh-pick-set" id="jh-rp-set" aria-describedby="jh-rp-legend-note">
+                <legend id="jh-rp-legend-note">${escapeHtml(t('jhReprintPick'))}</legend>
+                <div id="jh-rp-list" role="status">${escapeHtml(t('jhLoading'))}</div>
+            </fieldset>
+            <p id="jh-rp-fail" class="jh-field-error" role="alert" hidden></p>
+            <div class="jh-dlg-actions">
+                <button type="button" class="jh-btn" data-jh-dlg-close>${escapeHtml(t('cancelAction'))}</button>
+                <button type="submit" class="jh-btn jh-btn-primary" id="jh-rp-submit" disabled>${escapeHtml(t('jhReprintConfirm'))}</button>
+            </div>
+        </form>`;
+    let busy = false;
+    const { dlg, close } = jhDialog(html, opener, { canClose: () => !busy });
+    const list = dlg.querySelector('#jh-rp-list');
+    const submit = dlg.querySelector('#jh-rp-submit');
+    const fail = dlg.querySelector('#jh-rp-fail');
+    let targets = [];
+    try {
+        targets = await jhReprintTargets(item);
+    } catch (error) {
+        console.error(error);
+    }
+    if (!document.contains(dlg)) return;
+    list.removeAttribute('role');
+    if (!targets.length) {
+        list.innerHTML = `<p class="jh-pick-empty">${escapeHtml(t('jhReprintNoMachines'))}</p>`;
+        return;
+    }
+    list.innerHTML = targets.map((tg, i) => {
+        const disabled = !tg.online || tg.busy;
+        const note = !tg.online ? t('jhReprintOffline') : (tg.busy ? t('jhReprintBusy') : t('online'));
+        return `<label class="jh-pick${disabled ? ' is-disabled' : ''}">
+            <input type="radio" name="jh-target" value="${i}"${disabled ? ' disabled' : ''}${tg.original && !disabled ? ' checked' : ''}>
+            <span class="jh-pick-main"><strong>${escapeHtml(tg.name)}</strong><small>${escapeHtml(note)}</small></span>
+            ${tg.original ? `<span class="jh-pick-tag">${escapeHtml(t('jhReprintOriginal'))}</span>` : ''}
+        </label>`;
+    }).join('');
+    const sync = () => { submit.disabled = busy || !dlg.querySelector('input[name="jh-target"]:checked'); };
+    list.addEventListener('change', sync);
+    sync();
+    (dlg.querySelector('input[name="jh-target"]:checked') || dlg.querySelector('input[name="jh-target"]:not(:disabled)'))?.focus();
+    dlg.querySelector('#jh-rp-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const picked = dlg.querySelector('input[name="jh-target"]:checked');
+        if (!picked || busy) return;
+        const target = targets[Number(picked.value)];
+        busy = true;
+        fail.hidden = true;
+        submit.disabled = true;
+        submit.classList.add('is-loading');
+        submit.textContent = t('jhReprintSending');
+        try {
+            const confirmed = await jhSendReprint(item, target);
+            busy = false;
+            close();
+            if (confirmed) showToast(t('jhReprintSent').replace('{machine}', target.name));
+            refreshJobHistory();
+        } catch (error) {
+            busy = false;
+            submit.classList.remove('is-loading');
+            submit.textContent = t('jhReprintConfirm');
+            sync();
+            fail.textContent = error.message || t('jhReprintFail');
+            fail.hidden = false;
+        }
+    });
+}
+
+// ── Registro de control (solo administrador) ──
+async function jhOpenControlLog(opener) {
+    const html = `${jhDialogHead('jhControlLog', 'log')}
+        <div class="jh-dlg-body">
+            <p class="jh-dlg-sub">${escapeHtml(t('jhControlLogSub'))} <span id="jh-log-total"></span></p>
+            <div id="jh-log-list" class="jh-log-wrap" tabindex="0" role="region" aria-label="${escapeHtml(t('jhControlLog'))}"><p class="jh-pick-empty" role="status">${escapeHtml(t('jhLoading'))}</p></div>
+            <div class="jh-dlg-actions"><button type="button" class="jh-btn" data-jh-dlg-close>${escapeHtml(t('jhClose'))}</button></div>
+        </div>`;
+    const { dlg } = jhDialog(html, opener);
+    const box = dlg.querySelector('#jh-log-list');
+    try {
+        const response = await fetch('/api/jobs/deletions?limit=200');
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || t('jhLoadError'));
+        const rows = data.deletions || [];
+        dlg.querySelector('#jh-log-total').textContent = rows.length ? `· ${t('jhControlTotal').replace('{n}', data.total ?? rows.length)}` : '';
+        box.innerHTML = rows.length ? `<ul class="jh-log">${rows.map(row => {
+            const job = row.job || {};
+            const type = ['3d', 'laser', 'cnc'].includes(job.kind) ? job.kind : 'laser';
+            const state = jhStateInfo(job.status);
+            return `<li class="jh-log-row jh-t-${type}">
+                <div class="jh-log-job"><span class="jh-badge">${escapeHtml(jhTypeLabel(type))}</span>
+                    <strong title="${escapeHtml(job.name || '')}">${escapeHtml(job.name || '—')}</strong>
+                    <span class="jh-log-sub">${escapeHtml(job.machine || '—')} · <span class="jh-tone-${state.tone} jh-log-state">${jhIcon(state.icon)}${escapeHtml(state.label())}</span></span></div>
+                <p class="jh-log-why"><span class="jh-log-k">${escapeHtml(t('jhControlWhy'))}:</span> ${escapeHtml(row.reason || '—')}</p>
+                <p class="jh-log-meta"><time datetime="${row.deleted_at ? new Date(row.deleted_at * 1000).toISOString() : ''}">${formatDate(row.deleted_at)}</time> · ${jhIcon('user')}<span class="jh-log-k">${escapeHtml(t('jhControlBy'))}:</span> ${escapeHtml(row.deleted_by || '—')}</p>
+            </li>`;
+        }).join('')}</ul>` : `<p class="jh-pick-empty">${escapeHtml(t('jhControlEmpty'))}</p>`;
+    } catch (error) {
+        box.innerHTML = `<p class="jh-field-error" role="alert">${escapeHtml(error.message || t('jhLoadError'))}</p>`;
+    }
+}
+
+// ── Exportar con los mismos filtros de la lista ──
+function jhExport(format) {
+    const params = new URLSearchParams({ format, kind: jobHistoryState.type, days: String(jobHistoryState.period), q: jobHistoryState.query.trim() });
+    const link = document.createElement('a');
+    link.href = `/api/jobs/history/export?${params}`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+function jhRunAction(action, item, opener) {
+    if (!item) return;
+    if (action === 'open') { if (item.file_url) window.open(item.file_url, '_blank', 'noopener'); opener?.focus(); }
+    else if (action === 'reprint') jhOpenReprint(item, opener);
+    else if (action === 'delete') jhOpenDelete(item, opener);
+}
+
+function initJobHistory() {
+    const section = document.getElementById('queue-section');
+    if (!section) return;
+    document.getElementById('search-recent')?.addEventListener('input', event => {
+        jobHistoryState.query = event.target.value;
+        jobHistoryState.page = 1;
+        clearTimeout(jobHistorySearchTimer);
+        jobHistorySearchTimer = setTimeout(loadJobHistory, 300);
+    });
+    document.getElementById('jh-period')?.addEventListener('change', event => {
+        jobHistoryState.period = Number(event.target.value) || 0;
+        jobHistoryState.page = 1;
+        loadJobHistory();
+    });
+    document.getElementById('jh-filters')?.addEventListener('click', event => {
+        const btn = event.target.closest('[data-jh-type]');
+        if (!btn) return;
+        jobHistoryState.type = btn.dataset.jhType;
+        jobHistoryState.page = 1;
+        document.querySelectorAll('#jh-filters .jh-seg-btn').forEach(b => {
+            const on = b === btn;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        loadJobHistory();
+    });
+    document.getElementById('jh-log-btn')?.addEventListener('click', event => jhOpenControlLog(event.currentTarget));
+    section.addEventListener('click', event => {
+        const pageBtn = event.target.closest('[data-jh-page]');
+        if (pageBtn && !pageBtn.disabled) {
+            jobHistoryState.page = Number(pageBtn.dataset.jhPage);
+            loadJobHistory();
+            document.getElementById('jh-recent-title')?.scrollIntoView({ block: 'nearest' });
+            return;
+        }
+        const go = event.target.closest('[data-jh-go]');
+        if (go) { jhGo(go.dataset.jhGo); return; }
+        const exportItem = event.target.closest('[data-jh-export]');
+        if (exportItem) {
+            const btn = exportItem.closest('.jh-menu-wrap').querySelector('.jh-tool-btn');
+            jhCloseMenus();
+            jhExport(exportItem.dataset.jhExport);
+            btn?.focus();
+            return;
+        }
+        const menuBtn = event.target.closest('.jh-menu-btn, .jh-tool-btn[aria-haspopup]');
+        if (menuBtn) { jhOpenMenu(menuBtn); return; }
+        const actionBtn = event.target.closest('[data-jh-action]');
+        if (actionBtn) {
+            if (actionBtn.getAttribute('aria-disabled') === 'true') return;
+            const opener = actionBtn.closest('.jh-menu-wrap').querySelector('.jh-menu-btn');
+            const item = jobHistoryData.items[Number(actionBtn.dataset.jhIndex)];
+            jhCloseMenus();
+            jhRunAction(actionBtn.dataset.jhAction, item, opener);
+            return;
+        }
+        jhCloseMenus();
+    });
+    document.addEventListener('click', event => {
+        if (!event.target.closest('.jh-menu-wrap')) jhCloseMenus();
+    });
+    section.addEventListener('keydown', event => {
+        const btn = event.target.closest('.jh-menu-btn, .jh-tool-btn[aria-haspopup]');
+        if (btn && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            event.preventDefault();
+            if (btn.getAttribute('aria-expanded') !== 'true') jhOpenMenu(btn);
+            return;
+        }
+        jhMenuKeydown(event);
+    });
+    window.addEventListener('nopal:language-changed', renderJobHistory);
+}
+
+async function loadJobHistory() {
+    const token = ++jobHistoryToken;
+    const params = new URLSearchParams({
+        kind: jobHistoryState.type, days: String(jobHistoryState.period), q: jobHistoryState.query.trim(),
+        page: String(jobHistoryState.page), page_size: String(JOB_HISTORY_PAGE_SIZE),
+    });
+    try {
+        const response = await fetch(`/api/jobs/history?${params}`);
+        if (!response.ok) throw new Error('No se pudo cargar el historial de trabajos');
+        const data = await response.json();
+        if (token !== jobHistoryToken) return;      // llegó una respuesta más nueva
+        jobHistoryData = data;
+        jobHistoryState.page = data.page || 1;
+        jobHistoryLoaded = true;
+        jobHistoryError = false;
+    } catch (error) {
+        if (token !== jobHistoryToken) return;
+        console.error(error);
+        jobHistoryError = true;
+        jobHistoryLoaded = true;
+    }
+    renderJobHistory();
+}
+
+// Nombres que otras partes de la app todavía invocan.
+function renderRecentPrinterFiles() {
+    renderJobHistory();
+}
+
+function loadRecentPrinterFiles() {
+    return loadJobHistory();
+}
+
+async function loadJobHistoryQueue() {
+    try {
+        const response = await fetch('/api/laser/queue');
+        const data = await response.json();
+        jobHistoryQueue = data.queue || [];
+    } catch (error) {
+        console.error(error);
+    }
+    renderJobHistoryQueue();
+}
+
+function refreshJobHistory() {
+    loadJobHistory();
+    loadJobHistoryQueue();
+}
+
+initJobHistory();
 
 let currentGcodePath = '';
 let currentGcodeData = { folders: [], files: [] };
@@ -3643,7 +4260,7 @@ function renderTemperaturesCard(data, port) {
     container.innerHTML = `
         <div class="temp-card${themeClass}">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
                     <span>${t('temperatures')}</span>
                 </div>
@@ -4291,6 +4908,7 @@ function getPanelAutoHideMode() {
 
 function setPanelHeroCollapsed(collapsed) {
     document.getElementById('panel-hero-collapsible')?.classList.toggle('collapsed', collapsed);
+    document.getElementById('panel-hero-toggle-btn')?.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function schedulePanelHeroCollapse() {
@@ -4377,7 +4995,7 @@ function renderToolheadCard(data, port) {
     container.innerHTML = `
         <div class="temp-card toolhead-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span>${t('toolhead')}</span>
                 </div>
@@ -4683,7 +5301,7 @@ async function loadPrinterConfigFiles(port, printer) {
         container.innerHTML = `
             <div class="temp-card">
                 <div class="temp-card-header">
-                    <div class="temp-card-header-left">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
+                    <div class="temp-card-header-left" role="heading" aria-level="3">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
                 </div>
                 <div class="temp-card-body"><div class="empty-state-small">${t('printerConfigFilesEmpty')}</div></div>
             </div>`;
@@ -4695,7 +5313,7 @@ function renderPrinterConfigFiles(container, port, printer, files) {
     container.innerHTML = `
         <div class="temp-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
+                <div class="temp-card-header-left" role="heading" aria-level="3">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
             </div>
             <div class="temp-card-body">
                 <div class="config-actions-row">
@@ -4865,7 +5483,7 @@ function renderPrinterQueueCard(port, data) {
     container.innerHTML = `
         <div class="temp-card printer-queue-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                     <span>${t('printerQueueTitle')}</span>
                 </div>
@@ -5012,6 +5630,12 @@ async function openPrinterModal(printer) {
 
     if (printer.port) loadPrinterConfigFiles(printer.port, printer);
 
+    const spoolContainer = document.getElementById('printer-modal-spool');
+    if (spoolContainer) spoolContainer.innerHTML = '';
+    refreshDeviceSpools().then(() => {
+        if (printerModal.classList.contains('active')) renderPrinterModalSpool(printer);
+    });
+
     if (printerModalTemperatureInterval) {
         clearInterval(printerModalTemperatureInterval);
         printerModalTemperatureInterval = null;
@@ -5062,7 +5686,10 @@ const PRINTER_MODULE_ICON_TEMPERATURES = '<svg width="16" height="16" viewBox="0
 const PRINTER_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
 const PRINTER_MODULE_ICON_CONFIGFILES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
 const PRINTER_MODULE_ICON_CAMERA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
-const PRINTER_MODULE_LOCK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const PRINTER_MODULE_ICON_SPOOL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="5" cy="12" rx="2.5" ry="7"/><ellipse cx="19" cy="12" rx="2.5" ry="7"/><path d="M5 5h14"/><path d="M5 19h14"/></svg>';
+const PRINTER_MODULE_ICON_PRINT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+const PRINTER_MODULE_ICON_CONSOLE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>';
+const PRINTER_MODULE_LOCK_ICON ='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 const PRINTER_MODULE_DRAG_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
 
 const PRINTER_MODULE_DEFS = [
@@ -5077,9 +5704,34 @@ const PRINTER_MODULE_DEFS = [
     // instalado, o sin cámara vinculada, la columna queda vacía (nunca
     // rompe el resto del modal, mismo criterio "opcional" de siempre).
     { key: 'camera', group: 'extra', labelKey: 'printerModuleCamera', iconSvg: PRINTER_MODULE_ICON_CAMERA, locked: false },
+    // Carrete (Spoolman): antes vivía en la ficha del Panel de Control; ahora
+    // es un módulo del detalle, activado por omisión para no perder el dato.
+    { key: 'spool', group: 'extra', labelKey: 'printerModuleSpool', iconSvg: PRINTER_MODULE_ICON_SPOOL, locked: false },
 ];
 
-const PRINTER_MODULE_NONLOCKED_KEYS = PRINTER_MODULE_DEFS.filter(mod => !mod.locked).map(mod => mod.key);
+// Módulos del detalle de impresora Marlin (USB/WiFi): mismo motor de
+// "Personalizar Módulos", otra lista de módulos y otro prefijo de
+// localStorage. Marlin no tiene Cola ni Archivos de config (son de Moonraker)
+// ni Carrete (Spoolman liga el carrete al puerto de Moonraker, no a Marlin).
+const MARLIN_MODULE_DEFS = [
+    { key: 'estado', group: 'available', labelKey: 'status', iconSvg: PRINTER_MODULE_ICON_STATUS, locked: true },
+    { key: 'toolhead', group: 'available', labelKey: 'toolhead', iconSvg: PRINTER_MODULE_ICON_TOOLHEAD, locked: false },
+    { key: 'temperatures', group: 'extra', labelKey: 'temperatures', iconSvg: PRINTER_MODULE_ICON_TEMPERATURES, locked: false },
+    { key: 'print', group: 'extra', labelKey: 'marlinPrinterPrintTitle', iconSvg: PRINTER_MODULE_ICON_PRINT, locked: false },
+    { key: 'console', group: 'extra', labelKey: 'console', iconSvg: PRINTER_MODULE_ICON_CONSOLE, locked: false },
+    { key: 'camera', group: 'extra', labelKey: 'printerModuleCamera', iconSvg: PRINTER_MODULE_ICON_CAMERA, locked: false },
+];
+
+// Un "scope" por detalle de impresora: el motor (layout por breakpoint,
+// arrastre, casillas, restablecer) es el mismo, solo cambian estos datos.
+const PRINTER_MODULE_SCOPES = {
+    klipper: { defs: PRINTER_MODULE_DEFS, storagePrefix: 'printerModulesLayout_', bodySelector: '#printer-modal .printer-modal-body', modalId: 'printer-modal' },
+    marlin: { defs: MARLIN_MODULE_DEFS, storagePrefix: 'marlinPrinterModulesLayout_', bodySelector: '#marlin-printer-modal .printer-modal-body', modalId: 'marlin-printer-modal' },
+};
+
+function printerModuleNonlockedKeys(scopeKey = 'klipper') {
+    return PRINTER_MODULE_SCOPES[scopeKey].defs.filter(mod => !mod.locked).map(mod => mod.key);
+}
 
 // Los 4 breakpoints se resuelven por ancho de ventana, igual que el resto
 // del layout responsive de la app (no hay coincidencia exacta con ningún
@@ -5098,37 +5750,39 @@ function getPrinterModuleBreakpointId(width = window.innerWidth) {
     return match ? match.id : 'desktop';
 }
 
-function getPrinterModulesLayout(breakpointId) {
+function getPrinterModulesLayout(breakpointId, scopeKey = 'klipper') {
+    const NONLOCKED = printerModuleNonlockedKeys(scopeKey);
     let saved = null;
     try {
-        saved = JSON.parse(localStorage.getItem(`printerModulesLayout_${breakpointId}`) || 'null');
+        saved = JSON.parse(localStorage.getItem(`${PRINTER_MODULE_SCOPES[scopeKey].storagePrefix}${breakpointId}`) || 'null');
     } catch (error) {
         saved = null;
     }
-    const savedOrder = Array.isArray(saved?.order) ? saved.order.filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)) : [];
-    const missing = PRINTER_MODULE_NONLOCKED_KEYS.filter(key => !savedOrder.includes(key));
-    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)) : [];
+    const savedOrder = Array.isArray(saved?.order) ? saved.order.filter(key => NONLOCKED.includes(key)) : [];
+    const missing = NONLOCKED.filter(key => !savedOrder.includes(key));
+    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(key => NONLOCKED.includes(key)) : [];
     return { order: [...savedOrder, ...missing], hidden };
 }
 
-function savePrinterModulesLayout(breakpointId, layout) {
-    localStorage.setItem(`printerModulesLayout_${breakpointId}`, JSON.stringify({
-        order: (layout.order || []).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)),
-        hidden: (layout.hidden || []).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)),
+function savePrinterModulesLayout(breakpointId, layout, scopeKey = 'klipper') {
+    const NONLOCKED = printerModuleNonlockedKeys(scopeKey);
+    localStorage.setItem(`${PRINTER_MODULE_SCOPES[scopeKey].storagePrefix}${breakpointId}`, JSON.stringify({
+        order: (layout.order || []).filter(key => NONLOCKED.includes(key)),
+        hidden: (layout.hidden || []).filter(key => NONLOCKED.includes(key)),
     }));
 }
 
-function resetPrinterModulesLayout(breakpointId) {
-    localStorage.removeItem(`printerModulesLayout_${breakpointId}`);
+function resetPrinterModulesLayout(breakpointId, scopeKey = 'klipper') {
+    localStorage.removeItem(`${PRINTER_MODULE_SCOPES[scopeKey].storagePrefix}${breakpointId}`);
 }
 
 // Aplica el layout guardado del breakpoint actual a las 3 columnas reales
 // del modal de impresora (reordenar + ocultar). Se llama al abrir el modal
 // y cuando el resize cruza un límite de breakpoint mientras está abierto.
-function applyPrinterModulesLayout() {
-    const modalBody = document.querySelector('#printer-modal .printer-modal-body');
+function applyPrinterModulesLayout(scopeKey = 'klipper') {
+    const modalBody = document.querySelector(PRINTER_MODULE_SCOPES[scopeKey].bodySelector);
     if (!modalBody) return;
-    const layout = getPrinterModulesLayout(getPrinterModuleBreakpointId());
+    const layout = getPrinterModulesLayout(getPrinterModuleBreakpointId(), scopeKey);
     const orderIndex = new Map(layout.order.map((key, index) => [key, index]));
     const columns = Array.from(modalBody.querySelectorAll(':scope > .printer-modal-column[data-module]'));
     columns
@@ -5148,16 +5802,22 @@ window.addEventListener('resize', () => {
     if (printerModal && printerModal.classList.contains('active')) {
         applyPrinterModulesLayout();
     }
+    if (document.getElementById('marlin-printer-modal')?.classList.contains('active')) {
+        applyPrinterModulesLayout('marlin');
+    }
 });
 
 // Pestaña de breakpoint que se está editando en el modal "Personalizar
 // Módulos" — independiente del ancho real de la ventana, así se puede
 // editar por ejemplo el layout de "Celular" desde un monitor de escritorio.
 let moduleCustomizerActiveBreakpoint = getPrinterModuleBreakpointId();
+// Detalle de impresora que está editando el diálogo ('klipper' | 'marlin').
+let moduleCustomizerScope = 'klipper';
 
 function renderModuleCustomizerTabs() {
     document.querySelectorAll('#module-customizer-tabs .module-customizer-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.breakpoint === moduleCustomizerActiveBreakpoint);
+        tab.setAttribute('aria-pressed', String(tab.dataset.breakpoint === moduleCustomizerActiveBreakpoint));
     });
 }
 
@@ -5181,7 +5841,7 @@ function renderModuleCustomizerRow(mod, layout) {
             <span class="module-customizer-row-icon">${mod.iconSvg}</span>
             <span class="module-customizer-row-label">${escapeHtml(label)}</span>
             <label class="module-customizer-row-toggle">
-                <input type="checkbox" class="module-customizer-checkbox ${checkboxClass}" data-module="${mod.key}" ${isHidden ? '' : 'checked'}>
+                <input type="checkbox" class="module-customizer-checkbox ${checkboxClass}" data-module="${mod.key}" aria-label="${escapeHtml(label)}" ${isHidden ? '' : 'checked'}>
             </label>
         </div>
     `;
@@ -5212,10 +5872,10 @@ function persistModuleOrderFromDom() {
     const domOrder = [
         ...Array.from(availableList ? availableList.querySelectorAll(':scope > .module-customizer-row[data-module]') : []),
         ...Array.from(extraList ? extraList.querySelectorAll(':scope > .module-customizer-row[data-module]') : []),
-    ].map(row => row.dataset.module).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key));
-    const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
-    savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: domOrder, hidden: currentLayout.hidden });
-    applyPrinterModulesLayout();
+    ].map(row => row.dataset.module).filter(key => printerModuleNonlockedKeys(moduleCustomizerScope).includes(key));
+    const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
+    savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: domOrder, hidden: currentLayout.hidden }, moduleCustomizerScope);
+    applyPrinterModulesLayout(moduleCustomizerScope);
 }
 
 function initModuleCustomizerDrag(list, onReorder = persistModuleOrderFromDom) {
@@ -5278,10 +5938,10 @@ function renderModuleCustomizerLists() {
     const extraList = document.getElementById('module-customizer-list-extra');
     if (!availableList || !extraList) return;
 
-    const layout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+    const layout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
     const orderIndex = new Map(layout.order.map((key, index) => [key, index]));
 
-    const byGroup = (group) => PRINTER_MODULE_DEFS
+    const byGroup = (group) => PRINTER_MODULE_SCOPES[moduleCustomizerScope].defs
         .filter(mod => mod.group === group)
         .sort((a, b) => {
             if (a.locked !== b.locked) return a.locked ? -1 : 1;
@@ -5295,31 +5955,64 @@ function renderModuleCustomizerLists() {
         list.querySelectorAll('input.module-customizer-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', () => {
                 const key = checkbox.dataset.module;
-                const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+                const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
                 const hiddenSet = new Set(currentLayout.hidden);
                 if (checkbox.checked) hiddenSet.delete(key); else hiddenSet.add(key);
-                savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: currentLayout.order, hidden: Array.from(hiddenSet) });
-                applyPrinterModulesLayout();
+                savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: currentLayout.order, hidden: Array.from(hiddenSet) }, moduleCustomizerScope);
+                applyPrinterModulesLayout(moduleCustomizerScope);
             });
         });
         initModuleCustomizerDrag(list);
     });
 }
 
-function openModuleCustomizerModal() {
+let moduleCustomizerOpener = null;
+
+function openModuleCustomizerModal(scopeKey = 'klipper') {
     const modal = document.getElementById('module-customizer-modal');
     if (!modal) return;
+    moduleCustomizerScope = PRINTER_MODULE_SCOPES[scopeKey] ? scopeKey : 'klipper';
+    moduleCustomizerOpener = document.activeElement;
     moduleCustomizerActiveBreakpoint = getPrinterModuleBreakpointId();
     renderModuleCustomizerTabs();
     renderModuleCustomizerLists();
     modal.classList.add('active');
+    document.getElementById('module-customizer-modal-close')?.focus();
 }
 
 function closeModuleCustomizerModal() {
-    document.getElementById('module-customizer-modal')?.classList.remove('active');
+    const modal = document.getElementById('module-customizer-modal');
+    if (!modal?.classList.contains('active')) return;
+    modal.classList.remove('active');
+    if (moduleCustomizerOpener && document.contains(moduleCustomizerOpener)) moduleCustomizerOpener.focus();
+    moduleCustomizerOpener = null;
 }
 
-document.getElementById('printer-modal-settings-btn')?.addEventListener('click', openModuleCustomizerModal);
+// Escape cierra y Tab queda atrapado dentro del diálogo.
+document.getElementById('module-customizer-modal')?.addEventListener('keydown', (event) => {
+    const modal = event.currentTarget;
+    if (!modal.classList.contains('active')) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeModuleCustomizerModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+    }
+});
+
+document.getElementById('printer-modal-settings-btn')?.addEventListener('click', () => openModuleCustomizerModal('klipper'));
+document.getElementById('marlin-printer-modal-settings-btn')?.addEventListener('click', () => openModuleCustomizerModal('marlin'));
 document.getElementById('module-customizer-modal-close')?.addEventListener('click', closeModuleCustomizerModal);
 document.getElementById('module-customizer-modal-backdrop')?.addEventListener('click', closeModuleCustomizerModal);
 
@@ -5332,9 +6025,9 @@ document.querySelectorAll('#module-customizer-tabs .module-customizer-tab').forE
 });
 
 document.getElementById('module-customizer-reset-btn')?.addEventListener('click', () => {
-    resetPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+    resetPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
     renderModuleCustomizerLists();
-    applyPrinterModulesLayout();
+    applyPrinterModulesLayout(moduleCustomizerScope);
     showToast(t('moduleCustomizerResetDone'));
 });
 
@@ -7688,12 +8381,17 @@ async function refreshDeviceCameras() {
     }
 }
 
+// true si el plugin de materiales respondió (para ofrecer "Abrir Materiales"
+// en el módulo Carrete del detalle solo cuando existe esa sección).
+let spoolmanPluginAvailable = false;
+
 async function refreshDeviceSpools() {
     try {
         const respuesta = await fetch('/api/spoolman/printers/active-spools?resolve=true');
-        if (!respuesta.ok) return;                       // plugin ausente: la ficha va sin material
+        spoolmanPluginAvailable = respuesta.ok;
+        if (!respuesta.ok) return;                       // plugin ausente: el módulo Carrete queda vacío
         deviceSpoolsByPort = (await respuesta.json()).links || {};
-    } catch (_) { /* sin materiales: la ficha se queda sin ese dato, no sin ficha */ }
+    } catch (_) { spoolmanPluginAvailable = false; /* sin materiales: el detalle se queda sin ese dato */ }
 }
 
 function deviceTiempoCorto(minutos) {
@@ -7734,7 +8432,6 @@ function klipperDeviceModel(printer, datos) {
     const claveCamara = `klipper:${printerName}`;
     const job = printer.job || {};
     const enTrabajo = deviceIsBusy(state);
-    const spool = deviceSpoolsByPort[String(printer.port)];
 
     const etiquetas = {
         offline: t('offline'), printing: t('printing'), paused: t('paused'),
@@ -7784,20 +8481,8 @@ function klipperDeviceModel(printer, datos) {
     if (enTrabajo && Number.isFinite(job.current_layer) && Number.isFinite(job.total_layer)) {
         info.push({ label: t('devLayer'), value: `${job.current_layer} / ${job.total_layer}` });
     }
-    // Material: fila propia (no un dev-field genérico) porque lleva el
-    // carrete del color real del filamento -- diámetro/color/peso vienen
-    // resueltos por Spoolman (/api/spoolman/printers/active-spools), nunca
-    // inventados si el plugin no responde.
-    const material = spool && spool.label ? {
-        label: spool.label,
-        colorHex: spool.color_hex || null,
-        // Un filamento multicolor (coextruido/longitudinal) no trae
-        // color_hex -- Spoolman guarda sus colores por separado.
-        multiColorHexes: Array.isArray(spool.multi_color_hexes) && spool.multi_color_hexes.length
-            ? spool.multi_color_hexes : null,
-        diameter: Number.isFinite(spool.diameter) ? spool.diameter : null,
-        remainingWeight: Number.isFinite(spool.remaining_weight) ? spool.remaining_weight : null,
-    } : null;
+    // El carrete/material ya no va en la ficha: es el módulo "Carrete" del
+    // detalle de impresora (ver renderPrinterModalSpool).
 
     return {
         name: printerName,
@@ -7814,7 +8499,6 @@ function klipperDeviceModel(printer, datos) {
         jobLabel: t('devFile'),
         metrics,
         info,
-        material,
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         // Las olas térmicas: el color y la velocidad salen de la temperatura
@@ -7829,6 +8513,9 @@ function klipperDeviceModel(printer, datos) {
             state === 'offline',
             printer.port,
         ),
+        // Moonraker no expone en /api/printers si el enlace es cable o WiFi:
+        // se asume red cableada (confirmado por el usuario).
+        conn: 'ethernet',
         dataAttr: `data-port="${escapeHtml(String(printer.port))}"`,
     };
 }
@@ -7934,6 +8621,8 @@ function laserDeviceModel(entry, jobsByHost) {
         actions,
         cameraSlot: deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         waves: deviceStateThermalWave(state, host),
+        // Mismo criterio que el registro: el host `usb:<ruta>` es serie.
+        conn: String(host || '').startsWith('usb:') ? 'usb' : 'wifi',
         dataAttr: `data-laser-host="${escapeHtml(host)}" data-laser-kind="${esCnc ? 'cnc' : 'laser'}" data-machine-uid="${escapeHtml(id || '')}"`,
     };
 }
@@ -8058,6 +8747,8 @@ function marlinDeviceModel(printer, status, job) {
         actions,
         cameraSlot: claveCamara && deviceCameraKeys.has(claveCamara) ? claveCamara : null,
         waves: printerThermalWaves(bedTemp, extruderTemp, bedTarget, extruderTarget, state, !enLinea, printer.id || device),
+        // device `tcp://host:puerto` = módulo MKS WiFi; cualquier otra ruta es serie.
+        conn: (printer.transport === 'mks_wifi' || String(device || '').startsWith('tcp://')) ? 'wifi' : 'usb',
         // data-marlin-device (la ruta/host) es lo que usan el panel de
         // detalle y la reconciliación de la grilla; data-machine-uid (id
         // interno) lo usan las alertas LED. data-heat-progress alimenta el
@@ -8124,6 +8815,10 @@ const DEVICE_ICONS = {
     spool: '<ellipse cx="12" cy="5" rx="7" ry="2.5"/><ellipse cx="12" cy="19" rx="7" ry="2.5"/><path d="M5 5v14"/><path d="M19 5v14"/><path d="M8 8.5c1.6 1 6.4 1 8 0M8 12c1.6 1 6.4 1 8 0M8 15.5c1.6 1 6.4 1 8 0"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     wifi: '<path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+    // Puerto RJ45 (red cableada): conector con muesca y pines.
+    ethernet: '<path d="M5 4h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-3v3H8v-3H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M8 4v4"/><path d="M12 4v4"/><path d="M16 4v4"/><path d="M12 21v-3"/>',
+    // USB: tridente clásico (círculo, cuadrado y flecha).
+    usb: '<circle cx="10" cy="19" r="2"/><path d="M10 17V5"/><path d="M10 5l-2 2.5h4z"/><path d="M10 12l5-3v-1.5"/><rect x="13.5" y="5" width="3" height="3"/><path d="M10 14.5l-4-2.5v-2"/><circle cx="6" cy="8.5" r="1.4"/>',
     pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
     play: '<polygon points="6 3 20 12 6 21 6 3"/>',
     stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
@@ -8238,31 +8933,61 @@ function deviceMaterialSpoolIcon(colores) {
     </svg>`;
 }
 
-function deviceMaterialCampo(material) {
-    const colores = material.multiColorHexes
-        ? material.multiColorHexes.map(normalizeSpoolHex).filter(Boolean)
-        : (normalizeSpoolHex(material.colorHex) ? [normalizeSpoolHex(material.colorHex)] : null);
-    // Mismo patrón que deviceMetrica: el número grande, la unidad chica al
-    // lado -- "1.75mm" leído de un vistazo, no un texto corrido chico.
-    const specs = [];
-    if (material.diameter != null) specs.push([`${material.diameter}`, 'mm']);
-    if (material.remainingWeight != null) {
-        specs.push(material.remainingWeight >= 1000
-            ? [(material.remainingWeight / 1000).toFixed(1), 'kg']
-            : [String(Math.round(material.remainingWeight)), 'g']);
+// Módulo "Carrete" del detalle de impresora: los mismos datos que antes
+// mostraba la ficha (filamento, diámetro, peso restante, carrete del color
+// real), resueltos por Spoolman en /api/spoolman/printers/active-spools.
+function printerSpoolModuleHtml(spool) {
+    const titulo = `<div class="temp-card-header"><div class="temp-card-header-left" role="heading" aria-level="3">${PRINTER_MODULE_ICON_SPOOL.replace('width="16" height="16"', 'width="18" height="18"')}<span>${escapeHtml(t('printerModuleSpool'))}</span></div></div>`;
+    if (!spool || !spool.label) {
+        const abrir = spoolmanPluginAvailable
+            ? `<button type="button" class="btn-file-action" data-spool-open>${escapeHtml(t('spoolModuleOpen'))}</button>` : '';
+        return `<div class="temp-card spool-module-card">${titulo}
+            <div class="temp-card-body">
+                <div class="spool-module-empty">
+                    <span class="dev-material-icon" aria-hidden="true">${deviceMaterialSpoolIcon(null)}</span>
+                    <strong>${escapeHtml(t('spoolModuleEmpty'))}</strong>
+                    ${spoolmanPluginAvailable ? `<span class="spool-module-hint">${escapeHtml(t('spoolModuleEmptyHint'))}</span>` : ''}
+                    ${abrir}
+                </div>
+            </div></div>`;
     }
-    const specsHtml = specs.length
-        ? `<span class="dev-material-specs">${specs.map(([n, u]) => `<span>${escapeHtml(n)}<small>${escapeHtml(u)}</small></span>`).join('')}</span>`
-        : '';
-    return `<div class="dev-field dev-field-material">
-        <span class="dev-field-label">${escapeHtml(t('devMaterial'))}</span>
-        <div class="dev-material-row">
-            <span class="dev-material-name" title="${escapeHtml(material.label)}">${escapeHtml(material.label)}</span>
-            <span class="dev-material-divider" aria-hidden="true"></span>
-            <span class="dev-material-icon">${deviceMaterialSpoolIcon(colores)}</span>
-            ${specsHtml}
-        </div>
-    </div>`;
+    const colores = Array.isArray(spool.multi_color_hexes) && spool.multi_color_hexes.length
+        ? spool.multi_color_hexes.map(normalizeSpoolHex).filter(Boolean)
+        : (normalizeSpoolHex(spool.color_hex) ? [normalizeSpoolHex(spool.color_hex)] : null);
+    // Cada dato es una ficha (mosaico); solo se arma la que tiene dato real.
+    const fichas = [{ k: t('spoolModuleFilament'), v: escapeHtml(spool.label), cls: 'spool-tile-wide' }];
+    if (Number.isFinite(spool.diameter)) fichas.push({ k: t('spoolModuleDiameter'), v: `${escapeHtml(String(spool.diameter))} <small>mm</small>` });
+    if (Number.isFinite(spool.remaining_weight)) {
+        fichas.push({ k: t('spoolModuleRemaining'), v: spool.remaining_weight >= 1000
+            ? `${(spool.remaining_weight / 1000).toFixed(1)} <small>kg</small>`
+            : `${Math.round(spool.remaining_weight)} <small>g</small>` });
+    }
+    if (colores) {
+        // Con varios colores la ficha se pinta en franjas; el texto va sobre una
+        // pastilla con el fondo del tema para que el contraste sea AA con
+        // cualquier color de filamento.
+        const pintura = colores.length > 1
+            ? `linear-gradient(90deg, ${colores.map((c, i) => `${escapeHtml(c)} ${(i * 100 / colores.length).toFixed(2)}% ${((i + 1) * 100 / colores.length).toFixed(2)}%`).join(', ')})`
+            : escapeHtml(colores[0]);
+        fichas.push({ k: t('spoolModuleColor'), v: escapeHtml(colores.map(c => c.toUpperCase()).join(' · ')), cls: 'spool-tile-color', style: `background:${pintura}` });
+    }
+    return `<div class="temp-card spool-module-card">${titulo}
+        <div class="temp-card-body">
+            <div class="dev-material-row spool-module-row">
+                <span class="dev-material-icon" aria-hidden="true">${deviceMaterialSpoolIcon(colores)}</span>
+                <dl class="spool-module-list">${fichas.map(f => `<div class="spool-tile ${f.cls || ''}"${f.style ? ` style="${f.style}"` : ''}><div class="spool-tile-ink"><dt>${escapeHtml(f.k)}</dt><dd>${f.v}</dd></div></div>`).join('')}</dl>
+            </div>
+        </div></div>`;
+}
+
+function renderPrinterModalSpool(printer) {
+    const container = document.getElementById('printer-modal-spool');
+    if (!container || !printer) return;
+    container.innerHTML = printerSpoolModuleHtml(deviceSpoolsByPort[String(printer.port)]);
+    container.querySelector('[data-spool-open]')?.addEventListener('click', () => {
+        document.getElementById('printer-modal')?.classList.remove('active');
+        window.switchSection?.('spoolman');
+    });
 }
 
 function deviceAccionBtn(accion) {
@@ -8311,9 +9036,12 @@ function deviceCardHtml(d) {
     const conCamara = Boolean(d.cameraSlot) && isCameraCardVisible(d.cameraSlot);
     const modoMiniatura = deviceIsBusy(d.state) || conCamara;
     const ocupado = modoMiniatura;
-    const conexion = d.online
-        ? `<span class="dev-conn is-online" title="${escapeHtml(t('online'))}">${deviceIcon('wifi', 15)}</span>`
-        : `<span class="dev-conn" title="${escapeHtml(t('offline'))}">${deviceIcon('wifi', 15)}</span>`;
+    // El tipo de enlace sale del modelo de cada marca (d.conn); sin dato se
+    // queda el ícono de WiFi de siempre. El estado en línea/sin conexión se
+    // conserva en la clase y se suma al texto accesible.
+    const tipoConn = { ethernet: ['ethernet', 'devConnEthernet'], usb: ['usb', 'devConnUsb'] }[d.conn] || ['wifi', 'devConnWifi'];
+    const textoConn = `${t(tipoConn[1])} · ${d.online ? t('online') : t('offline')}`;
+    const conexion = `<span class="dev-conn${d.online ? ' is-online' : ''}" role="img" title="${escapeHtml(textoConn)}" aria-label="${escapeHtml(textoConn)}">${deviceIcon(tipoConn[0], 15)}</span>`;
 
     // Trabajando: la máquina se encoge a icono en la esquina y el espacio se
     // usa para el trabajo. En reposo, la máquina es la protagonista.
@@ -8352,9 +9080,8 @@ function deviceCardHtml(d) {
     if (d.metrics && d.metrics.length) {
         panel.push(`<div class="dev-metrics">${d.metrics.map(m => deviceMetrica(m.icon, m.label, m.value)).join('')}</div>`);
     }
-    if ((d.info && d.info.length) || d.material) {
-        const camposInfo = (d.info || []).map(i => deviceCampo(i.label, i.value));
-        if (d.material) camposInfo.unshift(deviceMaterialCampo(d.material));
+    if (d.info && d.info.length) {
+        const camposInfo = d.info.map(i => deviceCampo(i.label, i.value));
         panel.push(`<div class="dev-info">${camposInfo.join('')}</div>`);
     }
     if (panel.length) cuerpo.push(`<div class="dev-panel" ${seccion('data')}>${panel.join('')}</div>`);
@@ -8772,12 +9499,6 @@ if (printerModalClose) {
 }
 if (printerModalBackdrop) {
     printerModalBackdrop.addEventListener('click', closePrinterModal);
-}
-
-if (searchRecentInput) {
-    searchRecentInput.addEventListener('input', event => {
-        renderRecentPrinterFiles(filterRecentPrinterFiles(event.target.value));
-    });
 }
 
 if (searchGcodeInput) {
@@ -12912,7 +13633,7 @@ function renderLaserSettings(settings, firmware) {
             const value = input.value.trim();
             const item = input.closest('.laser-settings-item');
             try {
-                const host = getSectionHost('laser');
+                const host = getSectionHost(laserSettingsSection);
                 if (!host) throw new Error(t('laserNoMachineSelected'));
                 const formData = new FormData();
                 formData.append('host', host);
@@ -12935,8 +13656,11 @@ function renderLaserSettings(settings, firmware) {
     });
 }
 
+// Sección cuyos parámetros GRBL muestra el modal de configuración: 'laser' o 'cnc'.
+let laserSettingsSection = 'laser';
+
 async function loadLaserSettings() {
-    const host = getSectionHost('laser');
+    const host = getSectionHost(laserSettingsSection);
     if (!host) {
         renderLaserSettings([]);
         return;
@@ -12963,7 +13687,7 @@ if (laserSettingsReloadBtn) laserSettingsReloadBtn.addEventListener('click', loa
 async function loadLaserNameField() {
     const input = document.getElementById('laser-name-input');
     if (!input) return;
-    const host = getSectionHost('laser');
+    const host = getSectionHost(laserSettingsSection);
     if (!host) {
         input.value = '';
         return;
@@ -12984,7 +13708,7 @@ if (laserNameSaveBtn) {
         const input = document.getElementById('laser-name-input');
         const name = input?.value.trim();
         if (!name) return;
-        const host = getSectionHost('laser');
+        const host = getSectionHost(laserSettingsSection);
         if (!host) return;
         try {
             const formData = new FormData();
@@ -13000,9 +13724,10 @@ if (laserNameSaveBtn) {
     });
 }
 
-function openLaserSettingsModal() {
+function openLaserSettingsModal(section = 'laser') {
     const modal = document.getElementById('laser-settings-modal');
     if (!modal) return;
+    laserSettingsSection = section === 'cnc' ? 'cnc' : 'laser';      // de qué página (y de qué máquina) son los parámetros
     modal.classList.add('active');
     loadLaserNameField();
     loadLaserSettings();
@@ -13015,7 +13740,7 @@ function closeLaserSettingsModal() {
 
 const laserIllustrationWrap = document.getElementById('laser-illustration-wrap');
 if (laserIllustrationWrap) {
-    laserIllustrationWrap.addEventListener('click', openLaserSettingsModal);
+    laserIllustrationWrap.addEventListener('click', () => openLaserSettingsModal('laser'));
 }
 
 const laserSettingsModalClose = document.getElementById('laser-settings-modal-close');
@@ -14328,31 +15053,120 @@ function computeWorkAreaFit(bounds, workArea) {
     return { fits: overflowX === 0 && overflowY === 0, designWidth, designHeight, overflowX, overflowY };
 }
 
-// Dibuja el rectángulo del área de trabajo registrada como referencia,
-// como hijo de `group` con coordenadas crudas de G-code — al ser hijo,
-// hereda la traslación del padre automáticamente, sin compensar nada a mano.
-function drawWorkAreaBounds(group, workArea, homeCorner, fits) {
-    if (!workArea || !workArea.width || !workArea.height) return null;
-    const { right, top } = parseHomeCorner(homeCorner);
-    const x0 = right ? -workArea.width : 0;
-    const y0 = top ? -workArea.height : 0;
+// Dibuja el rectángulo del área de trabajo (X0 Y0 abajo a la izquierda hasta
+// ancho × alto) en coordenadas crudas de G-code. Es el mismo rectángulo que
+// delimita el lienzo del visor en el encuadre "fit".
+function drawWorkAreaBounds(group, area, material) {
+    if (!area || !area.width || !area.height) return null;
     const points = [
-        new THREE.Vector3(x0, y0, 0),
-        new THREE.Vector3(x0 + workArea.width, y0, 0),
-        new THREE.Vector3(x0 + workArea.width, y0 + workArea.height, 0),
-        new THREE.Vector3(x0, y0 + workArea.height, 0),
-        new THREE.Vector3(x0, y0, 0),
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(area.width, 0, 0),
+        new THREE.Vector3(area.width, area.height, 0),
+        new THREE.Vector3(0, area.height, 0),
+        new THREE.Vector3(0, 0, 0),
     ];
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineDashedMaterial({
-        color: fits === false ? 0xef4444 : 0x22c55e,
-        dashSize: workArea.width * 0.01,
-        gapSize: workArea.width * 0.006,
-    });
-    const line = new THREE.Line(geometry, material);
-    line.computeLineDistances();
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material);
     group.add(line);
     return line;
+}
+
+// Área de trabajo por omisión cuando la máquina no declara una: mismo valor
+// del perfil CNC 3018 de printer_profiles.py (300 × 180 mm).
+const CNC_DEFAULT_WORK_AREA = { width: 300, height: 180 };
+
+function resolveCncWorkArea(workArea) {
+    const declared = !!(workArea && workArea.width > 0 && workArea.height > 0);
+    return {
+        declared,
+        width: declared ? Number(workArea.width) : CNC_DEFAULT_WORK_AREA.width,
+        height: declared ? Number(workArea.height) : CNC_DEFAULT_WORK_AREA.height,
+    };
+}
+
+// Lee un color del tema activo (variables CSS) para pintarlo en WebGL/canvas,
+// que no entienden var(). El fallback solo aplica si el tema no la define.
+function cncThemeColor(name, fallback) {
+    try {
+        const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+        return value || fallback;
+    } catch (error) {
+        return fallback;
+    }
+}
+
+function cncNiceStep(span, maxTicks) {
+    const raw = span / Math.max(1, maxTicks);
+    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    for (const m of [1, 2, 5, 10]) {
+        if (m * pow >= raw) return m * pow;
+    }
+    return 10 * pow;
+}
+
+// Reglas (marcas con valores en mm) alrededor del lienzo, para el rango de
+// mundo visible [x0,x1] × [y0,y1]. Origen X0/Y0 abajo a la izquierda.
+function renderCncRulers(rulerX, rulerY, stage, range) {
+    if (!rulerX || !rulerY || !stage) return;
+    const width = stage.clientWidth || 300;
+    const height = stage.clientHeight || 170;
+    const build = (min, max, maxTicks, vertical) => {
+        const step = cncNiceStep(max - min, maxTicks);
+        let html = '';
+        for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-6; v += step) {
+            const pct = ((v - min) / (max - min)) * 100;
+            const label = Number.isInteger(v) ? String(v) : v.toFixed(1);
+            html += vertical
+                ? `<span style="top:${(100 - pct).toFixed(2)}%">${label}</span>`
+                : `<span style="left:${pct.toFixed(2)}%">${label}</span>`;
+        }
+        return html;
+    };
+    rulerX.innerHTML = build(range.x0, range.x1, Math.max(2, Math.floor(width / 56)), false);
+    rulerY.innerHTML = build(range.y0, range.y1, Math.max(2, Math.floor(height / 28)), true);
+}
+
+// Encuadre compartido por VISOR y SIMULATION: el lienzo tiene exactamente la
+// proporción del área de trabajo, así que el encuadre "fit" es el área misma;
+// solo si el diseño se sale del área se amplía (conservando la proporción del
+// lienzo) para que nada quede oculto.
+function computeCncFitView(area, bounds) {
+    let minX = 0, minY = 0, maxX = area.width, maxY = area.height;
+    let overflow = false;
+    if (bounds) {
+        const eps = 1e-6;
+        overflow = bounds.minX < -eps || bounds.minY < -eps || bounds.maxX > area.width + eps || bounds.maxY > area.height + eps;
+        if (overflow) {
+            minX = Math.min(minX, bounds.minX);
+            minY = Math.min(minY, bounds.minY);
+            maxX = Math.max(maxX, bounds.maxX);
+            maxY = Math.max(maxY, bounds.maxY);
+        }
+    }
+    const ratio = area.width / area.height;
+    let w = Math.max(maxX - minX, (maxY - minY) * ratio);
+    if (overflow) w *= 1.06;
+    return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w, h: w / ratio, overflow };
+}
+
+function setCncStageRatio(area) {
+    ['cnc-visor-frame', 'cnc-sim-frame'].forEach(id => {
+        const frame = document.getElementById(id);
+        if (frame) frame.style.setProperty('--cnc-ratio', String(area.width / area.height));
+    });
+}
+
+function updateCncAreaNote(area, bounds, overflow) {
+    const note = document.getElementById('cnc-visor-area-note');
+    if (!note) return;
+    let text = t('cncViewerAreaNote').replace('{w}', area.width).replace('{h}', area.height);
+    if (!area.declared) text += ' ' + t('cncViewerAreaDefault');
+    note.classList.toggle('cnc-area-note-warn', !!overflow);
+    if (overflow && bounds) {
+        text += ' · ' + t('cncViewerOverflow')
+            .replace('{w}', (bounds.maxX - bounds.minX).toFixed(0))
+            .replace('{h}', (bounds.maxY - bounds.minY).toFixed(0));
+    }
+    note.textContent = text;
 }
 
 async function renderCncVisor(container, fileUrl, deviceInfo) {
@@ -14373,91 +15187,103 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         return { empty: true };
     }
 
+    const area = resolveCncWorkArea(deviceInfo && deviceInfo.workArea);
+    const eps = 1e-6;
+    const outsideArea = p => p.x < -eps || p.y < -eps || p.x > area.width + eps || p.y > area.height + eps;
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x081410);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0x081410, 1);
     container.appendChild(renderer.domElement);
-
-    const light = new THREE.DirectionalLight(0xffffff, 0.9);
-    light.position.set(5, 5, 5);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x999999, 1.2));
 
     const group = new THREE.Group();
     scene.add(group);
 
+    // Grilla del área (cada paso "bonito" de mm) y rectángulo del área.
+    const gridStep = cncNiceStep(Math.max(area.width, area.height), 10);
+    const gridPoints = [];
+    for (let gx = gridStep; gx < area.width; gx += gridStep) gridPoints.push(new THREE.Vector3(gx, 0, -1), new THREE.Vector3(gx, area.height, -1));
+    for (let gy = gridStep; gy < area.height; gy += gridStep) gridPoints.push(new THREE.Vector3(0, gy, -1), new THREE.Vector3(area.width, gy, -1));
+    const gridMaterial = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55 });
+    group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gridPoints), gridMaterial));
+
+    const fit = computeWorkAreaFit(toolpath.bounds, area);
+    const areaMaterial = new THREE.LineBasicMaterial();
+    const workAreaLine = drawWorkAreaBounds(group, area, areaMaterial);
+
+    const rapidMaterial = new THREE.LineDashedMaterial({ transparent: true, opacity: 0.5, dashSize: Math.max(area.width * 0.008, 1), gapSize: Math.max(area.width * 0.006, 0.8) });
     if (toolpath.rapidSegments.length) {
         const geometry = new THREE.BufferGeometry().setFromPoints(toolpath.rapidSegments);
-        const material = new THREE.LineDashedMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, dashSize: 2, gapSize: 1.5 });
-        const rapidLine = new THREE.LineSegments(geometry, material);
+        const rapidLine = new THREE.LineSegments(geometry, rapidMaterial);
         rapidLine.computeLineDistances();
         group.add(rapidLine);
     }
 
-    const CUT_COLOR = 0xf59e0b;
-    const SELECTED_COLOR = 0xfbbf24;
     const cutLines = toolpath.cutPaths.map(path => {
         const geometry = new THREE.BufferGeometry().setFromPoints(path.points);
-        const material = new THREE.LineBasicMaterial({ color: CUT_COLOR });
+        const material = new THREE.LineBasicMaterial();
         const line = new THREE.Line(geometry, material);
         line.userData.cncPath = path;
+        line.userData.outside = path.points.some(outsideArea);
         group.add(line);
         return line;
     });
 
-    // El box/center/maxDim de encuadre se calculan SOLO con el trazado real
-    // (antes de agregar el rectángulo del área de trabajo) — si el área de
-    // trabajo es mucho más grande que el diseño (caso típico), incluirla acá
-    // haría que "ajustar al área" aleje tanto la vista que el diseño quede
-    // minúsculo. El rectángulo queda como referencia visual, no afecta el zoom.
-    const box = new THREE.Box3().setFromObject(group);
-    const center = new THREE.Vector3();
-    box.getCenter(center);
+    let selectedLine = null;
+    const applyColors = () => {
+        const bg = cncThemeColor('--surface-sunken', '#081410');
+        renderer.setClearColor(new THREE.Color(bg), 1);
+        gridMaterial.color.set(cncThemeColor('--border-subtle', '#2e2f34'));
+        areaMaterial.color.set(cncThemeColor(fitView.overflow ? '--status-danger' : '--accent-ink', '#22c55e'));
+        rapidMaterial.color.set(cncThemeColor('--text-faint', '#8a8f97'));
+        const cut = cncThemeColor('--orange', '#fbbf24');
+        const danger = cncThemeColor('--status-danger', '#f87171');
+        const selected = cncThemeColor('--text-strong', '#ffffff');
+        cutLines.forEach(line => line.material.color.set(line === selectedLine ? selected : (line.userData.outside ? danger : cut)));
+    };
 
-    const fit = computeWorkAreaFit(toolpath.bounds, deviceInfo && deviceInfo.workArea);
-    const workAreaLine = drawWorkAreaBounds(group, deviceInfo && deviceInfo.workArea, deviceInfo && deviceInfo.homeCorner, fit ? fit.fits : null);
-
-    group.position.sub(center);
-
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, 1);
-    const view = { size: maxDim * 1.15, offsetX: 0, offsetY: 0 };
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, maxDim * 10 + 100);
-    camera.position.set(0, 0, maxDim * 5 + 50);
+    const maxDim = Math.max(area.width, area.height);
+    const fitView = computeCncFitView(area, toolpath.bounds);
+    const view = { cx: fitView.cx, cy: fitView.cy, w: fitView.w };
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100000);
     camera.up.set(0, 1, 0);
-    camera.lookAt(0, 0, 0);
+
+    const stage = document.getElementById('cnc-visor-stage');
+    const rulerX = document.getElementById('cnc-visor-ruler-x');
+    const rulerY = document.getElementById('cnc-visor-ruler-y');
 
     const applyFrustum = (width, height) => {
         const aspect = width / height || 1;
-        const halfHeight = view.size / 2;
-        const halfWidth = halfHeight * aspect;
-        camera.left = -halfWidth + view.offsetX;
-        camera.right = halfWidth + view.offsetX;
-        camera.top = halfHeight + view.offsetY;
-        camera.bottom = -halfHeight + view.offsetY;
+        const halfW = view.w / 2;
+        const halfH = halfW / aspect;
+        camera.left = -halfW;
+        camera.right = halfW;
+        camera.top = halfH;
+        camera.bottom = -halfH;
+        camera.position.set(view.cx, view.cy, 50000);
         camera.updateProjectionMatrix();
+        renderCncRulers(rulerX, rulerY, stage, { x0: view.cx - halfW, x1: view.cx + halfW, y0: view.cy - halfH, y1: view.cy + halfH });
     };
 
     const resize = () => {
-        const width = container.clientWidth || 320;
-        const height = container.clientHeight || 320;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
         if (!width || !height) return;
         renderer.setSize(width, height);
+        applyColors();
         applyFrustum(width, height);
     };
 
     const fitToView = () => {
-        view.size = maxDim * 1.15;
-        view.offsetX = 0;
-        view.offsetY = 0;
+        view.cx = fitView.cx;
+        view.cy = fitView.cy;
+        view.w = fitView.w;
         resize();
     };
 
     const zoomBy = factor => {
-        view.size = Math.max(maxDim * 0.08, Math.min(maxDim * 8, view.size * factor));
-        applyFrustum(container.clientWidth || 320, container.clientHeight || 320);
+        view.w = Math.max(maxDim * 0.04, Math.min(maxDim * 8, view.w * factor));
+        applyFrustum(container.clientWidth || 320, container.clientHeight || 180);
     };
 
     let isDragging = false;
@@ -14478,28 +15304,25 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         zoomBy(event.deltaY > 0 ? 1.1 : 0.9);
     };
 
-    // Raycasting: resalta la sub-trayectoria bajo el cursor y muestra su
-    // rango de Z; al mover sin arrastrar, la lectura de coordenadas sigue el
-    // punto del trazado más cercano al cursor (no la posición real de la
-    // máquina — acá se está previsualizando un archivo, no necesariamente el
-    // trabajo que tiene cargado el controlador).
+    // Raycasting: resalta la sub-trayectoria bajo el cursor; al mover sin
+    // arrastrar, la lectura de coordenadas sigue el punto del trazado más
+    // cercano al cursor (se previsualiza un archivo, no la posición real).
     const raycaster = new THREE.Raycaster();
-    raycaster.params.Line = { threshold: maxDim * 0.01 };
+    raycaster.params.Line = { threshold: maxDim * 0.006 };
     const pointerNdc = new THREE.Vector2();
-    let selectedLine = null;
     const coordX = document.getElementById('cnc-visor-coord-x');
     const coordY = document.getElementById('cnc-visor-coord-y');
     const coordZ = document.getElementById('cnc-visor-coord-z');
 
     const onPointerMove = event => {
         if (isDragging) {
-            const height = container.clientHeight || 320;
-            const scale = view.size / height;
-            view.offsetX -= (event.clientX - lastX) * scale;
-            view.offsetY += (event.clientY - lastY) * scale;
+            const width = container.clientWidth || 320;
+            const scale = view.w / width;
+            view.cx -= (event.clientX - lastX) * scale;
+            view.cy += (event.clientY - lastY) * scale;
             lastX = event.clientX;
             lastY = event.clientY;
-            applyFrustum(container.clientWidth || 320, container.clientHeight || 320);
+            applyFrustum(width, container.clientHeight || 180);
             return;
         }
         const rect = renderer.domElement.getBoundingClientRect();
@@ -14508,7 +15331,7 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         raycaster.setFromCamera(pointerNdc, camera);
         const hits = raycaster.intersectObjects(cutLines, false);
         if (hits.length) {
-            const point = hits[0].point.clone().add(center);
+            const point = hits[0].point;
             if (coordX) coordX.textContent = point.x.toFixed(3);
             if (coordY) coordY.textContent = point.y.toFixed(3);
             if (coordZ) coordZ.textContent = point.z.toFixed(3);
@@ -14521,13 +15344,8 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
         raycaster.setFromCamera(pointerNdc, camera);
         const hits = raycaster.intersectObjects(cutLines, false);
-        if (selectedLine) selectedLine.material.color.setHex(CUT_COLOR);
-        if (hits.length) {
-            selectedLine = hits[0].object;
-            selectedLine.material.color.setHex(SELECTED_COLOR);
-        } else {
-            selectedLine = null;
-        }
+        selectedLine = hits.length ? hits[0].object : null;
+        applyColors();
     };
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -14537,20 +15355,15 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     renderer.domElement.addEventListener('click', onClick);
 
-    // El marcador de origen antes vivía fijo en CSS (arriba-izquierda,
-    // decorativo) sin importar dónde estuviera realmente X0/Y0 del G-code —
-    // acá se calcula su posición real en pantalla cada frame, proyectando el
-    // origen mundial (0,0,0 de `group`, que ya arrastra el -center aplicado
-    // arriba vía localToWorld) a través de la cámara actual. Así sigue
-    // correcto durante pan/zoom sin wiring aparte.
+    // El marcador de origen se proyecta cada frame desde el origen real
+    // (0,0,0) a través de la cámara, así sigue correcto durante pan/zoom.
     const originMarkerEl = document.getElementById('cnc-visor-origin-marker');
     const MARKER_HOTSPOT = { x: 9, y: 25 };
     const updateOriginMarker = () => {
         if (!originMarkerEl) return;
-        const worldOrigin = group.localToWorld(new THREE.Vector3(0, 0, 0));
-        const ndc = worldOrigin.project(camera);
+        const ndc = new THREE.Vector3(0, 0, 0).project(camera);
         const width = container.clientWidth || 320;
-        const height = container.clientHeight || 320;
+        const height = container.clientHeight || 180;
         const px = (ndc.x * 0.5 + 0.5) * width;
         const py = (1 - (ndc.y * 0.5 + 0.5)) * height;
         const visible = ndc.z < 1 && px >= -40 && px <= width + 40 && py >= -40 && py <= height + 40;
@@ -14560,12 +15373,18 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         }
     };
 
+    updateCncAreaNote(area, toolpath.bounds, fitView.overflow);
+
     let animId = null;
     const animate = () => {
         animId = requestAnimationFrame(animate);
         renderer.render(scene, camera);
         updateOriginMarker();
     };
+    // El contenedor cambia de tamaño con la ventana/el layout (y al volver a
+    // mostrar la pestaña, cuando estaba en display:none con tamaño 0).
+    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
+    if (resizeObserver) resizeObserver.observe(container);
     resize();
     animate();
 
@@ -14580,6 +15399,7 @@ async function renderCncVisor(container, fileUrl, deviceInfo) {
         getFit: () => fit,
         dispose: () => {
             if (animId) cancelAnimationFrame(animId);
+            if (resizeObserver) resizeObserver.disconnect();
             renderer.dispose();
         },
     };
@@ -14600,7 +15420,10 @@ async function loadCncViewerFile(fileUrl, filename) {
 
     const activeHost = document.getElementById('cnc-host-select')?.value;
     const device = laserHostOptions.find(item => item.host === activeHost);
-    const deviceInfo = { workArea: device?.workArea || null, homeCorner: device?.homeCorner || null };
+    const deviceInfo = { workArea: device?.workArea || null, homeCorner: device?.homeCorner || null, machineProfile: device?.machineProfile || 'router' };
+    cncViewerState.deviceInfo = deviceInfo;
+    setCncStageRatio(resolveCncWorkArea(deviceInfo.workArea));
+    cncSimSetFile(fileUrl, deviceInfo);
 
     const handle = await renderCncVisor(canvasContainer, fileUrl, deviceInfo);
     if (!handle || handle.empty) {
@@ -14613,10 +15436,527 @@ async function loadCncViewerFile(fileUrl, filename) {
     if (emptyState) emptyState.style.display = 'none';
 }
 
+// ── Visor CNC: pestaña SIMULATION (reproducción animada, solo visual) ──
+// No envía nada a la máquina. Reusa tokenizeGcodeLine/linearizeArc del parser
+// del visor (parseCncToolpath no guarda avances F ni números de línea, que
+// la simulación necesita para calcular tiempos).
+
+const CNC_SIM_MAX_SEGMENTS = 500000;   // tope para no congelar la página con G-codes de decenas de MB
+const CNC_SIM_DEFAULT_FEED = 1000;     // mm/min cuando el archivo no declara F
+const CNC_SIM_RAPID_FEED = 3000;       // mm/min para G0 (velocidad de traslado razonable en una 3018)
+const CNC_SIM_CHUNK_LINES = 20000;
+
+const cncSim = {
+    token: 0, gen: 0, pendingActivate: false, colors: null, fileUrl: null, deviceInfo: null, loadedKey: null, loading: false,
+    data: null, area: null, view: null, plotter: false,
+    playing: false, pos: 0, speed: 1, raf: null, lastTs: 0,
+    base: null, done: null, doneIdx: 0, dpr: 1, cw: 0, ch: 0, observer: null, relayoutTimer: null,
+};
+
+const cncSimTick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+async function parseCncSimulation(text, isCancelled, onProgress) {
+    const lines = text.split(/\r?\n/);
+    let cap = 20000;
+    const arr = {
+        ax: new Float32Array(cap), ay: new Float32Array(cap), az: new Float32Array(cap),
+        bx: new Float32Array(cap), by: new Float32Array(cap), bz: new Float32Array(cap),
+        kind: new Uint8Array(cap), line: new Uint32Array(cap), feed: new Float32Array(cap),
+    };
+    let n = 0;
+    const grow = () => {
+        cap *= 2;
+        for (const key of Object.keys(arr)) {
+            const next = new arr[key].constructor(cap);
+            next.set(arr[key]);
+            arr[key] = next;
+        }
+    };
+    let x = 0, y = 0, z = 0, feed = CNC_SIM_DEFAULT_FEED, absolute = true, unitsScale = 1, motion = null;
+    let truncated = false, lastLine = 0;
+    const push = (x0, y0, z0, x1, y1, z1, kind, lineNo, segFeed) => {
+        if (n >= cap) grow();
+        arr.ax[n] = x0; arr.ay[n] = y0; arr.az[n] = z0;
+        arr.bx[n] = x1; arr.by[n] = y1; arr.bz[n] = z1;
+        arr.kind[n] = kind; arr.line[n] = lineNo; arr.feed[n] = segFeed;
+        n++;
+    };
+
+    for (let i = 0; i < lines.length && !truncated; i++) {
+        if (i > 0 && i % CNC_SIM_CHUNK_LINES === 0) {
+            if (onProgress) onProgress(i / lines.length);
+            await cncSimTick();
+            if (isCancelled()) return null;
+        }
+        const line = lines[i].replace(/;.*$/, '').replace(/\(.*?\)/g, '').trim();
+        if (!line) continue;
+        const words = tokenizeGcodeLine(line);
+        let ix = null, iy = null, iz = null, ii = null, jj = null, rr = null;
+        for (const word of words) {
+            if (word.letter === 'G') {
+                if (word.value === 90) absolute = true;
+                else if (word.value === 91) absolute = false;
+                else if (word.value === 20) unitsScale = 25.4;
+                else if (word.value === 21) unitsScale = 1;
+                else if (word.value >= 0 && word.value <= 3 && Number.isInteger(word.value)) motion = word.value;
+            } else if (word.letter === 'F') { if (word.value > 0) feed = word.value * unitsScale; }
+            else if (word.letter === 'X') ix = word.value * unitsScale;
+            else if (word.letter === 'Y') iy = word.value * unitsScale;
+            else if (word.letter === 'Z') iz = word.value * unitsScale;
+            else if (word.letter === 'I') ii = word.value * unitsScale;
+            else if (word.letter === 'J') jj = word.value * unitsScale;
+            else if (word.letter === 'R') rr = word.value * unitsScale;
+        }
+        if (motion === null || (ix === null && iy === null && iz === null)) continue;
+        const nx = ix !== null ? (absolute ? ix : x + ix) : x;
+        const ny = iy !== null ? (absolute ? iy : y + iy) : y;
+        const nz = iz !== null ? (absolute ? iz : z + iz) : z;
+        const lineNo = i + 1;
+        if (motion === 0) {
+            if (nx !== x || ny !== y || nz !== z) push(x, y, z, nx, ny, nz, 0, lineNo, CNC_SIM_RAPID_FEED);
+        } else if (motion === 1) {
+            if (nx !== x || ny !== y || nz !== z) push(x, y, z, nx, ny, nz, 1, lineNo, feed);
+        } else {
+            let px = x, py = y, pz = z;
+            for (const p of linearizeArc(x, y, z, nx, ny, nz, ii, jj, rr, motion === 2)) {
+                push(px, py, pz, p.x, p.y, p.z, 1, lineNo, feed);
+                px = p.x; py = p.y; pz = p.z;
+            }
+        }
+        x = nx; y = ny; z = nz;
+        lastLine = lineNo;
+        if (n >= CNC_SIM_MAX_SEGMENTS) truncated = true;
+    }
+    return { arr, n, totalLines: lines.length, truncated, lastLine };
+}
+
+// Calcula por segmento: ¿dibuja o es traslado?, y los acumulados de tiempo y
+// distancias. En modo plotter, "lápiz abajo" = Z en la mitad inferior del
+// rango de Z del archivo; si el archivo casi no varía en Z, todo G1 dibuja.
+function finalizeCncSimulation(parsed, plotter) {
+    const { arr, n } = parsed;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < n; i++) {
+        minX = Math.min(minX, arr.ax[i], arr.bx[i]); maxX = Math.max(maxX, arr.ax[i], arr.bx[i]);
+        minY = Math.min(minY, arr.ay[i], arr.by[i]); maxY = Math.max(maxY, arr.ay[i], arr.by[i]);
+        minZ = Math.min(minZ, arr.az[i], arr.bz[i]); maxZ = Math.max(maxZ, arr.az[i], arr.bz[i]);
+    }
+    const zThreshold = (minZ + maxZ) / 2;
+    const useZ = plotter && (maxZ - minZ) > 0.01;
+    const draw = new Uint8Array(n);
+    const cumTime = new Float64Array(n);
+    const cumDraw = new Float64Array(n);
+    const cumTravel = new Float64Array(n);
+    const len = new Float32Array(n);
+    let time = 0, dDraw = 0, dTravel = 0;
+    for (let i = 0; i < n; i++) {
+        const dx = arr.bx[i] - arr.ax[i], dy = arr.by[i] - arr.ay[i], dz = arr.bz[i] - arr.az[i];
+        const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        len[i] = l;
+        const isDraw = arr.kind[i] === 1 && (!useZ || (arr.az[i] <= zThreshold && arr.bz[i] <= zThreshold));
+        draw[i] = isDraw ? 1 : 0;
+        time += l / (Math.max(arr.feed[i], 1) / 60);
+        if (isDraw) dDraw += l; else dTravel += l;
+        cumTime[i] = time; cumDraw[i] = dDraw; cumTravel[i] = dTravel;
+    }
+    const bounds = n ? { minX, maxX, minY, maxY } : null;
+    return { ...parsed, draw, cumTime, cumDraw, cumTravel, len, bounds, zThreshold, useZ, totalTime: time };
+}
+
+function cncSimFormatTime(seconds) {
+    const s = Math.max(0, Math.round(seconds));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const two = v => String(v).padStart(2, '0');
+    return h ? `${h}:${two(m)}:${two(sec)}` : `${two(m)}:${two(sec)}`;
+}
+
+function cncSimFormatDistance(mm) {
+    return mm >= 10000 ? `${(mm / 1000).toFixed(2)} m` : `${mm.toFixed(1)} mm`;
+}
+
+function cncSimEl(id) { return document.getElementById(id); }
+
+function cncSimSetNote(text) {
+    const note = cncSimEl('cnc-sim-note');
+    if (note) note.textContent = text || '';
+}
+
+function cncSimUpdatePlayButton() {
+    const btn = cncSimEl('cnc-sim-play');
+    if (!btn) return;
+    const label = t(cncSim.playing ? 'cncSimPause' : 'cncSimPlay');
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-pressed', cncSim.playing ? 'true' : 'false');
+    btn.innerHTML = cncSim.playing
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+}
+
+// Índice del primer segmento cuyo tiempo acumulado alcanza `pos`.
+function cncSimFindSegment(data, pos) {
+    let lo = 0, hi = data.n - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (data.cumTime[mid] >= pos) hi = mid; else lo = mid + 1;
+    }
+    return lo;
+}
+
+function cncSimOutside(data, i, area) {
+    const { arr } = data;
+    const eps = 1e-6;
+    return arr.ax[i] < -eps || arr.ay[i] < -eps || arr.ax[i] > area.width + eps || arr.ay[i] > area.height + eps
+        || arr.bx[i] < -eps || arr.by[i] < -eps || arr.bx[i] > area.width + eps || arr.by[i] > area.height + eps;
+}
+
+// Dibuja los segmentos [from,to) en ctx agrupados en 4 trazados (dibujo /
+// traslado × dentro / fuera del área) para pocas llamadas de stroke.
+function cncSimDrawSegments(ctx, from, to, alphaDraw, alphaTravel, colors) {
+    const data = cncSim.data;
+    const { arr } = data;
+    const v = cncSim.view;
+    const sx = cncSim.cw / v.w, sy = cncSim.ch / v.h;
+    const ox = v.cx - v.w / 2, oy = v.cy - v.h / 2;
+    const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+    for (let i = from; i < to; i++) {
+        const p = paths[(data.draw[i] ? 0 : 1) + (cncSimOutside(data, i, cncSim.area) ? 2 : 0)];
+        p.moveTo((arr.ax[i] - ox) * sx, cncSim.ch - (arr.ay[i] - oy) * sy);
+        p.lineTo((arr.bx[i] - ox) * sx, cncSim.ch - (arr.by[i] - oy) * sy);
+    }
+    const dpr = cncSim.dpr;
+    const styles = [
+        [colors.ink, alphaDraw, 1.6 * dpr, []],
+        [colors.ink, alphaTravel, 0.8 * dpr, [3 * dpr, 3 * dpr]],
+        [colors.danger, alphaDraw, 1.6 * dpr, []],
+        [colors.danger, alphaTravel, 0.8 * dpr, [3 * dpr, 3 * dpr]],
+    ];
+    ctx.save();
+    ctx.lineCap = 'round';
+    styles.forEach(([color, alpha, width, dash], k) => {
+        ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.setLineDash(dash);
+        ctx.stroke(paths[k]);
+    });
+    ctx.restore();
+}
+
+function cncSimColors() {
+    return {
+        bg: cncThemeColor('--surface-sunken', '#081410'),
+        grid: cncThemeColor('--border-subtle', '#2e2f34'),
+        pending: cncThemeColor('--text-faint', '#8a8f97'),
+        ink: cncThemeColor('--accent-ink', '#4ade80'),
+        danger: cncThemeColor('--status-danger', '#f87171'),
+        marker: cncThemeColor('--status-warn', '#fbbf24'),
+    };
+}
+
+// Capa base: fondo, grilla, borde del área y todo el trayecto atenuado
+// (pendiente). Se arma por lotes para no bloquear en archivos grandes.
+async function cncSimBuildBase(token) {
+    const data = cncSim.data;
+    if (!data || !cncSim.cw) return;
+    const base = document.createElement('canvas');
+    base.width = cncSim.cw; base.height = cncSim.ch;
+    const ctx = base.getContext('2d');
+    const colors = cncSimColors();
+    cncSim.colors = colors;
+    const v = cncSim.view, area = cncSim.area;
+    const sx = cncSim.cw / v.w, sy = cncSim.ch / v.h;
+    const ox = v.cx - v.w / 2, oy = v.cy - v.h / 2;
+    ctx.fillStyle = colors.bg;
+    ctx.fillRect(0, 0, cncSim.cw, cncSim.ch);
+    const step = cncNiceStep(Math.max(area.width, area.height), 10);
+    ctx.strokeStyle = colors.grid; ctx.globalAlpha = 0.55; ctx.lineWidth = cncSim.dpr; ctx.beginPath();
+    for (let gx = step; gx < area.width; gx += step) { ctx.moveTo((gx - ox) * sx, 0); ctx.lineTo((gx - ox) * sx, cncSim.ch); }
+    for (let gy = step; gy < area.height; gy += step) { ctx.moveTo(0, cncSim.ch - (gy - oy) * sy); ctx.lineTo(cncSim.cw, cncSim.ch - (gy - oy) * sy); }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    const CHUNK = 40000;
+    for (let from = 0; from < data.n; from += CHUNK) {
+        cncSimDrawSegments(ctx, from, Math.min(data.n, from + CHUNK), 0.5, 0.35, { ink: colors.pending, danger: colors.danger });
+        if (from + CHUNK < data.n) {
+            await cncSimTick();
+            if (token !== cncSim.token) return;
+        }
+    }
+    ctx.strokeStyle = v.overflow ? colors.danger : colors.ink;
+    ctx.lineWidth = 2 * cncSim.dpr;
+    ctx.strokeRect((0 - ox) * sx, cncSim.ch - (area.height - oy) * sy, area.width * sx, area.height * sy);
+    if (token !== cncSim.token) return;
+    cncSim.base = base;
+    cncSim.done = null;
+    cncSim.doneIdx = 0;
+    cncSimRender();
+}
+
+function cncSimSizeCanvas() {
+    const canvas = cncSimEl('cnc-sim-canvas');
+    const stage = cncSimEl('cnc-sim-stage');
+    if (!canvas || !stage || !stage.clientWidth || !stage.clientHeight) return false;
+    cncSim.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cncSim.cw = Math.round(stage.clientWidth * cncSim.dpr);
+    cncSim.ch = Math.round(stage.clientHeight * cncSim.dpr);
+    canvas.width = cncSim.cw; canvas.height = cncSim.ch;
+    return true;
+}
+
+function cncSimRelayout() {
+    const data = cncSim.data;
+    if (!data || !cncSimSizeCanvas()) return;
+    const v = cncSim.view;
+    renderCncRulers(cncSimEl('cnc-sim-ruler-x'), cncSimEl('cnc-sim-ruler-y'), cncSimEl('cnc-sim-stage'),
+        { x0: v.cx - v.w / 2, x1: v.cx + v.w / 2, y0: v.cy - v.h / 2, y1: v.cy + v.h / 2 });
+    cncSim.base = null; cncSim.done = null; cncSim.doneIdx = 0;
+    cncSim.token++;
+    cncSimBuildBase(cncSim.token);
+}
+
+function cncSimRender() {
+    const canvas = cncSimEl('cnc-sim-canvas');
+    const data = cncSim.data;
+    if (!canvas || !data || !cncSim.base) return;
+    const ctx = canvas.getContext('2d');
+    const colors = cncSim.colors || cncSimColors();
+    const total = data.totalTime;
+    const pos = Math.min(Math.max(cncSim.pos, 0), total);
+    const idx = data.n ? cncSimFindSegment(data, pos) : 0;
+    const startT = idx > 0 ? data.cumTime[idx - 1] : 0;
+    const segT = data.cumTime[idx] - startT;
+    const frac = pos <= 0 ? 0 : (segT > 0 ? Math.min(1, (pos - startT) / segT) : 1);
+
+    // Capa de lo ya recorrido: incremental hacia adelante, se rehace hacia atrás.
+    if (!cncSim.done || idx < cncSim.doneIdx) {
+        cncSim.done = document.createElement('canvas');
+        cncSim.done.width = cncSim.cw; cncSim.done.height = cncSim.ch;
+        cncSim.doneIdx = 0;
+    }
+    if (idx > cncSim.doneIdx) {
+        cncSimDrawSegments(cncSim.done.getContext('2d'), cncSim.doneIdx, idx, 1, 0.75, colors);
+        cncSim.doneIdx = idx;
+    }
+
+    ctx.clearRect(0, 0, cncSim.cw, cncSim.ch);
+    ctx.drawImage(cncSim.base, 0, 0);
+    ctx.drawImage(cncSim.done, 0, 0);
+
+    const { arr } = data;
+    const v = cncSim.view;
+    const sx = cncSim.cw / v.w, sy = cncSim.ch / v.h;
+    const ox = v.cx - v.w / 2, oy = v.cy - v.h / 2;
+    const px = arr.ax[idx] + (arr.bx[idx] - arr.ax[idx]) * frac;
+    const py = arr.ay[idx] + (arr.by[idx] - arr.ay[idx]) * frac;
+    const pz = arr.az[idx] + (arr.bz[idx] - arr.az[idx]) * frac;
+    const mx = (px - ox) * sx, my = cncSim.ch - (py - oy) * sy;
+    if (frac > 0) {
+        const head = new Path2D();
+        head.moveTo((arr.ax[idx] - ox) * sx, cncSim.ch - (arr.ay[idx] - oy) * sy);
+        head.lineTo(mx, my);
+        ctx.save();
+        ctx.strokeStyle = cncSimOutsideColor(data, idx, colors); ctx.lineWidth = (data.draw[idx] ? 1.6 : 0.8) * cncSim.dpr;
+        ctx.setLineDash(data.draw[idx] ? [] : [3 * cncSim.dpr, 3 * cncSim.dpr]);
+        ctx.stroke(head);
+        ctx.restore();
+    }
+    const penDown = data.useZ ? pz <= data.zThreshold : !!data.draw[idx];
+    ctx.save();
+    ctx.fillStyle = colors.marker; ctx.strokeStyle = colors.bg; ctx.lineWidth = 2 * cncSim.dpr;
+    ctx.beginPath(); ctx.arc(mx, my, (penDown ? 4.5 : 3.5) * cncSim.dpr, 0, Math.PI * 2);
+    if (penDown) ctx.fill(); else { ctx.strokeStyle = colors.marker; ctx.stroke(); }
+    ctx.restore();
+
+    // Lecturas.
+    const prevDraw = idx > 0 ? data.cumDraw[idx - 1] : 0;
+    const prevTravel = idx > 0 ? data.cumTravel[idx - 1] : 0;
+    const part = data.len[idx] * frac;
+    const drawn = prevDraw + (data.draw[idx] ? part : 0);
+    const travel = prevTravel + (data.draw[idx] ? 0 : part);
+    const lineNo = pos <= 0 ? 0 : arr.line[idx];
+    const set = (id, text) => { const el = cncSimEl(id); if (el) el.textContent = text; };
+    set('cnc-sim-lines', `${lineNo.toLocaleString()} / ${data.totalLines.toLocaleString()}`);
+    set('cnc-sim-drawn', cncSimFormatDistance(drawn));
+    set('cnc-sim-travel', cncSimFormatDistance(travel));
+    set('cnc-sim-time', `${cncSimFormatTime(pos)} / ${cncSimFormatTime(total)}`);
+    const pen = cncSimEl('cnc-sim-pen');
+    if (pen) {
+        pen.hidden = !cncSim.plotter;
+        pen.textContent = t(penDown ? 'cncSimPenDown' : 'cncSimPenUp');
+        pen.classList.toggle('down', penDown);
+    }
+    const seek = cncSimEl('cnc-sim-seek');
+    if (seek && document.activeElement !== seek) seek.value = total > 0 ? Math.round((pos / total) * 10000) : 0;
+}
+
+function cncSimOutsideColor(data, i, colors) {
+    return cncSimOutside(data, i, cncSim.area) ? colors.danger : colors.ink;
+}
+
+function cncSimStop() {
+    cncSim.playing = false;
+    if (cncSim.raf) cancelAnimationFrame(cncSim.raf);
+    cncSim.raf = null;
+    cncSimUpdatePlayButton();
+}
+
+function cncSimLoop(ts) {
+    if (!cncSim.playing) return;
+    const dt = cncSim.lastTs ? Math.min((ts - cncSim.lastTs) / 1000, 0.1) : 0;
+    cncSim.lastTs = ts;
+    cncSim.pos += dt * cncSim.speed;
+    if (cncSim.pos >= cncSim.data.totalTime) {
+        cncSim.pos = cncSim.data.totalTime;
+        cncSimRender();
+        cncSimStop();
+        return;
+    }
+    cncSimRender();
+    cncSim.raf = requestAnimationFrame(cncSimLoop);
+}
+
+function cncSimTogglePlay(force) {
+    if (!cncSim.data || !cncSim.data.n) return;
+    const next = typeof force === 'boolean' ? force : !cncSim.playing;
+    if (!next) { cncSimStop(); return; }
+    if (cncSim.pos >= cncSim.data.totalTime) cncSim.pos = 0;
+    cncSim.playing = true;
+    cncSim.lastTs = 0;
+    cncSimUpdatePlayButton();
+    cncSim.raf = requestAnimationFrame(cncSimLoop);
+}
+
+function cncSimReset(message) {
+    cncSim.token++;
+    cncSim.gen++;
+    cncSimStop();
+    cncSim.data = null; cncSim.base = null; cncSim.done = null; cncSim.doneIdx = 0; cncSim.pos = 0; cncSim.loadedKey = null;
+    const empty = cncSimEl('cnc-sim-empty');
+    if (empty) { empty.style.display = 'flex'; empty.textContent = message || t('cncSimEmpty'); }
+    const seek = cncSimEl('cnc-sim-seek');
+    if (seek) { seek.value = 0; seek.disabled = true; }
+    ['cnc-sim-lines', 'cnc-sim-drawn', 'cnc-sim-travel', 'cnc-sim-time'].forEach(id => { const el = cncSimEl(id); if (el) el.textContent = '—'; });
+    const pen = cncSimEl('cnc-sim-pen');
+    if (pen) pen.hidden = true;
+    cncSimSetNote('');
+    const canvas = cncSimEl('cnc-sim-canvas');
+    if (canvas && canvas.width) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// Llamado por loadCncViewerFile: cambia el archivo (o la máquina) a simular.
+function cncSimSetFile(fileUrl, deviceInfo) {
+    cncSim.fileUrl = fileUrl;
+    cncSim.deviceInfo = deviceInfo;
+    cncSimReset();
+    const panel = cncSimEl('cnc-viewer-panel-sim');
+    if (panel && panel.classList.contains('active')) cncSimActivate();
+}
+
+async function cncSimActivate() {
+    const area = resolveCncWorkArea(cncSim.deviceInfo && cncSim.deviceInfo.workArea);
+    const plotter = (cncSim.deviceInfo && cncSim.deviceInfo.machineProfile) === 'plotter';
+    const key = `${cncSim.fileUrl}|${area.width}x${area.height}|${plotter}`;
+    if (!cncSim.fileUrl) return;
+    if (cncSim.loadedKey === key && cncSim.data) { cncSimRelayout(); return; }
+    if (cncSim.loading) { cncSim.pendingActivate = true; return; }
+    cncSim.loading = true;
+    const token = ++cncSim.token;
+    const gen = cncSim.gen;
+    const cancelled = () => token !== cncSim.token;
+    const empty = cncSimEl('cnc-sim-empty');
+    if (empty) { empty.style.display = 'flex'; empty.textContent = t('cncSimLoading'); }
+    try {
+        const response = await fetch(cncSim.fileUrl);
+        const text = await response.text();
+        const parsed = await parseCncSimulation(text, cancelled, fraction => {
+            if (empty) empty.textContent = `${t('cncSimLoading')} ${Math.round(fraction * 100)}%`;
+        });
+        if (!parsed || cancelled()) return;
+        const data = finalizeCncSimulation(parsed, plotter);
+        if (!data.n) {
+            cncSim.loadedKey = null;
+            if (empty) empty.textContent = t('cncSimNoMotion');
+            return;
+        }
+        cncSim.data = data; cncSim.area = area; cncSim.plotter = plotter;
+        cncSim.view = computeCncFitView(area, data.bounds);
+        cncSim.pos = 0; cncSim.loadedKey = key;
+        setCncStageRatio(area);
+        if (empty) empty.style.display = 'none';
+        const seek = cncSimEl('cnc-sim-seek');
+        if (seek) seek.disabled = false;
+        cncSimSetNote(data.truncated
+            ? t('cncSimTruncated').replace('{n}', data.n.toLocaleString()).replace('{line}', data.lastLine.toLocaleString()).replace('{total}', data.totalLines.toLocaleString())
+            : (cncSim.view.overflow ? t('cncViewerOverflow').replace('{w}', (data.bounds.maxX - data.bounds.minX).toFixed(0)).replace('{h}', (data.bounds.maxY - data.bounds.minY).toFixed(0)) : ''));
+        cncSimUpdatePlayButton();
+        cncSimRelayout();
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced) {
+            // Espera a que la capa base esté lista antes de arrancar.
+            const startWhenReady = () => {
+                if (gen !== cncSim.gen) return;
+                if (cncSim.base) cncSimTogglePlay(true); else setTimeout(startWhenReady, 50);
+            };
+            startWhenReady();
+        }
+    } catch (error) {
+        console.error(error);
+        if (empty) empty.textContent = t('cncSimNoMotion');
+    } finally {
+        cncSim.loading = false;
+        if (cncSim.pendingActivate) { cncSim.pendingActivate = false; cncSimActivate(); }
+    }
+}
+
+function initCncSimulation() {
+    const panel = cncSimEl('cnc-viewer-panel-sim');
+    if (!panel || panel.dataset.wired) return;
+    panel.dataset.wired = 'true';
+    cncSimUpdatePlayButton();
+    cncSimEl('cnc-sim-play')?.addEventListener('click', () => cncSimTogglePlay());
+    cncSimEl('cnc-sim-restart')?.addEventListener('click', () => {
+        if (!cncSim.data) return;
+        cncSim.pos = 0;
+        cncSimRender();
+    });
+    cncSimEl('cnc-sim-seek')?.addEventListener('input', event => {
+        if (!cncSim.data) return;
+        cncSim.pos = (Number(event.target.value) / 10000) * cncSim.data.totalTime;
+        cncSimRender();
+    });
+    document.querySelectorAll('#cnc-sim-speed [data-sim-speed]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            cncSim.speed = Number(btn.dataset.simSpeed) || 1;
+            document.querySelectorAll('#cnc-sim-speed [data-sim-speed]').forEach(b => {
+                b.classList.toggle('active', b === btn);
+                b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+            });
+        });
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key !== ' ' || !panel.classList.contains('active')) return;
+        const el = event.target;
+        const tag = el && el.tagName;
+        if (tag === 'INPUT' && el.type !== 'range') return;
+        if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A' || (el && el.isContentEditable)) return;
+        event.preventDefault();
+        cncSimTogglePlay();
+    });
+    const stage = cncSimEl('cnc-sim-stage');
+    if (stage && typeof ResizeObserver === 'function') {
+        cncSim.observer = new ResizeObserver(() => {
+            clearTimeout(cncSim.relayoutTimer);
+            cncSim.relayoutTimer = setTimeout(() => {
+                if (panel.classList.contains('active')) cncSimRelayout();
+            }, 120);
+        });
+        cncSim.observer.observe(stage);
+    }
+}
+
 function initCncViewerTabs() {
     const tabsWrap = document.getElementById('cnc-viewer-tabs');
     if (!tabsWrap || tabsWrap.dataset.wired) return;
     tabsWrap.dataset.wired = 'true';
+    initCncSimulation();
 
     tabsWrap.querySelectorAll('.cnc-viewer-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -14633,6 +15973,8 @@ function initCncViewerTabs() {
             if (target === 'visor' && cncViewerState.visorHandle) {
                 cncViewerState.visorHandle.resize();
             }
+            if (target === 'sim') cncSimActivate();
+            else cncSimStop();
         });
     });
 
@@ -14661,6 +16003,7 @@ async function loadCncSection() {
     refreshCncParserState();
     renderCncFilesTable();
     refreshCncQueue();
+    refreshCncSdSwitch(true);
     stopCncPolling();
     cncStatusPollInterval = setInterval(refreshCncStatus, 600);
     cncSlowPollInterval = setInterval(() => {
@@ -14684,9 +16027,13 @@ if (cncHostSelect) {
             rememberSectionMachine('cnc', null, cncHostSelect.value);
             const activeDevice = laserHostOptions.find(device => device.host === cncHostSelect.value);
             applyCncMachineProfile(activeDevice?.machineProfile);
+            // El área de trabajo y el perfil dependen de la máquina: recalcular el visor.
+            if (cncViewerState.currentFileUrl) loadCncViewerFile(cncViewerState.currentFileUrl, cncViewerState.currentFilename);
             refreshCncStatus();
             refreshCncParserState();
             renderCncFilesTable();
+            refreshCncSdSwitch();
+            refreshCncJobFooter();
         } catch (error) {
             console.error(error);
         }
@@ -14809,23 +16156,150 @@ async function refreshCncParserState() {
     }
 }
 
+// Texto en español sencillo de los códigos de error/alarma de GRBL y FluidNC.
+// Códigos que no están aquí se muestran crudos (sin inventar un significado).
+function cncGrblReasonText(raw) {
+    const match = /(error|ALARM):\s*(\d+)/i.exec(raw || '');
+    if (!match) return '';
+    const key = `cncGrbl${match[1].toLowerCase() === 'error' ? 'Err' : 'Alarm'}${parseInt(match[2], 10)}`;
+    const text = t(key);
+    return text === key ? '' : text;
+}
+
+const cncJobDismissed = new Set();
+let cncJobFooterTimer = null;
+
+function cncJobFill(template, values) {
+    return Object.keys(values).reduce((text, key) => text.split(`{${key}}`).join(values[key]), template);
+}
+
+function renderCncJobResult(job, host) {
+    const box = document.getElementById('cnc-job-result');
+    if (!box) return;
+    const key = job ? `${host}|${job.started_at}` : '';
+    if (!job || cncJobDismissed.has(key)) { box.hidden = true; return; }
+    const file = job.filename || '—';
+    const line = Math.min((job.current || 0) + 1, job.total || (job.current || 0) + 1);
+    const titleEl = document.getElementById('cnc-job-result-title');
+    const bodyEl = document.getElementById('cnc-job-result-body');
+    box.dataset.key = key;
+    box.className = 'cnc-job-result cnc-job-result-' + (job.state === 'completed' ? 'ok' : job.state === 'error' ? 'error' : 'info');
+    const sd = job.source === 'sd';
+    if (job.state === 'error') {
+        const raw = job.error || '';
+        const lineMatch = /(?:línea|line)\s+(\d+)/i.exec(raw);
+        const rawCode = (/(?:error|ALARM):\s*\d+/i.exec(raw) || [raw || '—'])[0];
+        titleEl.textContent = t('cncJobFailedTitle');
+        bodyEl.textContent = cncJobFill(t(sd && !/(?:línea|line)\s+\d+/i.test(job.error || '') ? 'cncSdFailedBody' : 'cncJobFailedBody'), {
+            file, line: lineMatch ? lineMatch[1] : line,
+            reason: cncGrblReasonText(raw) || (raw && !/^(error|ALARM):/i.test(raw.trim()) ? raw : t('cncJobFailedUnknown')),
+            raw: rawCode,
+        });
+    } else if (job.state === 'completed') {
+        titleEl.textContent = '';
+        bodyEl.textContent = cncJobFill(t(sd ? 'cncSdDoneBody' : 'cncJobDoneBody'), { file, total: (job.total || 0).toLocaleString() });
+    } else {
+        titleEl.textContent = '';
+        bodyEl.textContent = cncJobFill(t(sd ? 'cncSdCancelledBody' : 'cncJobCancelledBody'), { file, line });
+    }
+    box.hidden = false;
+}
+
+// ── Ajuste de la Z de "lápiz abajo" con el trabajo en curso ──
+const cncZState = { live: false, offset: 0, sd: false };
+function cncZOffsetRender(live, offset) {
+    cncZState.live = !!live;
+    cncZState.offset = Number(offset) || 0;
+    const box = document.getElementById('cnc-z-offset');
+    if (box) box.hidden = !live;
+    const out = document.getElementById('cnc-z-offset-value');
+    if (!out || !live) return;
+    const v = Math.round((Number(offset) || 0) * 100) / 100;
+    out.textContent = v === 0 ? t('zOffsetNone')
+        : t('zOffsetValue').replace('{v}', `${v > 0 ? '+' : '-'}${Math.abs(v).toFixed(2)}`);
+}
+
+async function cncZOffsetSend(delta) {
+    const host = getSectionHost('cnc');
+    if (!host) return false;
+    try {
+        const formData = new FormData();
+        formData.append('host', host);
+        formData.append('delta', delta);
+        const response = await fetch('/api/laser/job/z-offset', { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            appAlert(data.detail || t('zOffsetError'), '', 'warning');
+            return false;
+        }
+        cncZOffsetRender(true, data.z_offset);
+        return true;
+    } catch (error) {
+        console.error(error);
+        appAlert(t('zOffsetError'), '', 'warning');
+        return false;
+    }
+}
+
 async function refreshCncJobFooter() {
     const host = getSectionHost('cnc');
     if (!host) return;
     try {
         const response = await fetch(`/api/laser/job/status?host=${encodeURIComponent(host)}`);
         const job = await response.json();
+        const active = job?.state === 'running' || job?.state === 'paused';
+        let shown = job;
+        let finished = null;
+        if (!active) {
+            const lastResponse = await fetch(`/api/laser/job/last?host=${encodeURIComponent(host)}`);
+            finished = (await lastResponse.json())?.job || null;
+            // Un trabajo externo (LightBurn, etc.) en marcha no debe quedar tapado por el aviso viejo.
+            if (finished && job?.state === 'idle') shown = finished;
+        }
         const filenameEl = document.getElementById('cnc-job-filename');
-        if (filenameEl) filenameEl.textContent = job?.filename || '—';
-        const percent = job?.total ? Math.round((job.current / job.total) * 100) : 0;
+        if (filenameEl) filenameEl.textContent = shown?.filename || '—';
+        const isSd = shown?.source === 'sd';
+        const uploading = isSd && shown?.phase === 'uploading' && active;
+        const percent = shown?.total ? Math.round((shown.current / shown.total) * 100) : 0;
         const fillEl = document.getElementById('cnc-job-progress-fill');
         if (fillEl) fillEl.style.width = `${percent}%`;
         const percentEl = document.getElementById('cnc-job-percent');
         if (percentEl) percentEl.textContent = `${percent}%`;
+        const linesEl = document.getElementById('cnc-job-lines');
+        if (linesEl) {
+            const showLines = !!shown?.total && shown.source !== 'external' && (!isSd || uploading);
+            linesEl.hidden = !showLines;
+            if (uploading) {
+                linesEl.textContent = cncJobFill(t('cncSdUploading'), { percent });
+            } else if (showLines) {
+                linesEl.textContent = cncJobFill(t('cncJobLines'), {
+                    current: (shown.current || 0).toLocaleString(), total: shown.total.toLocaleString(),
+                });
+            }
+        }
+        const elapsedEl = document.getElementById('cnc-job-elapsed');
+        if (elapsedEl && active && job.elapsed != null) elapsedEl.textContent = formatLaserJobDuration(job.elapsed * 1000);
+        else if (elapsedEl && !active && finished && shown === finished) {
+            elapsedEl.textContent = '—';
+        }
+        renderCncJobResult(active ? null : finished, host);
+        cncZOffsetRender(active && job.has_z, job.z_offset);
+        cncZState.sd = !!(active && job.source === 'sd');
+        const zNote = document.getElementById('cnc-z-sd-note');
+        if (zNote) zNote.hidden = !cncZState.sd;
+        // Mientras corre, se consulta más seguido para que línea y tiempo avancen fluido.
+        clearTimeout(cncJobFooterTimer);
+        if (active) cncJobFooterTimer = setTimeout(refreshCncJobFooter, 1500);
     } catch (error) {
         console.error(error);
     }
 }
+
+document.getElementById('cnc-job-result-close')?.addEventListener('click', () => {
+    const box = document.getElementById('cnc-job-result');
+    if (box?.dataset.key) cncJobDismissed.add(box.dataset.key);
+    if (box) box.hidden = true;
+});
 
 const cncWcsSelect = document.getElementById('cnc-wcs-select');
 if (cncWcsSelect) {
@@ -14906,9 +16380,26 @@ document.getElementById('cnc-probe-btn')?.addEventListener('click', async () => 
 document.querySelectorAll('[data-z-nudge]').forEach(btn => {
     btn.addEventListener('click', async () => {
         const amount = parseFloat(btn.dataset.zNudge);
+        if (cncZState.sd) return; // trabajo desde la SD: el aviso ya explica por qué no se ajusta
+        if (cncZState.live) {
+            await cncZOffsetSend(amount);
+            return;
+        }
         await sendLaserJog('Z', amount, 500);
         refreshCncStatus();
     });
+});
+
+document.getElementById('cnc-z-offset-reset')?.addEventListener('click', async () => {
+    const total = Math.round(cncZState.offset * 100) / 100;
+    if (!total) return;
+    // El backend limita cada pedido a ±1 mm: se resta en tandas.
+    let left = -total;
+    while (Math.abs(left) > 0.0001) {
+        const step = Math.max(-1, Math.min(1, left));
+        if (!await cncZOffsetSend(Math.round(step * 100) / 100)) break;
+        left = Math.round((left - step) * 100) / 100;
+    }
 });
 
 async function applyCncManualShift() {
@@ -14947,20 +16438,92 @@ document.getElementById('cnc-zero-z-btn')?.addEventListener('click', async () =>
 
 // Compartido entre el botón "Correr" de la tabla ARCHIVOS y el paso final
 // del asistente guiado, para no duplicar la lógica de arrancar un trabajo.
+// Decide cómo correr: desde la SD de la placa (por omisión si la tiene) o por streaming.
+const CNC_SD_CACHE_MS = 60000;
+const cncSdCache = new Map();
+
+async function cncSdPresent(host, force) {
+    if (!host) return false;
+    const hit = cncSdCache.get(host);
+    if (!force && hit && Date.now() - hit.at < CNC_SD_CACHE_MS) return hit.present;
+    let present = false;
+    try {
+        const response = await fetch(`/api/laser/sd/status?host=${encodeURIComponent(host)}`);
+        present = response.ok && !!(await response.json())?.present;
+    } catch (error) {
+        console.error(error);
+    }
+    cncSdCache.set(host, { present, at: Date.now() });
+    return present;
+}
+
+function cncSdPrefKey(host) { return `cncRunFromSd:${host}`; }
+
+function cncSdPrefGet(host) {
+    try {
+        return localStorage.getItem(cncSdPrefKey(host)) !== '0';
+    } catch (error) {
+        return true;
+    }
+}
+
+function cncSdPrefSet(host, value) {
+    try { localStorage.setItem(cncSdPrefKey(host), value ? '1' : '0'); } catch (error) { /* sin almacenamiento */ }
+}
+
+async function refreshCncSdSwitch(force) {
+    const input = document.getElementById('cnc-sd-switch');
+    const hint = document.getElementById('cnc-sd-hint');
+    if (!input) return;
+    const host = getSectionHost('cnc');
+    const present = await cncSdPresent(host, force);
+    input.disabled = !present;
+    input.checked = present && cncSdPrefGet(host);
+    if (hint) hint.textContent = t(present ? 'cncSdHint' : 'cncSdNoCard');
+}
+
+document.getElementById('cnc-sd-switch')?.addEventListener('change', event => {
+    const host = getSectionHost('cnc');
+    if (host) cncSdPrefSet(host, event.currentTarget.checked);
+});
+
 async function startCncJob(path, host) {
     const targetHost = host || getSectionHost('cnc');
     if (!targetHost) {
         appAlert(t('laserNoMachineSelected'), '', 'warning');
         return;
     }
-    const formData = new FormData();
-    formData.append('path', path);
-    formData.append('host', targetHost);
+    const post = (url) => {
+        const formData = new FormData();
+        formData.append('path', path);
+        formData.append('host', targetHost);
+        return fetch(url, { method: 'POST', body: formData });
+    };
     try {
-        await fetch('/api/laser/job/start', { method: 'POST', body: formData });
-        showToast(t('cncJobStarted'));
+        let useSd = (await cncSdPresent(targetHost)) && cncSdPrefGet(targetHost);
+        let response = await post(useSd ? '/api/laser/job/start-sd' : '/api/laser/job/start');
+        if (useSd && response.status === 409) {
+            const data = await response.json().catch(() => ({}));
+            const detail = data.detail || t('cncSdUnavailable');
+            // 409 también es "ya hay un trabajo en curso": solo se ofrece streaming si ya no se ve la SD.
+            if (await cncSdPresent(targetHost, true)) {
+                appAlert(detail, '', 'warning');
+                return;
+            }
+            refreshCncSdSwitch();
+            if (!(await appConfirm(`${detail}\n\n${t('cncSdFallbackConfirm')}`, t('cncRun'), 'warning'))) return;
+            useSd = false;
+            response = await post('/api/laser/job/start');
+        }
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            appAlert(data.detail || t('cncSdStartError'), '', 'danger');
+        } else {
+            showToast(t(useSd ? 'cncSdUploadStarted' : 'cncJobStarted'));
+        }
     } catch (error) {
         console.error(error);
+        appAlert(t('cncSdStartError'), '', 'danger');
     }
     refreshCncJobFooter();
 }
@@ -15037,6 +16600,8 @@ async function renderCncWizardFileList() {
                     path: stripSectionPrefix(row.dataset.fileId, 'gcode'),
                 };
                 cncWizardState.bounds = null;
+                const selectedNote = document.getElementById('cnc-wizard-selected-note');
+                if (selectedNote) selectedNote.hidden = true;
                 updateCncWizardNextEnabled();
             });
         });
@@ -15155,10 +16720,465 @@ function renderCncWizardSummary() {
     }
 }
 
+// ── Imagen a dibujo (plotter): convierte una imagen en G-code de lápiz con
+// vista previa en vivo. Backend: /api/plotter/preview y /api/plotter/generate. ──
+
+const plotterState = { file: null, nameTouched: false, opener: null, fromWizard: false, abort: null, timer: null, paths: null, busy: false, view: 'overlay', imageUrl: null, ok: false };
+const PLOTTER_PEN_DEFAULTS = { penUp: 3, penDown: 0, feed: 1500, plunge: 500, travel: 2000 };
+const PLOTTER_PEN_FIELDS = { penUp: 'plotter-pen-up', penDown: 'plotter-pen-down', feed: 'plotter-feed', plunge: 'plotter-plunge', travel: 'plotter-travel' };
+
+function plotterEl(id) { return document.getElementById(id); }
+function plotterNum(id, fallback) {
+    const v = parseFloat(plotterEl(id)?.value);
+    return Number.isFinite(v) ? v : fallback;
+}
+
+function plotterActiveHost() {
+    return document.getElementById('cnc-host-select')?.value || '';
+}
+
+function plotterWorkArea() {
+    const device = laserHostOptions.find(item => item.host === plotterActiveHost());
+    const wa = device?.workArea;
+    return wa && wa.width && wa.height ? { width: Number(wa.width), height: Number(wa.height) } : null;
+}
+
+function plotterPenKey() { return `nopal_plotter_pen_${plotterActiveHost() || 'default'}`; }
+
+function plotterLoadPen() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(plotterPenKey()) || '{}') || {}; } catch (e) { saved = {}; }
+    Object.keys(PLOTTER_PEN_FIELDS).forEach(key => {
+        const value = Number(saved[key]);
+        const input = plotterEl(PLOTTER_PEN_FIELDS[key]);
+        if (input) input.value = Number.isFinite(value) && saved[key] !== undefined && saved[key] !== null ? value : PLOTTER_PEN_DEFAULTS[key];
+    });
+}
+
+function plotterSavePen() {
+    const data = {};
+    Object.keys(PLOTTER_PEN_FIELDS).forEach(key => { data[key] = plotterNum(PLOTTER_PEN_FIELDS[key], PLOTTER_PEN_DEFAULTS[key]); });
+    try { localStorage.setItem(plotterPenKey(), JSON.stringify(data)); } catch (e) { /* sin almacenamiento: se usan los valores por omisión */ }
+}
+
+function plotterFormData(withGenerate) {
+    const fd = new FormData();
+    fd.append('file', plotterState.file);
+    fd.append('width_mm', plotterNum('plotter-width', 80));
+    fd.append('height_mm', plotterNum('plotter-height', 80));
+    fd.append('feed', plotterNum('plotter-feed', PLOTTER_PEN_DEFAULTS.feed));
+    fd.append('travel_feed', plotterNum('plotter-travel', PLOTTER_PEN_DEFAULTS.travel));
+    fd.append('smoothing', plotterNum('plotter-smoothing', 1));
+    fd.append('cleanup', plotterNum('plotter-cleanup', 1));
+    fd.append('detail', plotterNum('plotter-detail', 1));
+    if (withGenerate) {
+        fd.append('name', (plotterEl('plotter-name').value || '').trim() || 'dibujo');
+        fd.append('pen_up_z', plotterNum('plotter-pen-up', PLOTTER_PEN_DEFAULTS.penUp));
+        fd.append('pen_down_z', plotterNum('plotter-pen-down', PLOTTER_PEN_DEFAULTS.penDown));
+        fd.append('plunge_feed', plotterNum('plotter-plunge', PLOTTER_PEN_DEFAULTS.plunge));
+    }
+    return fd;
+}
+
+async function plotterErrorText(response) {
+    try {
+        const data = await response.json();
+        if (typeof data.detail === 'string') return data.detail;
+        if (Array.isArray(data.detail) && data.detail[0]?.msg) return data.detail[0].msg;
+    } catch (e) { /* respuesta sin JSON */ }
+    return t('plotterError');
+}
+
+// kind: '' (neutro), 'error' o 'notice' (aviso amable, p. ej. una fotografía).
+function plotterSetStatus(text, kind = '') {
+    const el = plotterEl('plotter-status');
+    if (!el) return;
+    if (kind === true) kind = 'error';
+    el.textContent = text || '';
+    el.classList.toggle('plotter-status-error', kind === 'error');
+    el.classList.toggle('plotter-status-notice', kind === 'notice');
+}
+
+function plotterSetNotes(notes) {
+    const box = plotterEl('plotter-notes');
+    if (!box) return;
+    box.textContent = '';
+    (notes || []).forEach(text => {
+        const p = document.createElement('p');
+        p.className = 'plotter-note';
+        p.textContent = String(text);
+        box.appendChild(p);
+    });
+}
+
+function plotterSetImageUrl(file) {
+    if (plotterState.imageUrl) URL.revokeObjectURL(plotterState.imageUrl);
+    plotterState.imageUrl = file ? URL.createObjectURL(file) : null;
+    const img = plotterEl('plotter-original');
+    if (!img) return;
+    if (plotterState.imageUrl) { img.src = plotterState.imageUrl; img.hidden = false; }
+    else { img.removeAttribute('src'); img.hidden = true; }
+}
+
+function plotterSetView(view) {
+    plotterState.view = view;
+    plotterEl('plotter-stage')?.setAttribute('data-view', view);
+    document.querySelectorAll('.plotter-seg-btn').forEach(btn => {
+        const on = btn.dataset.view === view;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+        btn.tabIndex = on ? 0 : -1;
+    });
+    plotterDrawPreview();
+}
+
+function plotterExceeds() {
+    const wa = plotterWorkArea();
+    if (!wa) return false;
+    return plotterNum('plotter-width', 80) > wa.width || plotterNum('plotter-height', 80) > wa.height;
+}
+
+function plotterUpdateGenerateEnabled() {
+    const btn = plotterEl('plotter-generate-btn');
+    const exceeds = plotterExceeds();
+    const w = plotterNum('plotter-width', 0);
+    const h = plotterNum('plotter-height', 0);
+    const row = plotterEl('plotter-exceed-row');
+    if (row) row.hidden = !exceeds;
+    if (!exceeds) plotterEl('plotter-exceed-ack').checked = false;
+    const note = plotterEl('plotter-area-note');
+    const wa = plotterWorkArea();
+    if (note) {
+        if (!wa) note.textContent = t('plotterAreaUnknown');
+        else note.textContent = exceeds
+            ? t('plotterExceeds').replace('{w}', wa.width).replace('{h}', wa.height)
+            : t('plotterAreaInfo').replace('{w}', wa.width).replace('{h}', wa.height);
+        note.classList.toggle('plotter-status-error', exceeds);
+    }
+    const sizeOk = w >= 5 && w <= 2000 && h >= 5 && h <= 2000;
+    if (btn) btn.disabled = plotterState.busy || !plotterState.file || !plotterState.ok || !sizeOk || (exceeds && !plotterEl('plotter-exceed-ack').checked);
+}
+
+function plotterCssColor(name, fallback) {
+    const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+    return value || fallback;
+}
+
+function plotterDrawPreview() {
+    const canvas = plotterEl('plotter-canvas');
+    if (!canvas) return;
+    const w = Math.max(1, plotterNum('plotter-width', 80));
+    const h = Math.max(1, plotterNum('plotter-height', 80));
+    // La vista previa se ajusta al rectángulo del dibujo para juzgar la calidad;
+    // el área de trabajo de la CNC se avisa aparte (plotterUpdateGenerateEnabled).
+    const areaW = w;
+    const areaH = h;
+    const margin = 6;
+    const maxW = 640;
+    const maxH = 640;
+    const scale = Math.min((maxW - 2 * margin) / areaW, (maxH - 2 * margin) / areaH);
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = Math.round(areaW * scale + 2 * margin);
+    const cssH = Math.round(areaH * scale + 2 * margin);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    const stage = plotterEl('plotter-stage');
+    if (stage) {
+        stage.style.aspectRatio = `${cssW} / ${cssH}`;
+        stage.style.maxWidth = `${cssW}px`;
+    }
+    // La imagen original ocupa exactamente el rectángulo del dibujo (ancho × alto en mm).
+    const img = plotterEl('plotter-original');
+    if (img) {
+        img.style.left = `${(margin / cssW) * 100}%`;
+        img.style.top = `${((cssH - margin - h * scale) / cssH) * 100}%`;
+        img.style.width = `${(w * scale / cssW) * 100}%`;
+        img.style.height = `${(h * scale / cssH) * 100}%`;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    // Y crece hacia arriba (origen abajo a la izquierda), el canvas al revés.
+    const px = x => margin + x * scale;
+    const py = y => cssH - margin - y * scale;
+    const border = plotterCssColor('--border', '#888');
+    const accent = plotterCssColor('--accent-ink', plotterCssColor('--accent', '#888'));
+    const warn = plotterCssColor('--status-warn', accent);
+    // Rectángulo del dibujo
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = plotterExceeds() ? warn : border;
+    ctx.strokeRect(px(0), py(h), w * scale, h * scale);
+    ctx.setLineDash([]);
+    // Trazos
+    if (plotterState.paths && plotterState.view !== 'original') {
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.25;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        plotterState.paths.forEach(path => {
+            path.forEach((pt, i) => { if (i === 0) ctx.moveTo(px(pt[0]), py(pt[1])); else ctx.lineTo(px(pt[0]), py(pt[1])); });
+        });
+        ctx.stroke();
+    }
+}
+
+async function plotterRunPreview() {
+    if (plotterState.abort) plotterState.abort.abort();
+    plotterState.abort = null;
+    const statsEl = plotterEl('plotter-stats');
+    plotterState.ok = false;
+    plotterSetNotes([]);
+    if (!plotterState.file) {
+        plotterState.paths = null;
+        plotterUpdateGenerateEnabled();
+        if (statsEl) statsEl.textContent = '';
+        plotterSetStatus(t('plotterNoImage'));
+        plotterDrawPreview();
+        return;
+    }
+    const wOk = plotterNum('plotter-width', 0) >= 5 && plotterNum('plotter-height', 0) >= 5;
+    if (!wOk) return;
+    const controller = new AbortController();
+    plotterState.abort = controller;
+    plotterState.paths = null;
+    if (statsEl) statsEl.textContent = '';
+    plotterUpdateGenerateEnabled();
+    plotterDrawPreview();
+    plotterSetStatus(t('plotterProcessing'));
+    try {
+        const response = await fetch('/api/plotter/preview', { method: 'POST', body: plotterFormData(false), signal: controller.signal });
+        if (!response.ok) throw new Error(await plotterErrorText(response));
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        plotterState.paths = data.paths || [];
+        const s = data.stats || {};
+        plotterState.ok = plotterState.paths.length > 0;
+        if (statsEl) statsEl.textContent = t('plotterStats')
+            .replace('{strokes}', s.strokes ?? 0)
+            .replace('{mm}', Number(s.drawn_mm || 0).toFixed(0))
+            .replace('{travel}', Number(s.travel_mm || 0).toFixed(0))
+            .replace('{min}', Number(s.minutes || 0).toFixed(1));
+        plotterSetStatus(plotterState.ok ? '' : t('plotterNoStrokes'), plotterState.ok ? '' : 'notice');
+        plotterSetNotes(data.notes);
+    } catch (error) {
+        if (error.name === 'AbortError') return;
+        plotterState.paths = null;
+        if (statsEl) statsEl.textContent = '';
+        const message = error.message || t('plotterError');
+        // Una fotografía no es un fallo: se explica con calma.
+        if (/fotograf/i.test(message)) plotterSetStatus(t('plotterPhoto'), 'notice');
+        else plotterSetStatus(message, 'error');
+    }
+    plotterUpdateGenerateEnabled();
+    plotterDrawPreview();
+}
+
+const PLOTTER_FINE_IDS = ['plotter-smoothing', 'plotter-cleanup', 'plotter-detail'];
+function plotterFineSync() {
+    PLOTTER_FINE_IDS.forEach(id => {
+        const input = plotterEl(id);
+        const out = plotterEl(`${id}-out`);
+        if (input && out) out.textContent = Number(input.value).toFixed(1);
+    });
+}
+function plotterFineReset() {
+    PLOTTER_FINE_IDS.forEach(id => {
+        const input = plotterEl(id);
+        if (input) input.value = input.dataset.fineDefault || 1;
+    });
+    plotterFineSync();
+}
+PLOTTER_FINE_IDS.forEach(id => {
+    plotterEl(id)?.addEventListener('input', () => {
+        plotterFineSync();
+        if (plotterState.file) plotterSchedulePreview();
+    });
+});
+plotterEl('plotter-fine-reset')?.addEventListener('click', () => {
+    plotterFineReset();
+    if (plotterState.file) plotterSchedulePreview();
+});
+
+function plotterSchedulePreview() {
+    clearTimeout(plotterState.timer);
+    plotterUpdateGenerateEnabled();
+    plotterDrawPreview();
+    plotterState.timer = setTimeout(plotterRunPreview, 500);
+}
+
+function plotterSetFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type || '')) {
+        plotterSetStatus(t('plotterError'), true);
+        return;
+    }
+    plotterState.file = file;
+    plotterState.ok = false;
+    plotterSetImageUrl(file);
+    const nameInput = plotterEl('plotter-name');
+    if (nameInput && !plotterState.nameTouched) nameInput.value = file.name.replace(/\.[^.]+$/, '');
+    plotterSchedulePreview();
+}
+
+function plotterTrapFocus(event) {
+    const modal = plotterEl('plotter-modal');
+    if (!modal?.classList.contains('active')) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closePlotterModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll('button, input, summary, [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function openPlotterModal(fromWizard = false) {
+    const modal = plotterEl('plotter-modal');
+    if (!modal) return;
+    plotterState.opener = document.activeElement;
+    plotterState.fromWizard = fromWizard;
+    plotterState.file = null;
+    plotterState.nameTouched = false;
+    plotterState.paths = null;
+    plotterEl('plotter-file').value = '';
+    plotterEl('plotter-name').value = '';
+    plotterState.ok = false;
+    plotterSetImageUrl(null);
+    plotterSetNotes([]);
+    plotterSetView('overlay');
+    plotterEl('plotter-width').value = 80;
+    plotterEl('plotter-height').value = 80;
+    plotterEl('plotter-stats').textContent = '';
+    plotterLoadPen();
+    plotterFineReset();
+    plotterSetStatus(t('plotterNoImage'));
+    plotterUpdateGenerateEnabled();
+    modal.classList.add('active');
+    plotterDrawPreview();
+    document.addEventListener('keydown', plotterTrapFocus, true);
+    plotterEl('plotter-file').focus();
+}
+
+function closePlotterModal() {
+    clearTimeout(plotterState.timer);
+    if (plotterState.abort) plotterState.abort.abort();
+    plotterState.abort = null;
+    plotterSetImageUrl(null);
+    plotterEl('plotter-modal')?.classList.remove('active');
+    document.removeEventListener('keydown', plotterTrapFocus, true);
+    const opener = plotterState.opener;
+    plotterState.opener = null;
+    if (opener && typeof opener.focus === 'function' && document.contains(opener)) opener.focus();
+}
+
+function plotterSelectInWizard(info) {
+    cncWizardState.selectedFile = info;
+    cncWizardState.bounds = null;
+    const note = plotterEl('cnc-wizard-selected-note');
+    if (note) {
+        note.textContent = t('plotterSelectedNote').replace('{name}', info.path);
+        note.hidden = false;
+    }
+    document.querySelectorAll('#cnc-wizard-file-list .cnc-wizard-file-row').forEach(r => r.classList.remove('selected'));
+    updateCncWizardNextEnabled();
+}
+
+async function plotterGenerate() {
+    if (!plotterState.file || plotterState.busy) return;
+    const btn = plotterEl('plotter-generate-btn');
+    plotterState.busy = true;
+    plotterUpdateGenerateEnabled();
+    const label = btn.textContent;
+    btn.textContent = t('plotterGenerating');
+    plotterSavePen();
+    try {
+        const response = await fetch('/api/plotter/generate', { method: 'POST', body: plotterFormData(true) });
+        if (!response.ok) throw new Error(await plotterErrorText(response));
+        const data = await response.json();
+        const savedPath = data.path || `Dibujos/${data.filename}`;
+        const fromWizard = plotterState.fromWizard;
+        showToast(t('plotterSaved').replace('{path}', savedPath));
+        closePlotterModal();
+        renderCncFilesTable();
+        if (document.getElementById('cnc-wizard-modal')?.classList.contains('active')) renderCncWizardFileList();
+        if (fromWizard) {
+            try {
+                const folder = savedPath.includes('/') ? savedPath.slice(0, savedPath.lastIndexOf('/')) : '';
+                const listing = await (await fetch(`/api/browse?path=${encodeURIComponent(folder)}&type=gcode`)).json();
+                const file = (listing.files || []).find(f => stripSectionPrefix(f.id, 'gcode') === savedPath)
+                    || (listing.files || []).find(f => f.name === data.filename);
+                if (file) {
+                    plotterSelectInWizard({ id: file.id, url: file.file_url, name: file.name, path: stripSectionPrefix(file.id, 'gcode') });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    } catch (error) {
+        plotterSetStatus(error.message || t('plotterError'), true);
+    } finally {
+        plotterState.busy = false;
+        btn.textContent = label;
+        plotterUpdateGenerateEnabled();
+    }
+}
+
+(function initPlotterModal() {
+    const modal = plotterEl('plotter-modal');
+    if (!modal) return;
+    plotterEl('cnc-files-plotter-btn')?.addEventListener('click', () => openPlotterModal(false));
+    plotterEl('cnc-wizard-plotter-btn')?.addEventListener('click', () => openPlotterModal(true));
+    plotterEl('plotter-close-btn').addEventListener('click', closePlotterModal);
+    plotterEl('plotter-cancel-btn').addEventListener('click', closePlotterModal);
+    plotterEl('plotter-backdrop').addEventListener('click', closePlotterModal);
+    plotterEl('plotter-generate-btn').addEventListener('click', plotterGenerate);
+    plotterEl('plotter-file').addEventListener('change', event => plotterSetFile(event.target.files[0]));
+    plotterEl('plotter-name').addEventListener('input', () => { plotterState.nameTouched = true; });
+    const dz = plotterEl('plotter-dropzone');
+    ['dragenter', 'dragover'].forEach(name => dz.addEventListener(name, event => { event.preventDefault(); dz.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(name => dz.addEventListener(name, event => { event.preventDefault(); dz.classList.remove('dragover'); }));
+    dz.addEventListener('drop', event => plotterSetFile(event.dataTransfer?.files?.[0]));
+    ['plotter-width', 'plotter-height', 'plotter-feed', 'plotter-travel'].forEach(id => {
+        plotterEl(id).addEventListener('input', plotterSchedulePreview);
+    });
+    document.querySelectorAll('.plotter-seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => plotterSetView(btn.dataset.view));
+        btn.addEventListener('keydown', event => {
+            const order = ['trace', 'overlay', 'original'];
+            const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+            if (!step) return;
+            event.preventDefault();
+            const next = order[(order.indexOf(btn.dataset.view) + step + order.length) % order.length];
+            plotterSetView(next);
+            document.querySelector(`.plotter-seg-btn[data-view="${next}"]`)?.focus();
+        });
+    });
+    ['plotter-pen-up', 'plotter-pen-down', 'plotter-plunge'].forEach(id => plotterEl(id).addEventListener('input', plotterSavePen));
+    ['plotter-feed', 'plotter-travel'].forEach(id => plotterEl(id).addEventListener('change', plotterSavePen));
+    plotterEl('plotter-exceed-ack').addEventListener('change', plotterUpdateGenerateEnabled);
+})();
+
 function openCncWizardModal() {
     cncWizardState = { selectedFile: null, originConfirmed: false, fitOk: null, bounds: null };
     const searchInput = document.getElementById('cnc-wizard-file-search');
     if (searchInput) searchInput.value = '';
+    const selectedNote = document.getElementById('cnc-wizard-selected-note');
+    if (selectedNote) selectedNote.hidden = true;
     showCncWizardStep(1);
     renderCncWizardFileList();
     document.getElementById('cnc-wizard-modal')?.classList.add('active');
@@ -15535,7 +17555,9 @@ document.getElementById('cnc-files-add-btn')?.addEventListener('click', () => {
     document.getElementById('cnc-files-upload-input')?.click();
 });
 
-document.getElementById('cnc-settings-btn')?.addEventListener('click', () => switchSection('settings'));
+// El engrane de la página CNC abre los parámetros GRBL ($$) de la máquina CNC activa.
+document.getElementById('cnc-settings-btn')?.addEventListener('click', () => openLaserSettingsModal('cnc'));
+document.getElementById('cnc-settings-btn')?.setAttribute('aria-label', t('laserSettings'));
 
 document.querySelectorAll('#laser-power-presets .laser-step-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -17320,6 +19342,8 @@ async function openMarlinPrinterModal(device) {
     const nameEl = document.getElementById('marlin-printer-modal-name');
     if (nameEl) nameEl.textContent = (entry && entry.name) || device;
     document.getElementById('marlin-printer-modal')?.classList.add('active');
+    // Orden y módulos ocultos que eligió el usuario en "Personalizar Módulos".
+    applyPrinterModulesLayout('marlin');
 
     // La cámara se vincula por el id interno de la impresora, no por la ruta USB.
     const cameraContainer = document.getElementById('marlin-printer-modal-camera');
@@ -17332,7 +19356,7 @@ async function openMarlinPrinterModal(device) {
         consoleContainer.innerHTML = `
             <div class="temp-card">
                 <div class="temp-card-header">
-                    <div class="temp-card-header-left">
+                    <div class="temp-card-header-left" role="heading" aria-level="3">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>
                         <span>${t('console')}</span>
                     </div>
@@ -17378,7 +19402,7 @@ function renderMarlinToolheadCard(data, device) {
     container.innerHTML = `
         <div class="temp-card toolhead-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span>${t('toolhead')}</span>
                 </div>
@@ -17555,7 +19579,7 @@ function renderMarlinTemperaturesCard(data, device) {
     container.innerHTML = `
         <div class="temp-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
                     <span>${t('temperatures')}</span>
                 </div>
@@ -17702,7 +19726,7 @@ async function renderMarlinPrintCardShell(device) {
     container.innerHTML = `
         <div class="temp-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                     <span>${t('marlinPrinterPrintTitle')}</span>
                 </div>
@@ -17874,8 +19898,8 @@ const TOUR_STEPS = {
     ],
     queue: [
         { selector: '#search-recent', titleKey: 'tourQueue1Title', bodyKey: 'tourQueue1Body' },
-        { selector: '#models', titleKey: 'tourQueue2Title', bodyKey: 'tourQueue2Body' },
-        { selector: '#laser-history-list', titleKey: 'tourQueue3Title', bodyKey: 'tourQueue3Body' },
+        { selector: '#jh-list-wrap', titleKey: 'tourQueue2Title', bodyKey: 'tourQueue2Body' },
+        { selector: '#jh-side', titleKey: 'tourQueue3Title', bodyKey: 'tourQueue3Body' },
     ],
     pricing: [
         { selector: '#pricing-new-quote-btn', titleKey: 'tourPricing1Title', bodyKey: 'tourPricing1Body' },
@@ -18152,6 +20176,9 @@ function switchSection(sectionName) {
     if (sectionName === 'models') {
         loadModelsFolder(currentModelsPath);
     }
+    if (sectionName === 'queue') {
+        refreshJobHistory();
+    }
     if (sectionName === 'gcode') {
         loadGcodeFolder(currentGcodePath);
     }
@@ -18274,6 +20301,24 @@ navItems.forEach(item => {
         setMobileNavOpen(false);
     });
 });
+
+// El logo lleva al Panel de Control desde cualquier sección o plugin, igual
+// que "Inicio" (mismo switchSection + cierre del cajón móvil).
+(function bindBrandLogoHome() {
+    const logo = document.getElementById('brand-logo-home');
+    if (!logo) return;
+    const irAlPanel = () => {
+        switchSection('dashboard');
+        setMobileNavOpen(false);
+    };
+    logo.addEventListener('click', irAlPanel);
+    logo.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            irAlPanel();
+        }
+    });
+})();
 
 // ── Galería de plugins ──
 const pluginsGrid = document.getElementById('plugins-grid');
@@ -20811,7 +22856,6 @@ loadModels();
 loadPrinters();
 loadDashboardStandalonePrinters();
 loadRecentPrinterFiles();
-loadLaserHistory();
 loadDashboardPanel();
 updatePanelClock();
 refreshDashboardLaserCard();

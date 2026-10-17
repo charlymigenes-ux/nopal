@@ -18,8 +18,10 @@ from backend.services.laser_service import (
     get_board_info,
     start_job,
     get_job_status,
+    get_last_finished_job,
     get_active_job_hosts,
     pause_job,
+    adjust_job_z,
     resume_job,
     cancel_job,
     send_raw_command,
@@ -51,6 +53,8 @@ from backend.services.laser_service import (
     clear_sd_upload_progress,
     sd_format_card,
     start_sd_job,
+    start_job_via_sd,
+    sd_card_present,
     has_sd_card,
     get_laser_history,
     attach_laser_history_snapshot,
@@ -305,11 +309,40 @@ async def laser_job_start_endpoint(path: str = Form(...), host: Optional[str] = 
         gcode_text = handle.read()
 
     try:
-        job = start_job(target, gcode_text, filename=os.path.basename(path))
+        job = start_job(target, gcode_text, filename=os.path.basename(path), user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
     return job
+
+
+@router.get("/api/laser/sd/status")
+async def laser_sd_status_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
+    """¿La placa tiene una tarjeta SD lista? (la pantalla ofrece correr desde la SD si la hay)."""
+    target = _require_host(host)
+    loop = asyncio.get_event_loop()
+    return {"present": await loop.run_in_executor(None, sd_card_present, target)}
+
+
+@router.post("/api/laser/job/start-sd")
+async def laser_job_start_sd_endpoint(path: str = Form(...), host: Optional[str] = Form(None),
+                                      user: dict = Depends(require_auth)):
+    """Corre un archivo de la biblioteca DESDE la SD de la placa: lo sube y lo arranca ahí. Es más
+    firme que el envío línea por línea por WiFi (el trabajo corre dentro de la placa). No admite el
+    ajuste de Z en vivo (NOPAL ya no ve las líneas)."""
+    target = _require_host(host)
+    file_path = safe_section_path("gcode", path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    loop = asyncio.get_event_loop()
+    if not await loop.run_in_executor(None, sd_card_present, target):
+        raise HTTPException(status_code=409, detail="La placa no tiene una tarjeta SD lista")
+    with open(file_path, "rb") as handle:
+        data = handle.read()
+    try:
+        return start_job_via_sd(target, os.path.basename(path), data, check_sd=False, user=user.get("username", ""))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.post("/api/laser/job/frame")
@@ -349,7 +382,7 @@ async def laser_job_frame_endpoint(
 
     try:
         job = start_job(target, build_frame_gcode(bounds, power=power),
-                        filename=f"encuadre · {os.path.basename(path)}")
+                        filename=f"encuadre · {os.path.basename(path)}", user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -361,12 +394,32 @@ async def laser_job_status_endpoint(host: Optional[str] = None, user: dict = Dep
     return await get_job_status(_require_host(host))
 
 
+@router.get("/api/laser/job/last")
+async def laser_job_last_endpoint(host: Optional[str] = None, user: dict = Depends(require_auth)):
+    """Último trabajo terminado (error/cancelado/completado) de esa placa, o
+    {"job": null}. Lo usa la tarjeta TRABAJO de CNC para avisar cómo acabó."""
+    return {"job": get_last_finished_job(_require_host(host))}
+
+
 @router.get("/api/laser/jobs/active")
 async def laser_active_jobs_endpoint(user: dict = Depends(require_auth)):
     """Todos los hosts con un trabajo propio en curso ahora mismo — para que
     el frontend no pierda de vista un corte activo aunque el usuario esté
     viendo otro láser/CNC en la interfaz."""
     return {"jobs": get_active_job_hosts()}
+
+
+@router.post("/api/laser/job/z-offset")
+async def laser_job_z_offset_endpoint(delta: float = Form(...), host: Optional[str] = Form(None),
+                                      user: dict = Depends(require_auth)):
+    """Ajuste de Z en vivo (plotter): suma `delta` mm a la Z de lápiz abajo para los trazos que faltan."""
+    if not -1.0 <= delta <= 1.0:
+        raise HTTPException(status_code=400, detail="El paso del ajuste debe estar entre -1 y 1 mm")
+    try:
+        offset = await adjust_job_z(_require_host(host), delta)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"success": True, "z_offset": offset}
 
 
 @router.post("/api/laser/job/pause")
@@ -496,7 +549,7 @@ async def laser_queue_start_endpoint(id: int = Form(...), host: Optional[str] = 
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
             gcode_text = handle.read()
-        job = start_job(target, gcode_text, filename=entry["filename"])
+        job = start_job(target, gcode_text, filename=entry["filename"], user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -537,7 +590,7 @@ async def laser_sd_run_endpoint(
         # eventos real (mismo criterio que start_job en /api/laser/queue/start,
         # unas líneas más arriba en este archivo) -- en un hilo de executor
         # no habría loop corriendo y create_task fallaría.
-        return start_sd_job(target, full_path)
+        return start_sd_job(target, full_path, user=user.get("username", ""))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
 

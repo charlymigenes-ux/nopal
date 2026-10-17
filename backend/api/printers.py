@@ -31,6 +31,7 @@ from backend.services.klipper_service import (
 )
 
 logger = logging.getLogger(__name__)
+from backend.services import job_control_service as job_control
 router = APIRouter()
 
 
@@ -176,6 +177,8 @@ async def send_to_printer_endpoint(
     result = send_gcode_to_printer(port, path, mode, section)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "No se pudo enviar el archivo"))
+    if mode != "queue":
+        job_control.record_print_sent("klipper", f"klipper:{port}", str(port), path, user.get("username", ""))
     return result
 
 
