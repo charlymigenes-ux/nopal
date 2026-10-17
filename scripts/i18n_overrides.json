@@ -32,6 +32,10 @@
       "en": "Use this one",
       "text": "Diese verwenden"
     },
+    "brandGoHome": {
+      "en": "Go to the main panel",
+      "text": "Zum Hauptpanel"
+    },
     "clearSelection": {
       "en": "Clear selection",
       "text": "Auswahl aufheben"
@@ -52,13 +56,65 @@
       "en": "Feed Override",
       "text": "Vorschub-Override"
     },
+    "cncGrblAlarm3": {
+      "en": "alarm: reset while the machine was moving; run home",
+      "text": "Alarm: Reset, während sich die Maschine bewegte; führen Sie eine Referenzfahrt (Homing) aus"
+    },
+    "cncGrblErr9": {
+      "en": "the machine is in alarm or locked: unlock it or run home",
+      "text": "die Maschine ist im Alarmzustand oder gesperrt: entsperren Sie sie oder führen Sie eine Referenzfahrt (Homing) aus"
+    },
+    "cncJobCancelledBody": {
+      "en": "Cancelled: {file} (reached line {line})",
+      "text": "Abgebrochen: {file} (bis Zeile {line})"
+    },
+    "cncJobDismiss": {
+      "en": "Dismiss notice",
+      "text": "Hinweis schließen"
+    },
+    "cncJobDoneBody": {
+      "en": "Finished: {file}, {total} lines",
+      "text": "Abgeschlossen: {file}, {total} Zeilen"
+    },
     "cncRun": {
       "en": "Run",
       "text": "Ausführen"
     },
+    "cncSdUploadStarted": {
+      "en": "Uploading the job to the SD card",
+      "text": "Auftrag wird auf die SD-Karte hochgeladen"
+    },
     "cncSetupSummaryWorkType": {
       "en": "Job type",
       "text": "Auftragsart"
+    },
+    "cncSimLoading": {
+      "en": "Processing toolpath…",
+      "text": "Werkzeugweg wird verarbeitet…"
+    },
+    "cncSimPenDown": {
+      "en": "Pen down",
+      "text": "Stift unten"
+    },
+    "cncSimPenUp": {
+      "en": "Pen up",
+      "text": "Stift oben"
+    },
+    "cncSimPlay": {
+      "en": "Play",
+      "text": "Abspielen"
+    },
+    "cncSimRestart": {
+      "en": "Restart",
+      "text": "Neu starten"
+    },
+    "cncSimTravel": {
+      "en": "Travel distance",
+      "text": "Verfahrweg"
+    },
+    "cncSimTruncated": {
+      "en": "File too large: simulating the first {n} moves (up to line {line} of {total}).",
+      "text": "Datei zu groß: Es werden nur die ersten {n} Bewegungen simuliert (bis Zeile {line} von {total})."
     },
     "devFeed": {
       "en": "Feed",
@@ -232,6 +288,86 @@
       "en": "Customize Help Page",
       "text": "Hilfeseite anpassen"
     },
+    "jhControlEmpty": {
+      "en": "No job has been deleted yet.",
+      "text": "Es wurde noch kein Auftrag gelöscht."
+    },
+    "jhControlLogSub": {
+      "en": "Jobs removed from the history, by whom, when and why.",
+      "text": "Aus dem Verlauf entfernte Aufträge: von wem, wann und warum."
+    },
+    "jhDeleteDone": {
+      "en": "Job deleted from the history.",
+      "text": "Auftrag aus dem Verlauf gelöscht."
+    },
+    "jhDeleteFail": {
+      "en": "The job could not be deleted.",
+      "text": "Der Auftrag konnte nicht gelöscht werden."
+    },
+    "jhDeleteTitle": {
+      "en": "Delete job from history",
+      "text": "Auftrag aus dem Verlauf löschen"
+    },
+    "jhEmpty": {
+      "en": "There are no jobs in the history yet.",
+      "text": "Der Verlauf enthält noch keine Aufträge."
+    },
+    "jhEmptyFiltered": {
+      "en": "No jobs match the filters.",
+      "text": "Keine Aufträge entsprechen den Filtern."
+    },
+    "jhFilterGroup": {
+      "en": "Filter by job type",
+      "text": "Nach Auftragstyp filtern"
+    },
+    "jhJobMany": {
+      "en": "jobs",
+      "text": "Aufträge"
+    },
+    "jhJobOne": {
+      "en": "job",
+      "text": "Auftrag"
+    },
+    "jhNew3d": {
+      "en": "New 3D",
+      "text": "Neuer 3D-Druck"
+    },
+    "jhNewCnc": {
+      "en": "New CNC",
+      "text": "Neue CNC"
+    },
+    "jhPeriodAll": {
+      "en": "All history",
+      "text": "Gesamter Verlauf"
+    },
+    "jhRecent": {
+      "en": "Recent jobs",
+      "text": "Letzte Aufträge"
+    },
+    "jhReprint": {
+      "en": "Reprint",
+      "text": "Erneut drucken"
+    },
+    "jhReprintConfirm": {
+      "en": "Reprint",
+      "text": "Erneut drucken"
+    },
+    "jhReprintPick": {
+      "en": "Choose the machine to run it on",
+      "text": "Wählen Sie die Maschine aus, auf der er ausgeführt werden soll"
+    },
+    "jhReprintTitle": {
+      "en": "Reprint job",
+      "text": "Auftrag erneut ausführen"
+    },
+    "jhStateRunning": {
+      "en": "Running",
+      "text": "Läuft"
+    },
+    "jhTitle": {
+      "en": "Job history",
+      "text": "Auftragsverlauf"
+    },
     "laserAirAssistOff": {
       "en": "Turn off air",
       "text": "Luft ausschalten"
@@ -368,6 +504,50 @@
       "en": "Check warnings",
       "text": "Warnungen prüfen"
     },
+    "plotterFeed": {
+      "en": "Drawing (mm/min)",
+      "text": "Zeichnen (mm/min)"
+    },
+    "plotterFineCleanup": {
+      "en": "Small detail cleanup",
+      "text": "Bereinigung kleiner Details"
+    },
+    "plotterFineCleanupLo": {
+      "en": "Keep everything",
+      "text": "Alles behalten"
+    },
+    "plotterOpen": {
+      "en": "Image to drawing",
+      "text": "Bild in Zeichnung"
+    },
+    "plotterPenDown": {
+      "en": "Z down (mm)",
+      "text": "Z unten (mm)"
+    },
+    "plotterPlunge": {
+      "en": "Plunge (mm/min)",
+      "text": "Absenken (mm/min)"
+    },
+    "plotterSaved": {
+      "en": "Drawing saved to the Library: {path}",
+      "text": "Zeichnung in der Bibliothek gespeichert: {path}"
+    },
+    "plotterStats": {
+      "en": "Strokes: {strokes} · Drawn: {mm} mm · Travel: {travel} mm · Estimated time: {min} min",
+      "text": "Striche: {strokes} · Gezeichnet: {mm} mm · Verfahrweg: {travel} mm · Geschätzte Zeit: {min} min"
+    },
+    "plotterTitle": {
+      "en": "Image to drawing",
+      "text": "Bild in Zeichnung"
+    },
+    "plotterTravel": {
+      "en": "Travel (mm/min)",
+      "text": "Eilgang (mm/min)"
+    },
+    "plotterViewTrace": {
+      "en": "Trace",
+      "text": "Linien"
+    },
     "printQueue": {
       "en": "Job History",
       "text": "Auftragsverlauf"
@@ -387,6 +567,14 @@
     "settingsModuleCustomizerEmptyGroupHint": {
       "en": "Drag cards here",
       "text": "Karten hierher ziehen"
+    },
+    "spoolModuleOpen": {
+      "en": "Open Materials",
+      "text": "Materialien öffnen"
+    },
+    "spoolModuleRemaining": {
+      "en": "Remaining",
+      "text": "Verbleibend"
     },
     "systemControlRestartNopal": {
       "en": "Restart NOPAL",
@@ -443,6 +631,26 @@
     "usersRemoveConfirm": {
       "en": "Remove this user? They will no longer be able to sign in.",
       "text": "Diesen Benutzer entfernen? Er kann sich danach nicht mehr anmelden."
+    },
+    "zOffsetError": {
+      "en": "Could not adjust the pen Z.",
+      "text": "Das Z des Stifts konnte nicht angepasst werden."
+    },
+    "zOffsetNone": {
+      "en": "Pen down: no adjustment",
+      "text": "Stift unten: keine Anpassung"
+    },
+    "zOffsetReset": {
+      "en": "Clear adjustment",
+      "text": "Anpassung zurücksetzen"
+    },
+    "zOffsetResetAria": {
+      "en": "Clear the pen Z adjustment",
+      "text": "Z-Anpassung des Stifts zurücksetzen"
+    },
+    "zOffsetValue": {
+      "en": "Pen down: adjustment {v} mm",
+      "text": "Stift unten: Anpassung {v} mm"
     }
   },
   "fr": {
@@ -466,6 +674,10 @@
       "en": "Bed",
       "text": "Plateau"
     },
+    "brandGoHome": {
+      "en": "Go to the main panel",
+      "text": "Aller au panneau principal"
+    },
     "cncFeed": {
       "en": "Feed",
       "text": "Avance"
@@ -478,13 +690,93 @@
       "en": "Feed Override",
       "text": "Correction d'avance"
     },
+    "cncGrblAlarm3": {
+      "en": "alarm: reset while the machine was moving; run home",
+      "text": "alarme : réinitialisation pendant que la machine bougeait ; lancez le homing (prise d'origine)"
+    },
+    "cncGrblAlarm7": {
+      "en": "alarm: homing failed (door opened)",
+      "text": "alarme : échec du homing (porte ouverte)"
+    },
+    "cncGrblAlarm8": {
+      "en": "alarm: homing failed (limit switch was not triggered)",
+      "text": "alarme : échec du homing (le fin de course n'a pas été déclenché)"
+    },
+    "cncGrblAlarm9": {
+      "en": "alarm: homing failed (limit switch not found)",
+      "text": "alarme : échec du homing (fin de course introuvable)"
+    },
+    "cncGrblErr15": {
+      "en": "the move goes outside the allowed work area",
+      "text": "le déplacement sort de la zone de travail autorisée"
+    },
+    "cncGrblErr22": {
+      "en": "feed rate F is missing",
+      "text": "la vitesse d'avance F est absente"
+    },
+    "cncGrblErr9": {
+      "en": "the machine is in alarm or locked: unlock it or run home",
+      "text": "la machine est en alarme ou verrouillée : déverrouillez-la ou lancez le homing (prise d'origine)"
+    },
+    "cncJobCancelledBody": {
+      "en": "Cancelled: {file} (reached line {line})",
+      "text": "Annulé : {file} (arrêté à la ligne {line})"
+    },
+    "cncJobDismiss": {
+      "en": "Dismiss notice",
+      "text": "Fermer l'avis"
+    },
+    "cncJobDoneBody": {
+      "en": "Finished: {file}, {total} lines",
+      "text": "Terminé : {file}, {total} lignes"
+    },
     "cncJobStarted": {
       "en": "Job started",
       "text": "Travail démarré"
     },
+    "cncSdLabel": {
+      "en": "Run from the board's SD card (recommended)",
+      "text": "Lancer depuis la carte SD du contrôleur (recommandé)"
+    },
+    "cncSdUnavailable": {
+      "en": "Cannot run from the board's SD card.",
+      "text": "Impossible de lancer depuis la carte SD du contrôleur."
+    },
+    "cncSdUploadStarted": {
+      "en": "Uploading the job to the SD card",
+      "text": "Envoi du travail vers la carte SD"
+    },
+    "cncSdUploading": {
+      "en": "Uploading to SD… {percent} %",
+      "text": "Envoi vers la SD… {percent} %"
+    },
     "cncSetupSummaryWorkType": {
       "en": "Job type",
       "text": "Type de travail"
+    },
+    "cncSimEmpty": {
+      "en": "Select a file in FILES to simulate it",
+      "text": "Sélectionnez un fichier dans FICHIERS pour le simuler"
+    },
+    "cncSimPenUp": {
+      "en": "Pen up",
+      "text": "Stylo levé"
+    },
+    "cncSimPlay": {
+      "en": "Play",
+      "text": "Lecture"
+    },
+    "cncSimSeek": {
+      "en": "Simulation position",
+      "text": "Position de la simulation"
+    },
+    "cncSimTravel": {
+      "en": "Travel distance",
+      "text": "Distance de déplacement"
+    },
+    "cncSimTruncated": {
+      "en": "File too large: simulating the first {n} moves (up to line {line} of {total}).",
+      "text": "Fichier trop volumineux : simulation des {n} premiers mouvements (jusqu'à la ligne {line} sur {total})."
     },
     "devBed": {
       "en": "Bed",
@@ -558,6 +850,74 @@
       "en": "Home",
       "text": "Accueil"
     },
+    "jhControlLogSub": {
+      "en": "Jobs removed from the history, by whom, when and why.",
+      "text": "Travaux retirés de l'historique : par qui, quand et pourquoi."
+    },
+    "jhEmpty": {
+      "en": "There are no jobs in the history yet.",
+      "text": "L'historique ne contient pas encore de travaux."
+    },
+    "jhEmptyFiltered": {
+      "en": "No jobs match the filters.",
+      "text": "Aucun travail ne correspond aux filtres."
+    },
+    "jhExport": {
+      "en": "Export summary",
+      "text": "Exporter le résumé"
+    },
+    "jhFilterGroup": {
+      "en": "Filter by job type",
+      "text": "Filtrer par type de travail"
+    },
+    "jhJobMany": {
+      "en": "jobs",
+      "text": "travaux"
+    },
+    "jhMenuLabel": {
+      "en": "More actions",
+      "text": "Plus d'actions"
+    },
+    "jhNew3d": {
+      "en": "New 3D",
+      "text": "Nouveau 3D"
+    },
+    "jhPage": {
+      "en": "Page",
+      "text": "Page"
+    },
+    "jhPeriodAll": {
+      "en": "All history",
+      "text": "Tout l'historique"
+    },
+    "jhRecent": {
+      "en": "Recent jobs",
+      "text": "Travaux récents"
+    },
+    "jhReprint": {
+      "en": "Reprint",
+      "text": "Réimprimer"
+    },
+    "jhReprintConfirm": {
+      "en": "Reprint",
+      "text": "Relancer"
+    },
+    "jhReprintOriginal": {
+      "en": "Original machine",
+      "text": "Machine d'origine"
+    },
+    "jhReprintTitle": {
+      "en": "Reprint job",
+      "text": "Relancer le travail"
+    },
+    "jhStateRunning": {
+      "en": "Running",
+      "text": "En cours"
+    },
+    "jhTitle": {
+      "en": "Job history",
+      "text": "Historique des travaux"
+    },
     "laserBoardInfo": {
       "en": "Board information",
       "text": "Informations sur la carte"
@@ -618,6 +978,58 @@
       "en": "No active jobs.",
       "text": "Aucun travail actif."
     },
+    "plotterFineCleanupLo": {
+      "en": "Keep everything",
+      "text": "Tout conserver"
+    },
+    "plotterGenerating": {
+      "en": "Generating…",
+      "text": "Génération…"
+    },
+    "plotterImage": {
+      "en": "Image",
+      "text": "Image"
+    },
+    "plotterOpen": {
+      "en": "Image to drawing",
+      "text": "Image en dessin"
+    },
+    "plotterPenDown": {
+      "en": "Z down (mm)",
+      "text": "Z bas (mm)"
+    },
+    "plotterPenSection": {
+      "en": "Pen and speeds",
+      "text": "Stylo et vitesses"
+    },
+    "plotterPenUp": {
+      "en": "Z up (mm)",
+      "text": "Z haut (mm)"
+    },
+    "plotterPlunge": {
+      "en": "Plunge (mm/min)",
+      "text": "Descente (mm/min)"
+    },
+    "plotterProcessing": {
+      "en": "Analyzing the image… (the first time takes a few seconds)",
+      "text": "Analyse de l'image… (la première fois, cela prend quelques secondes)"
+    },
+    "plotterStats": {
+      "en": "Strokes: {strokes} · Drawn: {mm} mm · Travel: {travel} mm · Estimated time: {min} min",
+      "text": "Tracés : {strokes} · Dessiné : {mm} mm · Déplacement : {travel} mm · Temps estimé : {min} min"
+    },
+    "plotterTitle": {
+      "en": "Image to drawing",
+      "text": "Image en dessin"
+    },
+    "plotterViewTrace": {
+      "en": "Trace",
+      "text": "Tracé"
+    },
+    "plotterWizardBtn": {
+      "en": "Convert image to drawing",
+      "text": "Convertir l'image en dessin"
+    },
     "printQueue": {
       "en": "Job History",
       "text": "Historique des travaux"
@@ -625,6 +1037,14 @@
     "settingsModuleGroupDefaultHelp": {
       "en": "Help",
       "text": "Aide"
+    },
+    "spoolModuleFilament": {
+      "en": "Filament",
+      "text": "Filament"
+    },
+    "spoolModuleOpen": {
+      "en": "Open Materials",
+      "text": "Ouvrir Matériaux"
     },
     "systemControlHostSection": {
       "en": "Host control",
@@ -649,6 +1069,14 @@
     "updatesAvailable": {
       "en": "Update available",
       "text": "Mise à jour disponible"
+    },
+    "zOffsetError": {
+      "en": "Could not adjust the pen Z.",
+      "text": "Impossible de régler le Z du stylo."
+    },
+    "zOffsetReset": {
+      "en": "Clear adjustment",
+      "text": "Effacer le réglage"
     }
   },
   "pt-BR": {
@@ -672,6 +1100,10 @@
       "en": "What jobs are active?",
       "text": "Quais trabalhos estão ativos?"
     },
+    "brandGoHome": {
+      "en": "Go to the main panel",
+      "text": "Ir para o painel principal"
+    },
     "cncFeed": {
       "en": "Feed",
       "text": "Avanço"
@@ -684,9 +1116,85 @@
       "en": "Feed Override",
       "text": "Ajuste de avanço"
     },
+    "cncGrblAlarm3": {
+      "en": "alarm: reset while the machine was moving; run home",
+      "text": "alarme: reset enquanto a máquina estava em movimento; execute o homing (referenciamento)"
+    },
+    "cncGrblAlarm7": {
+      "en": "alarm: homing failed (door opened)",
+      "text": "alarme: falha no homing (porta aberta)"
+    },
+    "cncGrblAlarm8": {
+      "en": "alarm: homing failed (limit switch was not triggered)",
+      "text": "alarme: falha no homing (o fim de curso não foi acionado)"
+    },
+    "cncGrblAlarm9": {
+      "en": "alarm: homing failed (limit switch not found)",
+      "text": "alarme: falha no homing (fim de curso não encontrado)"
+    },
+    "cncGrblErr15": {
+      "en": "the move goes outside the allowed work area",
+      "text": "o movimento sai da área de trabalho permitida"
+    },
+    "cncGrblErr22": {
+      "en": "feed rate F is missing",
+      "text": "falta a velocidade de avanço F"
+    },
+    "cncGrblErr9": {
+      "en": "the machine is in alarm or locked: unlock it or run home",
+      "text": "a máquina está em alarme ou bloqueada: desbloqueie-a ou execute o homing (referenciamento)"
+    },
+    "cncJobDismiss": {
+      "en": "Dismiss notice",
+      "text": "Fechar aviso"
+    },
+    "cncJobDoneBody": {
+      "en": "Finished: {file}, {total} lines",
+      "text": "Concluído: {file}, {total} linhas"
+    },
     "cncRun": {
       "en": "Run",
       "text": "Executar"
+    },
+    "cncSdUploadStarted": {
+      "en": "Uploading the job to the SD card",
+      "text": "Enviando o trabalho para o cartão SD"
+    },
+    "cncSdUploading": {
+      "en": "Uploading to SD… {percent} %",
+      "text": "Enviando para a SD… {percent} %"
+    },
+    "cncSimEmpty": {
+      "en": "Select a file in FILES to simulate it",
+      "text": "Selecione um arquivo em ARQUIVOS para simulá-lo"
+    },
+    "cncSimLoading": {
+      "en": "Processing toolpath…",
+      "text": "Processando o percurso da ferramenta…"
+    },
+    "cncSimPenDown": {
+      "en": "Pen down",
+      "text": "Caneta abaixada"
+    },
+    "cncSimPenUp": {
+      "en": "Pen up",
+      "text": "Caneta levantada"
+    },
+    "cncSimPlay": {
+      "en": "Play",
+      "text": "Reproduzir"
+    },
+    "cncSimTime": {
+      "en": "Time",
+      "text": "Tempo"
+    },
+    "cncSimTravel": {
+      "en": "Travel distance",
+      "text": "Distância de deslocamento"
+    },
+    "cncSimTruncated": {
+      "en": "File too large: simulating the first {n} moves (up to line {line} of {total}).",
+      "text": "Arquivo muito grande: simulando os primeiros {n} movimentos (até a linha {line} de {total})."
     },
     "cncZeroZPlotter": {
       "en": "Pen down (Z=0)",
@@ -768,6 +1276,46 @@
       "en": "Home",
       "text": "Início"
     },
+    "jhControlLogSub": {
+      "en": "Jobs removed from the history, by whom, when and why.",
+      "text": "Trabalhos retirados do histórico: por quem, quando e por quê."
+    },
+    "jhDeleteNotice": {
+      "en": "This is recorded in the control log.",
+      "text": "Isso fica registrado no registro de controle."
+    },
+    "jhEmpty": {
+      "en": "There are no jobs in the history yet.",
+      "text": "Ainda não há trabalhos no histórico."
+    },
+    "jhExport": {
+      "en": "Export summary",
+      "text": "Exportar resumo"
+    },
+    "jhJobMany": {
+      "en": "jobs",
+      "text": "trabalhos"
+    },
+    "jhPeriodAll": {
+      "en": "All history",
+      "text": "Todo o histórico"
+    },
+    "jhRecent": {
+      "en": "Recent jobs",
+      "text": "Trabalhos recentes"
+    },
+    "jhReprintConfirm": {
+      "en": "Reprint",
+      "text": "Reimprimir"
+    },
+    "jhStateRunning": {
+      "en": "Running",
+      "text": "Em andamento"
+    },
+    "jhTitle": {
+      "en": "Job history",
+      "text": "Histórico de trabalhos"
+    },
     "laserBoardInfo": {
       "en": "Board information",
       "text": "Informações da placa"
@@ -816,6 +1364,38 @@
       "en": "Fair",
       "text": "Regular"
     },
+    "plotterFineCleanupLo": {
+      "en": "Keep everything",
+      "text": "Manter tudo"
+    },
+    "plotterOpen": {
+      "en": "Image to drawing",
+      "text": "Imagem em desenho"
+    },
+    "plotterPlunge": {
+      "en": "Plunge (mm/min)",
+      "text": "Descida (mm/min)"
+    },
+    "plotterStats": {
+      "en": "Strokes: {strokes} · Drawn: {mm} mm · Travel: {travel} mm · Estimated time: {min} min",
+      "text": "Traços: {strokes} · Desenhado: {mm} mm · Deslocamento: {travel} mm · Tempo estimado: {min} min"
+    },
+    "plotterTitle": {
+      "en": "Image to drawing",
+      "text": "Imagem em desenho"
+    },
+    "plotterTravel": {
+      "en": "Travel (mm/min)",
+      "text": "Deslocamento (mm/min)"
+    },
+    "plotterViewOriginal": {
+      "en": "Original",
+      "text": "Original"
+    },
+    "plotterViewTrace": {
+      "en": "Trace",
+      "text": "Traçado"
+    },
     "printQueue": {
       "en": "Job History",
       "text": "Histórico de trabalhos"
@@ -823,6 +1403,10 @@
     "printerDiagTestConnection": {
       "en": "Test connection",
       "text": "Testar conexão"
+    },
+    "spoolModuleOpen": {
+      "en": "Open Materials",
+      "text": "Abrir Materiais"
     },
     "tourCnc3Title": {
       "en": "Jog",
@@ -835,6 +1419,14 @@
     "tunascreenScopeNote": {
       "en": "With nothing selected, the device pairs with no access. Only machines NOPAL can recognize reliably appear, even if their IP or USB port changes.",
       "text": "Sem nada selecionado, o dispositivo é pareado sem acesso. Só aparecem as máquinas que o NOPAL reconhece de forma confiável, mesmo que o IP ou a porta USB mudem."
+    },
+    "zOffsetError": {
+      "en": "Could not adjust the pen Z.",
+      "text": "Não foi possível ajustar o Z da caneta."
+    },
+    "zOffsetReset": {
+      "en": "Clear adjustment",
+      "text": "Limpar ajuste"
     }
   }
 }

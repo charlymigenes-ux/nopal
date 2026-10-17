@@ -1027,6 +1027,10 @@
     "en": "Bed",
     "text": "Cama"
   },
+  "brandGoHome": {
+    "en": "Go to the main panel",
+    "text": "Vá para o painel principal"
+  },
   "bulkActionsDisabledHint": {
     "en": "You have multiple files selected — use Move/Delete from the selection bar.",
     "text": "Você tem vários arquivos selecionados – use Mover/Excluir na barra de seleção."
@@ -1123,9 +1127,125 @@
     "en": "Upload",
     "text": "Enviar"
   },
+  "cncGrblAlarm1": {
+    "en": "alarm: a hard limit was triggered",
+    "text": "alarme: um limite rígido foi acionado"
+  },
+  "cncGrblAlarm2": {
+    "en": "alarm: the move goes outside the work area (soft limit)",
+    "text": "alarme: o movimento sai da área de trabalho (limite suave)"
+  },
+  "cncGrblAlarm3": {
+    "en": "alarm: reset while the machine was moving; run home",
+    "text": "alarme: reset enquanto a máquina estava em movimento; corra para casa"
+  },
+  "cncGrblAlarm4": {
+    "en": "alarm: probe check failed",
+    "text": "alarme: falha na verificação da sonda"
+  },
+  "cncGrblAlarm5": {
+    "en": "alarm: the probe did not touch the workpiece",
+    "text": "alarme: a sonda não tocou na peça de trabalho"
+  },
+  "cncGrblAlarm6": {
+    "en": "alarm: homing failed (cycle was interrupted)",
+    "text": "alarme: homing falhou (o ciclo foi interrompido)"
+  },
+  "cncGrblAlarm7": {
+    "en": "alarm: homing failed (door opened)",
+    "text": "alarme: homing falhou (porta aberta)"
+  },
+  "cncGrblAlarm8": {
+    "en": "alarm: homing failed (limit switch was not triggered)",
+    "text": "alarme: homing falhou (interruptor de limite não foi acionado)"
+  },
+  "cncGrblAlarm9": {
+    "en": "alarm: homing failed (limit switch not found)",
+    "text": "alarme: falha na localização (interruptor de limite não encontrado)"
+  },
+  "cncGrblErr1": {
+    "en": "G-code command letter missing",
+    "text": "Letra de comando G-code ausente"
+  },
+  "cncGrblErr10": {
+    "en": "a soft limit was triggered and hard limits are not enabled",
+    "text": "um limite flexível foi acionado e os limites rígidos não estão ativados"
+  },
+  "cncGrblErr15": {
+    "en": "the move goes outside the allowed work area",
+    "text": "a mudança sai da área de trabalho permitida"
+  },
+  "cncGrblErr2": {
+    "en": "a value on the line is missing a number or has an invalid format",
+    "text": "um valor na linha está faltando um número ou tem um formato inválido"
+  },
+  "cncGrblErr20": {
+    "en": "G-code command not supported by the machine",
+    "text": "Comando G-code não suportado pela máquina"
+  },
+  "cncGrblErr21": {
+    "en": "conflicting commands on the same line (modal group)",
+    "text": "comandos conflitantes na mesma linha (grupo modal)"
+  },
+  "cncGrblErr22": {
+    "en": "feed rate F is missing",
+    "text": "taxa de avanço F está faltando"
+  },
+  "cncGrblErr24": {
+    "en": "two commands on the same line want to use the same axes",
+    "text": "dois comandos na mesma linha querem usar os mesmos eixos"
+  },
+  "cncGrblErr25": {
+    "en": "the same G-code word is repeated on the line",
+    "text": "a mesma palavra G-code é repetida na linha"
+  },
+  "cncGrblErr3": {
+    "en": "unrecognized $ command",
+    "text": "comando $ não reconhecido"
+  },
+  "cncGrblErr33": {
+    "en": "invalid motion target (for example a badly defined arc)",
+    "text": "alvo de movimento inválido (por exemplo, um arco mal definido)"
+  },
+  "cncGrblErr8": {
+    "en": "that command is only accepted while the machine is idle (not while working)",
+    "text": "esse comando só é aceito enquanto a máquina está ociosa (não durante o trabalho)"
+  },
+  "cncGrblErr9": {
+    "en": "the machine is in alarm or locked: unlock it or run home",
+    "text": "a máquina está em alarme ou bloqueada: desbloqueie-a ou corra para casa"
+  },
+  "cncJobCancelledBody": {
+    "en": "Cancelled: {file} (reached line {line})",
+    "text": "Cancelado: {file} (alcançou a linha {line})"
+  },
+  "cncJobDismiss": {
+    "en": "Dismiss notice",
+    "text": "Dispensar aviso"
+  },
+  "cncJobDoneBody": {
+    "en": "Finished: {file}, {total} lines",
+    "text": "Concluído: linhas {file}, {total}"
+  },
   "cncJobElapsedShort": {
     "en": "elapsed",
     "text": "decorrido"
+  },
+  "cncJobFailedBody": {
+    "en": "{file} stopped at line {line}: {reason} ({raw})",
+    "text": "{file} parou na linha {line}: {reason} ({raw})"
+  },
+  "cncJobFailedTitle": {
+    "en": "The job stopped with an error",
+    "text": "O trabalho parou com um erro"
+  },
+  "cncJobFailedUnknown": {
+    "en": "unknown reason",
+    "text": "razão desconhecida"
+  },
+  "cncJobLines": {
+    "en": "Line {current} of {total}",
+    "text": "Linha {current} de {total}"
   },
   "cncJobStarted": {
     "en": "Job started",
@@ -1210,6 +1330,54 @@
   "cncRun": {
     "en": "Run",
     "text": "Run"
+  },
+  "cncSdCancelledBody": {
+    "en": "Cancelled: {file}",
+    "text": "Cancelado: {file}"
+  },
+  "cncSdDoneBody": {
+    "en": "Finished: {file}",
+    "text": "Concluído: {file}"
+  },
+  "cncSdFailedBody": {
+    "en": "{file} stopped: {reason} ({raw})",
+    "text": "{file} parado: {reason} ({raw})"
+  },
+  "cncSdFallbackConfirm": {
+    "en": "Do you want to run it by sending it line by line over WiFi? It may fail if the connection drops.",
+    "text": "Deseja executá-lo enviando linha por linha por WiFi? Pode falhar se a conexão cair."
+  },
+  "cncSdHint": {
+    "en": "The job runs inside the board and does not stop if WiFi drops. Live Z adjustment is not available.",
+    "text": "O trabalho é executado dentro da placa e não para se WiFi cair. O ajuste Z ao vivo não está disponível."
+  },
+  "cncSdLabel": {
+    "en": "Run from the board's SD card (recommended)",
+    "text": "Execute a partir do cartão SD da placa (recomendado)"
+  },
+  "cncSdNoCard": {
+    "en": "This board has no SD card available: the job is sent line by line over WiFi.",
+    "text": "Esta placa não possui cartão SD disponível: o trabalho é enviado linha por linha através de WiFi."
+  },
+  "cncSdStartError": {
+    "en": "Could not start the job.",
+    "text": "Não foi possível iniciar o trabalho."
+  },
+  "cncSdUnavailable": {
+    "en": "Cannot run from the board's SD card.",
+    "text": "Não é possível executar a partir do cartão SD da placa."
+  },
+  "cncSdUploadStarted": {
+    "en": "Uploading the job to the SD card",
+    "text": "Carregando o trabalho para o cartão SD"
+  },
+  "cncSdUploading": {
+    "en": "Uploading to SD… {percent} %",
+    "text": "Fazendo upload para SD… {percent} %"
+  },
+  "cncSdZNote": {
+    "en": "With a job running from the SD card the Z cannot be adjusted; stop the job and regenerate the drawing with a different pen-down Z.",
+    "text": "Com um trabalho executado a partir do cartão SD, o Z não pode ser ajustado; interrompa o trabalho e gere novamente o desenho com um Z de caneta diferente."
   },
   "cncSettingsNotAvailableMarlin": {
     "en": "This setting is not available for Marlin devices.",
@@ -1415,6 +1583,66 @@
     "en": "Z ORIGIN",
     "text": "ORIGEM Z"
   },
+  "cncSimDrawn": {
+    "en": "Drawn distance",
+    "text": "Distância desenhada"
+  },
+  "cncSimEmpty": {
+    "en": "Select a file in FILES to simulate it",
+    "text": "Selecione um arquivo em FILES para simulá-lo"
+  },
+  "cncSimLines": {
+    "en": "Lines",
+    "text": "Linhas"
+  },
+  "cncSimLoading": {
+    "en": "Processing toolpath…",
+    "text": "Processando percurso…"
+  },
+  "cncSimNoMotion": {
+    "en": "The file has no moves to simulate",
+    "text": "O arquivo não possui movimentos para simular"
+  },
+  "cncSimPause": {
+    "en": "Pause",
+    "text": "Pausa"
+  },
+  "cncSimPenDown": {
+    "en": "Pen down",
+    "text": "Caneta para baixo"
+  },
+  "cncSimPenUp": {
+    "en": "Pen up",
+    "text": "Caneta"
+  },
+  "cncSimPlay": {
+    "en": "Play",
+    "text": "Jogar"
+  },
+  "cncSimRestart": {
+    "en": "Restart",
+    "text": "Reiniciar"
+  },
+  "cncSimSeek": {
+    "en": "Simulation position",
+    "text": "Posição de simulação"
+  },
+  "cncSimSpeed": {
+    "en": "Playback speed",
+    "text": "Velocidade de reprodução"
+  },
+  "cncSimTime": {
+    "en": "Time",
+    "text": "Hora"
+  },
+  "cncSimTravel": {
+    "en": "Travel distance",
+    "text": "Distância de viagem"
+  },
+  "cncSimTruncated": {
+    "en": "File too large: simulating the first {n} moves (up to line {line} of {total}).",
+    "text": "Arquivo muito grande: simulando os primeiros movimentos de {n} (até a linha {line} de {total})."
+  },
   "cncSlow": {
     "en": "Slow",
     "text": "Lento"
@@ -1462,6 +1690,18 @@
   "cncViewer3dSoonBody": {
     "en": "Real toolpath-depth relief 3D view — coming in a future update.",
     "text": "Visão 3D real do alívio de profundidade do caminho da ferramenta — chegando em uma atualização futura."
+  },
+  "cncViewerAreaDefault": {
+    "en": "(default value: the machine does not declare an area)",
+    "text": "(valor padrão: a máquina não declara uma área)"
+  },
+  "cncViewerAreaNote": {
+    "en": "Work area: {w} × {h} mm",
+    "text": "Área de trabalho: {w} × {h} mm"
+  },
+  "cncViewerOverflow": {
+    "en": "The design ({w} × {h} mm) exceeds the area; anything outside is marked in red",
+    "text": "O desenho ({w} × {h} mm) excede a área; qualquer coisa fora está marcada em vermelho"
   },
   "cncViewerSimSoonBody": {
     "en": "Machining simulation with animated playback — coming in a future update.",
@@ -1810,6 +2050,18 @@
   "devCamera": {
     "en": "Camera",
     "text": "Câmera"
+  },
+  "devConnEthernet": {
+    "en": "Wired connection (Ethernet)",
+    "text": "Conexão com fio (Ethernet)"
+  },
+  "devConnUsb": {
+    "en": "USB connection",
+    "text": "Conexão USB"
+  },
+  "devConnWifi": {
+    "en": "WiFi connection",
+    "text": "Conexão WiFi"
   },
   "devCool": {
     "en": "Cool down",
@@ -3542,6 +3794,294 @@
   "idle": {
     "en": "Idle",
     "text": "Ocioso"
+  },
+  "jhActionsTitle": {
+    "en": "Quick actions",
+    "text": "Ações rápidas"
+  },
+  "jhClose": {
+    "en": "Close",
+    "text": "Fechar"
+  },
+  "jhControlBy": {
+    "en": "Deleted by",
+    "text": "Excluído por"
+  },
+  "jhControlEmpty": {
+    "en": "No job has been deleted yet.",
+    "text": "Nenhum trabalho foi excluído ainda."
+  },
+  "jhControlLog": {
+    "en": "Control log",
+    "text": "Registro de controle"
+  },
+  "jhControlLogSub": {
+    "en": "Jobs removed from the history, by whom, when and why.",
+    "text": "Empregos retirados da história, por quem, quando e por quê."
+  },
+  "jhControlTotal": {
+    "en": "{n} in total",
+    "text": "{n} no total"
+  },
+  "jhControlWhy": {
+    "en": "Reason",
+    "text": "Razão"
+  },
+  "jhDelete": {
+    "en": "Delete",
+    "text": "Excluir"
+  },
+  "jhDeleteDone": {
+    "en": "Job deleted from the history.",
+    "text": "Trabalho excluído do histórico."
+  },
+  "jhDeleteFail": {
+    "en": "The job could not be deleted.",
+    "text": "O trabalho não pôde ser excluído."
+  },
+  "jhDeleteNotice": {
+    "en": "This is recorded in the control log.",
+    "text": "Isso é registrado no log de controle."
+  },
+  "jhDeleteOnlyFailed": {
+    "en": "Only failed or incomplete jobs can be deleted; completed jobs are never deleted",
+    "text": "Somente trabalhos com falha ou incompletos podem ser excluídos; trabalhos concluídos nunca são excluídos"
+  },
+  "jhDeleteReasonHint": {
+    "en": "At least 3 characters.",
+    "text": "Pelo menos 3 caracteres."
+  },
+  "jhDeleteReasonLabel": {
+    "en": "Reason for deletion",
+    "text": "Motivo da exclusão"
+  },
+  "jhDeleteReasonShort": {
+    "en": "Write the reason (at least 3 characters).",
+    "text": "Escreva o motivo (pelo menos 3 caracteres)."
+  },
+  "jhDeleteTitle": {
+    "en": "Delete job from history",
+    "text": "Excluir trabalho do histórico"
+  },
+  "jhDeleting": {
+    "en": "Deleting…",
+    "text": "Excluindo…"
+  },
+  "jhEmpty": {
+    "en": "There are no jobs in the history yet.",
+    "text": "Ainda não há empregos na história."
+  },
+  "jhEmptyFiltered": {
+    "en": "No jobs match the filters.",
+    "text": "Nenhum trabalho corresponde aos filtros."
+  },
+  "jhExport": {
+    "en": "Export summary",
+    "text": "Resumo de exportação"
+  },
+  "jhExportHint": {
+    "en": "With the current filters",
+    "text": "Com os filtros atuais"
+  },
+  "jhExportPdf": {
+    "en": "PDF",
+    "text": "PDF"
+  },
+  "jhExportXml": {
+    "en": "XML",
+    "text": "XML"
+  },
+  "jhFilterAll": {
+    "en": "All",
+    "text": "Todos"
+  },
+  "jhFilterGroup": {
+    "en": "Filter by job type",
+    "text": "Filtrar por tipo de trabalho"
+  },
+  "jhJobMany": {
+    "en": "jobs",
+    "text": "empregos"
+  },
+  "jhJobOne": {
+    "en": "job",
+    "text": "trabalho"
+  },
+  "jhLoadError": {
+    "en": "The history could not be loaded.",
+    "text": "Não foi possível carregar o histórico."
+  },
+  "jhLoading": {
+    "en": "Loading…",
+    "text": "Carregando…"
+  },
+  "jhMenuLabel": {
+    "en": "More actions",
+    "text": "Mais ações"
+  },
+  "jhNew3d": {
+    "en": "New 3D",
+    "text": "Novo 3D"
+  },
+  "jhNewCnc": {
+    "en": "New CNC",
+    "text": "Novo CNC"
+  },
+  "jhNewLaser": {
+    "en": "New Laser",
+    "text": "Novo Laser"
+  },
+  "jhNext": {
+    "en": "Next page",
+    "text": "Próxima página"
+  },
+  "jhPage": {
+    "en": "Page",
+    "text": "Página"
+  },
+  "jhPagination": {
+    "en": "Pagination",
+    "text": "Paginação"
+  },
+  "jhPeriod30": {
+    "en": "Last 30 days",
+    "text": "Últimos 30 dias"
+  },
+  "jhPeriod7": {
+    "en": "Last 7 days",
+    "text": "Últimos 7 dias"
+  },
+  "jhPeriod90": {
+    "en": "Last 90 days",
+    "text": "Últimos 90 dias"
+  },
+  "jhPeriodAll": {
+    "en": "All history",
+    "text": "Toda a história"
+  },
+  "jhPeriodLabel": {
+    "en": "Period",
+    "text": "Período"
+  },
+  "jhPrev": {
+    "en": "Previous page",
+    "text": "Página anterior"
+  },
+  "jhQueueEmptyBody": {
+    "en": "When you send a job, it will show up here.",
+    "text": "Quando você enviar um trabalho, ele aparecerá aqui."
+  },
+  "jhQueueEmptyTitle": {
+    "en": "No queued jobs",
+    "text": "Nenhum trabalho na fila"
+  },
+  "jhQueueTitle": {
+    "en": "Queued jobs",
+    "text": "Trabalhos em fila"
+  },
+  "jhRecent": {
+    "en": "Recent jobs",
+    "text": "Empregos recentes"
+  },
+  "jhReprint": {
+    "en": "Reprint",
+    "text": "Reimprimir"
+  },
+  "jhReprintBusy": {
+    "en": "Busy",
+    "text": "Ocupado"
+  },
+  "jhReprintConfirm": {
+    "en": "Reprint",
+    "text": "Reimprimir"
+  },
+  "jhReprintFail": {
+    "en": "The job could not be reprinted.",
+    "text": "O trabalho não pôde ser reimpresso."
+  },
+  "jhReprintNoFile": {
+    "en": "The file is no longer in the Library",
+    "text": "O arquivo não está mais na Biblioteca"
+  },
+  "jhReprintNoMachines": {
+    "en": "There are no compatible machines registered.",
+    "text": "Não há máquinas compatíveis registradas."
+  },
+  "jhReprintOffline": {
+    "en": "Offline",
+    "text": "Off-line"
+  },
+  "jhReprintOriginal": {
+    "en": "Original machine",
+    "text": "Máquina original"
+  },
+  "jhReprintPick": {
+    "en": "Choose the machine to run it on",
+    "text": "Escolha a máquina para executá-lo"
+  },
+  "jhReprintRunning": {
+    "en": "A running job cannot be reprinted",
+    "text": "Um trabalho em execução não pode ser reimpresso"
+  },
+  "jhReprintSending": {
+    "en": "Sending…",
+    "text": "Enviando…"
+  },
+  "jhReprintSent": {
+    "en": "Job sent to {machine}.",
+    "text": "Trabalho enviado para {machine}."
+  },
+  "jhReprintTitle": {
+    "en": "Reprint job",
+    "text": "Reimprimir trabalho"
+  },
+  "jhSearchPlaceholder": {
+    "en": "Search by file name…",
+    "text": "Pesquise por nome de arquivo…"
+  },
+  "jhStateError": {
+    "en": "Error",
+    "text": "Erro"
+  },
+  "jhStateIncomplete": {
+    "en": "Incomplete",
+    "text": "Incompleto"
+  },
+  "jhStateReady": {
+    "en": "Ready",
+    "text": "Pronto"
+  },
+  "jhStateRunning": {
+    "en": "Running",
+    "text": "Correndo"
+  },
+  "jhStateSent": {
+    "en": "Sent · result unknown",
+    "text": "Enviado · resultado desconhecido"
+  },
+  "jhStatusTitle": {
+    "en": "Current status",
+    "text": "Estado atual"
+  },
+  "jhSubtitle": {
+    "en": "Review the status and files of your 3D printing, laser cutting and CNC jobs.",
+    "text": "Revise o status e os arquivos de seus trabalhos de impressão 3D, corte a laser e CNC."
+  },
+  "jhSummaryTitle": {
+    "en": "Summary by type",
+    "text": "Resumo por tipo"
+  },
+  "jhTitle": {
+    "en": "Job history",
+    "text": "Histórico de trabalho"
+  },
+  "jhUserLabel": {
+    "en": "Sent by",
+    "text": "Enviado por"
+  },
+  "jhViewFile": {
+    "en": "View file",
+    "text": "Ver arquivo"
   },
   "language": {
     "en": "Language",
@@ -5343,6 +5883,190 @@
     "en": "Performance",
     "text": "Desempenho"
   },
+  "plotterAreaInfo": {
+    "en": "Work area: {w} × {h} mm",
+    "text": "Área de trabalho: {w} × {h} mm"
+  },
+  "plotterAreaUnknown": {
+    "en": "The work area of the active CNC is unknown.",
+    "text": "A área de trabalho do CNC ativo é desconhecida."
+  },
+  "plotterCanvasLabel": {
+    "en": "Drawing preview over the work area",
+    "text": "Visualização do desenho na área de trabalho"
+  },
+  "plotterClose": {
+    "en": "Close",
+    "text": "Fechar"
+  },
+  "plotterDropHint": {
+    "en": "Choose a file or drop it here (PNG, JPG, BMP, GIF).",
+    "text": "Escolha um arquivo ou solte-o aqui (PNG, JPG, BMP, GIF)."
+  },
+  "plotterError": {
+    "en": "The image could not be processed.",
+    "text": "A imagem não pôde ser processada."
+  },
+  "plotterExceedAck": {
+    "en": "I understand the drawing exceeds the work area and I want to generate it anyway.",
+    "text": "Entendo que o desenho ultrapassa a área de trabalho e quero gerá-lo mesmo assim."
+  },
+  "plotterExceeds": {
+    "en": "The drawing exceeds the work area ({w} × {h} mm).",
+    "text": "O desenho excede a área de trabalho ({w} × {h} mm)."
+  },
+  "plotterFeed": {
+    "en": "Drawing (mm/min)",
+    "text": "Desenho (mm/min)"
+  },
+  "plotterFineCleanup": {
+    "en": "Small detail cleanup",
+    "text": "Limpeza de pequenos detalhes"
+  },
+  "plotterFineCleanupHi": {
+    "en": "Remove details",
+    "text": "Remover detalhes"
+  },
+  "plotterFineCleanupLo": {
+    "en": "Keep everything",
+    "text": "Mantenha tudo"
+  },
+  "plotterFineDetail": {
+    "en": "Stroke precision",
+    "text": "Precisão do traço"
+  },
+  "plotterFineDetailHi": {
+    "en": "Fewer points (faster)",
+    "text": "Menos pontos (mais rápido)"
+  },
+  "plotterFineDetailLo": {
+    "en": "More points (finer)",
+    "text": "Mais pontos (mais finos)"
+  },
+  "plotterFineReset": {
+    "en": "Reset adjustments",
+    "text": "Redefinir ajustes"
+  },
+  "plotterFineSection": {
+    "en": "Fine tuning (optional)",
+    "text": "Ajuste fino (opcional)"
+  },
+  "plotterFineSmooth": {
+    "en": "Line smoothness",
+    "text": "Suavidade de linha"
+  },
+  "plotterFineSmoothHi": {
+    "en": "Smoother",
+    "text": "Mais suave"
+  },
+  "plotterFineSmoothLo": {
+    "en": "Closer to the image",
+    "text": "Mais perto da imagem"
+  },
+  "plotterGenerate": {
+    "en": "Generate drawing",
+    "text": "Gerar desenho"
+  },
+  "plotterGenerating": {
+    "en": "Generating…",
+    "text": "Gerando…"
+  },
+  "plotterHeight": {
+    "en": "Height (mm)",
+    "text": "Altura (mm)"
+  },
+  "plotterImage": {
+    "en": "Image",
+    "text": "Imagem"
+  },
+  "plotterName": {
+    "en": "File name",
+    "text": "Nome do arquivo"
+  },
+  "plotterNoImage": {
+    "en": "Choose an image and NOPAL turns it into a drawing.",
+    "text": "Escolha uma imagem e NOPAL a transforma em desenho."
+  },
+  "plotterNoStrokes": {
+    "en": "No lines were found to draw in this image.",
+    "text": "Nenhuma linha foi encontrada para desenhar nesta imagem."
+  },
+  "plotterOpen": {
+    "en": "Image to drawing",
+    "text": "Imagem para desenho"
+  },
+  "plotterOpenTitle": {
+    "en": "Convert an image into a plotter drawing",
+    "text": "Converter uma imagem em um desenho de plotter"
+  },
+  "plotterPenDown": {
+    "en": "Z down (mm)",
+    "text": "Z para baixo (mm)"
+  },
+  "plotterPenSection": {
+    "en": "Pen and speeds",
+    "text": "Caneta e velocidades"
+  },
+  "plotterPenUp": {
+    "en": "Z up (mm)",
+    "text": "Z para cima (mm)"
+  },
+  "plotterPhoto": {
+    "en": "This image looks like a photograph. Image to drawing works best with line art: mandalas, outlines, black-and-white logos or coloring pages.",
+    "text": "Esta imagem parece uma fotografia. Imagem para desenho funciona melhor com arte de linha: mandalas, contornos, logotipos em preto e branco ou páginas para colorir."
+  },
+  "plotterPlunge": {
+    "en": "Plunge (mm/min)",
+    "text": "Mergulho (mm/min)"
+  },
+  "plotterProcessing": {
+    "en": "Analyzing the image… (the first time takes a few seconds)",
+    "text": "Analisando a imagem… (a primeira vez leva alguns segundos)"
+  },
+  "plotterSaved": {
+    "en": "Drawing saved to the Library: {path}",
+    "text": "Desenho salvo na Biblioteca: {path}"
+  },
+  "plotterSelectedNote": {
+    "en": "Selected: {name}",
+    "text": "Selecionado: {name}"
+  },
+  "plotterStats": {
+    "en": "Strokes: {strokes} · Drawn: {mm} mm · Travel: {travel} mm · Estimated time: {min} min",
+    "text": "Traços: {strokes} · Desenhado: {mm} mm · Curso: {travel} mm · Tempo estimado: {min} min"
+  },
+  "plotterTitle": {
+    "en": "Image to drawing",
+    "text": "Imagem para desenho"
+  },
+  "plotterTravel": {
+    "en": "Travel (mm/min)",
+    "text": "Curso (mm/min)"
+  },
+  "plotterViewLabel": {
+    "en": "View",
+    "text": "Ver"
+  },
+  "plotterViewOriginal": {
+    "en": "Original",
+    "text": "Originais"
+  },
+  "plotterViewOverlay": {
+    "en": "Overlay",
+    "text": "Sobreposição"
+  },
+  "plotterViewTrace": {
+    "en": "Trace",
+    "text": "Rastreamento"
+  },
+  "plotterWidth": {
+    "en": "Width (mm)",
+    "text": "Largura (mm)"
+  },
+  "plotterWizardBtn": {
+    "en": "Convert image to drawing",
+    "text": "Converter imagem em desenho"
+  },
   "pluginCatalog_arduino_accessories_description": {
     "en": "Control relays and LED strips wired to your own Arduino/ESP32 board, no third-party WiFi plugs needed.",
     "text": "Relés de controle e tiras de LED conectadas à sua própria placa Arduino/ESP32, sem necessidade de plugues WiFi de terceiros."
@@ -5719,6 +6443,10 @@
     "en": "Queue",
     "text": "Fila"
   },
+  "printerModuleSpool": {
+    "en": "Spool",
+    "text": "Carretel"
+  },
   "printerMoonrakerLog": {
     "en": "Moonraker log",
     "text": "Registro Moonraker"
@@ -6094,6 +6822,34 @@
   "speedFactor": {
     "en": "Speed factor",
     "text": "Fator de velocidade"
+  },
+  "spoolModuleColor": {
+    "en": "Color",
+    "text": "Cor"
+  },
+  "spoolModuleDiameter": {
+    "en": "Diameter",
+    "text": "Diâmetro"
+  },
+  "spoolModuleEmpty": {
+    "en": "No spool assigned",
+    "text": "Nenhum carretel atribuído"
+  },
+  "spoolModuleEmptyHint": {
+    "en": "Assign a spool to this printer from Materials.",
+    "text": "Atribua um carretel a esta impressora em Materiais."
+  },
+  "spoolModuleFilament": {
+    "en": "Filament",
+    "text": "Filamento"
+  },
+  "spoolModuleOpen": {
+    "en": "Open Materials",
+    "text": "Materiais abertos"
+  },
+  "spoolModuleRemaining": {
+    "en": "Remaining",
+    "text": "Restante"
   },
   "standard": {
     "en": "Standard",
@@ -6636,20 +7392,20 @@
     "text": "Pesquise o histórico"
   },
   "tourQueue2Body": {
-    "en": "Files already printed, grouped by printer.",
-    "text": "Arquivos já impressos, agrupados por impressora."
+    "en": "Finished 3D, laser and CNC jobs, with their status and date.",
+    "text": "Trabalhos finalizados em 3D, laser e CNC, com status e data."
   },
   "tourQueue2Title": {
-    "en": "3D print history",
-    "text": "História da impressão 3D"
+    "en": "Recent jobs",
+    "text": "Empregos recentes"
   },
   "tourQueue3Body": {
-    "en": "Completed, cancelled, or failed laser jobs.",
-    "text": "Trabalhos de laser concluídos, cancelados ou com falha."
+    "en": "Count by type, machine status, queue and quick actions.",
+    "text": "Conte por tipo, status da máquina, fila e ações rápidas."
   },
   "tourQueue3Title": {
-    "en": "Laser history",
-    "text": "História do laser"
+    "en": "Summary and machines",
+    "text": "Resumo e máquinas"
   },
   "tourSettings1Body": {
     "en": "Language, preview quality, interface size, and other general options.",
@@ -7150,5 +7906,29 @@
   "zOffset": {
     "en": "Z-Offset",
     "text": "Deslocamento Z"
+  },
+  "zOffsetError": {
+    "en": "Could not adjust the pen Z.",
+    "text": "Não foi possível ajustar a caneta Z."
+  },
+  "zOffsetHelp": {
+    "en": "Raises or lowers the pen from the next stroke onward. Negative = more pressure.",
+    "text": "Eleva ou abaixa a caneta a partir do próximo traço em diante. Negativo = mais pressão."
+  },
+  "zOffsetNone": {
+    "en": "Pen down: no adjustment",
+    "text": "Caneta para baixo: sem ajuste"
+  },
+  "zOffsetReset": {
+    "en": "Clear adjustment",
+    "text": "Ajuste claro"
+  },
+  "zOffsetResetAria": {
+    "en": "Clear the pen Z adjustment",
+    "text": "Limpe o ajuste Z da caneta"
+  },
+  "zOffsetValue": {
+    "en": "Pen down: adjustment {v} mm",
+    "text": "Caneta para baixo: ajuste {v} mm"
   }
 }
