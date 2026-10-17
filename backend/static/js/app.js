@@ -4260,7 +4260,7 @@ function renderTemperaturesCard(data, port) {
     container.innerHTML = `
         <div class="temp-card${themeClass}">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
                     <span>${t('temperatures')}</span>
                 </div>
@@ -4908,6 +4908,7 @@ function getPanelAutoHideMode() {
 
 function setPanelHeroCollapsed(collapsed) {
     document.getElementById('panel-hero-collapsible')?.classList.toggle('collapsed', collapsed);
+    document.getElementById('panel-hero-toggle-btn')?.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function schedulePanelHeroCollapse() {
@@ -4994,7 +4995,7 @@ function renderToolheadCard(data, port) {
     container.innerHTML = `
         <div class="temp-card toolhead-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span>${t('toolhead')}</span>
                 </div>
@@ -5300,7 +5301,7 @@ async function loadPrinterConfigFiles(port, printer) {
         container.innerHTML = `
             <div class="temp-card">
                 <div class="temp-card-header">
-                    <div class="temp-card-header-left">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
+                    <div class="temp-card-header-left" role="heading" aria-level="3">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
                 </div>
                 <div class="temp-card-body"><div class="empty-state-small">${t('printerConfigFilesEmpty')}</div></div>
             </div>`;
@@ -5312,7 +5313,7 @@ function renderPrinterConfigFiles(container, port, printer, files) {
     container.innerHTML = `
         <div class="temp-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
+                <div class="temp-card-header-left" role="heading" aria-level="3">${PRINTER_MODULE_ICON_CONFIGFILES}<span>${t('printerModuleConfigFiles')}</span></div>
             </div>
             <div class="temp-card-body">
                 <div class="config-actions-row">
@@ -5482,7 +5483,7 @@ function renderPrinterQueueCard(port, data) {
     container.innerHTML = `
         <div class="temp-card printer-queue-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                     <span>${t('printerQueueTitle')}</span>
                 </div>
@@ -5629,6 +5630,12 @@ async function openPrinterModal(printer) {
 
     if (printer.port) loadPrinterConfigFiles(printer.port, printer);
 
+    const spoolContainer = document.getElementById('printer-modal-spool');
+    if (spoolContainer) spoolContainer.innerHTML = '';
+    refreshDeviceSpools().then(() => {
+        if (printerModal.classList.contains('active')) renderPrinterModalSpool(printer);
+    });
+
     if (printerModalTemperatureInterval) {
         clearInterval(printerModalTemperatureInterval);
         printerModalTemperatureInterval = null;
@@ -5679,7 +5686,10 @@ const PRINTER_MODULE_ICON_TEMPERATURES = '<svg width="16" height="16" viewBox="0
 const PRINTER_MODULE_ICON_QUEUE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
 const PRINTER_MODULE_ICON_CONFIGFILES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
 const PRINTER_MODULE_ICON_CAMERA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
-const PRINTER_MODULE_LOCK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const PRINTER_MODULE_ICON_SPOOL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="5" cy="12" rx="2.5" ry="7"/><ellipse cx="19" cy="12" rx="2.5" ry="7"/><path d="M5 5h14"/><path d="M5 19h14"/></svg>';
+const PRINTER_MODULE_ICON_PRINT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+const PRINTER_MODULE_ICON_CONSOLE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>';
+const PRINTER_MODULE_LOCK_ICON ='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 const PRINTER_MODULE_DRAG_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
 
 const PRINTER_MODULE_DEFS = [
@@ -5694,9 +5704,34 @@ const PRINTER_MODULE_DEFS = [
     // instalado, o sin cámara vinculada, la columna queda vacía (nunca
     // rompe el resto del modal, mismo criterio "opcional" de siempre).
     { key: 'camera', group: 'extra', labelKey: 'printerModuleCamera', iconSvg: PRINTER_MODULE_ICON_CAMERA, locked: false },
+    // Carrete (Spoolman): antes vivía en la ficha del Panel de Control; ahora
+    // es un módulo del detalle, activado por omisión para no perder el dato.
+    { key: 'spool', group: 'extra', labelKey: 'printerModuleSpool', iconSvg: PRINTER_MODULE_ICON_SPOOL, locked: false },
 ];
 
-const PRINTER_MODULE_NONLOCKED_KEYS = PRINTER_MODULE_DEFS.filter(mod => !mod.locked).map(mod => mod.key);
+// Módulos del detalle de impresora Marlin (USB/WiFi): mismo motor de
+// "Personalizar Módulos", otra lista de módulos y otro prefijo de
+// localStorage. Marlin no tiene Cola ni Archivos de config (son de Moonraker)
+// ni Carrete (Spoolman liga el carrete al puerto de Moonraker, no a Marlin).
+const MARLIN_MODULE_DEFS = [
+    { key: 'estado', group: 'available', labelKey: 'status', iconSvg: PRINTER_MODULE_ICON_STATUS, locked: true },
+    { key: 'toolhead', group: 'available', labelKey: 'toolhead', iconSvg: PRINTER_MODULE_ICON_TOOLHEAD, locked: false },
+    { key: 'temperatures', group: 'extra', labelKey: 'temperatures', iconSvg: PRINTER_MODULE_ICON_TEMPERATURES, locked: false },
+    { key: 'print', group: 'extra', labelKey: 'marlinPrinterPrintTitle', iconSvg: PRINTER_MODULE_ICON_PRINT, locked: false },
+    { key: 'console', group: 'extra', labelKey: 'console', iconSvg: PRINTER_MODULE_ICON_CONSOLE, locked: false },
+    { key: 'camera', group: 'extra', labelKey: 'printerModuleCamera', iconSvg: PRINTER_MODULE_ICON_CAMERA, locked: false },
+];
+
+// Un "scope" por detalle de impresora: el motor (layout por breakpoint,
+// arrastre, casillas, restablecer) es el mismo, solo cambian estos datos.
+const PRINTER_MODULE_SCOPES = {
+    klipper: { defs: PRINTER_MODULE_DEFS, storagePrefix: 'printerModulesLayout_', bodySelector: '#printer-modal .printer-modal-body', modalId: 'printer-modal' },
+    marlin: { defs: MARLIN_MODULE_DEFS, storagePrefix: 'marlinPrinterModulesLayout_', bodySelector: '#marlin-printer-modal .printer-modal-body', modalId: 'marlin-printer-modal' },
+};
+
+function printerModuleNonlockedKeys(scopeKey = 'klipper') {
+    return PRINTER_MODULE_SCOPES[scopeKey].defs.filter(mod => !mod.locked).map(mod => mod.key);
+}
 
 // Los 4 breakpoints se resuelven por ancho de ventana, igual que el resto
 // del layout responsive de la app (no hay coincidencia exacta con ningún
@@ -5715,37 +5750,39 @@ function getPrinterModuleBreakpointId(width = window.innerWidth) {
     return match ? match.id : 'desktop';
 }
 
-function getPrinterModulesLayout(breakpointId) {
+function getPrinterModulesLayout(breakpointId, scopeKey = 'klipper') {
+    const NONLOCKED = printerModuleNonlockedKeys(scopeKey);
     let saved = null;
     try {
-        saved = JSON.parse(localStorage.getItem(`printerModulesLayout_${breakpointId}`) || 'null');
+        saved = JSON.parse(localStorage.getItem(`${PRINTER_MODULE_SCOPES[scopeKey].storagePrefix}${breakpointId}`) || 'null');
     } catch (error) {
         saved = null;
     }
-    const savedOrder = Array.isArray(saved?.order) ? saved.order.filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)) : [];
-    const missing = PRINTER_MODULE_NONLOCKED_KEYS.filter(key => !savedOrder.includes(key));
-    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)) : [];
+    const savedOrder = Array.isArray(saved?.order) ? saved.order.filter(key => NONLOCKED.includes(key)) : [];
+    const missing = NONLOCKED.filter(key => !savedOrder.includes(key));
+    const hidden = Array.isArray(saved?.hidden) ? saved.hidden.filter(key => NONLOCKED.includes(key)) : [];
     return { order: [...savedOrder, ...missing], hidden };
 }
 
-function savePrinterModulesLayout(breakpointId, layout) {
-    localStorage.setItem(`printerModulesLayout_${breakpointId}`, JSON.stringify({
-        order: (layout.order || []).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)),
-        hidden: (layout.hidden || []).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key)),
+function savePrinterModulesLayout(breakpointId, layout, scopeKey = 'klipper') {
+    const NONLOCKED = printerModuleNonlockedKeys(scopeKey);
+    localStorage.setItem(`${PRINTER_MODULE_SCOPES[scopeKey].storagePrefix}${breakpointId}`, JSON.stringify({
+        order: (layout.order || []).filter(key => NONLOCKED.includes(key)),
+        hidden: (layout.hidden || []).filter(key => NONLOCKED.includes(key)),
     }));
 }
 
-function resetPrinterModulesLayout(breakpointId) {
-    localStorage.removeItem(`printerModulesLayout_${breakpointId}`);
+function resetPrinterModulesLayout(breakpointId, scopeKey = 'klipper') {
+    localStorage.removeItem(`${PRINTER_MODULE_SCOPES[scopeKey].storagePrefix}${breakpointId}`);
 }
 
 // Aplica el layout guardado del breakpoint actual a las 3 columnas reales
 // del modal de impresora (reordenar + ocultar). Se llama al abrir el modal
 // y cuando el resize cruza un límite de breakpoint mientras está abierto.
-function applyPrinterModulesLayout() {
-    const modalBody = document.querySelector('#printer-modal .printer-modal-body');
+function applyPrinterModulesLayout(scopeKey = 'klipper') {
+    const modalBody = document.querySelector(PRINTER_MODULE_SCOPES[scopeKey].bodySelector);
     if (!modalBody) return;
-    const layout = getPrinterModulesLayout(getPrinterModuleBreakpointId());
+    const layout = getPrinterModulesLayout(getPrinterModuleBreakpointId(), scopeKey);
     const orderIndex = new Map(layout.order.map((key, index) => [key, index]));
     const columns = Array.from(modalBody.querySelectorAll(':scope > .printer-modal-column[data-module]'));
     columns
@@ -5765,16 +5802,22 @@ window.addEventListener('resize', () => {
     if (printerModal && printerModal.classList.contains('active')) {
         applyPrinterModulesLayout();
     }
+    if (document.getElementById('marlin-printer-modal')?.classList.contains('active')) {
+        applyPrinterModulesLayout('marlin');
+    }
 });
 
 // Pestaña de breakpoint que se está editando en el modal "Personalizar
 // Módulos" — independiente del ancho real de la ventana, así se puede
 // editar por ejemplo el layout de "Celular" desde un monitor de escritorio.
 let moduleCustomizerActiveBreakpoint = getPrinterModuleBreakpointId();
+// Detalle de impresora que está editando el diálogo ('klipper' | 'marlin').
+let moduleCustomizerScope = 'klipper';
 
 function renderModuleCustomizerTabs() {
     document.querySelectorAll('#module-customizer-tabs .module-customizer-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.breakpoint === moduleCustomizerActiveBreakpoint);
+        tab.setAttribute('aria-pressed', String(tab.dataset.breakpoint === moduleCustomizerActiveBreakpoint));
     });
 }
 
@@ -5798,7 +5841,7 @@ function renderModuleCustomizerRow(mod, layout) {
             <span class="module-customizer-row-icon">${mod.iconSvg}</span>
             <span class="module-customizer-row-label">${escapeHtml(label)}</span>
             <label class="module-customizer-row-toggle">
-                <input type="checkbox" class="module-customizer-checkbox ${checkboxClass}" data-module="${mod.key}" ${isHidden ? '' : 'checked'}>
+                <input type="checkbox" class="module-customizer-checkbox ${checkboxClass}" data-module="${mod.key}" aria-label="${escapeHtml(label)}" ${isHidden ? '' : 'checked'}>
             </label>
         </div>
     `;
@@ -5829,10 +5872,10 @@ function persistModuleOrderFromDom() {
     const domOrder = [
         ...Array.from(availableList ? availableList.querySelectorAll(':scope > .module-customizer-row[data-module]') : []),
         ...Array.from(extraList ? extraList.querySelectorAll(':scope > .module-customizer-row[data-module]') : []),
-    ].map(row => row.dataset.module).filter(key => PRINTER_MODULE_NONLOCKED_KEYS.includes(key));
-    const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
-    savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: domOrder, hidden: currentLayout.hidden });
-    applyPrinterModulesLayout();
+    ].map(row => row.dataset.module).filter(key => printerModuleNonlockedKeys(moduleCustomizerScope).includes(key));
+    const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
+    savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: domOrder, hidden: currentLayout.hidden }, moduleCustomizerScope);
+    applyPrinterModulesLayout(moduleCustomizerScope);
 }
 
 function initModuleCustomizerDrag(list, onReorder = persistModuleOrderFromDom) {
@@ -5895,10 +5938,10 @@ function renderModuleCustomizerLists() {
     const extraList = document.getElementById('module-customizer-list-extra');
     if (!availableList || !extraList) return;
 
-    const layout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+    const layout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
     const orderIndex = new Map(layout.order.map((key, index) => [key, index]));
 
-    const byGroup = (group) => PRINTER_MODULE_DEFS
+    const byGroup = (group) => PRINTER_MODULE_SCOPES[moduleCustomizerScope].defs
         .filter(mod => mod.group === group)
         .sort((a, b) => {
             if (a.locked !== b.locked) return a.locked ? -1 : 1;
@@ -5912,31 +5955,64 @@ function renderModuleCustomizerLists() {
         list.querySelectorAll('input.module-customizer-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', () => {
                 const key = checkbox.dataset.module;
-                const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+                const currentLayout = getPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
                 const hiddenSet = new Set(currentLayout.hidden);
                 if (checkbox.checked) hiddenSet.delete(key); else hiddenSet.add(key);
-                savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: currentLayout.order, hidden: Array.from(hiddenSet) });
-                applyPrinterModulesLayout();
+                savePrinterModulesLayout(moduleCustomizerActiveBreakpoint, { order: currentLayout.order, hidden: Array.from(hiddenSet) }, moduleCustomizerScope);
+                applyPrinterModulesLayout(moduleCustomizerScope);
             });
         });
         initModuleCustomizerDrag(list);
     });
 }
 
-function openModuleCustomizerModal() {
+let moduleCustomizerOpener = null;
+
+function openModuleCustomizerModal(scopeKey = 'klipper') {
     const modal = document.getElementById('module-customizer-modal');
     if (!modal) return;
+    moduleCustomizerScope = PRINTER_MODULE_SCOPES[scopeKey] ? scopeKey : 'klipper';
+    moduleCustomizerOpener = document.activeElement;
     moduleCustomizerActiveBreakpoint = getPrinterModuleBreakpointId();
     renderModuleCustomizerTabs();
     renderModuleCustomizerLists();
     modal.classList.add('active');
+    document.getElementById('module-customizer-modal-close')?.focus();
 }
 
 function closeModuleCustomizerModal() {
-    document.getElementById('module-customizer-modal')?.classList.remove('active');
+    const modal = document.getElementById('module-customizer-modal');
+    if (!modal?.classList.contains('active')) return;
+    modal.classList.remove('active');
+    if (moduleCustomizerOpener && document.contains(moduleCustomizerOpener)) moduleCustomizerOpener.focus();
+    moduleCustomizerOpener = null;
 }
 
-document.getElementById('printer-modal-settings-btn')?.addEventListener('click', openModuleCustomizerModal);
+// Escape cierra y Tab queda atrapado dentro del diálogo.
+document.getElementById('module-customizer-modal')?.addEventListener('keydown', (event) => {
+    const modal = event.currentTarget;
+    if (!modal.classList.contains('active')) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeModuleCustomizerModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+    }
+});
+
+document.getElementById('printer-modal-settings-btn')?.addEventListener('click', () => openModuleCustomizerModal('klipper'));
+document.getElementById('marlin-printer-modal-settings-btn')?.addEventListener('click', () => openModuleCustomizerModal('marlin'));
 document.getElementById('module-customizer-modal-close')?.addEventListener('click', closeModuleCustomizerModal);
 document.getElementById('module-customizer-modal-backdrop')?.addEventListener('click', closeModuleCustomizerModal);
 
@@ -5949,9 +6025,9 @@ document.querySelectorAll('#module-customizer-tabs .module-customizer-tab').forE
 });
 
 document.getElementById('module-customizer-reset-btn')?.addEventListener('click', () => {
-    resetPrinterModulesLayout(moduleCustomizerActiveBreakpoint);
+    resetPrinterModulesLayout(moduleCustomizerActiveBreakpoint, moduleCustomizerScope);
     renderModuleCustomizerLists();
-    applyPrinterModulesLayout();
+    applyPrinterModulesLayout(moduleCustomizerScope);
     showToast(t('moduleCustomizerResetDone'));
 });
 
@@ -8405,20 +8481,8 @@ function klipperDeviceModel(printer, datos) {
     if (enTrabajo && Number.isFinite(job.current_layer) && Number.isFinite(job.total_layer)) {
         info.push({ label: t('devLayer'), value: `${job.current_layer} / ${job.total_layer}` });
     }
-    // Material: fila propia (no un dev-field genérico) porque lleva el
-    // carrete del color real del filamento -- diámetro/color/peso vienen
-    // resueltos por Spoolman (/api/spoolman/printers/active-spools), nunca
-    // inventados si el plugin no responde.
-    const material = spool && spool.label ? {
-        label: spool.label,
-        colorHex: spool.color_hex || null,
-        // Un filamento multicolor (coextruido/longitudinal) no trae
-        // color_hex -- Spoolman guarda sus colores por separado.
-        multiColorHexes: Array.isArray(spool.multi_color_hexes) && spool.multi_color_hexes.length
-            ? spool.multi_color_hexes : null,
-        diameter: Number.isFinite(spool.diameter) ? spool.diameter : null,
-        remainingWeight: Number.isFinite(spool.remaining_weight) ? spool.remaining_weight : null,
-    } : null;
+    // El carrete/material ya no va en la ficha: es el módulo "Carrete" del
+    // detalle de impresora (ver renderPrinterModalSpool).
 
     return {
         name: printerName,
@@ -8869,31 +8933,61 @@ function deviceMaterialSpoolIcon(colores) {
     </svg>`;
 }
 
-function deviceMaterialCampo(material) {
-    const colores = material.multiColorHexes
-        ? material.multiColorHexes.map(normalizeSpoolHex).filter(Boolean)
-        : (normalizeSpoolHex(material.colorHex) ? [normalizeSpoolHex(material.colorHex)] : null);
-    // Mismo patrón que deviceMetrica: el número grande, la unidad chica al
-    // lado -- "1.75mm" leído de un vistazo, no un texto corrido chico.
-    const specs = [];
-    if (material.diameter != null) specs.push([`${material.diameter}`, 'mm']);
-    if (material.remainingWeight != null) {
-        specs.push(material.remainingWeight >= 1000
-            ? [(material.remainingWeight / 1000).toFixed(1), 'kg']
-            : [String(Math.round(material.remainingWeight)), 'g']);
+// Módulo "Carrete" del detalle de impresora: los mismos datos que antes
+// mostraba la ficha (filamento, diámetro, peso restante, carrete del color
+// real), resueltos por Spoolman en /api/spoolman/printers/active-spools.
+function printerSpoolModuleHtml(spool) {
+    const titulo = `<div class="temp-card-header"><div class="temp-card-header-left" role="heading" aria-level="3">${PRINTER_MODULE_ICON_SPOOL.replace('width="16" height="16"', 'width="18" height="18"')}<span>${escapeHtml(t('printerModuleSpool'))}</span></div></div>`;
+    if (!spool || !spool.label) {
+        const abrir = spoolmanPluginAvailable
+            ? `<button type="button" class="btn-file-action" data-spool-open>${escapeHtml(t('spoolModuleOpen'))}</button>` : '';
+        return `<div class="temp-card spool-module-card">${titulo}
+            <div class="temp-card-body">
+                <div class="spool-module-empty">
+                    <span class="dev-material-icon" aria-hidden="true">${deviceMaterialSpoolIcon(null)}</span>
+                    <strong>${escapeHtml(t('spoolModuleEmpty'))}</strong>
+                    ${spoolmanPluginAvailable ? `<span class="spool-module-hint">${escapeHtml(t('spoolModuleEmptyHint'))}</span>` : ''}
+                    ${abrir}
+                </div>
+            </div></div>`;
     }
-    const specsHtml = specs.length
-        ? `<span class="dev-material-specs">${specs.map(([n, u]) => `<span>${escapeHtml(n)}<small>${escapeHtml(u)}</small></span>`).join('')}</span>`
-        : '';
-    return `<div class="dev-field dev-field-material">
-        <span class="dev-field-label">${escapeHtml(t('devMaterial'))}</span>
-        <div class="dev-material-row">
-            <span class="dev-material-name" title="${escapeHtml(material.label)}">${escapeHtml(material.label)}</span>
-            <span class="dev-material-divider" aria-hidden="true"></span>
-            <span class="dev-material-icon">${deviceMaterialSpoolIcon(colores)}</span>
-            ${specsHtml}
-        </div>
-    </div>`;
+    const colores = Array.isArray(spool.multi_color_hexes) && spool.multi_color_hexes.length
+        ? spool.multi_color_hexes.map(normalizeSpoolHex).filter(Boolean)
+        : (normalizeSpoolHex(spool.color_hex) ? [normalizeSpoolHex(spool.color_hex)] : null);
+    // Cada dato es una ficha (mosaico); solo se arma la que tiene dato real.
+    const fichas = [{ k: t('spoolModuleFilament'), v: escapeHtml(spool.label), cls: 'spool-tile-wide' }];
+    if (Number.isFinite(spool.diameter)) fichas.push({ k: t('spoolModuleDiameter'), v: `${escapeHtml(String(spool.diameter))} <small>mm</small>` });
+    if (Number.isFinite(spool.remaining_weight)) {
+        fichas.push({ k: t('spoolModuleRemaining'), v: spool.remaining_weight >= 1000
+            ? `${(spool.remaining_weight / 1000).toFixed(1)} <small>kg</small>`
+            : `${Math.round(spool.remaining_weight)} <small>g</small>` });
+    }
+    if (colores) {
+        // Con varios colores la ficha se pinta en franjas; el texto va sobre una
+        // pastilla con el fondo del tema para que el contraste sea AA con
+        // cualquier color de filamento.
+        const pintura = colores.length > 1
+            ? `linear-gradient(90deg, ${colores.map((c, i) => `${escapeHtml(c)} ${(i * 100 / colores.length).toFixed(2)}% ${((i + 1) * 100 / colores.length).toFixed(2)}%`).join(', ')})`
+            : escapeHtml(colores[0]);
+        fichas.push({ k: t('spoolModuleColor'), v: escapeHtml(colores.map(c => c.toUpperCase()).join(' · ')), cls: 'spool-tile-color', style: `background:${pintura}` });
+    }
+    return `<div class="temp-card spool-module-card">${titulo}
+        <div class="temp-card-body">
+            <div class="dev-material-row spool-module-row">
+                <span class="dev-material-icon" aria-hidden="true">${deviceMaterialSpoolIcon(colores)}</span>
+                <dl class="spool-module-list">${fichas.map(f => `<div class="spool-tile ${f.cls || ''}"${f.style ? ` style="${f.style}"` : ''}><div class="spool-tile-ink"><dt>${escapeHtml(f.k)}</dt><dd>${f.v}</dd></div></div>`).join('')}</dl>
+            </div>
+        </div></div>`;
+}
+
+function renderPrinterModalSpool(printer) {
+    const container = document.getElementById('printer-modal-spool');
+    if (!container || !printer) return;
+    container.innerHTML = printerSpoolModuleHtml(deviceSpoolsByPort[String(printer.port)]);
+    container.querySelector('[data-spool-open]')?.addEventListener('click', () => {
+        document.getElementById('printer-modal')?.classList.remove('active');
+        window.switchSection?.('spoolman');
+    });
 }
 
 function deviceAccionBtn(accion) {
@@ -8942,9 +9036,12 @@ function deviceCardHtml(d) {
     const conCamara = Boolean(d.cameraSlot) && isCameraCardVisible(d.cameraSlot);
     const modoMiniatura = deviceIsBusy(d.state) || conCamara;
     const ocupado = modoMiniatura;
-    const conexion = d.online
-        ? `<span class="dev-conn is-online" title="${escapeHtml(t('online'))}">${deviceIcon('wifi', 15)}</span>`
-        : `<span class="dev-conn" title="${escapeHtml(t('offline'))}">${deviceIcon('wifi', 15)}</span>`;
+    // El tipo de enlace sale del modelo de cada marca (d.conn); sin dato se
+    // queda el ícono de WiFi de siempre. El estado en línea/sin conexión se
+    // conserva en la clase y se suma al texto accesible.
+    const tipoConn = { ethernet: ['ethernet', 'devConnEthernet'], usb: ['usb', 'devConnUsb'] }[d.conn] || ['wifi', 'devConnWifi'];
+    const textoConn = `${t(tipoConn[1])} · ${d.online ? t('online') : t('offline')}`;
+    const conexion = `<span class="dev-conn${d.online ? ' is-online' : ''}" role="img" title="${escapeHtml(textoConn)}" aria-label="${escapeHtml(textoConn)}">${deviceIcon(tipoConn[0], 15)}</span>`;
 
     // Trabajando: la máquina se encoge a icono en la esquina y el espacio se
     // usa para el trabajo. En reposo, la máquina es la protagonista.
@@ -8983,9 +9080,8 @@ function deviceCardHtml(d) {
     if (d.metrics && d.metrics.length) {
         panel.push(`<div class="dev-metrics">${d.metrics.map(m => deviceMetrica(m.icon, m.label, m.value)).join('')}</div>`);
     }
-    if ((d.info && d.info.length) || d.material) {
-        const camposInfo = (d.info || []).map(i => deviceCampo(i.label, i.value));
-        if (d.material) camposInfo.unshift(deviceMaterialCampo(d.material));
+    if (d.info && d.info.length) {
+        const camposInfo = d.info.map(i => deviceCampo(i.label, i.value));
         panel.push(`<div class="dev-info">${camposInfo.join('')}</div>`);
     }
     if (panel.length) cuerpo.push(`<div class="dev-panel" ${seccion('data')}>${panel.join('')}</div>`);
@@ -13537,7 +13633,7 @@ function renderLaserSettings(settings, firmware) {
             const value = input.value.trim();
             const item = input.closest('.laser-settings-item');
             try {
-                const host = getSectionHost('laser');
+                const host = getSectionHost(laserSettingsSection);
                 if (!host) throw new Error(t('laserNoMachineSelected'));
                 const formData = new FormData();
                 formData.append('host', host);
@@ -13560,8 +13656,11 @@ function renderLaserSettings(settings, firmware) {
     });
 }
 
+// Sección cuyos parámetros GRBL muestra el modal de configuración: 'laser' o 'cnc'.
+let laserSettingsSection = 'laser';
+
 async function loadLaserSettings() {
-    const host = getSectionHost('laser');
+    const host = getSectionHost(laserSettingsSection);
     if (!host) {
         renderLaserSettings([]);
         return;
@@ -13588,7 +13687,7 @@ if (laserSettingsReloadBtn) laserSettingsReloadBtn.addEventListener('click', loa
 async function loadLaserNameField() {
     const input = document.getElementById('laser-name-input');
     if (!input) return;
-    const host = getSectionHost('laser');
+    const host = getSectionHost(laserSettingsSection);
     if (!host) {
         input.value = '';
         return;
@@ -13609,7 +13708,7 @@ if (laserNameSaveBtn) {
         const input = document.getElementById('laser-name-input');
         const name = input?.value.trim();
         if (!name) return;
-        const host = getSectionHost('laser');
+        const host = getSectionHost(laserSettingsSection);
         if (!host) return;
         try {
             const formData = new FormData();
@@ -13625,9 +13724,10 @@ if (laserNameSaveBtn) {
     });
 }
 
-function openLaserSettingsModal() {
+function openLaserSettingsModal(section = 'laser') {
     const modal = document.getElementById('laser-settings-modal');
     if (!modal) return;
+    laserSettingsSection = section === 'cnc' ? 'cnc' : 'laser';      // de qué página (y de qué máquina) son los parámetros
     modal.classList.add('active');
     loadLaserNameField();
     loadLaserSettings();
@@ -13640,7 +13740,7 @@ function closeLaserSettingsModal() {
 
 const laserIllustrationWrap = document.getElementById('laser-illustration-wrap');
 if (laserIllustrationWrap) {
-    laserIllustrationWrap.addEventListener('click', openLaserSettingsModal);
+    laserIllustrationWrap.addEventListener('click', () => openLaserSettingsModal('laser'));
 }
 
 const laserSettingsModalClose = document.getElementById('laser-settings-modal-close');
@@ -17455,7 +17555,9 @@ document.getElementById('cnc-files-add-btn')?.addEventListener('click', () => {
     document.getElementById('cnc-files-upload-input')?.click();
 });
 
-document.getElementById('cnc-settings-btn')?.addEventListener('click', () => switchSection('settings'));
+// El engrane de la página CNC abre los parámetros GRBL ($$) de la máquina CNC activa.
+document.getElementById('cnc-settings-btn')?.addEventListener('click', () => openLaserSettingsModal('cnc'));
+document.getElementById('cnc-settings-btn')?.setAttribute('aria-label', t('laserSettings'));
 
 document.querySelectorAll('#laser-power-presets .laser-step-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -19240,6 +19342,8 @@ async function openMarlinPrinterModal(device) {
     const nameEl = document.getElementById('marlin-printer-modal-name');
     if (nameEl) nameEl.textContent = (entry && entry.name) || device;
     document.getElementById('marlin-printer-modal')?.classList.add('active');
+    // Orden y módulos ocultos que eligió el usuario en "Personalizar Módulos".
+    applyPrinterModulesLayout('marlin');
 
     // La cámara se vincula por el id interno de la impresora, no por la ruta USB.
     const cameraContainer = document.getElementById('marlin-printer-modal-camera');
@@ -19252,7 +19356,7 @@ async function openMarlinPrinterModal(device) {
         consoleContainer.innerHTML = `
             <div class="temp-card">
                 <div class="temp-card-header">
-                    <div class="temp-card-header-left">
+                    <div class="temp-card-header-left" role="heading" aria-level="3">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>
                         <span>${t('console')}</span>
                     </div>
@@ -19298,7 +19402,7 @@ function renderMarlinToolheadCard(data, device) {
     container.innerHTML = `
         <div class="temp-card toolhead-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span>${t('toolhead')}</span>
                 </div>
@@ -19475,7 +19579,7 @@ function renderMarlinTemperaturesCard(data, device) {
     container.innerHTML = `
         <div class="temp-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.5a4 4 0 1 0 4 0V4a2 2 0 0 0-4 0Z"/></svg>
                     <span>${t('temperatures')}</span>
                 </div>
@@ -19622,7 +19726,7 @@ async function renderMarlinPrintCardShell(device) {
     container.innerHTML = `
         <div class="temp-card">
             <div class="temp-card-header">
-                <div class="temp-card-header-left">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                     <span>${t('marlinPrinterPrintTitle')}</span>
                 </div>
@@ -20197,6 +20301,24 @@ navItems.forEach(item => {
         setMobileNavOpen(false);
     });
 });
+
+// El logo lleva al Panel de Control desde cualquier sección o plugin, igual
+// que "Inicio" (mismo switchSection + cierre del cajón móvil).
+(function bindBrandLogoHome() {
+    const logo = document.getElementById('brand-logo-home');
+    if (!logo) return;
+    const irAlPanel = () => {
+        switchSection('dashboard');
+        setMobileNavOpen(false);
+    };
+    logo.addEventListener('click', irAlPanel);
+    logo.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            irAlPanel();
+        }
+    });
+})();
 
 // ── Galería de plugins ──
 const pluginsGrid = document.getElementById('plugins-grid');

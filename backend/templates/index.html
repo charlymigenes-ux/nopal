@@ -98,7 +98,7 @@
         </header>
         <aside class="sidebar">
             <div class="brand">
-                <img class="brand-logo" src="/static/img/algonopal_cabezado.png" alt="NOPAL">
+                <img class="brand-logo" id="brand-logo-home" src="/static/img/algonopal_cabezado.png" alt="NOPAL" role="link" tabindex="0" aria-label="Ir al panel principal" title="Ir al panel principal" data-i18n-aria-label="brandGoHome" data-i18n-title="brandGoHome">
                 <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Contraer/expandir menú">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
@@ -1529,10 +1529,9 @@
                             <button type="button" class="theme-option-icon-btn" id="cnc-refresh-btn" title="Actualizar">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                             </button>
-                            <button type="button" class="theme-option-icon-btn cnc-topbar-settings-btn" id="cnc-settings-btn" title="Configuración">
+                            <button type="button" class="theme-option-icon-btn cnc-topbar-settings-btn" id="cnc-settings-btn" data-i18n-title="laserSettings" title="Configuración GRBL" aria-haspopup="dialog">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                             </button>
-                            <div class="cnc-topbar-avatar" title="NOPAL">NP</div>
                         </div>
                     </div>
 
@@ -3487,6 +3486,9 @@
                 <div class="printer-modal-column" data-module="camera">
                     <div id="printer-modal-camera"></div>
                 </div>
+                <div class="printer-modal-column" data-module="spool">
+                    <div id="printer-modal-spool"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -3574,12 +3576,12 @@
          visual, no participa del reordenamiento real. -->
     <div id="module-customizer-modal" class="modal">
         <div class="modal-backdrop" id="module-customizer-modal-backdrop"></div>
-        <div class="modal-content module-customizer-modal-content">
-            <button class="modal-close" id="module-customizer-modal-close">
+        <div class="modal-content module-customizer-modal-content" role="dialog" aria-modal="true" aria-labelledby="module-customizer-title">
+            <button class="modal-close" id="module-customizer-modal-close" type="button" aria-label="Cerrar" data-i18n-aria-label="jhClose">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="module-customizer-header">
-                <h2 data-i18n="moduleCustomizerTitle">Personalizar Módulos</h2>
+                <h2 id="module-customizer-title" data-i18n="moduleCustomizerTitle">Personalizar Módulos</h2>
                 <p class="module-customizer-subtitle" data-i18n="moduleCustomizerSubtitle">Elige qué información quieres ver en tu escritorio.</p>
             </div>
 
@@ -3689,6 +3691,9 @@
     <div id="marlin-printer-modal" class="modal">
         <div class="modal-backdrop" id="marlin-printer-modal-backdrop"></div>
         <div class="modal-content printer-modal-content" id="marlin-printer-modal-content">
+            <button class="modal-close printer-modal-settings-btn" id="marlin-printer-modal-settings-btn" data-i18n-title="moduleCustomizerTitle" title="Personalizar Módulos" aria-label="Personalizar Módulos" data-i18n-aria-label="moduleCustomizerTitle">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
             <button class="modal-close" id="marlin-printer-modal-close">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
