@@ -348,6 +348,8 @@
   .dcard h3{color:#fff;font-family:var(--font-head);font-size:17px;margin:0;font-weight:600;}
   .dcard p{color:var(--text-dim);font-size:14px;margin:0;flex:1;}
   .dcard a.btn{align-self:flex-start;padding:9px 16px;font-size:13.5px;}
+  .dcard-featured{grid-column:1/-1;border-color:var(--green-line);}
+  .dcard-featured .dcard-actions{display:flex;flex-wrap:wrap;gap:12px;}
 
   /* COLABORA CTA */
   .collab-cta{padding:0 0 96px;}
@@ -678,12 +680,21 @@ NOPAL_PORT=9000 ./install.sh</pre>
   <div class="wrap">
     <div class="eyebrow">Documentación</div>
     <h2>Sigue aprendiendo NOPAL</h2>
-    <p class="lead">Guías completas, en español, para sacarle provecho a cada sección del dashboard.</p>
+    <p class="lead">Guías completas, en español e inglés, para instalar, usar y extender NOPAL.</p>
     <div class="grid-docs">
+      <div class="dcard dcard-featured reveal">
+        <div class="ficon"><svg class="ic"><use href="#i-globe"/></svg></div>
+        <h3>Documentación oficial</h3>
+        <p>Guías de usuario y de administración, plugins, hardware, referencia de la API y desarrollo, con buscador. Se actualiza con el código de NOPAL.</p>
+        <div class="dcard-actions">
+          <a class="btn btn-primary" href="https://charlymigenes-ux.github.io/nopal-docs/" target="_blank" rel="noopener">Abrir en español <svg class="ic"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="https://charlymigenes-ux.github.io/nopal-docs/en/" target="_blank" rel="noopener">Open in English</a>
+        </div>
+      </div>
       <div class="dcard reveal">
         <div class="ficon"><svg class="ic"><use href="#i-download"/></svg></div>
         <h3>Manual de Usuario</h3>
-        <p>PDF completo con las 9 secciones del dashboard: Panel de Control, Modelos 3D, Láser, Impresora 3D, Consola, Historial y Configuración.</p>
+        <p>Versión descargable del manual de usuario. La referencia al día es la documentación oficial en línea.</p>
         <a class="btn btn-primary" href="manual/NOPAL_Manual_Usuario.pdf" target="_blank">Descargar PDF</a>
       </div>
       <div class="dcard reveal">
