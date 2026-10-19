@@ -10343,62 +10343,198 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+// ── Consola: máquinas, log y utilidades compartidas (rediseño "cx") ──
+const CX_ICONS = {
+    flame: '<path d="M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-8.5z"/>',
+    home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+    spool: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6"/><path d="M12 15v6"/>',
+    layers: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+    nozzle: '<path d="M5 3h14v4l-4 5v3l-3 6-3-6v-3L5 7z"/>',
+    power: '<path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>',
+    wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z"/>',
+    thermometer: '<path d="M14 14.8V3.5a2.5 2.5 0 0 0-5 0v11.3a4.5 4.5 0 1 0 5 0z"/>',
+    bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+    folder: '<path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    play: '<path d="M7 4l13 8-13 8z"/>',
+};
+const CX_ICON_LABEL_KEYS = {
+    flame: 'cxIconFlame', home: 'cxIconHome', spool: 'cxIconSpool', layers: 'cxIconLayers', nozzle: 'cxIconNozzle',
+    power: 'cxIconPower', wrench: 'cxIconWrench', thermometer: 'cxIconThermometer', bolt: 'cxIconBolt',
+    folder: 'cxIconFolder', play: 'cxIconPlay',
+};
+
+function cxIcon(slug, extraClass = '') {
+    const body = CX_ICONS[slug] || CX_ICONS.bolt;
+    return `<svg class="cx-ico ${extraClass}" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+}
+
+function cxFormat(text, vars) {
+    return String(text).replace(/\{(\w+)\}/g, (_, key) => (vars && vars[key] != null ? vars[key] : ''));
+}
+
+function cxIsAdmin() {
+    return currentAuthUser?.role === 'admin';
+}
+
+function cxDetail(data, fallback) {
+    const detail = data && data.detail;
+    if (typeof detail === 'string' && detail) return detail;
+    if (Array.isArray(detail) && detail.length) {
+        return detail.map(item => (item && item.msg) || '').filter(Boolean).join('. ') || fallback;
+    }
+    return fallback;
+}
+
+// fetch JSON con manejo uniforme de errores: lanza Error con el `detail` del backend.
+async function cxRequest(url, options = {}, fallbackMessage = '') {
+    const response = await fetch(url, options);
+    let data = null;
+    try { data = await response.json(); } catch (error) { data = null; }
+    if (!response.ok) {
+        const error = new Error(cxDetail(data, fallbackMessage || t('cxLoadFailed')));
+        error.status = response.status;
+        throw error;
+    }
+    return data || {};
+}
+
+function cxJsonOptions(method, body) {
+    return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+}
+
+const cxState = {
+    history: [],
+    histIdx: -1,
+    draft: '',
+    clearedAt: {},
+    autoscroll: true,
+    lastLogSignature: '',
+    lastLogText: '',
+    machineSignature: '',
+    klipperMacros: [],
+    customMacros: [],
+    templates: [],
+    openTemplate: null,
+    editingMacroId: null,
+    tab: 'macros',
+};
+
+let consolePollInterval = null;
+let consoleSelectedPort = null;
+
+// ── Máquinas ──
+function cxMachineInfo(printer) {
+    const stateValue = getPrinterEffectiveStateValue(printer);
+    const online = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
+    let key = 'cxStateReady';
+    let tone = 'ok';
+    if (!online) { key = 'cxStateOffline'; tone = 'off'; }
+    else if (stateValue === 'printing') { key = 'cxStatePrinting'; tone = 'info'; }
+    else if (stateValue === 'paused') { key = 'cxStatePaused'; tone = 'warn'; }
+    else if (stateValue === 'error' || stateValue === 'shutdown') { key = 'cxStateError'; tone = 'danger'; }
+    const temps = printer.temps || {};
+    const data = printer.data || printer.status?.status || {};
+    const pick = (a, b) => (typeof a === 'number' ? a : (typeof b === 'number' ? b : null));
+    const nozzle = pick(temps.extruder?.current, data.extruder?.temperature);
+    const bed = pick(temps.heater_bed?.current, data.heater_bed?.temperature);
+    return { online, key, tone, nozzle: online ? nozzle : null, bed: online ? bed : null };
+}
+
+function cxFormatTemp(value) {
+    return typeof value === 'number' ? `${(Math.round(value * 10) / 10).toFixed(1)}°C` : '—';
+}
+
+function cxMachinesSignature() {
+    return JSON.stringify((allPrinters || []).map(p => {
+        const info = cxMachineInfo(p);
+        return [p.port, getPrinterDisplayName(p), info.key, info.nozzle, info.bed];
+    }));
+}
+
 function renderConsolePrinterPicker(preferredPort) {
     const container = document.getElementById('console-printer-picker');
     if (!container) return preferredPort;
 
     if (!allPrinters.length) {
-        container.innerHTML = `<div class="empty-state-small">${t('noPrintersFound')}</div>`;
+        container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noPrintersFound'))}</div>`;
+        cxState.machineSignature = '';
         return null;
     }
 
     const validPorts = allPrinters.map(p => p.port);
     const nextPort = (preferredPort && validPorts.includes(preferredPort)) ? preferredPort : validPorts[0];
+    consoleSelectedPort = nextPort;
+    cxState.machineSignature = cxMachinesSignature();
 
     container.innerHTML = allPrinters.map(printer => {
         const name = getPrinterDisplayName(printer);
-        const active = printer.port === nextPort ? ' active' : '';
+        const info = cxMachineInfo(printer);
+        const active = printer.port === nextPort;
+        const tip = active ? t('cxMachineActiveTip') : t('cxMachineSelectTip');
         return `
-            <button type="button" class="printer-picker-card${active}" data-port="${printer.port}">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                <span>${escapeHtml(name)}</span>
+            <button type="button" class="cx-machine${active ? ' active' : ''}${info.online ? '' : ' offline'}" data-port="${escapeHtml(printer.port)}" aria-pressed="${active}" title="${escapeHtml(tip)}">
+                <span class="cx-machine-top">
+                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5"/><path d="M12 22V12"/></svg>
+                    <span class="cx-machine-name">${escapeHtml(name)}</span>
+                    <span class="cx-chip cx-chip-${info.tone}">${escapeHtml(t(info.key))}</span>
+                </span>
+                <span class="cx-machine-temps">
+                    <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.thermometer}</svg><span class="cx-sr">${escapeHtml(t('cxNozzle'))} </span><b>${cxFormatTemp(info.nozzle)}</b></span>
+                    <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.layers}</svg><span class="cx-sr">${escapeHtml(t('cxBed'))} </span><b>${cxFormatTemp(info.bed)}</b></span>
+                </span>
             </button>
         `;
     }).join('');
 
-    container.querySelectorAll('.printer-picker-card').forEach(btn => {
+    container.querySelectorAll('.cx-machine').forEach(btn => {
         btn.addEventListener('click', () => {
             const port = parseInt(btn.dataset.port, 10);
             if (port === consoleSelectedPort) return;
             consoleSelectedPort = port;
-            container.querySelectorAll('.printer-picker-card').forEach(el => {
-                el.classList.toggle('active', parseInt(el.dataset.port, 10) === port);
-            });
+            renderConsolePrinterPicker(port);
+            cxState.lastLogSignature = '';
             startConsolePolling();
             loadMacrosForSelectedPrinter();
+            cxLoadHistory();
         });
     });
 
     return nextPort;
 }
 
-let consolePollInterval = null;
-let consoleSelectedPort = null;
+// ── Log ──
+function cxClassifyLine(msg) {
+    if (msg.type === 'command') return 'command';
+    const text = String(msg.message || '').trim();
+    if (/^(!!|error\b|\/\/\s*error|\w*\s*error:)/i.test(text)) return 'error';
+    if (/^ok\b/i.test(text)) return 'ok';
+    return 'response';
+}
+
+function cxClock(epoch) {
+    if (!epoch) return '';
+    return new Date(epoch * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
 
 function renderConsoleLog(messages) {
     const logEl = document.getElementById('console-log');
     if (!logEl) return;
-    if (!messages || !messages.length) {
-        logEl.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
+    const clearedAt = cxState.clearedAt[consoleSelectedPort] || 0;
+    const visible = (messages || []).filter(msg => !clearedAt || (msg.time || 0) > clearedAt);
+    const signature = JSON.stringify(visible);
+    if (signature === cxState.lastLogSignature) return;
+    cxState.lastLogSignature = signature;
+    cxState.lastLogText = visible.map(msg => `${cxClock(msg.time)} ${msg.message || ''}`.trim()).join('\n');
+    if (!visible.length) {
+        logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
         return;
     }
-    const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
-    logEl.innerHTML = messages.map(msg => {
-        const time = msg.time ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-        const typeClass = msg.type === 'command' ? 'console-line-command' : 'console-line-response';
-        return `<div class="console-line ${typeClass}"><span class="console-line-time">${time}</span><span class="console-line-message">${escapeHtml(msg.message || '')}</span></div>`;
+    const previousTop = logEl.scrollTop;
+    logEl.innerHTML = visible.map(msg => {
+        const kind = cxClassifyLine(msg);
+        return `<div class="console-line cx-line cx-line-${kind}"><time class="cx-line-time">${cxClock(msg.time)}</time><span class="cx-line-message">${escapeHtml(msg.message || '')}</span></div>`;
     }).join('');
-    if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight;
+    logEl.scrollTop = cxState.autoscroll ? logEl.scrollHeight : previousTop;
 }
 
 async function refreshConsoleLog() {
@@ -10410,6 +10546,9 @@ async function refreshConsoleLog() {
         renderConsoleLog(data.messages || []);
     } catch (error) {
         console.error(error);
+    }
+    if (cxMachinesSignature() !== cxState.machineSignature && !document.activeElement?.closest?.('.cx-machine-list')) {
+        renderConsolePrinterPicker(consoleSelectedPort);
     }
 }
 
@@ -10428,17 +10567,266 @@ function startConsolePolling() {
 
 function loadConsoleSection() {
     consoleSelectedPort = renderConsolePrinterPicker(consoleSelectedPort);
+    cxApplyRole();
+    cxState.lastLogSignature = '';
     startConsolePolling();
     loadMacrosForSelectedPrinter();
+    cxLoadHistory();
+    cxLoadTemplates();
 }
 
-const consoleClearBtn = document.getElementById('console-clear-btn');
-if (consoleClearBtn) {
-    consoleClearBtn.addEventListener('click', () => {
-        const logEl = document.getElementById('console-log');
-        if (logEl) logEl.innerHTML = '';
+function cxApplyRole() {
+    const admin = cxIsAdmin();
+    const input = document.getElementById('console-input');
+    if (input) input.disabled = !admin;
+    ['cx-send-btn', 'cx-load-btn', 'cx-macro-new-btn', 'cx-history-clear-btn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = !admin;
+    });
+    const loadItem = document.querySelector('#cx-menu [data-cx-action="load"]');
+    if (loadItem) loadItem.disabled = !admin;
+    const note = document.getElementById('cx-admin-note');
+    if (note) note.hidden = admin;
+}
+
+// ── Popovers (menú ⋮, ajustes, historial) ──
+function cxClosePopovers(except) {
+    document.querySelectorAll('.cx-popover').forEach(pop => {
+        if (pop === except) return;
+        if (!pop.hidden) {
+            pop.hidden = true;
+            const trigger = document.querySelector(`[aria-controls="${pop.id}"]`);
+            if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        }
     });
 }
+
+function cxBindPopover(buttonId, popId, onOpen) {
+    const btn = document.getElementById(buttonId);
+    const pop = document.getElementById(popId);
+    if (!btn || !pop) return;
+    btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const willOpen = pop.hidden;
+        cxClosePopovers(willOpen ? pop : null);
+        pop.hidden = !willOpen;
+        btn.setAttribute('aria-expanded', String(willOpen));
+        if (willOpen && onOpen) onOpen(pop);
+    });
+    pop.addEventListener('click', (event) => event.stopPropagation());
+}
+
+document.addEventListener('click', () => cxClosePopovers(null));
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const open = document.querySelector('.cx-popover:not([hidden])');
+    if (!open) return;
+    const trigger = document.querySelector(`[aria-controls="${open.id}"]`);
+    cxClosePopovers(null);
+    if (trigger) trigger.focus();
+});
+
+cxBindPopover('cx-menu-btn', 'cx-menu');
+cxBindPopover('cx-settings-btn', 'cx-settings-pop');
+cxBindPopover('cx-history-btn', 'cx-history-pop', () => { cxRenderHistory(); cxLoadHistory(); });
+
+// ── Acciones de la consola ──
+function cxClearLogView() {
+    cxState.clearedAt[consoleSelectedPort] = Date.now() / 1000;
+    cxState.lastLogSignature = '';
+    cxState.lastLogText = '';
+    const logEl = document.getElementById('console-log');
+    if (logEl) logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
+}
+
+async function cxCopyLog() {
+    const text = cxState.lastLogText;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            document.execCommand('copy');
+            area.remove();
+        }
+        showToast(t('cxCopied'));
+    } catch (error) {
+        showToast(t('cxCopyFailed'), 'error');
+    }
+}
+
+async function cxSaveLog() {
+    if (!consoleSelectedPort) return;
+    try {
+        const response = await fetch(`/api/console/log/export?port=${consoleSelectedPort}&count=500`);
+        if (!response.ok) {
+            let data = null;
+            try { data = await response.json(); } catch (error) { data = null; }
+            throw new Error(cxDetail(data, t('cxSaveFailed')));
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+        const filename = match ? decodeURIComponent(match[1]) : `consola-${consoleSelectedPort}.log`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+        showToast(error.message || t('cxSaveFailed'), 'error');
+    }
+}
+
+async function cxRunFile(file) {
+    if (!file || !consoleSelectedPort) return;
+    const formData = new FormData();
+    formData.append('port', consoleSelectedPort);
+    formData.append('file', file);
+    try {
+        const data = await cxRequest('/api/console/run-file', { method: 'POST', body: formData }, t('cxFileFailed'));
+        showToast(cxFormat(t('cxFileSent'), { sent: data.sent ?? 0, skipped: data.skipped ?? 0 }));
+        refreshConsoleLog();
+    } catch (error) {
+        appAlert(error.message || t('cxFileFailed'), '', 'danger');
+    }
+}
+
+// ── Historial de comandos ──
+async function cxLoadHistory() {
+    if (!consoleSelectedPort) { cxState.history = []; cxRenderHistory(); return; }
+    try {
+        const data = await cxRequest(`/api/console/history?port=${consoleSelectedPort}&limit=50`);
+        cxState.history = Array.isArray(data.history) ? data.history : [];
+    } catch (error) {
+        cxState.history = [];
+    }
+    cxState.histIdx = -1;
+    cxRenderHistory();
+}
+
+function cxRenderHistory() {
+    const list = document.getElementById('cx-history-list');
+    if (!list) return;
+    if (!cxState.history.length) {
+        list.innerHTML = `<li class="cx-history-empty">${escapeHtml(t('cxHistoryEmpty'))}</li>`;
+        return;
+    }
+    list.innerHTML = cxState.history.map(cmd => `<li><button type="button" class="cx-history-item" data-cmd="${escapeHtml(cmd)}">${escapeHtml(cmd)}</button></li>`).join('');
+    list.querySelectorAll('.cx-history-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const input = document.getElementById('console-input');
+            if (input) { input.value = btn.dataset.cmd; input.focus(); }
+            cxClosePopovers(null);
+        });
+    });
+}
+
+async function cxClearHistory() {
+    if (!consoleSelectedPort) return;
+    try {
+        await cxRequest(`/api/console/history?port=${consoleSelectedPort}`, { method: 'DELETE' });
+        cxState.history = [];
+        cxState.histIdx = -1;
+        cxRenderHistory();
+        showToast(t('cxHistoryCleared'));
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function cxSendCommand(command) {
+    if (!command || !consoleSelectedPort) return false;
+    try {
+        const formData = new FormData();
+        formData.append('port', consoleSelectedPort);
+        formData.append('command', command);
+        await cxRequest('/api/console/command', { method: 'POST', body: formData }, t('cxCommandFailed'));
+        refreshConsoleLog();
+        cxLoadHistory();
+        return true;
+    } catch (error) {
+        showToast(error.message || t('cxCommandFailed'), 'error');
+        return false;
+    }
+}
+
+(function cxBindConsoleControls() {
+    document.getElementById('console-clear-btn')?.addEventListener('click', cxClearLogView);
+    document.getElementById('cx-copy-btn')?.addEventListener('click', cxCopyLog);
+    document.getElementById('cx-save-btn')?.addEventListener('click', cxSaveLog);
+    document.getElementById('cx-history-clear-btn')?.addEventListener('click', cxClearHistory);
+
+    const fileInput = document.getElementById('cx-file-input');
+    document.getElementById('cx-load-btn')?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = '';
+        cxRunFile(file);
+    });
+
+    const input = document.getElementById('console-input');
+    document.getElementById('cx-input-clear-btn')?.addEventListener('click', () => {
+        if (input) { input.value = ''; input.focus(); }
+        cxState.histIdx = -1;
+    });
+
+    document.querySelectorAll('#cx-menu [data-cx-action]').forEach(item => {
+        item.addEventListener('click', () => {
+            const action = item.dataset.cxAction;
+            cxClosePopovers(null);
+            if (action === 'save') cxSaveLog();
+            else if (action === 'copy') cxCopyLog();
+            else if (action === 'clear') cxClearLogView();
+            else if (action === 'load') fileInput?.click();
+        });
+    });
+
+    const autoscroll = document.getElementById('cx-autoscroll');
+    try {
+        if (localStorage.getItem('cxAutoscroll') === '0') cxState.autoscroll = false;
+    } catch (error) { /* sin storage */ }
+    if (autoscroll) {
+        autoscroll.setAttribute('aria-checked', String(cxState.autoscroll));
+        autoscroll.addEventListener('click', () => {
+            cxState.autoscroll = !cxState.autoscroll;
+            autoscroll.setAttribute('aria-checked', String(cxState.autoscroll));
+            try { localStorage.setItem('cxAutoscroll', cxState.autoscroll ? '1' : '0'); } catch (error) { /* sin storage */ }
+            if (cxState.autoscroll) {
+                const logEl = document.getElementById('console-log');
+                if (logEl) logEl.scrollTop = logEl.scrollHeight;
+            }
+        });
+    }
+
+    // Navegación del historial con ↑/↓ en el input.
+    input?.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+        const history = cxState.history;
+        if (!history.length) return;
+        event.preventDefault();
+        if (event.key === 'ArrowUp') {
+            if (cxState.histIdx === -1) cxState.draft = input.value;
+            if (cxState.histIdx < history.length - 1) cxState.histIdx += 1;
+            input.value = history[cxState.histIdx];
+        } else {
+            if (cxState.histIdx === -1) return;
+            cxState.histIdx -= 1;
+            input.value = cxState.histIdx === -1 ? cxState.draft : history[cxState.histIdx];
+        }
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+    });
+})();
 
 // ── Selector de tamaño de texto para las consolas (solo afecta el log) ──
 function applyConsoleFontSize(targetId, size) {
@@ -10468,23 +10856,44 @@ const consoleInputForm = document.getElementById('console-input-form');
 if (consoleInputForm) {
     consoleInputForm.addEventListener('submit', async (event) => {
         event.preventDefault();
+        if (!cxIsAdmin()) return;
         const input = document.getElementById('console-input');
         const command = input?.value.trim();
         if (!command || !consoleSelectedPort) return;
         input.value = '';
-        try {
-            const formData = new FormData();
-            formData.append('port', consoleSelectedPort);
-            formData.append('command', command);
-            const response = await fetch('/api/console/command', { method: 'POST', body: formData });
-            if (!response.ok) throw new Error('No se pudo enviar el comando');
-            refreshConsoleLog();
-        } catch (error) {
-            console.error(error);
-        }
+        cxState.histIdx = -1;
+        cxState.draft = '';
+        const ok = await cxSendCommand(command);
+        if (!ok && input && !input.value) input.value = command;
     });
 }
 
+// ── Macros, plantillas y ayuda ──
+function cxSetTab(tab, focus = false) {
+    cxState.tab = tab;
+    document.querySelectorAll('.cx-tab').forEach(btn => {
+        const active = btn.dataset.cxTab === tab;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', String(active));
+        btn.tabIndex = active ? 0 : -1;
+        if (active && focus) btn.focus();
+    });
+    document.querySelectorAll('.cx-side .cx-panel').forEach(panel => {
+        panel.hidden = panel.id !== `cx-panel-${tab}`;
+    });
+}
+
+document.querySelectorAll('.cx-tab').forEach((btn, index, all) => {
+    btn.addEventListener('click', () => cxSetTab(btn.dataset.cxTab));
+    btn.addEventListener('keydown', (event) => {
+        let next = null;
+        if (event.key === 'ArrowRight') next = all[(index + 1) % all.length];
+        else if (event.key === 'ArrowLeft') next = all[(index - 1 + all.length) % all.length];
+        else if (event.key === 'Home') next = all[0];
+        else if (event.key === 'End') next = all[all.length - 1];
+        if (next) { event.preventDefault(); cxSetTab(next.dataset.cxTab, true); }
+    });
+});
 function macroLabel(name) {
     return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -10521,61 +10930,299 @@ function macroAutoDescription(name) {
     return t('macroNoDescription');
 }
 
-function renderMacrosGrid(macros) {
+function cxMacroEntries() {
+    const klipper = (cxState.klipperMacros || []).map(macro => ({
+        kind: 'klipper',
+        key: `k:${macro.name}`,
+        name: macroLabel(macro.name),
+        rawName: macro.name,
+        description: macro.description || macroAutoDescription(macro.name),
+        icon: 'bolt',
+    }));
+    const custom = (cxState.customMacros || []).map(macro => ({
+        kind: 'custom',
+        key: `c:${macro.id}`,
+        id: macro.id,
+        name: macro.name,
+        description: macro.description || '',
+        icon: macro.icon || 'bolt',
+        raw: macro,
+    }));
+    return [...custom, ...klipper];
+}
+
+function renderMacrosGrid() {
     const gridEl = document.getElementById('macros-grid');
     if (!gridEl) return;
-    if (!macros || !macros.length) {
-        gridEl.innerHTML = `<div class="empty-state">${t('noMacros')}</div>`;
+    const query = (document.getElementById('cx-macro-search')?.value || '').trim().toLowerCase();
+    const all = cxMacroEntries();
+    const entries = query ? all.filter(e => `${e.name} ${e.description}`.toLowerCase().includes(query)) : all;
+    if (!all.length) {
+        gridEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noMacros'))}</div>`;
         return;
     }
-    gridEl.innerHTML = macros.map(macro => `
-        <button type="button" class="macro-btn" data-macro="${escapeHtml(macro.name)}">
-            <span class="macro-btn-face">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                <span>${macroLabel(macro.name)}</span>
-            </span>
-            <span class="macro-btn-description">${escapeHtml(macro.description || macroAutoDescription(macro.name))}</span>
-        </button>
+    if (!entries.length) {
+        gridEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxMacroNoResults'))}</div>`;
+        return;
+    }
+    const admin = cxIsAdmin();
+    gridEl.innerHTML = entries.map(entry => `
+        <div class="cx-macro" data-key="${escapeHtml(entry.key)}">
+            <button type="button" class="cx-macro-run macro-btn-reset" data-key="${escapeHtml(entry.key)}"${admin ? '' : ' disabled'}>
+                <span class="cx-macro-icon">${cxIcon(entry.icon)}</span>
+                <span class="cx-macro-text">
+                    <strong>${escapeHtml(entry.name)}${entry.kind === 'custom' ? `<em class="cx-badge">${escapeHtml(t('cxMacroCustom'))}</em>` : ''}</strong>
+                    <small>${escapeHtml(entry.description)}</small>
+                </span>
+            </button>
+            ${entry.kind === 'custom' && admin ? `
+                <button type="button" class="cx-icon-btn cx-macro-edit" data-id="${escapeHtml(entry.id)}" aria-label="${escapeHtml(t('cxMacroEdit'))}" title="${escapeHtml(t('cxMacroEdit'))}">
+                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                </button>
+                <button type="button" class="cx-icon-btn cx-macro-delete" data-id="${escapeHtml(entry.id)}" aria-label="${escapeHtml(t('cxMacroDelete'))}" title="${escapeHtml(t('cxMacroDelete'))}">
+                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+                </button>` : ''}
+        </div>
     `).join('');
 
-    gridEl.querySelectorAll('.macro-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (!consoleSelectedPort) return;
-            btn.disabled = true;
-            btn.classList.add('running');
-            try {
-                const formData = new FormData();
-                formData.append('port', consoleSelectedPort);
-                formData.append('macro', btn.dataset.macro);
-                const response = await fetch('/api/macros/run', { method: 'POST', body: formData });
-                if (!response.ok) throw new Error('No se pudo ejecutar el macro');
-            } catch (error) {
-                console.error(error);
-                appAlert(error.message || 'No se pudo ejecutar el macro.', '', 'danger');
-            } finally {
-                btn.disabled = false;
-                btn.classList.remove('running');
-            }
-        });
+    const byKey = new Map(entries.map(e => [e.key, e]));
+    gridEl.querySelectorAll('.cx-macro-run').forEach(btn => {
+        btn.addEventListener('click', () => cxRunMacro(byKey.get(btn.dataset.key), btn));
     });
+    gridEl.querySelectorAll('.cx-macro-edit').forEach(btn => {
+        btn.addEventListener('click', () => cxOpenMacroDialog(cxState.customMacros.find(m => m.id === btn.dataset.id)));
+    });
+    gridEl.querySelectorAll('.cx-macro-delete').forEach(btn => {
+        btn.addEventListener('click', () => cxDeleteMacro(cxState.customMacros.find(m => m.id === btn.dataset.id)));
+    });
+}
+
+async function cxRunMacro(entry, btn) {
+    if (!entry || !consoleSelectedPort) return;
+    btn.disabled = true;
+    btn.classList.add('running');
+    try {
+        if (entry.kind === 'custom') {
+            await cxRequest(`/api/console/macros/${encodeURIComponent(entry.id)}/run`, cxJsonOptions('POST', { port: consoleSelectedPort }), t('cxMacroRunFailed'));
+        } else {
+            const formData = new FormData();
+            formData.append('port', consoleSelectedPort);
+            formData.append('macro', entry.rawName);
+            await cxRequest('/api/macros/run', { method: 'POST', body: formData }, t('cxMacroRunFailed'));
+        }
+        refreshConsoleLog();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('cxMacroRunFailed'), '', 'danger');
+    } finally {
+        btn.disabled = !cxIsAdmin();
+        btn.classList.remove('running');
+    }
 }
 
 async function loadMacrosForSelectedPrinter() {
     const gridEl = document.getElementById('macros-grid');
     if (!consoleSelectedPort) {
-        if (gridEl) gridEl.innerHTML = `<div class="empty-state">${t('noPrintersFound')}</div>`;
+        if (gridEl) gridEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noPrintersFound'))}</div>`;
         return;
     }
+    const [klipper, custom] = await Promise.all([
+        cxRequest(`/api/macros?port=${consoleSelectedPort}`).catch(error => { console.error(error); return { macros: [] }; }),
+        cxRequest('/api/console/macros').catch(() => ({ macros: [] })),
+    ]);
+    cxState.klipperMacros = klipper.macros || [];
+    cxState.customMacros = custom.macros || [];
+    renderMacrosGrid();
+}
+
+document.getElementById('cx-macro-search')?.addEventListener('input', renderMacrosGrid);
+
+// ── Editor de macros personalizadas ──
+function cxOpenMacroDialog(macro) {
+    const dialog = document.getElementById('cx-macro-dialog');
+    if (!dialog || typeof dialog.showModal !== 'function') return;
+    cxState.editingMacroId = macro ? macro.id : null;
+    document.getElementById('cx-macro-dialog-title').textContent = t(macro ? 'cxEditorEditTitle' : 'cxEditorNewTitle');
+    document.getElementById('cx-macro-name').value = macro?.name || '';
+    document.getElementById('cx-macro-desc').value = macro?.description || '';
+    document.getElementById('cx-macro-commands').value = (macro?.commands || []).join('\n');
+    const selected = macro?.icon && CX_ICONS[macro.icon] ? macro.icon : 'bolt';
+    document.getElementById('cx-macro-icons').innerHTML = Object.keys(CX_ICONS).map(slug => `
+        <label class="cx-icon-option" title="${escapeHtml(t(CX_ICON_LABEL_KEYS[slug]))}">
+            <input type="radio" name="cx-macro-icon" value="${slug}"${slug === selected ? ' checked' : ''}>
+            <span aria-hidden="true">${cxIcon(slug)}</span>
+            <span class="cx-sr">${escapeHtml(t(CX_ICON_LABEL_KEYS[slug]))}</span>
+        </label>`).join('');
+    const error = document.getElementById('cx-macro-error');
+    error.hidden = true;
+    error.textContent = '';
+    dialog.showModal();
+    document.getElementById('cx-macro-name').focus();
+}
+
+document.getElementById('cx-macro-new-btn')?.addEventListener('click', () => cxOpenMacroDialog(null));
+document.getElementById('cx-macro-cancel')?.addEventListener('click', () => document.getElementById('cx-macro-dialog')?.close());
+document.getElementById('cx-macro-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const errorEl = document.getElementById('cx-macro-error');
+    const body = {
+        name: document.getElementById('cx-macro-name').value.trim(),
+        description: document.getElementById('cx-macro-desc').value.trim(),
+        icon: document.querySelector('input[name="cx-macro-icon"]:checked')?.value || 'bolt',
+        commands: document.getElementById('cx-macro-commands').value.split('\n').map(line => line.trim()).filter(Boolean),
+    };
+    const saveBtn = document.getElementById('cx-macro-save');
+    saveBtn.disabled = true;
     try {
-        const response = await fetch(`/api/macros?port=${consoleSelectedPort}`);
-        if (!response.ok) throw new Error('No se pudo cargar los macros');
-        const data = await response.json();
-        renderMacrosGrid(data.macros || []);
+        const id = cxState.editingMacroId;
+        await cxRequest(id ? `/api/console/macros/${encodeURIComponent(id)}` : '/api/console/macros', cxJsonOptions(id ? 'PUT' : 'POST', body), t('cxSaveError'));
+        document.getElementById('cx-macro-dialog').close();
+        showToast(t('cxSaved'));
+        loadMacrosForSelectedPrinter();
     } catch (error) {
-        console.error(error);
-        if (gridEl) gridEl.innerHTML = `<div class="empty-state">${t('noMacros')}</div>`;
+        errorEl.textContent = error.message || t('cxSaveError');
+        errorEl.hidden = false;
+    } finally {
+        saveBtn.disabled = false;
+    }
+});
+
+async function cxDeleteMacro(macro) {
+    if (!macro) return;
+    const confirmed = await appConfirm(cxFormat(t('cxMacroDeleteConfirm'), { name: macro.name }), t('cxMacroDelete'), 'danger');
+    if (!confirmed) return;
+    try {
+        await cxRequest(`/api/console/macros/${encodeURIComponent(macro.id)}`, { method: 'DELETE' }, t('cxSaveError'));
+        showToast(t('cxMacroDeleted'));
+        loadMacrosForSelectedPrinter();
+    } catch (error) {
+        appAlert(error.message, '', 'danger');
     }
 }
+
+// ── Plantillas ──
+async function cxLoadTemplates() {
+    const list = document.getElementById('cx-template-list');
+    if (!list) return;
+    try {
+        const data = await cxRequest('/api/console/templates');
+        cxState.templates = data.templates || [];
+    } catch (error) {
+        cxState.templates = [];
+    }
+    cxRenderTemplates();
+}
+
+function cxRenderTemplates() {
+    const list = document.getElementById('cx-template-list');
+    if (!list) return;
+    if (!cxState.templates.length) {
+        list.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxTemplatesEmpty'))}</div>`;
+        return;
+    }
+    const admin = cxIsAdmin();
+    list.innerHTML = cxState.templates.map(tpl => {
+        const open = cxState.openTemplate === tpl.id;
+        const idAttr = escapeHtml(tpl.id);
+        const fields = (tpl.params || []).map(param => {
+            const isNumber = param.type === 'number';
+            const fieldId = `cx-tpl-${idAttr}-${escapeHtml(param.key)}`;
+            return `
+                <label class="cx-field" for="${fieldId}">
+                    <span>${escapeHtml(param.label || param.key)}${param.unit ? ` <small>(${escapeHtml(param.unit)})</small>` : ''}</span>
+                    <input id="${fieldId}" data-key="${escapeHtml(param.key)}" data-type="${isNumber ? 'number' : 'text'}"
+                        type="${isNumber ? 'number' : 'text'}" ${isNumber ? 'step="any" inputmode="decimal"' : ''}
+                        ${param.min != null ? `min="${escapeHtml(param.min)}"` : ''} ${param.max != null ? `max="${escapeHtml(param.max)}"` : ''}
+                        value="${param.default != null ? escapeHtml(param.default) : ''}" required>
+                </label>`;
+        }).join('');
+        return `
+            <div class="cx-template${open ? ' open' : ''}" data-id="${idAttr}">
+                <div class="cx-template-head">
+                    <button type="button" class="cx-template-toggle" aria-expanded="${open}" aria-controls="cx-tpl-body-${idAttr}">
+                        <span class="cx-macro-icon">${cxIcon(tpl.icon)}</span>
+                        <span class="cx-macro-text"><strong>${escapeHtml(tpl.name)}</strong><small>${escapeHtml(tpl.subtitle || '')}</small></span>
+                        <svg class="cx-ico cx-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    ${!tpl.builtin && admin ? `<button type="button" class="cx-icon-btn cx-template-delete" aria-label="${escapeHtml(t('cxTemplateDelete'))}" title="${escapeHtml(t('cxTemplateDelete'))}"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>` : ''}
+                </div>
+                <form class="cx-template-body" id="cx-tpl-body-${idAttr}"${open ? '' : ' hidden'}>
+                    <div class="cx-template-fields">${fields}</div>
+                    <p class="cx-form-error" role="alert" hidden></p>
+                    <button type="submit" class="cx-primary-btn"${admin ? '' : ' disabled'}>
+                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                        <span>${escapeHtml(t('cxTemplateSend'))}</span>
+                    </button>
+                </form>
+            </div>`;
+    }).join('');
+
+    list.querySelectorAll('.cx-template').forEach(card => {
+        const id = card.dataset.id;
+        const toggle = card.querySelector('.cx-template-toggle');
+        const body = card.querySelector('.cx-template-body');
+        toggle.addEventListener('click', () => {
+            const willOpen = body.hidden;
+            list.querySelectorAll('.cx-template').forEach(other => {
+                const isThis = other === card;
+                other.classList.toggle('open', isThis && willOpen);
+                other.querySelector('.cx-template-body').hidden = !(isThis && willOpen);
+                other.querySelector('.cx-template-toggle').setAttribute('aria-expanded', String(isThis && willOpen));
+            });
+            cxState.openTemplate = willOpen ? id : null;
+        });
+        card.querySelector('.cx-template-delete')?.addEventListener('click', () => cxDeleteTemplate(id));
+        body.addEventListener('submit', (event) => {
+            event.preventDefault();
+            cxRunTemplate(id, body);
+        });
+    });
+}
+
+async function cxRunTemplate(id, form) {
+    if (!consoleSelectedPort) return;
+    const errorEl = form.querySelector('.cx-form-error');
+    const submit = form.querySelector('button[type="submit"]');
+    const params = {};
+    form.querySelectorAll('input[data-key]').forEach(input => {
+        params[input.dataset.key] = input.dataset.type === 'number' ? Number(input.value) : input.value;
+    });
+    errorEl.hidden = true;
+    submit.disabled = true;
+    try {
+        const data = await cxRequest(`/api/console/templates/${encodeURIComponent(id)}/run`, cxJsonOptions('POST', { port: consoleSelectedPort, params }), t('cxTemplateFailed'));
+        showToast(cxFormat(t('cxTemplateSent'), { sent: data.sent ?? 0 }));
+        refreshConsoleLog();
+    } catch (error) {
+        errorEl.textContent = error.message || t('cxTemplateFailed');
+        errorEl.hidden = false;
+    } finally {
+        submit.disabled = !cxIsAdmin();
+    }
+}
+
+async function cxDeleteTemplate(id) {
+    const tpl = cxState.templates.find(item => item.id === id);
+    if (!tpl) return;
+    const confirmed = await appConfirm(cxFormat(t('cxTemplateDeleteConfirm'), { name: tpl.name }), t('cxTemplateDelete'), 'danger');
+    if (!confirmed) return;
+    try {
+        await cxRequest(`/api/console/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }, t('cxSaveError'));
+        if (cxState.openTemplate === id) cxState.openTemplate = null;
+        cxLoadTemplates();
+    } catch (error) {
+        appAlert(error.message, '', 'danger');
+    }
+}
+
+window.addEventListener('nopal:language-changed', () => {
+    if (document.getElementById('console-section')?.style.display === 'none') return;
+    cxState.machineSignature = '';
+    renderConsolePrinterPicker(consoleSelectedPort);
+    renderMacrosGrid();
+    cxRenderTemplates();
+    cxRenderHistory();
+});
 
 // ── Generic in-app confirm modal (reemplaza confirm() nativo) ──
 const APP_DIALOG_ICONS = {

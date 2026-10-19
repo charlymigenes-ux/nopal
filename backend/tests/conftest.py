@@ -18,6 +18,7 @@ import backend.services.logging_config_service as logging_config_service
 import backend.services.machine_identity as machine_identity
 import backend.services.ai_conversations_service as ai_conversations_service
 import backend.services.bambu_service as bambu_service
+import backend.services.console_service as console_service
 import backend.services.elegoo_service as elegoo_service
 import backend.services.flashforge_service as flashforge_service
 import backend.services.marlin_printer_service as marlin_printer_service
@@ -116,6 +117,9 @@ def isolated_printer_registries(tmp_path, monkeypatch):
     monkeypatch.setattr(laser_service, "HISTORY_PATH", str(tmp_path / "laser_history.json"))
     monkeypatch.setattr(job_control_service, "PRINT_LOG_PATH", str(tmp_path / "job_print_log.json"))
     monkeypatch.setattr(job_control_service, "DELETIONS_PATH", str(tmp_path / "job_deletions.json"))
+    # Consola: macros/plantillas propias e historial de comandos.
+    monkeypatch.setattr(console_service, "MACROS_PATH", str(tmp_path / "console_macros.json"))
+    monkeypatch.setattr(console_service, "HISTORY_PATH", str(tmp_path / "console_history.json"))
     # Las variables NOPAL_AI_* pisan al archivo (ver ai_config_service):
     # sin limpiarlas, el entorno de quien corre la suite decidiría el
     # resultado de los tests de configuración.

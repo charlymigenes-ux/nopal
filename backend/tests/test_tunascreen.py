@@ -305,7 +305,7 @@ class TestKlipperLongScripts:
 
         # Un G28 largo no responde a tiempo aunque Klipper sí lo esté ejecutando.
         assert client.run_gcode_script("G28", accept_timeout=True) is True
-        assert client.run_gcode_script("G28") is False
+        assert client.run_gcode_script("G28", accept_timeout=False) is False
 
 
 class TestDeviceManagement:
