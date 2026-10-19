@@ -733,45 +733,170 @@
             </section>
 
             <section id="console-section" class="view-section" style="display: none;">
-                <main class="main-content console-macros-main">
-                    <div class="console-macros-topbar">
-                        <section class="page-header console-macros-header">
-                            <h1 data-i18n="console">Consola</h1>
-                            <p data-i18n="consoleDescription">Selecciona una impresora y envía comandos G-code directamente, observando la respuesta en tiempo real.</p>
-                        </section>
-                        <section class="page-header console-macros-header">
-                            <h1 data-i18n="macros">Macros</h1>
-                            <p data-i18n="macrosDescription">Ejecuta macros configurados en Klipper con un clic. Se cargan los de la impresora seleccionada del lado izquierdo.</p>
-                        </section>
-                    </div>
-                    <div class="console-macros-split">
-                        <div class="console-macros-half">
-                            <div class="console-printer-picker" id="console-printer-picker"></div>
-                            <div class="console-card">
-                                <div class="console-toolbar">
-                                    <div class="console-font-size-toggle" data-target="console-log">
-                                        <button type="button" class="console-font-size-btn" data-size="sm">A-</button>
-                                        <button type="button" class="console-font-size-btn active" data-size="md">A</button>
-                                        <button type="button" class="console-font-size-btn" data-size="lg">A+</button>
-                                    </div>
-                                    <button type="button" class="btn-icon-dark" id="console-clear-btn" title="Limpiar">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                                    </button>
+                <main class="main-content cx-main">
+                    <section class="page-header cx-header">
+                        <h1 data-i18n="console">Consola</h1>
+                        <p class="cx-scope-note" data-i18n="cxScopeNote">Esta consola es solo para impresoras 3D con Klipper. El láser y la CNC (GRBL) tienen su propia consola dentro de su sección.</p>
+                    </section>
+
+                    <section class="cx-card cx-machines" aria-labelledby="cx-machines-title">
+                        <header class="cx-card-head">
+                            <div>
+                                <h2 id="cx-machines-title" data-i18n="cxMachinesTitle">Máquinas</h2>
+                                <p data-i18n="cxMachinesSubtitle">Selecciona una máquina para enviar comandos y macros</p>
+                            </div>
+                        </header>
+                        <div class="cx-machine-list" id="console-printer-picker"></div>
+                    </section>
+
+                    <div class="cx-split">
+                        <section class="cx-card cx-console" aria-labelledby="cx-console-title">
+                            <header class="cx-card-head">
+                                <div>
+                                    <h2 id="cx-console-title" data-i18n="cxConsoleTitle">Consola</h2>
+                                    <p data-i18n="cxConsoleSubtitle">Comandos directos y salida en tiempo real</p>
                                 </div>
-                                <div class="console-log" id="console-log"></div>
-                                <form class="console-input-row" id="console-input-form">
-                                    <input type="text" id="console-input" autocomplete="off" data-i18n-placeholder="consoleInputPlaceholder" placeholder="Enviar comando...">
-                                    <button type="submit" class="btn-icon-dark" title="Enviar">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                <div class="cx-menu-wrap">
+                                    <button type="button" class="cx-icon-btn" id="cx-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="cx-menu" data-i18n-aria-label="cxMenu" aria-label="Más opciones">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg>
+                                    </button>
+                                    <div class="cx-popover cx-menu" id="cx-menu" role="menu" hidden>
+                                        <button type="button" role="menuitem" data-cx-action="save"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg><span data-i18n="cxSaveLog">Guardar log</span></button>
+                                        <button type="button" role="menuitem" data-cx-action="load"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 8l5-5 5 5"/><path d="M4 20h16"/></svg><span data-i18n="cxLoadFile">Cargar archivo</span></button>
+                                        <button type="button" role="menuitem" data-cx-action="copy"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg><span data-i18n="cxCopyLog">Copiar log</span></button>
+                                        <button type="button" role="menuitem" data-cx-action="clear"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg><span data-i18n="cxClearLog">Limpiar</span></button>
+                                    </div>
+                                </div>
+                            </header>
+
+                            <div class="console-log cx-log" id="console-log" role="log" aria-live="off" tabindex="0"></div>
+
+                            <div class="cx-input-zone">
+                                <form class="cx-input-row" id="console-input-form" autocomplete="off">
+                                    <input type="text" id="console-input" class="cx-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="cxInputPlaceholder" placeholder="Escribe un comando…" data-i18n-aria-label="cxInputPlaceholder" aria-label="Escribe un comando…">
+                                    <button type="button" class="cx-icon-btn" id="cx-input-clear-btn" data-i18n-aria-label="cxClearInput" aria-label="Borrar texto">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6"/><path d="M9 9l6 6"/></svg>
+                                    </button>
+                                    <button type="button" class="cx-icon-btn" id="cx-copy-btn" data-i18n-aria-label="cxCopyLog" aria-label="Copiar log">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+                                    </button>
+                                    <div class="cx-menu-wrap">
+                                        <button type="button" class="cx-icon-btn" id="cx-settings-btn" aria-haspopup="true" aria-expanded="false" aria-controls="cx-settings-pop" data-i18n-aria-label="cxSettings" aria-label="Ajustes de la consola">
+                                            <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                                        </button>
+                                        <div class="cx-popover cx-settings-pop" id="cx-settings-pop" hidden>
+                                            <span class="cx-pop-label" data-i18n="cxFontSize">Tamaño de letra</span>
+                                            <div class="console-font-size-toggle cx-font-toggle" data-target="console-log">
+                                                <button type="button" class="console-font-size-btn" data-size="sm" aria-label="A-">A-</button>
+                                                <button type="button" class="console-font-size-btn active" data-size="md" aria-label="A">A</button>
+                                                <button type="button" class="console-font-size-btn" data-size="lg" aria-label="A+">A+</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="cx-icon-btn cx-send-btn" id="cx-send-btn" data-i18n-aria-label="cxSend" aria-label="Enviar comando">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                                     </button>
                                 </form>
+                                <p class="cx-admin-note" id="cx-admin-note" data-i18n="cxAdminOnly" hidden>Solo un administrador puede enviar comandos.</p>
+
+                                <div class="cx-bottombar">
+                                    <div class="cx-menu-wrap">
+                                        <button type="button" class="cx-text-btn" id="cx-history-btn" aria-haspopup="true" aria-expanded="false" aria-controls="cx-history-pop">
+                                            <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                            <span data-i18n="cxHistory">Historial</span>
+                                        </button>
+                                        <div class="cx-popover cx-history-pop" id="cx-history-pop" hidden>
+                                            <ul class="cx-history-list" id="cx-history-list"></ul>
+                                            <button type="button" class="cx-text-btn cx-history-clear" id="cx-history-clear-btn">
+                                                <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+                                                <span data-i18n="cxHistoryClear">Borrar historial</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="cx-text-btn" id="console-clear-btn">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+                                        <span data-i18n="cxClearLog">Limpiar</span>
+                                    </button>
+                                    <button type="button" class="cx-text-btn" id="cx-save-btn">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+                                        <span data-i18n="cxSaveLog">Guardar log</span>
+                                    </button>
+                                    <button type="button" class="cx-text-btn" id="cx-load-btn">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 8l5-5 5 5"/><path d="M4 20h16"/></svg>
+                                        <span data-i18n="cxLoadFile">Cargar archivo</span>
+                                    </button>
+                                    <input type="file" id="cx-file-input" accept=".gcode,.gco,.txt,.nc" hidden>
+                                    <button type="button" class="cx-switch" id="cx-autoscroll" role="switch" aria-checked="true">
+                                        <span class="cx-switch-track" aria-hidden="true"><span class="cx-switch-thumb"></span></span>
+                                        <span data-i18n="cxAutoscroll">Autoscroll</span>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="console-macros-half">
-                            <div class="macros-grid" id="macros-grid"></div>
-                        </div>
+                        </section>
+
+                        <section class="cx-card cx-side" aria-label="Macros">
+                            <div class="cx-tabs" role="tablist" data-i18n-aria-label="cxTabsLabel" aria-label="Secciones de macros">
+                                <button type="button" role="tab" class="cx-tab active" id="cx-tab-macros" data-cx-tab="macros" aria-selected="true" aria-controls="cx-panel-macros" data-i18n="cxTabMacros">Macros</button>
+                                <button type="button" role="tab" class="cx-tab" id="cx-tab-templates" data-cx-tab="templates" aria-selected="false" aria-controls="cx-panel-templates" tabindex="-1" data-i18n="cxTabTemplates">Plantillas</button>
+                                <button type="button" role="tab" class="cx-tab" id="cx-tab-help" data-cx-tab="help" aria-selected="false" aria-controls="cx-panel-help" tabindex="-1" data-i18n="cxTabHelp">Ayuda</button>
+                            </div>
+
+                            <div class="cx-panel" id="cx-panel-macros" role="tabpanel" aria-labelledby="cx-tab-macros">
+                                <label class="cx-search">
+                                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                                    <input type="search" id="cx-macro-search" autocomplete="off" data-i18n-placeholder="cxMacroSearch" placeholder="Buscar macro…" data-i18n-aria-label="cxMacroSearch" aria-label="Buscar macro…">
+                                </label>
+                                <div class="cx-macro-list" id="macros-grid"></div>
+                                <button type="button" class="cx-primary-btn" id="cx-macro-new-btn">
+                                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                                    <span data-i18n="cxMacroNew">Nueva macro</span>
+                                </button>
+                            </div>
+
+                            <div class="cx-panel" id="cx-panel-templates" role="tabpanel" aria-labelledby="cx-tab-templates" hidden>
+                                <div class="cx-panel-intro">
+                                    <h3 data-i18n="cxTemplatesTitle">Plantillas de macros</h3>
+                                    <p data-i18n="cxTemplatesHint">Elige una plantilla, ajusta sus parámetros y envíala.</p>
+                                </div>
+                                <div class="cx-template-list" id="cx-template-list"></div>
+                            </div>
+
+                            <div class="cx-panel" id="cx-panel-help" role="tabpanel" aria-labelledby="cx-tab-help" hidden>
+                                <div class="cx-help-card">
+                                    <svg class="cx-ico cx-ico-lg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><path d="M12 17h.01"/></svg>
+                                    <div>
+                                        <h3 data-i18n="cxHelpTitle">¿Cómo usar las macros?</h3>
+                                        <p data-i18n="cxHelpIntro">Las macros son secuencias de comandos que se ejecutan con un solo clic.</p>
+                                    </div>
+                                </div>
+                                <ul class="cx-tips">
+                                    <li><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg><div><strong data-i18n="cxHelpTip1Title">Elige la máquina</strong><span data-i18n="cxHelpTip1Body">Selecciona arriba la máquina activa; los comandos y macros se envían a ella.</span></div></li>
+                                    <li><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><div><strong data-i18n="cxHelpTip2Title">Crea tus macros</strong><span data-i18n="cxHelpTip2Body">Con "Nueva macro" escribe un comando por línea y elige un icono.</span></div></li>
+                                    <li><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14.8V3.5a2.5 2.5 0 0 0-5 0v11.3a4.5 4.5 0 1 0 5 0z"/></svg><div><strong data-i18n="cxHelpTip3Title">Usa plantillas</strong><span data-i18n="cxHelpTip3Body">Las plantillas piden valores, como la temperatura, antes de enviarse.</span></div></li>
+                                </ul>
+                            </div>
+                        </section>
                     </div>
                 </main>
+
+                <dialog class="cx-dialog" id="cx-macro-dialog" aria-labelledby="cx-macro-dialog-title">
+                    <form method="dialog" id="cx-macro-form" class="cx-dialog-form">
+                        <h2 id="cx-macro-dialog-title" data-i18n="cxEditorNewTitle">Nueva macro</h2>
+                        <label class="cx-field"><span data-i18n="cxFieldName">Nombre</span>
+                            <input type="text" id="cx-macro-name" maxlength="60" required></label>
+                        <label class="cx-field"><span data-i18n="cxFieldDescription">Descripción</span>
+                            <input type="text" id="cx-macro-desc" maxlength="140"></label>
+                        <fieldset class="cx-field cx-icon-field"><legend data-i18n="cxFieldIcon">Icono</legend>
+                            <div class="cx-icon-grid" id="cx-macro-icons"></div></fieldset>
+                        <label class="cx-field"><span data-i18n="cxFieldCommands">Comandos (uno por línea)</span>
+                            <textarea id="cx-macro-commands" rows="6" spellcheck="false" required></textarea></label>
+                        <p class="cx-form-error" id="cx-macro-error" role="alert" hidden></p>
+                        <div class="cx-dialog-actions">
+                            <button type="button" class="cx-text-btn" id="cx-macro-cancel" data-i18n="cxCancel">Cancelar</button>
+                            <button type="submit" class="cx-primary-btn" id="cx-macro-save" data-i18n="cxSave">Guardar</button>
+                        </div>
+                    </form>
+                </dialog>
             </section>
 
             <section id="plugins-section" class="view-section" style="display: none;">

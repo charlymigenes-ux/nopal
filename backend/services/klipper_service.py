@@ -279,6 +279,12 @@ class MoonrakerClient:
             )
             response.raise_for_status()
             return True
+        except requests.exceptions.ReadTimeout:
+            # Moonraker ya recibió el script y lo está ejecutando: solo no
+            # responde hasta que termine (G28, M109, M190… tardan decenas de
+            # segundos). Reportarlo como fallo era un falso error.
+            logger.info(f"[{self.port}] el script sigue en ejecución; se da por enviado")
+            return True
         except Exception as e:
             logger.warning(f"[{self.port}] {e}")
             return False
