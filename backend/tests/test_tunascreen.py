@@ -270,6 +270,44 @@ class TestWorkshopResources:
         assert client.get("/api/tunascreen/accessories").status_code == 401
 
 
+class TestTemperaturePresets:
+    def test_presets_require_device_token(self, client):
+        assert client.get("/api/tunascreen/temperature-presets").status_code == 401
+
+    def test_presets_use_nopal_material_profiles(self, monkeypatch):
+        import backend.api.status as status_api
+
+        monkeypatch.setattr(status_api, "_load_temperature_presets", lambda: {
+            "active": "pla",
+            "materials": [
+                {"id": "pla", "name": "PLA", "heater_bed": 70, "extruder": 210},
+                {"id": "roto", "name": "Roto", "extruder": "x"},
+            ],
+        })
+
+        result = tunascreen_service.get_temperature_presets()
+
+        assert result == {
+            "active": "pla",
+            "materials": [{"id": "pla", "name": "PLA", "extruder": 210.0, "heater_bed": 70.0}],
+        }
+
+
+class TestKlipperLongScripts:
+    def test_read_timeout_counts_as_accepted_only_when_requested(self, monkeypatch):
+        import requests
+
+        def _post(*args, **kwargs):
+            raise requests.exceptions.ReadTimeout()
+
+        monkeypatch.setattr(klipper_service.requests, "post", _post)
+        client = klipper_service.MoonrakerClient(7125)
+
+        # Un G28 largo no responde a tiempo aunque Klipper sí lo esté ejecutando.
+        assert client.run_gcode_script("G28", accept_timeout=True) is True
+        assert client.run_gcode_script("G28") is False
+
+
 class TestDeviceManagement:
     def test_list_devices_requires_admin(self, client, as_operator):
         assert client.get("/api/tunascreen/devices").status_code == 403
@@ -387,7 +425,7 @@ class TestDispatchAction:
         }])
         called = {}
 
-        def _send(port, command):
+        def _send(port, command, **_):
             called.update(port=port, command=command)
             return True
 
@@ -436,7 +474,7 @@ class TestDispatchAction:
         monkeypatch.setattr(
             klipper_service,
             "send_console_command",
-            lambda port, command: called.update(port=port, command=command) or True,
+            lambda port, command, **_: called.update(port=port, command=command) or True,
         )
 
         result = await tunascreen_service.dispatch_action("klipper:7125", action, params, device=TEST_DEVICE)

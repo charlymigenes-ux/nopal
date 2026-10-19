@@ -494,6 +494,26 @@ def _normalize_spool(spool: Dict[str, Any], reserved_g: float = 0) -> Dict[str, 
     }
 
 
+def get_temperature_presets() -> Dict[str, Any]:
+    """Perfiles de precalentamiento por material -- los mismos que edita la web
+    de NOPAL (Configuración > Materiales) y usa su popup de precalentar."""
+    from backend.api.status import _load_temperature_presets
+
+    data = _load_temperature_presets()
+    materials = []
+    for item in data.get("materials", []):
+        try:
+            materials.append({
+                "id": str(item["id"]),
+                "name": str(item.get("name") or item["id"]),
+                "extruder": float(item["extruder"]),
+                "heater_bed": float(item["heater_bed"]),
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+    return {"active": data.get("active"), "materials": materials}
+
+
 async def get_materials_snapshot(device: Dict[str, Any]) -> Dict[str, Any]:
     """Inventario de Spoolman (el router exige `plugin:spoolman` en el scope)
     con los vínculos máquina→carrete SOLO de las máquinas del scope: nunca se
@@ -810,7 +830,7 @@ async def _laser_machine(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-MACHINE_CACHE_TTL_SECONDS = 2.5
+MACHINE_CACHE_TTL_SECONDS = 1.0
 OFFLINE_GRACE_SNAPSHOTS = 3
 _machines_cache: List[Dict[str, Any]] = []
 _machines_cache_at = 0.0
@@ -1233,19 +1253,28 @@ async def dispatch_action(
     raise ValueError(f"Marca desconocida: {brand}")
 
 
+async def _klipper_gcode(port: int, script: str) -> bool:
+    """G-code a Klipper sin bloquear el event loop y sin esperar a que termine
+    (un home o un movimiento largo tarda más que el timeout de Moonraker)."""
+    return await asyncio.to_thread(
+        klipper_service.send_console_command, port, script, accept_timeout=True
+    )
+
+
 async def _dispatch_klipper(port: int, action: str, params: Dict[str, Any]) -> Dict[str, Any]:
     if action == "pause":
-        ok = klipper_service.pause_printer_print(port)
+        ok = await asyncio.to_thread(klipper_service.pause_printer_print, port)
     elif action == "resume":
-        ok = klipper_service.resume_printer_print(port)
+        ok = await asyncio.to_thread(klipper_service.resume_printer_print, port)
     elif action == "cancel":
-        ok = klipper_service.cancel_printer_print(port)
+        ok = await asyncio.to_thread(klipper_service.cancel_printer_print, port)
     elif action == "set_temperature":
         heater = _heater_param(params)
-        ok = klipper_service.set_heater_target(port, heater, _float_param(params, "target", 0, 500))
+        target = _float_param(params, "target", 0, 500)
+        ok = await asyncio.to_thread(klipper_service.set_heater_target, port, heater, target)
     elif action == "home":
         axes = _axes_param(params)
-        ok = klipper_service.send_console_command(port, f"G28 {' '.join(axes)}".strip())
+        ok = await _klipper_gcode(port, f"G28 {' '.join(axes)}".strip())
     elif action == "move":
         axis = _axis_param(params, allow_extruder=False)
         distance = _float_param(params, "distance", -1000, 1000)
@@ -1256,7 +1285,7 @@ async def _dispatch_klipper(port: int, action: str, params: Dict[str, Any]) -> D
             f"G0 {axis}{distance:g} F{feed:g}\n"
             "RESTORE_GCODE_STATE NAME=TUNA_SCREEN_MOVE"
         )
-        ok = klipper_service.send_console_command(port, script)
+        ok = await _klipper_gcode(port, script)
     elif action == "extrude":
         distance = _float_param(params, "distance", -200, 200)
         feed = _float_param(params, "feed", 1, 3000, default=300)
@@ -1266,23 +1295,23 @@ async def _dispatch_klipper(port: int, action: str, params: Dict[str, Any]) -> D
             f"G1 E{distance:g} F{feed:g}\n"
             "RESTORE_GCODE_STATE NAME=TUNA_SCREEN_EXTRUDE"
         )
-        ok = klipper_service.send_console_command(port, script)
+        ok = await _klipper_gcode(port, script)
     elif action == "set_fan":
         percent = _float_param(params, "percent", 0, 100)
-        ok = klipper_service.send_console_command(port, f"M106 S{round(percent * 255 / 100)}" if percent else "M107")
+        ok = await _klipper_gcode(port, f"M106 S{round(percent * 255 / 100)}" if percent else "M107")
     elif action == "set_speed_factor":
         percent = _float_param(params, "percent", 10, 300)
-        ok = klipper_service.send_console_command(port, f"M220 S{percent:g}")
+        ok = await _klipper_gcode(port, f"M220 S{percent:g}")
     elif action == "set_flow_factor":
         percent = _float_param(params, "percent", 10, 300)
-        ok = klipper_service.send_console_command(port, f"M221 S{percent:g}")
+        ok = await _klipper_gcode(port, f"M221 S{percent:g}")
     elif action == "set_z_offset":
         offset = _float_param(params, "offset", -10, 10)
-        ok = klipper_service.send_console_command(port, f"SET_GCODE_OFFSET Z={offset:g} MOVE=1")
+        ok = await _klipper_gcode(port, f"SET_GCODE_OFFSET Z={offset:g} MOVE=1")
     elif action == "run_macro":
-        ok = klipper_service.run_macro(port, _macro_param(params))
+        ok = await asyncio.to_thread(klipper_service.run_macro, port, _macro_param(params), accept_timeout=True)
     elif action == "send_console_command":
-        ok = klipper_service.send_console_command(port, _command_param(params))
+        ok = await _klipper_gcode(port, _command_param(params))
     else:
         raise ValueError(f"Acción no soportada para Klipper: {action}")
     return {"success": bool(ok)}
@@ -1580,5 +1609,5 @@ async def broadcaster_loop():
     _start_scheduled_prints_loop) -- un tick cada 2s es suficiente para que
     la app se sienta "en vivo" sin generar carga real en Klipper/Bambu/etc."""
     while True:
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         await broadcast_machines()
