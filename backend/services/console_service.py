@@ -47,6 +47,13 @@ ICONS = (
 )
 DEFAULT_ICON = "bolt"
 
+# A qué tipo de máquina sirve una macro o plantilla. Klipper y Marlin comparten
+# "printer" (G-code de impresora); láser y CNC son GRBL pero cada uno tiene los
+# suyos (M3 enciende el láser en uno y el husillo en el otro).
+SCOPES = ("printer", "laser", "cnc")
+DEFAULT_SCOPES = ("printer",)
+_GRBL_ONLY_WORDS = {"M3", "M4", "M5"}
+
 PARAM_KEY_RE = re.compile(r"^[a-z_][a-z0-9_]{0,23}$")
 PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
 # Texto libre en parámetros: sin ';' ni saltos de línea, para que un valor no
@@ -241,35 +248,67 @@ def _clean_item(payload: Dict[str, Any], *, template: bool) -> Dict[str, Any]:
         extra = ", ".join(sorted(defined - used))
         raise ConsoleError(f"El parámetro no se usa en ningún comando: {extra}.")
 
-    item = {"name": name, "description": description, "icon": icon, "commands": commands}
+    item = {"name": name, "description": description, "icon": icon, "commands": commands,
+            "scopes": _clean_scopes(payload.get("scopes"))}
     if template:
         item["subtitle"] = str(payload.get("subtitle", "")).strip()[:MAX_DESCRIPTION]
         item["params"] = params
     return item
 
 
+def infer_scopes(item: Dict[str, Any]) -> List[str]:
+    """Ámbitos de un elemento guardado sin `scopes` (anteriores a esta
+    función). Los comandos `$…` de GRBL y M3/M4/M5 son de láser/CNC; lo demás
+    se hizo para impresoras, que era lo único que la consola tenía."""
+    commands = [c.strip() for c in item.get("commands", []) if isinstance(c, str)]
+    if any(c.startswith("$") or (c.split() or [""])[0].upper() in _GRBL_ONLY_WORDS for c in commands):
+        return ["laser", "cnc"]
+    return list(DEFAULT_SCOPES)
+
+
+def _clean_scopes(raw: Any) -> List[str]:
+    if raw is None:
+        return list(DEFAULT_SCOPES)
+    if not isinstance(raw, list) or not raw or any(s not in SCOPES for s in raw):
+        raise ConsoleError("Elige al menos un tipo de máquina válido: impresora, láser o CNC.")
+    return [s for s in SCOPES if s in raw]
+
+
 def _public(item: Dict[str, Any], *, builtin: bool) -> Dict[str, Any]:
     out = dict(item)
     out["builtin"] = builtin
     out.setdefault("params", [])
+    out["scopes"] = item.get("scopes") or infer_scopes(item)
     return out
 
 
+def _in_scope(item: Dict[str, Any], scope: Optional[str]) -> bool:
+    return scope is None or scope in item["scopes"]
+
+
 # ── Macros y plantillas propias (CRUD) ──
+
+def check_scope(scope: Optional[str]) -> Optional[str]:
+    if scope is not None and scope not in SCOPES:
+        raise ConsoleError("Tipo de máquina inválido (printer, laser o cnc).")
+    return scope
+
 
 def _section(template: bool) -> str:
     return "templates" if template else "macros"
 
 
-def list_macros() -> List[Dict[str, Any]]:
+def list_macros(scope: Optional[str] = None) -> List[Dict[str, Any]]:
     with _lock:
-        return [_public(m, builtin=False) for m in _load_store()["macros"]]
+        items = [_public(m, builtin=False) for m in _load_store()["macros"]]
+    return [m for m in items if _in_scope(m, scope)]
 
 
-def list_templates() -> List[Dict[str, Any]]:
+def list_templates(scope: Optional[str] = None) -> List[Dict[str, Any]]:
     with _lock:
         user = [_public(t, builtin=False) for t in _load_store()["templates"]]
-    return [_public(t, builtin=True) for t in BUILTIN_TEMPLATES] + user
+    items = [_public(t, builtin=True) for t in BUILTIN_TEMPLATES] + user
+    return [t for t in items if _in_scope(t, scope)]
 
 
 def get_item(item_id: str, *, template: bool) -> Dict[str, Any]:

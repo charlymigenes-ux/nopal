@@ -1373,6 +1373,24 @@ async def send_console_command(host: str, command: str) -> bool:
     return await loop.run_in_executor(None, send_raw_command, host, command)
 
 
+def log_console_command(host: str, command: str) -> None:
+    """Deja el comando enviado en el log de la consola, marcado como comando,
+    para que se vea qué se mandó y cuándo."""
+    buffer = _console_buffers.setdefault(host, deque(maxlen=300))
+    buffer.append({"message": command, "time": time.time(), "type": "command"})
+
+
+async def send_line_and_wait(host: str, command: str, timeout: float = 60.0) -> bool:
+    """Manda una línea y espera su 'ok' (macros y archivos de la consola). Los
+    bytes realtime ('?', '!', '~') GRBL no los contesta con 'ok': esos se
+    mandan sin esperar."""
+    if command in REALTIME_SERIAL_COMMANDS:
+        return await send_console_command(host, command)
+    await ensure_listener_ready(host)
+    result = await marlin_driver.send_and_await_ok(_marlin_transport_for(host), command, timeout=timeout)
+    return bool(result["success"])
+
+
 async def get_status(host: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
     if _firmware_for_host(host) == "marlin":
         return await _get_marlin_status(host, timeout)

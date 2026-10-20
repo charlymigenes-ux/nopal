@@ -56,6 +56,7 @@ function updateTopbarUser(user) {
     if (nameEl) nameEl.textContent = user.username;
     if (avatarEl) avatarEl.textContent = (user.username || '?').slice(0, 1);
     if (roleEl) roleEl.textContent = user.role === 'admin' ? t('roleAdmin') : t('roleOperator');
+    updateSettingsSessionCard(user);
 
     // La galería de plugins es una acción administrativa (instalar/desinstalar
     // afecta a todo el equipo) — un operador no debe ni verla ni poder entrar.
@@ -117,11 +118,11 @@ function applySettingsModulesRoleVisibility(user = currentAuthUser) {
         const card = document.querySelector(`[data-settings-module="${key}"]`);
         if (card) card.hidden = !isSettingsModuleAllowedForRole(key, user);
     });
-    // settingsModulesPageScope es un const declarado más abajo; si esto
-    // corriera antes de que exista (zona muerta temporal), el apply()
-    // inicial del scope ya consulta isSettingsModuleAllowedForRole.
+    // renderSettingsTabs usa constantes declaradas más abajo; si esto corriera
+    // antes de que existan (zona muerta temporal), el render inicial de las
+    // pestañas ya consulta isSettingsModuleAllowedForRole.
     try {
-        settingsModulesPageScope.apply();
+        renderSettingsTabs();
     } catch (error) {
         if (!(error instanceof ReferenceError)) throw error;
     }
@@ -6583,28 +6584,149 @@ function createModulePageScope(config) {
     return { apply, openModal, closeModal };
 }
 
-const settingsModulesPageScope = createModulePageScope({
-    storagePrefix: 'settingsModulesLayout_',
-    moduleDefs: SETTINGS_MODULE_DEFS,
-    groupsElementId: 'settings-modules-groups',
-    modalId: 'settings-module-customizer-modal',
-    modalTabsId: 'settings-module-customizer-tabs',
-    modalGroupsId: 'settings-module-customizer-groups',
-    customizeBtnId: 'settings-customize-btn',
-    modalCloseId: 'settings-module-customizer-modal-close',
-    modalBackdropId: 'settings-module-customizer-modal-backdrop',
-    addGroupBtnId: 'settings-module-customizer-add-group-btn',
-    resetBtnId: 'settings-module-customizer-reset-btn',
-    defaultGroups: [
-        { id: 'general', nameKey: 'settingsModuleGroupDefaultGeneral', keys: SETTINGS_MODULE_DEFS.map(mod => mod.key) },
-    ],
-    isModuleAllowed: key => isSettingsModuleAllowedForRole(key),
-});
+// ── Configuración por pestañas ── Reemplaza al personalizador por grupos
+// (createModulePageScope sigue definido arriba pero ya no se instancia para
+// Configuración: sus ids #settings-modules-groups / #settings-customize-btn
+// dejaron de existir y el modal #settings-module-customizer-modal queda
+// inerte). Las tarjetas siguen viviendo en #settings-modules-pool y se mueven
+// a su panel; sus ids y handlers no cambian.
+const SETTINGS_TAB_DEFS = [
+    { id: 'general', modules: ['general'] },
+    { id: 'appearance', modules: ['appearance'] },
+    { id: 'ai', modules: ['ai'] },
+    { id: 'users', modules: ['users', 'tunascreen'] },
+    { id: 'devices', modules: ['devices', 'accessories'] },
+    { id: 'system', modules: ['backup', 'logsConfig', 'logs', 'updates', 'about'] },
+];
+const SETTINGS_ACTIVE_TAB_KEY = 'settingsActiveTab';
+let settingsActiveTab = null;
 
-// Wrapper con el mismo nombre que usaba la versión fusionada — switchSection()
-// lo sigue llamando por nombre al entrar a Configuración.
+function isSettingsTabAllowed(def) {
+    return def.modules.some(key => isSettingsModuleAllowedForRole(key));
+}
+
+function readStoredSettingsTab() {
+    try { return localStorage.getItem(SETTINGS_ACTIVE_TAB_KEY); } catch (error) { return null; }
+}
+
+// Mueve las tarjetas a su panel (una sola vez), oculta las pestañas que el
+// rol actual no puede usar y deja activa una pestaña válida.
+function renderSettingsTabs() {
+    const tablist = document.getElementById('settings-tabs');
+    if (!tablist) return;
+    SETTINGS_TAB_DEFS.forEach(def => {
+        const panel = document.getElementById(`st-panel-${def.id}`);
+        if (!panel) return;
+        def.modules.forEach(key => {
+            const card = document.querySelector(`[data-settings-module="${key}"]`);
+            if (card && card.parentElement !== panel) panel.appendChild(card);
+        });
+        const tab = document.getElementById(`st-tab-${def.id}`);
+        if (tab) tab.hidden = !isSettingsTabAllowed(def);
+    });
+    const allowed = SETTINGS_TAB_DEFS.filter(isSettingsTabAllowed).map(def => def.id);
+    let target = settingsActiveTab || readStoredSettingsTab();
+    if (!allowed.includes(target)) target = allowed[0] || 'general';
+    activateSettingsTab(target, { persist: false });
+}
+
+function activateSettingsTab(id, { focus = false, persist = true } = {}) {
+    const def = SETTINGS_TAB_DEFS.find(d => d.id === id);
+    if (!def || !isSettingsTabAllowed(def)) return false;
+    // Solo una elección real del usuario pisa la preferencia guardada: el
+    // render inicial (antes de conocer el rol) cae a 'general' sin recordarlo.
+    if (persist) settingsActiveTab = id;
+    SETTINGS_TAB_DEFS.forEach(d => {
+        const tab = document.getElementById(`st-tab-${d.id}`);
+        const panel = document.getElementById(`st-panel-${d.id}`);
+        const on = d.id === id;
+        if (tab) {
+            tab.setAttribute('aria-selected', on ? 'true' : 'false');
+            tab.tabIndex = on ? 0 : -1;
+            tab.classList.toggle('active', on);
+        }
+        if (panel) panel.hidden = !on;
+    });
+    if (persist) {
+        try { localStorage.setItem(SETTINGS_ACTIVE_TAB_KEY, id); } catch (error) { /* modo privado */ }
+    }
+    if (focus) document.getElementById(`st-tab-${id}`)?.focus();
+    return true;
+}
+
+// Activa la pestaña que contiene este elemento (o id) y lo muestra. Lo usan
+// los botones de otras secciones que mandan a una tarjeta concreta.
+function revealInSettings(target, scrollOptions = { behavior: 'smooth', block: 'center' }) {
+    const el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    const key = el.closest('[data-settings-module]')?.dataset.settingsModule;
+    const def = SETTINGS_TAB_DEFS.find(d => d.modules.includes(key));
+    if (def) activateSettingsTab(def.id);
+    el.scrollIntoView(scrollOptions);
+}
+
+(function initSettingsTabs() {
+    const tablist = document.getElementById('settings-tabs');
+    if (!tablist) return;
+    tablist.addEventListener('click', event => {
+        const tab = event.target.closest('[data-st-tab]');
+        if (tab && !tab.hidden) activateSettingsTab(tab.dataset.stTab);
+    });
+    tablist.addEventListener('keydown', event => {
+        const tabs = Array.from(tablist.querySelectorAll('[data-st-tab]')).filter(tab => !tab.hidden);
+        const index = tabs.indexOf(document.activeElement);
+        if (index < 0) return;
+        let next = null;
+        if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length];
+        else if (event.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length];
+        else if (event.key === 'Home') next = tabs[0];
+        else if (event.key === 'End') next = tabs[tabs.length - 1];
+        if (!next) return;
+        event.preventDefault();
+        activateSettingsTab(next.dataset.stTab, { focus: true });
+    });
+    document.getElementById('st-session-logout-btn')?.addEventListener('click', () => {
+        document.getElementById('topbar-logout-btn')?.click();
+    });
+    const hostEl = document.getElementById('st-server-host');
+    if (hostEl && location.host) {
+        hostEl.textContent = location.host;
+        hostEl.hidden = false;
+    }
+    renderSettingsTabs();
+})();
+
+// Tarjeta "Esta sesión": solo datos que el frontend ya tiene.
+function updateSettingsSessionCard(user = currentAuthUser) {
+    if (!user) return;
+    const nameEl = document.getElementById('st-session-name');
+    const avatarEl = document.getElementById('st-session-avatar');
+    const roleEl = document.getElementById('st-session-role');
+    if (nameEl) nameEl.textContent = user.username || '—';
+    if (avatarEl) avatarEl.textContent = (user.username || '?').slice(0, 1).toUpperCase();
+    if (roleEl) {
+        roleEl.textContent = user.role === 'admin' ? t('roleAdmin') : t('roleOperator');
+        roleEl.hidden = false;
+    }
+}
+
+// Tarjeta "Servidor": versión y rama salen del mismo diagnóstico que "Acerca de".
+function updateSettingsServerCard(diag) {
+    const el = document.getElementById('st-server-version');
+    if (!el) return;
+    if (!diag || !diag.app_version) {
+        el.hidden = true;
+        return;
+    }
+    el.textContent = t('settingsServerVersionLine')
+        .replace('{version}', diag.app_version)
+        .replace('{branch}', diag.branch || t('aboutUnavailable'));
+    el.hidden = false;
+}
+
+// Nombre histórico: switchSection() lo llama al entrar a Configuración.
 function applySettingsModulesLayout() {
-    settingsModulesPageScope.apply();
+    renderSettingsTabs();
 }
 
 // ── Centro de ayuda ── Sidebar de categorías + buscador + panel de tarjetas
@@ -10411,6 +10533,11 @@ const cxState = {
     lastLogSignature: '',
     lastLogText: '',
     machineSignature: '',
+    marlinPrinters: [],
+    lasers: [],
+    marlinLoadedAt: 0,
+    systemEntries: [],
+    systemCursor: null,
     klipperMacros: [],
     customMacros: [],
     templates: [],
@@ -10420,7 +10547,69 @@ const cxState = {
 };
 
 let consolePollInterval = null;
+// Selección de la consola: un número (puerto de una Klipper), `m:<device>`
+// (una Marlin) o 'system' (consola principal de NOPAL, solo lectura). Se
+// mantiene el nombre por compatibilidad; es una llave, no siempre un puerto.
 let consoleSelectedPort = null;
+const CX_SYSTEM = 'system';
+const CX_SYSTEM_LOG_LIMIT = 200;
+const CX_MARLIN_REFRESH_MS = 5000;
+
+function cxKind(sel = consoleSelectedPort) {
+    if (sel === CX_SYSTEM) return 'system';
+    if (typeof sel === 'string' && sel.startsWith('m:')) return 'marlin';
+    if (typeof sel === 'string' && sel.startsWith('l:')) return 'laser';
+    return 'klipper';
+}
+function cxDevice(sel = consoleSelectedPort) {
+    return cxKind(sel) === 'marlin' ? sel.slice(2) : null;
+}
+function cxHost(sel = consoleSelectedPort) {
+    return cxKind(sel) === 'laser' ? sel.slice(2) : null;
+}
+function cxSelFromAttr(value) {
+    const text = String(value);
+    return (text === CX_SYSTEM || text.startsWith('m:') || text.startsWith('l:')) ? text : parseInt(text, 10);
+}
+// Cómo se le dice a /api/console/* a qué máquina va la petición.
+function cxTargetParams() {
+    if (cxKind() === 'marlin') return `device=${encodeURIComponent(cxDevice())}`;
+    if (cxKind() === 'laser') return `host=${encodeURIComponent(cxHost())}`;
+    return `port=${consoleSelectedPort}`;
+}
+function cxTargetForm(formData) {
+    if (cxKind() === 'marlin') formData.append('device', cxDevice());
+    else if (cxKind() === 'laser') formData.append('host', cxHost());
+    else formData.append('port', consoleSelectedPort);
+}
+function cxTargetBody(extra = {}) {
+    if (cxKind() === 'marlin') return { device: cxDevice(), ...extra };
+    if (cxKind() === 'laser') return { host: cxHost(), ...extra };
+    return { port: consoleSelectedPort, ...extra };
+}
+// ¿Láser o CNC? Ambos son GRBL; solo cambia la etiqueta y el icono.
+function cxLaserEntry(sel = consoleSelectedPort) {
+    const host = cxHost(sel);
+    return (cxState.lasers || []).find(entry => entry.host === host) || null;
+}
+// Tipo de máquina para las macros y plantillas propias: así una macro de
+// Klipper no aparece en un láser ni al revés. Klipper y Marlin comparten
+// 'printer'. La consola del sistema no tiene macros.
+function cxScope(sel = consoleSelectedPort) {
+    const kind = cxKind(sel);
+    if (kind === 'system') return null;
+    if (kind === 'laser') return cxLaserEntry(sel)?.kind === 'cnc' ? 'cnc' : 'laser';
+    return 'printer';
+}
+// Identidad de color de la consola: 3D azul, láser morado, CNC naranja
+// (tokens --type-* del tema); el sistema conserva el verde de acento.
+function cxModeOf(sel = consoleSelectedPort) {
+    return cxScope(sel) || 'system';
+}
+function cxScopeQuery() {
+    const scope = cxScope();
+    return scope ? `?scope=${scope}` : '';
+}
 
 // ── Máquinas ──
 function cxMachineInfo(printer) {
@@ -10444,66 +10633,158 @@ function cxFormatTemp(value) {
     return typeof value === 'number' ? `${(Math.round(value * 10) / 10).toFixed(1)}°C` : '—';
 }
 
-function cxMachinesSignature() {
-    return JSON.stringify((allPrinters || []).map(p => {
-        const info = cxMachineInfo(p);
-        return [p.port, getPrinterDisplayName(p), info.key, info.nozzle, info.bed];
-    }));
+function cxMarlinMachineInfo(printer) {
+    const cached = marlinDashboardStatusCache.get(String(printer.device)) || {};
+    const online = Boolean(printer.online);
+    const visual = getMarlinPrinterVisualState({ ...cached, connected: online });
+    let key = 'cxStateReady';
+    let tone = 'ok';
+    if (visual === 'offline') { key = 'cxStateOffline'; tone = 'off'; }
+    else if (visual === 'printing') { key = 'cxStatePrinting'; tone = 'info'; }
+    else if (visual === 'paused') { key = 'cxStatePaused'; tone = 'warn'; }
+    const pick = value => (typeof value === 'number' ? value : null);
+    return {
+        online, key, tone,
+        nozzle: online ? pick(cached.extruder?.current ?? cached.extruder0?.current) : null,
+        bed: online ? pick(cached.heater_bed?.current) : null,
+    };
 }
 
-function renderConsolePrinterPicker(preferredPort) {
+function cxMachinesSignature() {
+    return JSON.stringify([
+        (allPrinters || []).map(p => {
+            const info = cxMachineInfo(p);
+            return [p.port, getPrinterDisplayName(p), info.key, info.nozzle, info.bed];
+        }),
+        (cxState.marlinPrinters || []).map(p => {
+            const info = cxMarlinMachineInfo(p);
+            return [p.device, p.name, info.key, info.nozzle, info.bed];
+        }),
+        (cxState.lasers || []).map(l => [l.host, l.name, l.kind, Boolean(l.online)]),
+    ]);
+}
+
+// Las Marlin y los láser/CNC no salen de /api/printers/status (eso es
+// Klipper): se piden a sus registros, a lo sumo cada CX_MARLIN_REFRESH_MS.
+async function cxLoadExtraMachines(force = false) {
+    if (!force && Date.now() - cxState.marlinLoadedAt < CX_MARLIN_REFRESH_MS) return;
+    cxState.marlinLoadedAt = Date.now();
+    const [marlin, lasers] = await Promise.allSettled([
+        cxRequest('/api/marlin-printers/registry/status'),
+        cxRequest('/api/laser/registry/status'),
+    ]);
+    // Un fallo puntual no borra las que ya se mostraban.
+    if (marlin.status === 'fulfilled') cxState.marlinPrinters = Array.isArray(marlin.value.printers) ? marlin.value.printers : [];
+    else console.error(marlin.reason);
+    if (lasers.status === 'fulfilled') cxState.lasers = Array.isArray(lasers.value.lasers) ? lasers.value.lasers : [];
+    else console.error(lasers.reason);
+}
+
+const CX_ICON_SYSTEM = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+const CX_ICON_PRINTER = '<path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5"/><path d="M12 22V12"/>';
+
+function cxMachineCardHtml({ sel, name, icon, key, tone, online, line2 }) {
+    const active = sel === consoleSelectedPort;
+    const tip = active ? t('cxMachineActiveTip') : t('cxMachineSelectTip');
+    return `
+        <button type="button" class="cx-machine${active ? ' active' : ''}${online ? '' : ' offline'}" data-sel="${escapeHtml(sel)}" data-type="${cxModeOf(sel)}" aria-pressed="${active}" title="${escapeHtml(tip)}">
+            <span class="cx-machine-top">
+                <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>
+                <span class="cx-machine-name">${escapeHtml(name)}</span>
+                <span class="cx-chip cx-chip-${tone}">${escapeHtml(t(key))}</span>
+            </span>
+            ${line2}
+        </button>
+    `;
+}
+
+function cxTempsLine(info) {
+    return `
+        <span class="cx-machine-temps">
+            <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.thermometer}</svg><span class="cx-sr">${escapeHtml(t('cxNozzle'))} </span><b>${cxFormatTemp(info.nozzle)}</b></span>
+            <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.layers}</svg><span class="cx-sr">${escapeHtml(t('cxBed'))} </span><b>${cxFormatTemp(info.bed)}</b></span>
+        </span>`;
+}
+
+// Orden fijo: primero la consola principal del sistema, luego las Klipper y
+// al final las Marlin.
+function renderConsolePrinterPicker(preferredSel) {
     const container = document.getElementById('console-printer-picker');
-    if (!container) return preferredPort;
+    if (!container) return preferredSel;
 
-    if (!allPrinters.length) {
-        container.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noPrintersFound'))}</div>`;
-        cxState.machineSignature = '';
-        return null;
-    }
-
-    const validPorts = allPrinters.map(p => p.port);
-    const nextPort = (preferredPort && validPorts.includes(preferredPort)) ? preferredPort : validPorts[0];
-    consoleSelectedPort = nextPort;
+    const klipper = allPrinters || [];
+    const marlin = cxState.marlinPrinters || [];
+    const lasers = cxState.lasers || [];
+    const valid = [CX_SYSTEM, ...klipper.map(p => p.port), ...marlin.map(p => `m:${p.device}`), ...lasers.map(l => `l:${l.host}`)];
+    const next = valid.includes(preferredSel) ? preferredSel : CX_SYSTEM;
+    consoleSelectedPort = next;
     cxState.machineSignature = cxMachinesSignature();
 
-    container.innerHTML = allPrinters.map(printer => {
-        const name = getPrinterDisplayName(printer);
+    const cards = [cxMachineCardHtml({
+        sel: CX_SYSTEM, name: t('cxSystemName'), icon: CX_ICON_SYSTEM, key: 'cxStateLive', tone: 'ok', online: true,
+        line2: `<span class="cx-machine-temps"><span>${escapeHtml(t('cxSystemSubtitle'))}</span></span>`,
+    })];
+    klipper.forEach(printer => {
         const info = cxMachineInfo(printer);
-        const active = printer.port === nextPort;
-        const tip = active ? t('cxMachineActiveTip') : t('cxMachineSelectTip');
-        return `
-            <button type="button" class="cx-machine${active ? ' active' : ''}${info.online ? '' : ' offline'}" data-port="${escapeHtml(printer.port)}" aria-pressed="${active}" title="${escapeHtml(tip)}">
-                <span class="cx-machine-top">
-                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5"/><path d="M12 22V12"/></svg>
-                    <span class="cx-machine-name">${escapeHtml(name)}</span>
-                    <span class="cx-chip cx-chip-${info.tone}">${escapeHtml(t(info.key))}</span>
-                </span>
-                <span class="cx-machine-temps">
-                    <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.thermometer}</svg><span class="cx-sr">${escapeHtml(t('cxNozzle'))} </span><b>${cxFormatTemp(info.nozzle)}</b></span>
-                    <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.layers}</svg><span class="cx-sr">${escapeHtml(t('cxBed'))} </span><b>${cxFormatTemp(info.bed)}</b></span>
-                </span>
-            </button>
-        `;
-    }).join('');
+        cards.push(cxMachineCardHtml({
+            sel: printer.port, name: getPrinterDisplayName(printer), icon: CX_ICON_PRINTER,
+            key: info.key, tone: info.tone, online: info.online, line2: cxTempsLine(info),
+        }));
+    });
+    marlin.forEach(printer => {
+        const info = cxMarlinMachineInfo(printer);
+        cards.push(cxMachineCardHtml({
+            sel: `m:${printer.device}`, name: printer.name || printer.device, icon: CX_ICON_PRINTER,
+            key: info.key, tone: info.tone, online: info.online, line2: cxTempsLine(info),
+        }));
+    });
+    lasers.forEach(entry => {
+        const isCnc = entry.kind === 'cnc';
+        const online = Boolean(entry.online);
+        cards.push(cxMachineCardHtml({
+            sel: `l:${entry.host}`, name: entry.name || entry.host,
+            icon: isCnc ? CX_ICONS.wrench : CX_ICONS.bolt,
+            key: online ? 'cxStateReady' : 'cxStateOffline', tone: online ? 'ok' : 'off', online,
+            line2: `<span class="cx-machine-temps"><span>${escapeHtml(isCnc ? 'CNC' : t('cxKindLaser'))} · GRBL</span></span>`,
+        }));
+    });
+    container.innerHTML = cards.join('');
 
     container.querySelectorAll('.cx-machine').forEach(btn => {
         btn.addEventListener('click', () => {
-            const port = parseInt(btn.dataset.port, 10);
-            if (port === consoleSelectedPort) return;
-            consoleSelectedPort = port;
-            renderConsolePrinterPicker(port);
+            const sel = cxSelFromAttr(btn.dataset.sel);
+            if (sel === consoleSelectedPort) return;
+            consoleSelectedPort = sel;
+            renderConsolePrinterPicker(sel);
+            cxApplyMode();
             cxState.lastLogSignature = '';
             startConsolePolling();
             loadMacrosForSelectedPrinter();
+            cxLoadTemplates();
             cxLoadHistory();
         });
     });
 
-    return nextPort;
+    return next;
+}
+
+// La consola del sistema es solo lectura: sin envío, macros ni archivos.
+function cxApplyMode() {
+    const system = cxKind() === 'system';
+    const section = document.getElementById('console-section');
+    section?.classList.toggle('cx-system-mode', system);
+    ['system', 'printer', 'laser', 'cnc'].forEach(mode => section?.classList.toggle(`cx-mode-${mode}`, cxModeOf() === mode));
+    const input = document.getElementById('console-input');
+    if (input) {
+        input.placeholder = t(system ? 'cxSystemReadOnly' : 'cxInputPlaceholder');
+        if (system) input.value = '';
+    }
+    cxApplyRole();
 }
 
 // ── Log ──
 function cxClassifyLine(msg) {
+    if (msg.kind) return msg.kind;
     if (msg.type === 'command') return 'command';
     const text = String(msg.message || '').trim();
     if (/^(!!|error\b|\/\/\s*error|\w*\s*error:)/i.test(text)) return 'error';
@@ -10521,12 +10802,13 @@ function renderConsoleLog(messages) {
     if (!logEl) return;
     const clearedAt = cxState.clearedAt[consoleSelectedPort] || 0;
     const visible = (messages || []).filter(msg => !clearedAt || (msg.time || 0) > clearedAt);
+    const emptyKey = cxKind() === 'system' ? 'cxSystemLogEmpty' : 'cxLogEmpty';
     const signature = JSON.stringify(visible);
     if (signature === cxState.lastLogSignature) return;
     cxState.lastLogSignature = signature;
     cxState.lastLogText = visible.map(msg => `${cxClock(msg.time)} ${msg.message || ''}`.trim()).join('\n');
     if (!visible.length) {
-        logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
+        logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t(emptyKey))}</div>`;
         return;
     }
     const previousTop = logEl.scrollTop;
@@ -10537,16 +10819,49 @@ function renderConsoleLog(messages) {
     logEl.scrollTop = cxState.autoscroll ? logEl.scrollHeight : previousTop;
 }
 
+// Entrada de logs/nopal.log -> línea de consola.
+function cxSystemEntryToMessage(entry) {
+    const stamp = Date.parse(String(entry.time || '').replace(' ', 'T'));
+    const level = String(entry.level || '');
+    const text = `${level.padEnd(7)} ${entry.component ? `[${entry.component}] ` : ''}${entry.message || ''}`;
+    return {
+        message: text,
+        time: Number.isNaN(stamp) ? 0 : stamp / 1000,
+        kind: level === 'ERROR' || level === 'CRITICAL' ? 'error' : 'response',
+    };
+}
+
+// Primera carga: los últimos eventos. Después, solo lo nuevo desde el cursor.
+async function cxFetchSystemLog() {
+    const cursor = cxState.systemCursor;
+    const params = new URLSearchParams({ limit: String(CX_SYSTEM_LOG_LIMIT) });
+    if (cursor) { params.set('after', String(cursor.offset)); params.set('file_id', cursor.file_id); }
+    const response = await fetch(`/api/logs?${params.toString()}`);
+    if (!response.ok) throw new Error('No se pudo cargar el registro del sistema');
+    const data = await response.json();
+    const incoming = (data.entries || []).map(cxSystemEntryToMessage);
+    // Sin cursor, o si el archivo rotó/hubo hueco: lo recibido reemplaza todo.
+    const replace = !cursor || data.reset || data.gap;
+    cxState.systemEntries = (replace ? incoming : cxState.systemEntries.concat(incoming)).slice(-600);
+    cxState.systemCursor = data.cursor || null;
+    renderConsoleLog(cxState.systemEntries);
+}
+
 async function refreshConsoleLog() {
     if (!consoleSelectedPort) return;
     try {
-        const response = await fetch(`/api/console/messages?port=${consoleSelectedPort}&count=100`);
-        if (!response.ok) throw new Error('No se pudo cargar la consola');
-        const data = await response.json();
-        renderConsoleLog(data.messages || []);
+        if (cxKind() === 'system') {
+            await cxFetchSystemLog();
+        } else {
+            const response = await fetch(`/api/console/messages?${cxTargetParams()}&count=100`);
+            if (!response.ok) throw new Error('No se pudo cargar la consola');
+            const data = await response.json();
+            renderConsoleLog(data.messages || []);
+        }
     } catch (error) {
         console.error(error);
     }
+    await cxLoadExtraMachines();
     if (cxMachinesSignature() !== cxState.machineSignature && !document.activeElement?.closest?.('.cx-machine-list')) {
         renderConsolePrinterPicker(consoleSelectedPort);
     }
@@ -10565,9 +10880,12 @@ function startConsolePolling() {
     consolePollInterval = setInterval(refreshConsoleLog, 2500);
 }
 
-function loadConsoleSection() {
+async function loadConsoleSection() {
+    cxState.systemCursor = null;
+    cxState.systemEntries = [];
+    await cxLoadExtraMachines(true);
     consoleSelectedPort = renderConsolePrinterPicker(consoleSelectedPort);
-    cxApplyRole();
+    cxApplyMode();
     cxState.lastLogSignature = '';
     startConsolePolling();
     loadMacrosForSelectedPrinter();
@@ -10577,16 +10895,18 @@ function loadConsoleSection() {
 
 function cxApplyRole() {
     const admin = cxIsAdmin();
+    // En la consola del sistema nadie envía nada: es solo lectura.
+    const canSend = admin && cxKind() !== 'system';
     const input = document.getElementById('console-input');
-    if (input) input.disabled = !admin;
+    if (input) input.disabled = !canSend;
     ['cx-send-btn', 'cx-load-btn', 'cx-macro-new-btn', 'cx-history-clear-btn'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.disabled = !admin;
+        if (el) el.disabled = !canSend;
     });
     const loadItem = document.querySelector('#cx-menu [data-cx-action="load"]');
-    if (loadItem) loadItem.disabled = !admin;
+    if (loadItem) loadItem.disabled = !canSend;
     const note = document.getElementById('cx-admin-note');
-    if (note) note.hidden = admin;
+    if (note) note.hidden = admin || cxKind() === 'system';
 }
 
 // ── Popovers (menú ⋮, ajustes, historial) ──
@@ -10664,7 +10984,20 @@ async function cxCopyLog() {
 async function cxSaveLog() {
     if (!consoleSelectedPort) return;
     try {
-        const response = await fetch(`/api/console/log/export?port=${consoleSelectedPort}&count=500`);
+        if (cxKind() === 'system') {
+            // El registro del sistema ya está en pantalla: se guarda lo que se ve.
+            const blob = new Blob([cxState.lastLogText || ''], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `consola-sistema-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.log`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            return;
+        }
+        const response = await fetch(`/api/console/log/export?${cxTargetParams()}&count=500`);
         if (!response.ok) {
             let data = null;
             try { data = await response.json(); } catch (error) { data = null; }
@@ -10673,7 +11006,7 @@ async function cxSaveLog() {
         const blob = await response.blob();
         const disposition = response.headers.get('Content-Disposition') || '';
         const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
-        const filename = match ? decodeURIComponent(match[1]) : `consola-${consoleSelectedPort}.log`;
+        const filename = match ? decodeURIComponent(match[1]) : `consola-${cxKind() === 'marlin' ? 'marlin' : consoleSelectedPort}.log`;
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -10688,9 +11021,9 @@ async function cxSaveLog() {
 }
 
 async function cxRunFile(file) {
-    if (!file || !consoleSelectedPort) return;
+    if (!file || !consoleSelectedPort || cxKind() === 'system') return;
     const formData = new FormData();
-    formData.append('port', consoleSelectedPort);
+    cxTargetForm(formData);
     formData.append('file', file);
     try {
         const data = await cxRequest('/api/console/run-file', { method: 'POST', body: formData }, t('cxFileFailed'));
@@ -10703,9 +11036,9 @@ async function cxRunFile(file) {
 
 // ── Historial de comandos ──
 async function cxLoadHistory() {
-    if (!consoleSelectedPort) { cxState.history = []; cxRenderHistory(); return; }
+    if (!consoleSelectedPort || cxKind() === 'system') { cxState.history = []; cxRenderHistory(); return; }
     try {
-        const data = await cxRequest(`/api/console/history?port=${consoleSelectedPort}&limit=50`);
+        const data = await cxRequest(`/api/console/history?${cxTargetParams()}&limit=50`);
         cxState.history = Array.isArray(data.history) ? data.history : [];
     } catch (error) {
         cxState.history = [];
@@ -10732,9 +11065,9 @@ function cxRenderHistory() {
 }
 
 async function cxClearHistory() {
-    if (!consoleSelectedPort) return;
+    if (!consoleSelectedPort || cxKind() === 'system') return;
     try {
-        await cxRequest(`/api/console/history?port=${consoleSelectedPort}`, { method: 'DELETE' });
+        await cxRequest(`/api/console/history?${cxTargetParams()}`, { method: 'DELETE' });
         cxState.history = [];
         cxState.histIdx = -1;
         cxRenderHistory();
@@ -10745,10 +11078,10 @@ async function cxClearHistory() {
 }
 
 async function cxSendCommand(command) {
-    if (!command || !consoleSelectedPort) return false;
+    if (!command || !consoleSelectedPort || cxKind() === 'system') return false;
     try {
         const formData = new FormData();
-        formData.append('port', consoleSelectedPort);
+        cxTargetForm(formData);
         formData.append('command', command);
         await cxRequest('/api/console/command', { method: 'POST', body: formData }, t('cxCommandFailed'));
         refreshConsoleLog();
@@ -10859,7 +11192,7 @@ if (consoleInputForm) {
         if (!cxIsAdmin()) return;
         const input = document.getElementById('console-input');
         const command = input?.value.trim();
-        if (!command || !consoleSelectedPort) return;
+        if (!command || !consoleSelectedPort || cxKind() === 'system') return;
         input.value = '';
         cxState.histIdx = -1;
         cxState.draft = '';
@@ -10998,15 +11331,15 @@ function renderMacrosGrid() {
 }
 
 async function cxRunMacro(entry, btn) {
-    if (!entry || !consoleSelectedPort) return;
+    if (!entry || !consoleSelectedPort || cxKind() === 'system') return;
     btn.disabled = true;
     btn.classList.add('running');
     try {
         if (entry.kind === 'custom') {
-            await cxRequest(`/api/console/macros/${encodeURIComponent(entry.id)}/run`, cxJsonOptions('POST', { port: consoleSelectedPort }), t('cxMacroRunFailed'));
+            await cxRequest(`/api/console/macros/${encodeURIComponent(entry.id)}/run`, cxJsonOptions('POST', cxTargetBody()), t('cxMacroRunFailed'));
         } else {
             const formData = new FormData();
-            formData.append('port', consoleSelectedPort);
+            cxTargetForm(formData);
             formData.append('macro', entry.rawName);
             await cxRequest('/api/macros/run', { method: 'POST', body: formData }, t('cxMacroRunFailed'));
         }
@@ -11026,9 +11359,13 @@ async function loadMacrosForSelectedPrinter() {
         if (gridEl) gridEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noPrintersFound'))}</div>`;
         return;
     }
+    // Los macros de la máquina (Moonraker) solo existen en Klipper; las propias
+    // y las plantillas sirven para cualquier máquina que reciba G-code.
     const [klipper, custom] = await Promise.all([
-        cxRequest(`/api/macros?port=${consoleSelectedPort}`).catch(error => { console.error(error); return { macros: [] }; }),
-        cxRequest('/api/console/macros').catch(() => ({ macros: [] })),
+        cxKind() === 'klipper'
+            ? cxRequest(`/api/macros?port=${consoleSelectedPort}`).catch(error => { console.error(error); return { macros: [] }; })
+            : Promise.resolve({ macros: [] }),
+        cxScope() ? cxRequest(`/api/console/macros${cxScopeQuery()}`).catch(() => ({ macros: [] })) : Promise.resolve({ macros: [] }),
     ]);
     cxState.klipperMacros = klipper.macros || [];
     cxState.customMacros = custom.macros || [];
@@ -11038,6 +11375,123 @@ async function loadMacrosForSelectedPrinter() {
 document.getElementById('cx-macro-search')?.addEventListener('input', renderMacrosGrid);
 
 // ── Editor de macros personalizadas ──
+// ── Comandos frecuentes (pastillas del editor de macros) ──
+// Cada pastilla agrega el comando al editor y dice para qué sirve. Los textos
+// van en español e inglés aquí mismo; los demás idiomas usan el inglés.
+const CX_GROUP_LABELS = {
+    move: { es: 'Movimiento', en: 'Movement' },
+    temp: { es: 'Temperatura', en: 'Temperature' },
+    extrude: { es: 'Extrusor y ventilador', en: 'Extruder and fan' },
+    info: { es: 'Información', en: 'Information' },
+    level: { es: 'Nivelación', en: 'Bed leveling' },
+    firmware: { es: 'Firmware', en: 'Firmware' },
+    tool: { es: 'Láser / husillo', en: 'Laser / spindle' },
+    state: { es: 'Estado y ajustes', en: 'Status and settings' },
+};
+
+const CX_COMMANDS = {
+    printer: [
+        { g: 'move', cmd: 'G28', es: 'Ir a origen (home) en todos los ejes', en: 'Home all axes' },
+        { g: 'move', cmd: 'G28 X Y', es: 'Ir a origen solo en X e Y', en: 'Home X and Y only' },
+        { g: 'move', cmd: 'G28 Z', es: 'Ir a origen solo en Z', en: 'Home Z only' },
+        { g: 'move', cmd: 'G90', es: 'Coordenadas absolutas: X10 es la posición 10', en: 'Absolute coordinates: X10 means position 10' },
+        { g: 'move', cmd: 'G91', es: 'Coordenadas relativas: X10 se mueve 10 desde donde está', en: 'Relative coordinates: X10 moves 10 from here' },
+        { g: 'move', cmd: 'G1 X10 Y10 F3000', es: 'Mover a X10 Y10 (F es la velocidad en mm/min)', en: 'Move to X10 Y10 (F is speed in mm/min)' },
+        { g: 'move', cmd: 'G1 Z10 F600', es: 'Mover el eje Z a 10 mm', en: 'Move the Z axis to 10 mm' },
+        { g: 'move', cmd: 'G4 P1000', es: 'Esperar 1 segundo (P en milisegundos)', en: 'Wait 1 second (P in milliseconds)' },
+        { g: 'move', cmd: 'M84', es: 'Apagar los motores (se pueden mover a mano)', en: 'Disable motors (can be moved by hand)' },
+        { g: 'temp', cmd: 'M104 S200', es: 'Hotend a 200 °C, sin esperar', en: 'Hotend to 200 °C, without waiting' },
+        { g: 'temp', cmd: 'M109 S200', es: 'Hotend a 200 °C y esperar a que llegue', en: 'Hotend to 200 °C and wait' },
+        { g: 'temp', cmd: 'M140 S60', es: 'Cama a 60 °C, sin esperar', en: 'Bed to 60 °C, without waiting' },
+        { g: 'temp', cmd: 'M190 S60', es: 'Cama a 60 °C y esperar a que llegue', en: 'Bed to 60 °C and wait' },
+        { g: 'temp', cmd: 'M104 S0', es: 'Apagar el hotend', en: 'Turn the hotend off' },
+        { g: 'temp', cmd: 'M140 S0', es: 'Apagar la cama', en: 'Turn the bed off' },
+        { g: 'extrude', cmd: 'G1 E10 F300', es: 'Extruir 10 mm de filamento', en: 'Extrude 10 mm of filament' },
+        { g: 'extrude', cmd: 'G1 E-10 F300', es: 'Retraer 10 mm de filamento', en: 'Retract 10 mm of filament' },
+        { g: 'extrude', cmd: 'G92 E0', es: 'Poner el contador del extrusor en cero', en: 'Reset the extruder position to zero' },
+        { g: 'extrude', cmd: 'M83', es: 'Extrusor en modo relativo', en: 'Extruder in relative mode' },
+        { g: 'extrude', cmd: 'M106 S255', es: 'Ventilador de pieza al 100 %', en: 'Part fan at 100%' },
+        { g: 'extrude', cmd: 'M107', es: 'Apagar el ventilador de pieza', en: 'Turn the part fan off' },
+        { g: 'extrude', cmd: 'M220 S100', es: 'Velocidad de impresión al 100 %', en: 'Print speed at 100%' },
+        { g: 'extrude', cmd: 'M221 S100', es: 'Flujo de material al 100 %', en: 'Flow rate at 100%' },
+        { g: 'info', cmd: 'M114', es: 'Ver la posición actual', en: 'Show the current position' },
+        { g: 'info', cmd: 'M105', es: 'Ver las temperaturas', en: 'Show temperatures' },
+        { g: 'info', cmd: 'M115', es: 'Ver información y capacidades del firmware', en: 'Show firmware info and capabilities' },
+        { g: 'info', cmd: 'M117 Hola', es: 'Mostrar un mensaje en la pantalla de la impresora', en: 'Show a message on the printer screen' },
+        { g: 'info', cmd: 'M300 S440 P200', es: 'Hacer sonar un pitido', en: 'Play a beep' },
+    ],
+    klipper: [
+        { g: 'level', cmd: 'BED_MESH_CALIBRATE', es: 'Medir la cama y guardar la malla de nivelación', en: 'Probe the bed and build the mesh' },
+        { g: 'firmware', cmd: 'FIRMWARE_RESTART', es: 'Reiniciar el firmware (tras un error)', en: 'Restart the firmware (after an error)' },
+        { g: 'firmware', cmd: 'RESTART', es: 'Reiniciar el servicio de Klipper', en: 'Restart the Klipper service' },
+        { g: 'firmware', cmd: 'SAVE_CONFIG', es: 'Guardar la calibración y reiniciar', en: 'Save calibration and restart' },
+        { g: 'temp', cmd: 'SET_HEATER_TEMPERATURE HEATER=extruder TARGET=200', es: 'Hotend a 200 °C (comando de Klipper)', en: 'Hotend to 200 °C (Klipper command)' },
+    ],
+    marlin: [
+        { g: 'level', cmd: 'G29', es: 'Nivelar la cama (malla automática)', en: 'Auto bed leveling (mesh)' },
+        { g: 'firmware', cmd: 'M503', es: 'Ver los ajustes guardados en la placa', en: 'Show the settings stored on the board' },
+        { g: 'firmware', cmd: 'M500', es: 'Guardar los ajustes actuales en la placa', en: 'Save the current settings to the board' },
+    ],
+    grbl: [
+        { g: 'move', cmd: '$H', es: 'Ir a origen (home), si la máquina tiene finales de carrera', en: 'Home, if the machine has limit switches' },
+        { g: 'move', cmd: 'G0 X0 Y0', es: 'Mover rápido a X0 Y0, sin cortar', en: 'Rapid move to X0 Y0, no cutting' },
+        { g: 'move', cmd: 'G1 X10 F1000', es: 'Mover en línea recta a X10 (F es la velocidad en mm/min)', en: 'Straight move to X10 (F is speed in mm/min)' },
+        { g: 'move', cmd: '$J=G91 X10 F1000', es: 'Mover 10 mm en X desde donde está (jog)', en: 'Jog 10 mm in X from here' },
+        { g: 'move', cmd: 'G90', es: 'Coordenadas absolutas: X10 es la posición 10', en: 'Absolute coordinates: X10 means position 10' },
+        { g: 'move', cmd: 'G91', es: 'Coordenadas relativas: X10 se mueve 10 desde donde está', en: 'Relative coordinates: X10 moves 10 from here' },
+        { g: 'move', cmd: 'G92 X0 Y0', es: 'Declarar la posición actual como el cero de trabajo', en: 'Set the current position as work zero' },
+        { g: 'move', cmd: 'G21', es: 'Unidades en milímetros', en: 'Units in millimeters' },
+        { g: 'move', cmd: 'G20', es: 'Unidades en pulgadas', en: 'Units in inches' },
+        { g: 'move', cmd: 'G4 P1', es: 'Esperar 1 segundo', en: 'Wait 1 second' },
+        { g: 'tool', cmd: 'M3 S1000', es: 'Encender láser/husillo con potencia S1000 (¡con cuidado!)', en: 'Turn laser/spindle on at power S1000 (careful!)' },
+        { g: 'tool', cmd: 'M4 S1000', es: 'Láser en modo dinámico: la potencia sigue la velocidad (¡con cuidado!)', en: 'Laser dynamic mode: power follows speed (careful!)' },
+        { g: 'tool', cmd: 'M5', es: 'Apagar el láser/husillo', en: 'Turn the laser/spindle off' },
+        { g: 'tool', cmd: 'M8', es: 'Encender el aire / refrigeración', en: 'Turn air assist / coolant on' },
+        { g: 'tool', cmd: 'M9', es: 'Apagar el aire / refrigeración', en: 'Turn air assist / coolant off' },
+        { g: 'state', cmd: '?', es: 'Ver el estado actual de la máquina', en: 'Show the current machine status' },
+        { g: 'state', cmd: '$X', es: 'Desbloquear una alarma', en: 'Unlock after an alarm' },
+        { g: 'state', cmd: '$$', es: 'Ver los ajustes de la placa', en: 'Show the board settings' },
+        { g: 'state', cmd: '$#', es: 'Ver los orígenes guardados', en: 'Show the stored work offsets' },
+        { g: 'state', cmd: '$G', es: 'Ver el modo activo del intérprete', en: 'Show the active parser state' },
+        { g: 'state', cmd: '$I', es: 'Ver la versión del firmware', en: 'Show the firmware version' },
+        { g: 'state', cmd: '$32=1', es: 'Activar el modo láser (cambia un ajuste de la placa)', en: 'Enable laser mode (changes a board setting)' },
+        { g: 'state', cmd: '$32=0', es: 'Volver al modo CNC (cambia un ajuste de la placa)', en: 'Back to CNC mode (changes a board setting)' },
+    ],
+};
+
+function cxCommandSetFor(kind) {
+    if (kind === 'laser' || kind === 'cnc') return CX_COMMANDS.grbl;
+    return CX_COMMANDS.printer.concat(kind === 'marlin' ? CX_COMMANDS.marlin : CX_COMMANDS.klipper);
+}
+
+function cxRenderCommandChips() {
+    const holder = document.getElementById('cx-macro-chips');
+    if (!holder) return;
+    const lang = (typeof currentLanguage !== 'undefined' && currentLanguage === 'es') ? 'es' : 'en';
+    const groups = {};
+    cxCommandSetFor(cxKind()).forEach(item => { (groups[item.g] = groups[item.g] || []).push(item); });
+    holder.innerHTML = Object.keys(groups).map(group => `
+        <div class="cx-chip-group">
+            <span class="cx-chip-group-title">${escapeHtml(CX_GROUP_LABELS[group][lang])}</span>
+            <div class="cx-chip-row">${groups[group].map(item => `
+                <button type="button" class="cx-cmd-chip" data-cmd="${escapeHtml(item.cmd)}" title="${escapeHtml(item[lang])}">
+                    <code>${escapeHtml(item.cmd)}</code><span>${escapeHtml(item[lang])}</span>
+                </button>`).join('')}
+            </div>
+        </div>`).join('');
+}
+
+document.getElementById('cx-macro-chips')?.addEventListener('click', event => {
+    const chip = event.target.closest('.cx-cmd-chip');
+    if (!chip) return;
+    const area = document.getElementById('cx-macro-commands');
+    if (!area) return;
+    const prefix = area.value && !area.value.endsWith('\n') ? '\n' : '';
+    area.value += `${prefix}${chip.dataset.cmd}\n`;
+    area.focus();
+    area.scrollTop = area.scrollHeight;
+});
+
 function cxOpenMacroDialog(macro) {
     const dialog = document.getElementById('cx-macro-dialog');
     if (!dialog || typeof dialog.showModal !== 'function') return;
@@ -11056,6 +11510,9 @@ function cxOpenMacroDialog(macro) {
     const error = document.getElementById('cx-macro-error');
     error.hidden = true;
     error.textContent = '';
+    const scopes = macro?.scopes?.length ? macro.scopes : [cxScope() || 'printer'];
+    document.querySelectorAll('input[name="cx-macro-scope"]').forEach(box => { box.checked = scopes.includes(box.value); });
+    cxRenderCommandChips();
     dialog.showModal();
     document.getElementById('cx-macro-name').focus();
 }
@@ -11070,6 +11527,7 @@ document.getElementById('cx-macro-form')?.addEventListener('submit', async (even
         description: document.getElementById('cx-macro-desc').value.trim(),
         icon: document.querySelector('input[name="cx-macro-icon"]:checked')?.value || 'bolt',
         commands: document.getElementById('cx-macro-commands').value.split('\n').map(line => line.trim()).filter(Boolean),
+        scopes: Array.from(document.querySelectorAll('input[name="cx-macro-scope"]:checked')).map(box => box.value),
     };
     const saveBtn = document.getElementById('cx-macro-save');
     saveBtn.disabled = true;
@@ -11105,7 +11563,7 @@ async function cxLoadTemplates() {
     const list = document.getElementById('cx-template-list');
     if (!list) return;
     try {
-        const data = await cxRequest('/api/console/templates');
+        const data = cxScope() ? await cxRequest(`/api/console/templates${cxScopeQuery()}`) : { templates: [] };
         cxState.templates = data.templates || [];
     } catch (error) {
         cxState.templates = [];
@@ -11180,7 +11638,7 @@ function cxRenderTemplates() {
 }
 
 async function cxRunTemplate(id, form) {
-    if (!consoleSelectedPort) return;
+    if (!consoleSelectedPort || cxKind() === 'system') return;
     const errorEl = form.querySelector('.cx-form-error');
     const submit = form.querySelector('button[type="submit"]');
     const params = {};
@@ -11190,7 +11648,7 @@ async function cxRunTemplate(id, form) {
     errorEl.hidden = true;
     submit.disabled = true;
     try {
-        const data = await cxRequest(`/api/console/templates/${encodeURIComponent(id)}/run`, cxJsonOptions('POST', { port: consoleSelectedPort, params }), t('cxTemplateFailed'));
+        const data = await cxRequest(`/api/console/templates/${encodeURIComponent(id)}/run`, cxJsonOptions('POST', cxTargetBody({ params })), t('cxTemplateFailed'));
         showToast(cxFormat(t('cxTemplateSent'), { sent: data.sent ?? 0 }));
         refreshConsoleLog();
     } catch (error) {
@@ -18757,7 +19215,7 @@ document.getElementById('marlin-printers-add-btn')?.addEventListener('click', ()
     switchSection('settings');
     showToast(t('marlinPrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('usb-ports-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('usb-ports-list');
     }, 200);
 });
 
@@ -18945,7 +19403,7 @@ document.getElementById('elegoo-printers-add-btn')?.addEventListener('click', ()
     switchSection('settings');
     showToast(t('elegooPrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('elegoo-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('elegoo-discover-list');
     }, 200);
 });
 
@@ -19292,7 +19750,7 @@ document.getElementById('flashforge-printers-add-btn')?.addEventListener('click'
     switchSection('settings');
     showToast(t('flashforgePrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('flashforge-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('flashforge-discover-list');
     }, 200);
 });
 
@@ -19650,7 +20108,7 @@ document.getElementById('bambu-printers-add-btn')?.addEventListener('click', () 
     switchSection('settings');
     showToast(t('bambuPrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('bambu-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('bambu-discover-list');
     }, 200);
 });
 
@@ -20000,25 +20458,7 @@ async function openMarlinPrinterModal(device) {
 
     const consoleContainer = document.getElementById('marlin-printer-modal-console');
     if (consoleContainer) {
-        consoleContainer.innerHTML = `
-            <div class="temp-card">
-                <div class="temp-card-header">
-                    <div class="temp-card-header-left" role="heading" aria-level="3">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>
-                        <span>${t('console')}</span>
-                    </div>
-                </div>
-                <div class="temp-card-body">
-                    <div class="console-log" id="marlin-printer-console-log"></div>
-                    <form class="console-input-row" id="marlin-printer-console-form">
-                        <input type="text" id="marlin-printer-console-input" autocomplete="off" placeholder="${escapeHtml(t('consoleInputPlaceholder'))}">
-                        <button type="submit" class="btn-icon-dark" title="${escapeHtml(t('consoleInputPlaceholder'))}">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                        </button>
-                    </form>
-                </div>
-            </div>
-        `;
+        consoleContainer.innerHTML = marlinModalConsoleHtml();
         wireMarlinConsoleForm(device);
     }
 
@@ -20291,26 +20731,72 @@ async function applyMarlinTempTarget(device, heater, container) {
     }
 }
 
+// Consola del modal de Marlin: misma apariencia y funciones que la sección
+// Consolas (comandos marcados, colores por tipo, historial, copiar, guardar,
+// cargar archivo), con su propio estado porque aquí hay una sola máquina.
+const marlinModalConsole = { history: [], histIdx: -1, draft: '', clearedAt: 0, autoscroll: true, lastSignature: '', lastText: '' };
+
+function marlinModalConsoleHtml() {
+    const admin = cxIsAdmin();
+    const icon = path => `<svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+    const dis = admin ? '' : ' disabled';
+    return `
+        <div class="temp-card cx-modal-console cx-mode-printer">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>
+                    <span>${escapeHtml(t('console'))}</span>
+                </div>
+            </div>
+            <div class="temp-card-body">
+                <div class="console-log cx-log" id="marlin-printer-console-log" role="log" aria-live="off" tabindex="0"></div>
+                <form class="cx-input-row" id="marlin-printer-console-form" autocomplete="off">
+                    <input type="text" id="marlin-printer-console-input" class="cx-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${escapeHtml(t('cxInputPlaceholder'))}" aria-label="${escapeHtml(t('cxInputPlaceholder'))}"${dis}>
+                    <button type="submit" class="cx-icon-btn cx-send-btn" aria-label="${escapeHtml(t('cxSend'))}"${dis}>${icon('<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>')}</button>
+                </form>
+                <p class="cx-admin-note" data-i18n="cxAdminOnly"${admin ? ' hidden' : ''}>${escapeHtml(t('cxAdminOnly'))}</p>
+                <div class="cx-bottombar">
+                    <button type="button" class="cx-text-btn" data-mc="clear">${icon('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>')}<span>${escapeHtml(t('cxClearLog'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="copy">${icon('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>')}<span>${escapeHtml(t('cxCopyLog'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="save">${icon('<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/>')}<span>${escapeHtml(t('cxSaveLog'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="load"${dis}>${icon('<path d="M12 16V4"/><path d="M7 8l5-5 5 5"/><path d="M4 20h16"/>')}<span>${escapeHtml(t('cxLoadFile'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="macros">${icon(CX_ICONS.bolt)}<span>${escapeHtml(t('cxOpenMacros'))}</span></button>
+                    <input type="file" id="marlin-console-file" accept=".gcode,.gco,.txt,.nc" hidden>
+                    <button type="button" class="cx-switch" data-mc="autoscroll" role="switch" aria-checked="${marlinModalConsole.autoscroll}">
+                        <span class="cx-switch-track" aria-hidden="true"><span class="cx-switch-thumb"></span></span>
+                        <span>${escapeHtml(t('cxAutoscroll'))}</span>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+}
+
 function renderMarlinConsoleLog(messages) {
     const logEl = document.getElementById('marlin-printer-console-log');
     if (!logEl) return;
-    if (!messages || !messages.length) {
-        logEl.innerHTML = '';
+    const state = marlinModalConsole;
+    const visible = (messages || []).filter(msg => !state.clearedAt || (msg.time || 0) > state.clearedAt);
+    const signature = JSON.stringify(visible);
+    if (signature === state.lastSignature) return;
+    state.lastSignature = signature;
+    state.lastText = visible.map(msg => `${cxClock(msg.time)} ${msg.message || ''}`.trim()).join('\n');
+    if (!visible.length) {
+        logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
         return;
     }
-    const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
-    logEl.innerHTML = messages.map(msg => {
-        const time = msg.time ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-        return `<div class="console-line"><span class="console-line-time">${time}</span><span class="console-line-message">${escapeHtml(msg.message || '')}</span></div>`;
+    const previousTop = logEl.scrollTop;
+    logEl.innerHTML = visible.map(msg => {
+        const kind = cxClassifyLine(msg);
+        return `<div class="console-line cx-line cx-line-${kind}"><time class="cx-line-time">${cxClock(msg.time)}</time><span class="cx-line-message">${escapeHtml(msg.message || '')}</span></div>`;
     }).join('');
-    if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight;
+    logEl.scrollTop = state.autoscroll ? logEl.scrollHeight : previousTop;
 }
 
 async function refreshMarlinConsole() {
     const device = marlinModalDevice;
     if (!device) return;
     try {
-        const response = await fetch(`/api/marlin-printers/console?device=${encodeURIComponent(device)}&count=150`);
+        const response = await fetch(`/api/console/messages?device=${encodeURIComponent(device)}&count=150`);
         const data = await response.json();
         renderMarlinConsoleLog(data.messages || []);
     } catch (error) {
@@ -20318,24 +20804,126 @@ async function refreshMarlinConsole() {
     }
 }
 
+async function marlinConsoleLoadHistory(device) {
+    try {
+        const data = await cxRequest(`/api/console/history?device=${encodeURIComponent(device)}&limit=50`);
+        marlinModalConsole.history = Array.isArray(data.history) ? data.history : [];
+    } catch (error) {
+        marlinModalConsole.history = [];
+    }
+    marlinModalConsole.histIdx = -1;
+}
+
 function wireMarlinConsoleForm(device) {
     const form = document.getElementById('marlin-printer-console-form');
     if (!form) return;
+    const state = marlinModalConsole;
+    Object.assign(state, { history: [], histIdx: -1, draft: '', clearedAt: 0, lastSignature: '', lastText: '' });
+    const input = document.getElementById('marlin-printer-console-input');
+    marlinConsoleLoadHistory(device);
+
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const input = document.getElementById('marlin-printer-console-input');
+        if (!cxIsAdmin()) return;
         const command = input?.value.trim();
         if (!command) return;
         input.value = '';
+        state.histIdx = -1;
+        state.draft = '';
         try {
             const formData = new FormData();
             formData.append('device', device);
             formData.append('command', command);
-            await fetch('/api/marlin-printers/console', { method: 'POST', body: formData });
+            await cxRequest('/api/console/command', { method: 'POST', body: formData }, t('cxCommandFailed'));
+            marlinConsoleLoadHistory(device);
         } catch (error) {
-            console.error(error);
+            showToast(error.message || t('cxCommandFailed'), 'error');
+            if (input && !input.value) input.value = command;
         }
         [150, 400, 900, 1800].forEach(delay => setTimeout(refreshMarlinConsole, delay));
+    });
+
+    // Historial con ↑/↓, igual que en Consolas.
+    input?.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+        if (!state.history.length) return;
+        event.preventDefault();
+        if (event.key === 'ArrowUp') {
+            if (state.histIdx === -1) state.draft = input.value;
+            if (state.histIdx < state.history.length - 1) state.histIdx += 1;
+            input.value = state.history[state.histIdx];
+        } else {
+            if (state.histIdx === -1) return;
+            state.histIdx -= 1;
+            input.value = state.histIdx === -1 ? state.draft : state.history[state.histIdx];
+        }
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+    });
+
+    const fileInput = document.getElementById('marlin-console-file');
+    fileInput?.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = '';
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('device', device);
+        formData.append('file', file);
+        try {
+            const data = await cxRequest('/api/console/run-file', { method: 'POST', body: formData }, t('cxFileFailed'));
+            showToast(cxFormat(t('cxFileSent'), { sent: data.sent ?? 0, skipped: data.skipped ?? 0 }));
+            refreshMarlinConsole();
+        } catch (error) {
+            appAlert(error.message || t('cxFileFailed'), '', 'danger');
+        }
+    });
+
+    document.querySelectorAll('#marlin-printer-modal-console [data-mc]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.mc;
+            if (action === 'clear') {
+                state.clearedAt = Date.now() / 1000;
+                state.lastSignature = '';
+                state.lastText = '';
+                const logEl = document.getElementById('marlin-printer-console-log');
+                if (logEl) logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
+            } else if (action === 'copy') {
+                try {
+                    await navigator.clipboard.writeText(state.lastText);
+                    showToast(t('cxCopied'));
+                } catch (error) {
+                    showToast(t('cxCopyFailed'), 'error');
+                }
+            } else if (action === 'save') {
+                try {
+                    const response = await fetch(`/api/console/log/export?device=${encodeURIComponent(device)}&count=500`);
+                    if (!response.ok) throw new Error(t('cxSaveFailed'));
+                    const blob = await response.blob();
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = match ? decodeURIComponent(match[1]) : 'consola-marlin.log';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                } catch (error) {
+                    showToast(error.message || t('cxSaveFailed'), 'error');
+                }
+            } else if (action === 'load') {
+                fileInput?.click();
+            } else if (action === 'autoscroll') {
+                state.autoscroll = !state.autoscroll;
+                btn.setAttribute('aria-checked', String(state.autoscroll));
+            } else if (action === 'macros') {
+                // Las macros y plantillas viven en Consolas: se abre con esta máquina elegida.
+                closeMarlinPrinterModal();
+                consoleSelectedPort = `m:${device}`;
+                switchSection('console');
+            }
+        });
     });
 }
 
@@ -22615,6 +23203,7 @@ async function loadAboutInfo() {
 
         if (diag) {
             versionEl.textContent = diag.app_version || '—';
+            updateSettingsServerCard(diag);
             // "unavailable" en vez de "—": NOPAL puede correr sin .git (un
             // .zip descargado), y ese caso se distingue de "no se pudo leer
             // por ahora" en vez de verse igual.
@@ -24896,7 +25485,7 @@ function aiEditProvider(provider) {
     if (title) title.textContent = `${t('aiEditing')}: ${provider.name || provider.base_url}`;
     const cancel = document.getElementById('ai-cancel-btn');
     if (cancel) cancel.hidden = false;
-    document.getElementById('ai-settings-fields')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    revealInSettings('ai-settings-fields', { behavior: 'smooth', block: 'nearest' });
 }
 
 function aiResetProviderForm() {

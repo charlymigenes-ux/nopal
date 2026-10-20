@@ -81,3 +81,6 @@ plugins/
 .idea/
 *.swp
 .DS_Store
+
+# Índice local de CodeGraph (reconstruible, por instalación).
+.codegraph/

@@ -551,6 +551,21 @@ def get_console_buffer(device: str, count: int = 100) -> List[Dict[str, Any]]:
     return messages[-count:]
 
 
+def log_console_command(device: str, command: str) -> None:
+    """Deja el comando enviado en el log de la consola, marcado como comando
+    (igual que la consola de Klipper), para que se vea qué se mandó y cuándo."""
+    buffer = _console_buffers.setdefault(device, deque(maxlen=300))
+    buffer.append({"message": command, "time": time.time(), "type": "command"})
+
+
+async def send_line_and_wait(device: str, command: str, timeout: float = 30.0) -> bool:
+    """Manda una línea y espera su 'ok'. Sirve para macros y archivos: Marlin
+    tiene un búfer de recepción corto y varias líneas de golpe se pierden.
+    Un 'echo:busy' estira el timeout (G28, calentar), no lo agota."""
+    result = await marlin_driver.send_and_await_ok(_transport_for(device), command, timeout=timeout)
+    return bool(result["success"])
+
+
 def _is_conflicted(device: str) -> bool:
     entry = next((e for e in _load_registry() if e.get("device") == device), None)
     return bool((entry or {}).get("conflict"))
