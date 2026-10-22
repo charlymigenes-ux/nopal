@@ -26,6 +26,8 @@ from backend.services.laser_service import (
     cancel_job,
     send_raw_command,
     job_active,
+    fire_test,
+    fire_test_stop,
     ensure_listener,
     get_console_buffer,
     send_console_command,
@@ -262,6 +264,43 @@ async def laser_command_endpoint(command: str = Form(...), host: Optional[str] =
     success = send_raw_command(target, command)
     if not success:
         raise HTTPException(status_code=502, detail="No se pudo enviar el comando")
+    return {"success": True}
+
+
+FIRE_POWER_S_MAX = 10000
+
+
+@router.post("/api/laser/fire")
+async def laser_fire_endpoint(
+    power_s: int = Form(...), host: Optional[str] = Form(None), user: dict = Depends(require_auth),
+):
+    """Disparo de prueba ("Encender láser"). Devuelve `duration_s`: lo que dura
+    encendido por sí solo (0 = hasta apagarlo). Ver fire_test en laser_service:
+    en modo láser de GRBL un M3 suelto no emite, hace falta un movimiento."""
+    target = _require_host(host)
+    ensure_authorized(user, Action.SET_LASER_POWER, _laser_resource(target))
+    if not 1 <= power_s <= FIRE_POWER_S_MAX:
+        raise HTTPException(status_code=400, detail="La potencia debe estar entre 1 y 10000")
+    if job_active(target):
+        raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
+    await ensure_listener_ready(target)
+    duration = await fire_test(target, power_s)
+    if duration is None:
+        raise HTTPException(status_code=502, detail="No se pudo encender el láser")
+    return {"success": True, "duration_s": duration}
+
+
+@router.post("/api/laser/fire/stop")
+async def laser_fire_stop_endpoint(host: Optional[str] = Form(None), user: dict = Depends(require_auth)):
+    """Apaga el disparo de prueba. Cualquier operador puede apagarlo (es lo
+    mismo que cancelar). Nunca durante un trabajo: el reinicio suave lo abortaría."""
+    target = _require_host(host)
+    ensure_authorized(user, Action.CANCEL, _laser_resource(target))
+    if job_active(target):
+        raise HTTPException(status_code=409, detail=JOB_ACTIVE_MESSAGE)
+    await ensure_listener_ready(target)
+    if not await fire_test_stop(target):
+        raise HTTPException(status_code=502, detail="No se pudo apagar el láser")
     return {"success": True}
 
 

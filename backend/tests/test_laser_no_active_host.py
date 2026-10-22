@@ -23,6 +23,8 @@ ROUTES = [
     ("post", "/api/laser/command", {"command": "$H"}),
     ("post", "/api/laser/jog", {"axis": "X", "distance": "1", "feed": "100"}),
     ("post", "/api/laser/home", {}),
+    ("post", "/api/laser/fire", {"power_s": "100"}),
+    ("post", "/api/laser/fire/stop", {}),
     ("post", "/api/laser/job/start", {"path": "a.gc"}),
     ("post", "/api/laser/job/frame", {"path": "a.gc"}),
     ("get", "/api/laser/job/status", {}),

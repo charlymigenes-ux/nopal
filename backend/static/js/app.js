@@ -18873,13 +18873,49 @@ if (laserUnlockBtn) {
 let laserFireActive = false;
 let laserFireLastOffAt = 0;
 
-async function laserFireOff() {
-    const label = document.getElementById('laser-fire-label');
-    await sendLaserRawCommand('M5');
+// "Encender láser" es un disparo de prueba: en el modo láser de GRBL ($32=1) un
+// M3 suelto no emite, así que el servidor manda un G1 diminuto y lento (ver
+// fire_test en laser_service.py). Dura unos segundos por sí solo; apagar a
+// mano lo corta antes.
+let laserFireTimer = null;
+
+function laserFireMarkOff() {
+    clearTimeout(laserFireTimer);
+    laserFireTimer = null;
     laserFireActive = false;
-    laserFireLastOffAt = Date.now();
     document.getElementById('laser-fire-btn')?.classList.remove('active');
+    const label = document.getElementById('laser-fire-label');
     if (label) label.textContent = t('laserFireOn');
+}
+
+async function laserFirePost(url, fields) {
+    const host = getActiveSectionLaserHost();
+    if (!host) {
+        appAlert(t('laserNoMachineSelected'), '', 'warning');
+        return null;
+    }
+    try {
+        const formData = new FormData();
+        formData.append('host', host);
+        Object.entries(fields || {}).forEach(([key, value]) => formData.append(key, String(value)));
+        const response = await fetch(url, { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            appAlert(data.detail || 'No se pudo completar la acción del láser', '', 'warning');
+            return null;
+        }
+        return data;
+    } catch (error) {
+        console.error(error);
+        return null;
+    }
+}
+
+async function laserFireOff() {
+    // Se marca apagado aunque la respuesta falle: el estado real lo manda el láser.
+    const result = await laserFirePost('/api/laser/fire/stop');
+    laserFireLastOffAt = Date.now();
+    if (result) laserFireMarkOff();
 }
 
 async function laserFireOn() {
@@ -18887,11 +18923,15 @@ async function laserFireOn() {
     const label = document.getElementById('laser-fire-label');
     const powerInput = document.getElementById('laser-fire-power-input');
     const powerPercent = Math.max(0, Math.min(100, parseInt(powerInput?.value, 10) || 0));
-    const powerS = Math.round((powerPercent / 100) * LASER_POWER_S_MAX);
-    await sendLaserRawCommand(`M3 S${powerS}`);
+    const powerS = Math.max(1, Math.round((powerPercent / 100) * LASER_POWER_S_MAX));
+    const result = await laserFirePost('/api/laser/fire', { power_s: powerS });
+    if (!result) return;   // no se pinta "encendido" si la placa no lo aceptó
     laserFireActive = true;
     document.getElementById('laser-fire-btn')?.classList.add('active');
     if (label) label.textContent = t('laserFireOff');
+    // El disparo termina solo cuando acaba su movimiento; el botón lo refleja.
+    clearTimeout(laserFireTimer);
+    if (result.duration_s > 0) laserFireTimer = setTimeout(laserFireMarkOff, result.duration_s * 1000);
 }
 
 function toggleLaserFire() {
