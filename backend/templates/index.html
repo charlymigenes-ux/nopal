@@ -712,9 +712,11 @@
                                     <div class="preview-file-actions">
                                         <button type="button" class="btn-file-action btn-file-action-accent" id="gcode-send-laser-btn"><span data-i18n="sendToLaser">Enviar a láser</span></button>
                                         <button type="button" class="btn-file-action" id="gcode-download-btn"><span data-i18n="downloadFile">Descargar</span></button>
-                                        <button type="button" class="btn-file-action" id="gcode-rename-btn"><span data-i18n="rename">Renombrar</span></button>
                                         <button type="button" class="btn-file-action" id="gcode-move-btn"><span data-i18n="moveFile">Mover</span></button>
                                         <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-delete-btn"><span data-i18n="delete">Eliminar</span></button>
+                                        <!-- Renombrar vive en el menú ••• de cada archivo; el botón queda oculto
+                                             porque wireFileActionButtons y la selección múltiple lo usan por id. -->
+                                        <button type="button" class="btn-file-action" id="gcode-rename-btn" hidden><span data-i18n="rename">Renombrar</span></button>
                                     </div>
                                 </div>
                                 <div class="gcode-preview-coordinate-frame">

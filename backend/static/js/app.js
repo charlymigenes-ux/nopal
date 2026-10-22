@@ -3234,6 +3234,37 @@ function renderGcodePagination(totalItems, totalPages) {
     });
 }
 
+// Menú ••• de un archivo G-code. Las acciones usan los botones del panel de
+// vista previa (ya cableados a "el archivo previsualizado"), así que solo
+// hay una implementación de renombrar/mover.
+function openGcodeRowMenu(anchor) {
+    document.querySelectorAll('.gcode-row-menu-pop').forEach(el => el.remove());
+    const menu = document.createElement('div');
+    menu.className = 'gcode-row-menu-pop';
+    menu.setAttribute('role', 'menu');
+    [['gcode-rename-btn', t('rename')], ['gcode-move-btn', t('moveFile')]].forEach(([id, label]) => {
+        const target = document.getElementById(id);
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.setAttribute('role', 'menuitem');
+        item.textContent = label;
+        item.disabled = !target || target.disabled;
+        item.title = item.disabled && target ? target.title : '';
+        item.addEventListener('click', () => { menu.remove(); target?.click(); });
+        menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    menu.style.top = `${window.scrollY + rect.bottom + 4}px`;
+    menu.style.left = `${Math.max(8, window.scrollX + rect.right - menu.offsetWidth)}px`;
+    const close = event => {
+        if (menu.contains(event.target)) return;
+        menu.remove();
+        document.removeEventListener('click', close, true);
+    };
+    setTimeout(() => document.addEventListener('click', close, true), 0);
+}
+
 function renderGcodeTable(filterQuery = gcodeSearchQuery) {
     const gcodeTable = document.getElementById('gcode-table');
     if (!gcodeTable) return;
@@ -3282,7 +3313,9 @@ function renderGcodeTable(filterQuery = gcodeSearchQuery) {
                 <td><span class="tag-pill">${escapeHtml(model.material || 'MDF')}</span></td>
                 <td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td>
                 <td class="gcode-dimensions">${cachedDimensions !== undefined ? formatGcodeDimensions(cachedDimensions) : '…'}</td>
-                <td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td>
+                <td>${gcodeViewMode === 'grid'
+                    ? `<button type="button" class="gcode-select-toggle${getBulkSelection('gcode').has(model.id) ? ' is-selected' : ''}" data-select-toggle aria-pressed="${getBulkSelection('gcode').has(model.id)}" title="${t('selectFile')}">✓</button>`
+                    : `<span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span>`}</td>
                 <td><button type="button" class="gcode-row-menu" data-row-menu title="${t('libraryActions')}">•••</button></td>
             </tr>`;
     }).join('');
@@ -3300,7 +3333,22 @@ function renderGcodeTable(filterQuery = gcodeSearchQuery) {
         row.querySelector('[data-row-menu]')?.addEventListener('click', event => {
             event.stopPropagation();
             const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
-            if (model) selectGcodePreview(model);
+            if (!model) return;
+            selectGcodePreview(model, false);
+            openGcodeRowMenu(event.currentTarget);
+        });
+        // El círculo ✓ del mosaico marca/desmarca el archivo: reutiliza la
+        // casilla (oculta) para que la selección múltiple y su barra sigan
+        // funcionando igual que en la lista.
+        row.querySelector('[data-select-toggle]')?.addEventListener('click', event => {
+            event.stopPropagation();
+            const toggle = event.currentTarget;
+            const checkbox = row.querySelector('.row-select-checkbox');
+            if (!checkbox) return;
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change'));
+            toggle.classList.toggle('is-selected', checkbox.checked);
+            toggle.setAttribute('aria-pressed', String(checkbox.checked));
         });
         // Un raster de imagen grande puede tardar varios segundos en
         // generarse la primera vez (ver thumbnail_service) -- si esa
@@ -3362,6 +3410,17 @@ async function selectGcodePreview(model, rerender = true) {
         document.querySelectorAll('.gcode-preview-ruler-x i').forEach((label, index) => { label.textContent = Math.round(xValues[index] || 0); });
         document.querySelectorAll('.gcode-preview-ruler-y i').forEach((label, index) => { label.textContent = Math.round(yValues[index] || 0); });
     });
+    const previewFrame = document.querySelector('.gcode-preview-coordinate-frame');
+    if (previewFrame) {
+        const requestedPath = stripSectionPrefix(model.id, 'gcode');
+        fetch(`/api/gcode/render-meta?path=${encodeURIComponent(requestedPath)}`)
+            .then(response => (response.ok ? response.json() : null))
+            .then(meta => {
+                if (!meta || !meta.width_px || selectedGcodeId !== model.id) return;
+                previewFrame.style.setProperty('--render-ratio', String(meta.width_px / meta.height_px));
+            })
+            .catch(() => {});
+    }
     if (gcodePreviewScene) {
         gcodePreviewScene.innerHTML = '';
         const img = document.createElement('img');
