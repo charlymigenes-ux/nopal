@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=357">
+    <script>try { if (localStorage.getItem('nopalBootScreen') === 'off') document.documentElement.classList.add('boot-off'); } catch (e) { /* sin localStorage: se muestra */ }</script>
+    <link rel="stylesheet" href="/static/css/style.css?v=361">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -2609,6 +2610,17 @@
                                         <span class="switch-label" data-i18n="enabled">Enabled</span>
                                     </label>
                                 </div>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="bootScreenLabel">Pantalla de carga</span>
+                                        <p class="settings-field-hint" data-i18n="bootScreenDescription">Muestra el estado de cada módulo de NOPAL mientras arranca el panel.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-boot-screen">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
+                                </div>
                             </section>
                             <section class="settings-card st-card" aria-labelledby="st-server-title">
                                 <div class="st-card-head">
@@ -3527,6 +3539,9 @@
     </div>
 
     <!-- Login overlay -->
+    <!-- Pantalla de carga: la dibuja y la maneja static/js/boot-screen.js. -->
+    <div id="boot-overlay" class="boot-overlay" role="dialog" aria-modal="true" aria-label="NOPAL"></div>
+
     <div id="login-overlay" class="login-overlay" hidden>
         <div class="login-card">
             <div class="login-lang-switch" id="login-lang-switch">
@@ -5841,11 +5856,12 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=51"></script>
+    <script src="/static/js/translations.js?v=53"></script>
     <script src="/static/js/translations-pt-BR.js?v=8"></script>
     <script src="/static/js/translations-fr.js?v=8"></script>
     <script src="/static/js/translations-de.js?v=8"></script>
-    <script src="/static/js/app.js?v=290"></script>
+    <script src="/static/js/boot-screen.js?v=4"></script>
+    <script src="/static/js/app.js?v=293"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>

@@ -16,9 +16,23 @@ let setupRequired = false;
 
 const ORIGINAL_FETCH = window.fetch.bind(window);
 window.fetch = async function authAwareFetch(input, init) {
-    const response = await ORIGINAL_FETCH(input, init);
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    // La pantalla de carga (boot-screen.js) observa las peticiones reales del
+    // arranque: nada de esto cambia lo que recibe quien llama a fetch.
+    const boot = window.NopalBoot && window.NopalBoot.wants(url) ? window.NopalBoot : null;
+    if (boot) {
+        await boot.gate(url);   // espera su turno en la secuencia de arranque
+        boot.begin(url);
+    }
+    let response;
+    try {
+        response = await ORIGINAL_FETCH(input, init);
+    } catch (error) {
+        if (boot) boot.fail(url);
+        throw error;
+    }
+    if (boot) boot.observe(url, response);
     if (response.status === 401) {
-        const url = typeof input === 'string' ? input : (input && input.url) || '';
         if (url.startsWith('/api/') && !url.startsWith('/api/auth/')) {
             if (setupRequired) {
                 showSetupOverlay();
@@ -422,8 +436,14 @@ async function loadTopbarNotifications() {
 checkAuth().then(user => {
     updateTopbarLangLabel();
     if (user) {
+        // Con sesión se muestra la pantalla de carga (las peticiones iniciales
+        // ya salieron: esta las lee conforme responden). Sin sesión se descarta
+        // para no tapar el login.
+        window.NopalBoot?.start(user);
         loadTopbarNotifications();
         loadInstalledPluginModules();
+    } else {
+        window.NopalBoot?.cancel();
     }
 });
 setInterval(() => { if (currentAuthUser) loadTopbarNotifications(); }, 10000);
@@ -21804,6 +21824,7 @@ function loadPluginAsset(plugin) {
 }
 
 async function loadInstalledPluginModules(catalog = null) {
+    let failedPlugins = 0;
     try {
         let list = catalog;
         if (!Array.isArray(list)) {
@@ -21811,9 +21832,13 @@ async function loadInstalledPluginModules(catalog = null) {
             if (!response.ok) return;
             list = (await response.json()).plugins || [];
         }
-        await Promise.all(list.filter(plugin => plugin.installed && plugin.enabled && plugin.frontend).map(loadPluginAsset));
+        const settled = await Promise.allSettled(list.filter(plugin => plugin.installed && plugin.enabled && plugin.frontend).map(loadPluginAsset));
+        failedPlugins = settled.filter(item => item.status === 'rejected').length;
     } catch (error) {
         console.error('Error al cargar plugins:', error);
+    } finally {
+        // La pantalla de carga espera esto para dar los plugins por cargados.
+        window.dispatchEvent(new CustomEvent('nopal:plugins-ready', { detail: { failed: failedPlugins } }));
     }
 }
 
@@ -22747,6 +22772,7 @@ const settingsShowOfflineMachines = document.getElementById('settings-show-offli
 const settingsSoundAlerts = document.getElementById('settings-sound-alerts');
 const settingsLaserHomeConfirm = document.getElementById('settings-laser-home-confirm');
 const settingsOnboardingHints = document.getElementById('settings-onboarding-hints');
+const settingsBootScreen = document.getElementById('settings-boot-screen');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
 
 function createOptionSwitch(containerId, onSelect) {
@@ -23367,6 +23393,7 @@ function loadSettingsPanel() {
     if (settingsSoundAlerts) settingsSoundAlerts.checked = isSoundAlertsEnabled();
     if (settingsLaserHomeConfirm) settingsLaserHomeConfirm.checked = isLaserHomeConfirmEnabled();
     if (settingsOnboardingHints) settingsOnboardingHints.checked = isOnboardingHintsEnabled();
+    if (settingsBootScreen) settingsBootScreen.checked = window.NopalBoot ? window.NopalBoot.enabled() : true;
     settingsUiScaleSwitch.setValue(savedUiScale);
     settingsCncModeSwitch.setValue(localStorage.getItem('cncDashboardMode') || 'simple');
 
@@ -23709,6 +23736,9 @@ function saveSettings() {
     if (settingsOnboardingHints) {
         localStorage.setItem('onboardingHintsEnabled', settingsOnboardingHints.checked ? 'true' : 'false');
     }
+    if (settingsBootScreen) {
+        localStorage.setItem('nopalBootScreen', settingsBootScreen.checked ? 'on' : 'off');
+    }
     const uiScaleValue = settingsUiScaleSwitch.getValue();
     if (uiScaleValue) {
         localStorage.setItem('uiScale', uiScaleValue);
@@ -23764,6 +23794,9 @@ if (settingsLaserHomeConfirm) {
 }
 if (settingsOnboardingHints) {
     settingsOnboardingHints.addEventListener('change', saveSettings);
+}
+if (settingsBootScreen) {
+    settingsBootScreen.addEventListener('change', saveSettings);
 }
 if (settingsSaveBtn) {
     settingsSaveBtn.addEventListener('click', saveSettings);
@@ -24305,7 +24338,8 @@ loadAccessoryArduinoDiscoverList();
 loadDashboardMatrixPreview();
 refreshDeviceNavVisibility();
 refreshFlashforgeNavVisibility();
-maybeStartTour('dashboard');
+// El recorrido espera a que se cierre la pantalla de carga para no arrancar debajo de ella.
+(window.NopalBoot ? window.NopalBoot.ready : Promise.resolve()).then(() => maybeStartTour('dashboard'));
 
 // loadPrinters ya queda programado por setupPrinterRefresh(), que además
 // respeta la preferencia del usuario. No crear un segundo intervalo aquí.

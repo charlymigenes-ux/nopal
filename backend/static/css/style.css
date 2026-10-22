@@ -23721,3 +23721,208 @@ body[data-ai-active="true"]:has(#ai-section:not([style*="display: none"])) .cont
    círculo ✓ de abajo. Va al final (y con td) para ganarle a la regla de
    posición absoluta de .select-col más arriba, que la volvía a mostrar. */
 .gcode-modern-table.is-grid .models-table td.select-col { display: none; }
+
+/* ── Pantalla de carga (static/js/boot-screen.js) ──
+   Todo con tokens del tema: el estado se expresa con --boot-c (gris pendiente,
+   acento conectado, azul de información actividad, ámbar advertencia) y el
+   núcleo pinta con currentColor, igual que .ai-orb. */
+.boot-overlay {
+    --boot-c: var(--text-faint);
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    display: flex;
+    flex-direction: column;
+    color: var(--accent-ink);
+    background:
+        radial-gradient(60% 55% at 50% 52%, color-mix(in srgb, var(--accent-ink) 14%, transparent), transparent 70%),
+        var(--surface-base);
+    transition: opacity 1.3s ease;
+    /* Red de seguridad: si boot-screen.js no llegara a cargar, el overlay (que
+       está en el HTML desde el primer pintado) se retira solo a los 20 s en vez
+       de dejar la app tapada. El script lo desactiva al montarse. */
+    animation: boot-failsafe 0s linear 20s forwards;
+}
+@keyframes boot-failsafe { to { visibility: hidden; pointer-events: none; } }
+.boot-overlay[hidden], .boot-off .boot-overlay { display: none; }
+.boot-overlay.is-closing { opacity: 0; pointer-events: none; }
+body.boot-active { overflow: hidden; }
+
+.boot-skip {
+    position: absolute;
+    top: 18px;
+    right: 22px;
+    z-index: 3;
+    padding: 7px 14px;
+    border: 1px solid color-mix(in srgb, var(--accent-ink) 45%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
+    color: var(--text-strong);
+    font-size: .74rem;
+    cursor: pointer;
+}
+.boot-skip:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+
+.boot-stage { position: relative; flex: 1; min-height: 0; }
+.boot-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+
+.boot-link { --boot-c: var(--text-faint); }
+.boot-link[data-state="ok"] { --boot-c: var(--accent-ink); }
+.boot-link[data-state="active"] { --boot-c: var(--status-info); }
+.boot-link[data-state="warn"] { --boot-c: var(--status-warn); }
+.boot-link-line { fill: none; stroke: var(--boot-c); stroke-width: 1.4; opacity: .35; transition: stroke .4s ease, opacity .4s ease; }
+.boot-link-pulse { fill: none; stroke: var(--boot-c); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 3 46; opacity: 0; filter: drop-shadow(0 0 3px var(--boot-c)); }
+/* Los pulsos viajan hacia el núcleo (los trazos se dibujan desde la tarjeta). */
+.boot-link:not([data-state="pending"]) .boot-link-line { opacity: .7; }
+.boot-link .boot-link-line { stroke-dasharray: 1; stroke-dashoffset: 0; }
+/* La rama se dibuja desde la ficha hasta el núcleo cuando su módulo ya respondió. */
+.boot-link.is-new .boot-link-line { animation: boot-draw 1s ease-out both; }
+@keyframes boot-draw { from { stroke-dashoffset: 1; opacity: 1; } to { stroke-dashoffset: 0; } }
+.boot-link.is-burst { animation: boot-link-flash 1s ease-out; }
+@keyframes boot-link-flash { 0% { filter: drop-shadow(0 0 8px var(--boot-c)); } 100% { filter: drop-shadow(0 0 0 var(--boot-c)); } }
+.boot-link:not([data-state="pending"]) .boot-link-pulse { opacity: 1; animation: boot-pulse 2.4s linear infinite; }
+.boot-link[data-state="warn"] .boot-link-pulse { animation-duration: 4.2s; }
+.boot-link[data-state="active"] .boot-link-pulse { animation-duration: 1.4s; }
+@keyframes boot-pulse { to { stroke-dashoffset: -98; } }
+
+.boot-core {
+    position: absolute;
+    left: 50%;
+    top: 52%;
+    width: 190px;
+    height: 190px;
+    transform: translate(-50%, -50%);
+    color: var(--accent-ink);
+    animation: boot-core-in .9s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes boot-core-in { from { opacity: 0; scale: .5; } to { opacity: 1; scale: 1; } }
+.boot-core-ripple { position: absolute; inset: 0; border-radius: 50%; border: 1px solid currentColor; opacity: 0; animation: boot-ripple 3.6s ease-out infinite; }
+.boot-core-ripple:nth-of-type(2) { animation-delay: 1.8s; }
+@keyframes boot-ripple { 0% { transform: scale(.8); opacity: .5; } 100% { transform: scale(1.5); opacity: 0; } }
+.boot-core-ring { position: absolute; border-radius: 50%; }
+.boot-core-ring-dashed { inset: -14px; border: 1.5px dashed color-mix(in srgb, currentColor 32%, transparent); animation: boot-spin 26s linear infinite; }
+.boot-core-ring-arc {
+    inset: 4px; border: 2px solid transparent;
+    border-top-color: color-mix(in srgb, currentColor 80%, transparent);
+    border-bottom-color: color-mix(in srgb, currentColor 30%, transparent);
+    animation: boot-spin 9s linear infinite reverse;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+.boot-core-body {
+    position: absolute; inset: 20px; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    background:
+        radial-gradient(circle at 50% 35%, color-mix(in srgb, currentColor 22%, transparent), transparent 70%),
+        color-mix(in srgb, var(--surface-sunken) 80%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+    box-shadow: 0 0 38px color-mix(in srgb, currentColor 38%, transparent), inset 0 0 22px color-mix(in srgb, currentColor 16%, transparent);
+}
+.boot-core-logo { width: 62px; height: 62px; filter: drop-shadow(0 0 8px currentColor); }
+.boot-core-body strong { color: var(--text-strong); font-size: 1.05rem; letter-spacing: .08em; }
+
+.boot-card {
+    --boot-c: var(--text-faint);
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    width: clamp(190px, 21vw, 262px);
+    transform: translate(-50%, -50%);
+    padding: 10px 14px 12px;
+    border: 1px solid color-mix(in srgb, var(--boot-c) 50%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .28), 0 0 18px color-mix(in srgb, var(--boot-c) 16%, transparent);
+    transition: border-color .4s ease, box-shadow .4s ease, opacity .5s ease, scale .5s cubic-bezier(.2, .8, .2, 1);
+}
+/* Escalonado: cada ficha entra cuando le toca (boot-screen.js le pone .is-in). */
+.boot-card:not(.is-in) { opacity: 0; scale: .9; pointer-events: none; }
+/* Foco: un destello al entrar y otro al mostrar su resultado. */
+.boot-card.is-focus { animation: boot-focus .95s ease-out; }
+@keyframes boot-focus {
+    0%   { scale: .94; }
+    32%  { scale: 1.06; box-shadow: 0 0 0 2px var(--boot-c), 0 0 38px color-mix(in srgb, var(--boot-c) 55%, transparent); }
+    100% { scale: 1; }
+}
+.boot-card[data-state="ok"] { --boot-c: var(--accent-ink); }
+.boot-card[data-state="active"] { --boot-c: var(--status-info); }
+.boot-card[data-state="warn"] { --boot-c: var(--status-warn); }
+.boot-card header { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.boot-card h3 { flex: 1; margin: 0; color: var(--text-strong); font-size: .86rem; font-weight: 700; }
+.boot-card-icon { flex: 0 0 auto; width: 30px; height: 30px; padding: 6px; border-radius: 9px; color: var(--boot-c); border: 1px solid color-mix(in srgb, var(--boot-c) 55%, transparent); background: color-mix(in srgb, var(--boot-c) 12%, transparent); transition: color .4s ease, border-color .4s ease; }
+.boot-card-count { color: var(--text-faint); font-size: .66rem; font-variant-numeric: tabular-nums; }
+.boot-card-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.boot-row { display: flex; align-items: center; gap: 7px; color: var(--text-faint); font-size: .72rem; }
+.boot-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); }
+.boot-row em { font-style: normal; color: var(--text-faint); white-space: nowrap; }
+.boot-row i { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+.boot-row[data-state="ok"] i { background: var(--accent-ink); box-shadow: 0 0 6px var(--accent-ink); }
+.boot-row[data-state="active"] i { background: var(--status-info); animation: boot-blink 1s ease-in-out infinite; }
+.boot-row[data-state="warn"] i { background: var(--status-warn); box-shadow: 0 0 6px var(--status-warn); }
+.boot-row[data-state="warn"] em { color: var(--status-warn); }
+.boot-row-wait span { color: var(--text-faint); }
+@keyframes boot-blink { 50% { opacity: .35; } }
+
+.boot-progress {
+    position: absolute; left: 24px; bottom: 22px; z-index: 2;
+    width: min(360px, calc(100% - 48px));
+    padding: 12px 16px;
+    border: 1px solid color-mix(in srgb, var(--accent-ink) 40%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+}
+.boot-progress-label { display: block; margin-bottom: 8px; color: var(--text-strong); font-size: .8rem; }
+.boot-progress-track { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--text-faint) 25%, transparent); overflow: hidden; }
+.boot-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent-ink); transition: width .35s ease; }
+.boot-tagline { position: absolute; right: 28px; bottom: 28px; z-index: 2; color: var(--text-faint); font-size: .85rem; letter-spacing: .03em; }
+
+/* Estrecho: sin ramas; el núcleo arriba y las tarjetas en lista. */
+@media (max-width: 1100px) {
+    .boot-overlay { overflow-y: auto; }
+    .boot-stage { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; align-content: start; padding: 64px 16px 150px; }
+    .boot-links { display: none; }
+    .boot-core { position: relative; left: auto; top: auto; transform: none; grid-column: 1 / -1; justify-self: center; width: 130px; height: 130px; margin: 6px 0 14px; }
+    .boot-core-logo { width: 42px; height: 42px; }
+    .boot-core-body strong { font-size: .8rem; }
+    .boot-card { position: static; transform: none; width: auto; }
+    .boot-card:not(.is-in) { display: none; }
+    .boot-progress { position: fixed; }
+    .boot-tagline { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .boot-core-ripple, .boot-core-ring, .boot-link-pulse, .boot-row i,
+    .boot-core, .boot-card.is-focus, .boot-link.is-new .boot-link-line, .boot-link.is-burst { animation: none; }
+    .boot-card { transition: border-color .4s ease, box-shadow .4s ease, opacity .2s ease; }
+    .boot-core-ripple { opacity: 0; }
+    .boot-overlay { transition: none; }
+}
+
+/* Modo IA (arriba a la izquierda): se muestra solo si el servidor dice que está activo. */
+.boot-ai {
+    position: absolute; top: 18px; left: 22px; z-index: 3;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+    opacity: 0; translate: 0 -8px;
+    transition: opacity .7s ease, translate .7s cubic-bezier(.2, .8, .2, 1);
+}
+.boot-ai[hidden] { display: none; }
+.boot-ai.is-in { opacity: 1; translate: 0 0; }
+.boot-ai-pill {
+    display: flex;
+    color: var(--ai-grad-to, var(--accent-ink));
+    border-color: var(--ai-grad-from, var(--accent-ink));
+    background: linear-gradient(90deg, var(--ai-glow, rgba(var(--accent-rgb), .18)), transparent 60%), var(--surface-raised);
+}
+.boot-ai-pill svg { color: var(--ai-grad-from, var(--accent-ink)); }
+.boot-ai small { padding-left: 14px; color: var(--text-faint); font-size: .68rem; }
+
+/* Cada tipo de máquina con su color (el mismo del panel): impresora = acento,
+   láser = violeta, CNC = naranja. Fuera de línea, el punto se apaga. */
+.boot-row[data-kind="laser"] i { background: var(--violet); box-shadow: 0 0 6px var(--violet); }
+.boot-row[data-kind="cnc"] i { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+.boot-row[data-kind][data-state="warn"] i { opacity: .4; box-shadow: none; }
+.boot-row[data-kind="laser"] span { color: color-mix(in srgb, var(--violet) 55%, var(--text-strong)); }
+.boot-row[data-kind="cnc"] span { color: color-mix(in srgb, var(--orange) 55%, var(--text-strong)); }
+
+@media (prefers-reduced-motion: reduce) {
+    .boot-ai { transition: opacity .2s ease; translate: none; }
+}
