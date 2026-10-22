@@ -90,20 +90,13 @@ def generate_gcode_thumbnail(filepath: str, kind: str = "cnc") -> Image.Image:
 
 
 def get_or_create_gcode_thumbnail(section: str, rel_path: str, kind: str = "cnc") -> str:
-    """Devuelve la ruta al PNG cacheado, generándolo si no existe o si el
-    archivo fuente cambió (mtime del cache vs. mtime del archivo). Nunca
-    regenera en cada pedido — a diferencia de _estimate_print_time en
-    api/models.py, que sí recalcula siempre y por eso ese endpoint es lento."""
-    source_path = safe_section_path(section, rel_path)
-    if not os.path.isfile(source_path):
-        raise FileNotFoundError(source_path)
+    """Ruta al PNG del render del G-code. Desde que la galería y la sección
+    Láser comparten una sola imagen, el dibujo lo hace gcode_render_service
+    (mismo aspecto del Editor G-Code); `kind` ya no cambia el color y se
+    conserva solo para no romper a quien lo pasa."""
+    if section != "gcode":
+        raise FileNotFoundError(rel_path)
+    from backend.services.gcode_render_service import ensure_render
 
-    cache_path = os.path.join(THUMBNAIL_CACHE_ROOT, section, rel_path + ".png")
-    source_mtime = os.path.getmtime(source_path)
-    if os.path.isfile(cache_path) and os.path.getmtime(cache_path) >= source_mtime:
-        return cache_path
-
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    img = generate_gcode_thumbnail(source_path, kind)
-    img.save(cache_path, "PNG")
-    return cache_path
+    png_path, _meta = ensure_render(rel_path)
+    return png_path

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import FileResponse, Response
 
 from backend.auth_deps import require_auth
+from backend.services.gcode_render_service import ensure_render, get_progress
 from backend.services.thumbnail_service import get_or_create_gcode_thumbnail
 from backend.utils import UPLOAD_FOLDER, get_section_root, safe_section_path
 
@@ -147,6 +148,23 @@ def get_gcode_thumbnail(path: str, kind: str = "cnc", user: dict = Depends(requi
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return FileResponse(cache_path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.get("/api/gcode/render-progress")
+def get_gcode_render_progress(path: str, user: dict = Depends(require_auth)):
+    """Avance del render de un G-code recién importado (barra de la biblioteca)."""
+    return get_progress(path)
+
+
+@router.get("/api/gcode/render-meta")
+def get_gcode_render_meta(path: str, user: dict = Depends(require_auth)):
+    """Límites reales (mm) del trazo y tamaño del PNG de /api/gcode/thumbnail,
+    para colocar la imagen en el área de trabajo de una máquina."""
+    try:
+        _png, meta = ensure_render(path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return meta
 
 
 @router.get("/api/models")

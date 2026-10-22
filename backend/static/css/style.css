@@ -3095,6 +3095,13 @@ body.light #gcode-section {
     transition: width 0.2s ease;
 }
 
+/* Segunda barra (renderizado) en otro tono que la de subida. */
+.upload-render-fill { background: #38bdf8; }
+.upload-phase-label {
+    color: var(--text-muted);
+    font-size: 0.62rem;
+}
+
 .laser-sd-upload-progress {
     position: relative;
     height: 20px;
@@ -7412,6 +7419,24 @@ body.green .settings-card {
     font-size: 0.82rem;
     color: var(--text-muted);
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+/* Render del archivo elegido en la cola, colocado en mm sobre el área de
+   trabajo antes de enviar (lo posiciona showLaserBedMapRender). */
+.laser-bed-map-render {
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+}
+
+.laser-queue-item.is-selected {
+    outline: 1px solid var(--accent, #22c55e);
+    outline-offset: -1px;
+}
+
+.laser-queue-item {
+    cursor: pointer;
 }
 
 .laser-bed-map-trace {

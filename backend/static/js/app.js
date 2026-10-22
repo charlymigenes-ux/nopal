@@ -1348,7 +1348,12 @@ function loadRealGcodeThumbnail(container, relPath, section, fallbackFileUrl) {
     img.onerror = () => {
         if (fallbackFileUrl) renderGcodeThumbnail(container, fallbackFileUrl);
     };
-    img.src = `/api/models/thumbnail?path=${encodeURIComponent(relPath)}&section=${encodeURIComponent(section)}`;
+    // La biblioteca G-code (láser/CNC) usa el render compartido que el
+    // servidor genera al importar el archivo (mismo aspecto del Editor G-Code);
+    // las miniaturas incrustadas por el slicer solo aplican a modelos 3D.
+    img.src = section === 'gcode'
+        ? `/api/gcode/thumbnail?path=${encodeURIComponent(relPath)}`
+        : `/api/models/thumbnail?path=${encodeURIComponent(relPath)}&section=${encodeURIComponent(section)}`;
     container.appendChild(img);
 }
 
@@ -9650,12 +9655,39 @@ function renderUploadingRow(tableContainerId, filename) {
             <svg class="green-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
             <div class="uploading-info">
                 <strong>${filename}</strong>
-                <div class="upload-progress-track"><div class="upload-progress-fill" style="width:0%"></div></div>
+                <div class="upload-progress-track" title="Subida"><div class="upload-progress-fill" style="width:0%"></div></div>
+                <div class="upload-progress-track upload-render-track" title="Renderizado" hidden><div class="upload-progress-fill upload-render-fill" style="width:0%"></div></div>
+                <small class="upload-phase-label"></small>
             </div>
         </td>
     `;
     tbody.insertBefore(row, tbody.firstChild);
     return row;
+}
+
+// Sondea el avance del render de un G-code recién subido y lo pinta en la
+// segunda barra de la fila. Termina cuando el servidor lo da por hecho, si el
+// render falla (estado "none") o a los 20 minutos, para no dejar la fila colgada.
+async function followGcodeRender(relPath, track, fill, label) {
+    track.hidden = false;
+    if (label) label.textContent = 'Renderizando…';
+    const deadline = Date.now() + 20 * 60000;
+    while (Date.now() < deadline) {
+        let state = null;
+        try {
+            const response = await fetch(`/api/gcode/render-progress?path=${encodeURIComponent(relPath)}`);
+            if (response.ok) state = await response.json();
+        } catch (_) { /* red intermitente: se reintenta */ }
+        if (state) {
+            fill.style.width = `${state.percent}%`;
+            if (state.status === 'done') {
+                if (label) label.textContent = 'Listo';
+                return;
+            }
+            if (state.status === 'none') return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 400));
+    }
 }
 
 function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDone) {
@@ -9669,6 +9701,10 @@ function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDon
         return new Promise(resolve => {
             const row = renderUploadingRow(tableContainerId, file.name);
             const progressFill = row ? row.querySelector('.upload-progress-fill') : null;
+            const renderTrack = row ? row.querySelector('.upload-render-track') : null;
+            const renderFill = row ? row.querySelector('.upload-render-fill') : null;
+            const phaseLabel = row ? row.querySelector('.upload-phase-label') : null;
+            if (phaseLabel) phaseLabel.textContent = 'Subiendo…';
 
             const formData = new FormData();
             formData.append('file', file);
@@ -9684,10 +9720,20 @@ function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDon
                 }
             });
 
-            xhr.addEventListener('load', () => {
+            xhr.addEventListener('load', async () => {
                 if (!(xhr.status >= 200 && xhr.status < 300)) {
                     if (row) row.remove();
                     appAlert(`No se pudo subir "${file.name}".`, '', 'danger');
+                    resolve();
+                    return;
+                }
+                // Un G-code se renderiza en el servidor justo después de subir:
+                // la fila sigue visible con su segunda barra hasta que termina,
+                // para que se vea dónde va.
+                if (type === 'gcode' && row && renderTrack && renderFill) {
+                    let uploaded = {};
+                    try { uploaded = JSON.parse(xhr.responseText); } catch (_) { /* sin ruta: no hay qué seguir */ }
+                    if (uploaded.path) await followGcodeRender(uploaded.path, renderTrack, renderFill, phaseLabel);
                 }
                 resolve();
             });
@@ -13241,7 +13287,7 @@ function renderLaserStatus(data) {
     if (jobSpeedEl) jobSpeedEl.textContent = hasFeedSpeed ? `${data.feed} mm/min` : '—';
     const jobPowerEl = document.getElementById('laser-job-power');
     if (jobPowerEl) jobPowerEl.textContent = hasFeedSpeed ? `${powerPercent}%` : '—';
-    updateLaserBedMapPosition(data.x, data.y, (data.state || '').toLowerCase() === 'run');
+    updateLaserBedMapPosition(data.x, data.y);
 }
 
 async function refreshLaserStatus() {
@@ -13520,10 +13566,16 @@ function renderLaserQueue(queue) {
     if (!container) return;
     if (!queue || !queue.length) {
         container.innerHTML = `<div class="empty-state-small">${t('laserQueueEmpty')}</div>`;
+        laserSelectedQueuePath = null;
+        syncLaserBedMapRender();
         return;
     }
+    // El archivo elegido sigue siendo el mismo entre refrescos; si ya no está
+    // en la cola, se toma el primero.
+    if (!queue.some(item => item.path === laserSelectedQueuePath)) laserSelectedQueuePath = queue[0].path;
+    syncLaserBedMapRender();
     container.innerHTML = queue.map(item => `
-        <div class="laser-queue-item" data-id="${item.id}" data-path="${escapeHtml(item.path)}">
+        <div class="laser-queue-item${item.path === laserSelectedQueuePath ? ' is-selected' : ''}" data-id="${item.id}" data-path="${escapeHtml(item.path)}">
             <div class="laser-queue-item-thumb" id="laser-queue-thumb-${item.id}"></div>
             <span class="laser-queue-item-name">${escapeHtml(item.filename)}</span>
             <div class="laser-queue-item-actions">
@@ -13545,6 +13597,12 @@ function renderLaserQueue(queue) {
             const fileUrl = `/uploads/gcode/${itemPath.split('/').map(encodeURIComponent).join('/')}`;
             loadRealGcodeThumbnail(thumbEl, itemPath, 'gcode', fileUrl);
         }
+        row.addEventListener('click', event => {
+            if (event.target.closest('button')) return;
+            laserSelectedQueuePath = itemPath;
+            container.querySelectorAll('.laser-queue-item').forEach(el => el.classList.toggle('is-selected', el === row));
+            syncLaserBedMapRender();
+        });
         row.querySelectorAll('button[data-action]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 if (btn.dataset.action === 'play') {
@@ -13902,14 +13960,61 @@ function renderLaserBedMap(host) {
     }
 
     if (emptyEl) emptyEl.hidden = true;
-    if (dotEl) dotEl.hidden = false;
+    // Sin punto ni rastro de lo grabado: el área muestra el render del archivo
+    // antes de enviarlo (ver showLaserBedMapRender); el avance va en la barra.
+    if (dotEl) dotEl.hidden = true;
     applyLaserMarkerToDot();
+    laserBedMapRenderedPath = null;
+    syncLaserBedMapRender();
     if (dimsEl) dimsEl.textContent = `${laserBedMapWorkArea.width} × ${laserBedMapWorkArea.height} mm`;
     mapEl.style.aspectRatio = `${laserBedMapWorkArea.width} / ${laserBedMapWorkArea.height}`;
     renderLaserBedMapAxisTicks();
 }
 
 let laserBedMapTracePoints = [];
+
+// Archivo de la cola cuyo render se ve en el área de trabajo (ruta relativa a
+// la biblioteca G-code). El PNG lo genera y cachea el servidor al importar el
+// archivo; aquí solo se coloca en mm usando los límites reales del trazo.
+let laserSelectedQueuePath = null;
+let laserBedMapRenderedPath = null;
+
+async function showLaserBedMapRender(path) {
+    const img = document.getElementById('laser-bed-map-render');
+    if (!img) return;
+    if (!path || !laserBedMapWorkArea) {
+        img.hidden = true;
+        img.removeAttribute('src');
+        laserBedMapRenderedPath = null;
+        return;
+    }
+    if (path === laserBedMapRenderedPath) return;
+    laserBedMapRenderedPath = path;
+    try {
+        const response = await fetch(`/api/gcode/render-meta?path=${encodeURIComponent(path)}`);
+        if (!response.ok) throw new Error('sin render');
+        const meta = await response.json();
+        // Si mientras llegaba la respuesta se eligió otro archivo, se descarta.
+        if (laserBedMapRenderedPath !== path || !meta.bounds || !laserBedMapWorkArea) {
+            if (laserBedMapRenderedPath === path) img.hidden = true;
+            return;
+        }
+        const area = laserBedMapWorkArea;
+        img.style.left = `${(meta.bounds.minX / area.width) * 100}%`;
+        img.style.bottom = `${(meta.bounds.minY / area.height) * 100}%`;
+        img.style.width = `${(meta.width_mm / area.width) * 100}%`;
+        img.style.height = `${(meta.height_mm / area.height) * 100}%`;
+        img.src = `/api/gcode/thumbnail?path=${encodeURIComponent(path)}`;
+        img.hidden = false;
+    } catch (error) {
+        img.hidden = true;
+        laserBedMapRenderedPath = null;
+    }
+}
+
+function syncLaserBedMapRender() {
+    showLaserBedMapRender(laserSelectedQueuePath);
+}
 
 function clearLaserBedMapTrace() {
     laserBedMapTracePoints = [];
@@ -13950,14 +14055,13 @@ async function sendLaserBedMapSnapshotToHistory(host) {
     }
 }
 
-function updateLaserBedMapPosition(x, y, tracing) {
+function updateLaserBedMapPosition(x, y) {
     const dotEl = document.getElementById('laser-bed-map-dot');
     if (!dotEl || !laserBedMapWorkArea || dotEl.hidden) return;
     const percentX = Math.min(100, Math.max(0, (x / laserBedMapWorkArea.width) * 100));
     const percentY = Math.min(100, Math.max(0, (y / laserBedMapWorkArea.height) * 100));
     dotEl.style.left = `${percentX}%`;
     dotEl.style.bottom = `${percentY}%`;
-    if (tracing) addLaserBedMapTracePoint(percentX, percentY);
 }
 
 // ── Mover el láser haciendo click sobre el mapa de cama ──
