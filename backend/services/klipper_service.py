@@ -270,15 +270,30 @@ class MoonrakerClient:
         """Últimos mensajes de la consola G-code."""
         return self._get(f"/server/gcode_store?count={count}").get("gcode_store", [])
 
-    def run_gcode_script(self, script: str) -> bool:
+    def run_gcode_script(self, script: str, *, accept_timeout: bool = True) -> bool:
+        """Moonraker responde a /printer/gcode/script hasta que Klipper termina
+        el script, así que un G28 o un macro largo agota cualquier timeout
+        corto aunque la orden sí se haya entregado y se esté ejecutando. Con
+        ``accept_timeout`` se espera solo la entrega (errores inmediatos como
+        "Must home first" siguen regresando HTTP 4xx) y un timeout de lectura
+        cuenta como orden aceptada."""
         try:
             response = requests.post(
                 f"{self.base_url}/printer/gcode/script",
                 json={"script": script},
-                timeout=self.timeout,
+                timeout=(self.timeout, 1.5) if accept_timeout else self.timeout,
             )
             response.raise_for_status()
             return True
+        except requests.exceptions.ReadTimeout:
+            if accept_timeout:
+                # Moonraker ya recibió el script y lo está ejecutando: solo no
+                # responde hasta que termine (G28, M109, M190… tardan decenas de
+                # segundos). Reportarlo como fallo era un falso error.
+                logger.info(f"[{self.port}] el script sigue en ejecución; se da por enviado")
+                return True
+            logger.warning(f"[{self.port}] timeout esperando el script")
+            return False
         except Exception as e:
             logger.warning(f"[{self.port}] {e}")
             return False
@@ -983,10 +998,10 @@ def get_console_messages(port: int, count: int = 50) -> List[Dict[str, Any]]:
     return client.get_gcode_store(count=count)
 
 
-def send_console_command(port: int, command: str) -> bool:
+def send_console_command(port: int, command: str, *, accept_timeout: bool = True) -> bool:
     """Envía un comando arbitrario de G-code/consola."""
     client = MoonrakerClient(port)
-    return client.run_gcode_script(command)
+    return client.run_gcode_script(command, accept_timeout=accept_timeout)
 
 
 def get_macros(port: int) -> List[Dict[str, str]]:
@@ -1014,10 +1029,10 @@ def get_macros(port: int) -> List[Dict[str, str]]:
     return sorted(macros, key=lambda m: m["name"])
 
 
-def run_macro(port: int, macro: str) -> bool:
+def run_macro(port: int, macro: str, *, accept_timeout: bool = True) -> bool:
     """Ejecuta un macro por nombre."""
     client = MoonrakerClient(port)
-    return client.run_gcode_script(macro)
+    return client.run_gcode_script(macro, accept_timeout=accept_timeout)
 
 
 def get_recent_printer_files(host: str, limit: int = 3) -> List[Dict[str, Any]]:

@@ -200,6 +200,11 @@ async def tunascreen_camera_stream(
     return StreamingResponse(generator(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
+@router.get("/api/tunascreen/temperature-presets")
+async def tunascreen_temperature_presets(device: dict = Depends(require_device_token)):
+    return tunascreen_service.get_temperature_presets()
+
+
 @router.get("/api/tunascreen/materials")
 async def tunascreen_materials(device: dict = Depends(require_device_token)):
     # Spoolman requiere `plugin:spoolman` en el scope (use_plugin).

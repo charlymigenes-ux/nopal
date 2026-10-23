@@ -58,3 +58,13 @@ class TestGetAmbientTemperature:
 
         monkeypatch.setattr(dashboard_service, "get_loaded_plugin_module", lambda *a: _Modulo)
         assert await dashboard_service._get_ambient_temperature_c() is None
+
+
+def test_el_resumen_trae_el_espacio_libre_real_del_disco(client, as_admin):
+    """disk_percent es lo que ocupa uploads/ (casi siempre ~0%): la pantalla de
+    carga necesita el espacio libre para decir qué tan lleno está el disco."""
+    response = client.get("/api/dashboard/summary")
+    assert response.status_code == 200
+    host = response.json()["host"]
+    assert isinstance(host["disk_free_bytes"], int)
+    assert 0 < host["disk_free_bytes"] <= host["disk_total_bytes"]

@@ -374,6 +374,10 @@ async def get_dashboard_summary() -> Dict[str, Any]:
             "disk_percent": disk_percent,
             "disk_used_bytes": storage.get("used"),
             "disk_total_bytes": storage.get("total"),
+            # El porcentaje de arriba es lo que ocupa uploads/ frente al disco (por
+            # eso casi siempre es ~0%); para saber qué tan lleno está el disco de
+            # verdad hace falta el espacio libre.
+            "disk_free_bytes": storage.get("free"),
             "ip": host.get("network_ip"),
             "bandwidth_kbps": host.get("bandwidth_kbps"),
             "rx_gb": host.get("rx_gb"),

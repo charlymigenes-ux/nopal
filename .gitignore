@@ -43,6 +43,9 @@ ai_conversations.json
 # Límites medidos de cada G-code (para el encuadre del láser/CNC). Es un
 # caché reconstruible a partir de los archivos, no configuración.
 gcode_bounds_cache.json
+# Consola: macros/plantillas propias e historial de comandos (por instalación).
+console_macros.json
+console_history.json
 *.corrupt-*.bak
 .session_secret
 
@@ -78,3 +81,6 @@ plugins/
 .idea/
 *.swp
 .DS_Store
+
+# Índice local de CodeGraph (reconstruible, por instalación).
+.codegraph/

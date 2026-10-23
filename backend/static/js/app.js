@@ -16,9 +16,23 @@ let setupRequired = false;
 
 const ORIGINAL_FETCH = window.fetch.bind(window);
 window.fetch = async function authAwareFetch(input, init) {
-    const response = await ORIGINAL_FETCH(input, init);
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    // La pantalla de carga (boot-screen.js) observa las peticiones reales del
+    // arranque: nada de esto cambia lo que recibe quien llama a fetch.
+    const boot = window.NopalBoot && window.NopalBoot.wants(url) ? window.NopalBoot : null;
+    if (boot) {
+        await boot.gate(url);   // espera su turno en la secuencia de arranque
+        boot.begin(url);
+    }
+    let response;
+    try {
+        response = await ORIGINAL_FETCH(input, init);
+    } catch (error) {
+        if (boot) boot.fail(url);
+        throw error;
+    }
+    if (boot) boot.observe(url, response);
     if (response.status === 401) {
-        const url = typeof input === 'string' ? input : (input && input.url) || '';
         if (url.startsWith('/api/') && !url.startsWith('/api/auth/')) {
             if (setupRequired) {
                 showSetupOverlay();
@@ -56,6 +70,7 @@ function updateTopbarUser(user) {
     if (nameEl) nameEl.textContent = user.username;
     if (avatarEl) avatarEl.textContent = (user.username || '?').slice(0, 1);
     if (roleEl) roleEl.textContent = user.role === 'admin' ? t('roleAdmin') : t('roleOperator');
+    updateSettingsSessionCard(user);
 
     // La galería de plugins es una acción administrativa (instalar/desinstalar
     // afecta a todo el equipo) — un operador no debe ni verla ni poder entrar.
@@ -117,11 +132,11 @@ function applySettingsModulesRoleVisibility(user = currentAuthUser) {
         const card = document.querySelector(`[data-settings-module="${key}"]`);
         if (card) card.hidden = !isSettingsModuleAllowedForRole(key, user);
     });
-    // settingsModulesPageScope es un const declarado más abajo; si esto
-    // corriera antes de que exista (zona muerta temporal), el apply()
-    // inicial del scope ya consulta isSettingsModuleAllowedForRole.
+    // renderSettingsTabs usa constantes declaradas más abajo; si esto corriera
+    // antes de que existan (zona muerta temporal), el render inicial de las
+    // pestañas ya consulta isSettingsModuleAllowedForRole.
     try {
-        settingsModulesPageScope.apply();
+        renderSettingsTabs();
     } catch (error) {
         if (!(error instanceof ReferenceError)) throw error;
     }
@@ -421,8 +436,14 @@ async function loadTopbarNotifications() {
 checkAuth().then(user => {
     updateTopbarLangLabel();
     if (user) {
+        // Con sesión se muestra la pantalla de carga (las peticiones iniciales
+        // ya salieron: esta las lee conforme responden). Sin sesión se descarta
+        // para no tapar el login.
+        window.NopalBoot?.start(user);
         loadTopbarNotifications();
         loadInstalledPluginModules();
+    } else {
+        window.NopalBoot?.cancel();
     }
 });
 setInterval(() => { if (currentAuthUser) loadTopbarNotifications(); }, 10000);
@@ -1347,7 +1368,12 @@ function loadRealGcodeThumbnail(container, relPath, section, fallbackFileUrl) {
     img.onerror = () => {
         if (fallbackFileUrl) renderGcodeThumbnail(container, fallbackFileUrl);
     };
-    img.src = `/api/models/thumbnail?path=${encodeURIComponent(relPath)}&section=${encodeURIComponent(section)}`;
+    // La biblioteca G-code (láser/CNC) usa el render compartido que el
+    // servidor genera al importar el archivo (mismo aspecto del Editor G-Code);
+    // las miniaturas incrustadas por el slicer solo aplican a modelos 3D.
+    img.src = section === 'gcode'
+        ? `/api/gcode/thumbnail?path=${encodeURIComponent(relPath)}`
+        : `/api/models/thumbnail?path=${encodeURIComponent(relPath)}&section=${encodeURIComponent(section)}`;
     container.appendChild(img);
 }
 
@@ -3228,6 +3254,37 @@ function renderGcodePagination(totalItems, totalPages) {
     });
 }
 
+// Menú ••• de un archivo G-code. Las acciones usan los botones del panel de
+// vista previa (ya cableados a "el archivo previsualizado"), así que solo
+// hay una implementación de renombrar/mover.
+function openGcodeRowMenu(anchor) {
+    document.querySelectorAll('.gcode-row-menu-pop').forEach(el => el.remove());
+    const menu = document.createElement('div');
+    menu.className = 'gcode-row-menu-pop';
+    menu.setAttribute('role', 'menu');
+    [['gcode-rename-btn', t('rename')], ['gcode-move-btn', t('moveFile')]].forEach(([id, label]) => {
+        const target = document.getElementById(id);
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.setAttribute('role', 'menuitem');
+        item.textContent = label;
+        item.disabled = !target || target.disabled;
+        item.title = item.disabled && target ? target.title : '';
+        item.addEventListener('click', () => { menu.remove(); target?.click(); });
+        menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    menu.style.top = `${window.scrollY + rect.bottom + 4}px`;
+    menu.style.left = `${Math.max(8, window.scrollX + rect.right - menu.offsetWidth)}px`;
+    const close = event => {
+        if (menu.contains(event.target)) return;
+        menu.remove();
+        document.removeEventListener('click', close, true);
+    };
+    setTimeout(() => document.addEventListener('click', close, true), 0);
+}
+
 function renderGcodeTable(filterQuery = gcodeSearchQuery) {
     const gcodeTable = document.getElementById('gcode-table');
     if (!gcodeTable) return;
@@ -3276,7 +3333,9 @@ function renderGcodeTable(filterQuery = gcodeSearchQuery) {
                 <td><span class="tag-pill">${escapeHtml(model.material || 'MDF')}</span></td>
                 <td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td>
                 <td class="gcode-dimensions">${cachedDimensions !== undefined ? formatGcodeDimensions(cachedDimensions) : '…'}</td>
-                <td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td>
+                <td>${gcodeViewMode === 'grid'
+                    ? `<button type="button" class="gcode-select-toggle${getBulkSelection('gcode').has(model.id) ? ' is-selected' : ''}" data-select-toggle aria-pressed="${getBulkSelection('gcode').has(model.id)}" title="${t('selectFile')}">✓</button>`
+                    : `<span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span>`}</td>
                 <td><button type="button" class="gcode-row-menu" data-row-menu title="${t('libraryActions')}">•••</button></td>
             </tr>`;
     }).join('');
@@ -3294,7 +3353,22 @@ function renderGcodeTable(filterQuery = gcodeSearchQuery) {
         row.querySelector('[data-row-menu]')?.addEventListener('click', event => {
             event.stopPropagation();
             const model = currentGcodeData.files.find(entry => entry.id === row.dataset.modelId);
-            if (model) selectGcodePreview(model);
+            if (!model) return;
+            selectGcodePreview(model, false);
+            openGcodeRowMenu(event.currentTarget);
+        });
+        // El círculo ✓ del mosaico marca/desmarca el archivo: reutiliza la
+        // casilla (oculta) para que la selección múltiple y su barra sigan
+        // funcionando igual que en la lista.
+        row.querySelector('[data-select-toggle]')?.addEventListener('click', event => {
+            event.stopPropagation();
+            const toggle = event.currentTarget;
+            const checkbox = row.querySelector('.row-select-checkbox');
+            if (!checkbox) return;
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change'));
+            toggle.classList.toggle('is-selected', checkbox.checked);
+            toggle.setAttribute('aria-pressed', String(checkbox.checked));
         });
         // Un raster de imagen grande puede tardar varios segundos en
         // generarse la primera vez (ver thumbnail_service) -- si esa
@@ -3356,6 +3430,17 @@ async function selectGcodePreview(model, rerender = true) {
         document.querySelectorAll('.gcode-preview-ruler-x i').forEach((label, index) => { label.textContent = Math.round(xValues[index] || 0); });
         document.querySelectorAll('.gcode-preview-ruler-y i').forEach((label, index) => { label.textContent = Math.round(yValues[index] || 0); });
     });
+    const previewFrame = document.querySelector('.gcode-preview-coordinate-frame');
+    if (previewFrame) {
+        const requestedPath = stripSectionPrefix(model.id, 'gcode');
+        fetch(`/api/gcode/render-meta?path=${encodeURIComponent(requestedPath)}`)
+            .then(response => (response.ok ? response.json() : null))
+            .then(meta => {
+                if (!meta || !meta.width_px || selectedGcodeId !== model.id) return;
+                previewFrame.style.setProperty('--render-ratio', String(meta.width_px / meta.height_px));
+            })
+            .catch(() => {});
+    }
     if (gcodePreviewScene) {
         gcodePreviewScene.innerHTML = '';
         const img = document.createElement('img');
@@ -6583,28 +6668,149 @@ function createModulePageScope(config) {
     return { apply, openModal, closeModal };
 }
 
-const settingsModulesPageScope = createModulePageScope({
-    storagePrefix: 'settingsModulesLayout_',
-    moduleDefs: SETTINGS_MODULE_DEFS,
-    groupsElementId: 'settings-modules-groups',
-    modalId: 'settings-module-customizer-modal',
-    modalTabsId: 'settings-module-customizer-tabs',
-    modalGroupsId: 'settings-module-customizer-groups',
-    customizeBtnId: 'settings-customize-btn',
-    modalCloseId: 'settings-module-customizer-modal-close',
-    modalBackdropId: 'settings-module-customizer-modal-backdrop',
-    addGroupBtnId: 'settings-module-customizer-add-group-btn',
-    resetBtnId: 'settings-module-customizer-reset-btn',
-    defaultGroups: [
-        { id: 'general', nameKey: 'settingsModuleGroupDefaultGeneral', keys: SETTINGS_MODULE_DEFS.map(mod => mod.key) },
-    ],
-    isModuleAllowed: key => isSettingsModuleAllowedForRole(key),
-});
+// ── Configuración por pestañas ── Reemplaza al personalizador por grupos
+// (createModulePageScope sigue definido arriba pero ya no se instancia para
+// Configuración: sus ids #settings-modules-groups / #settings-customize-btn
+// dejaron de existir y el modal #settings-module-customizer-modal queda
+// inerte). Las tarjetas siguen viviendo en #settings-modules-pool y se mueven
+// a su panel; sus ids y handlers no cambian.
+const SETTINGS_TAB_DEFS = [
+    { id: 'general', modules: ['general'] },
+    { id: 'appearance', modules: ['appearance'] },
+    { id: 'ai', modules: ['ai'] },
+    { id: 'users', modules: ['users', 'tunascreen'] },
+    { id: 'devices', modules: ['devices', 'accessories'] },
+    { id: 'system', modules: ['backup', 'logsConfig', 'logs', 'updates', 'about'] },
+];
+const SETTINGS_ACTIVE_TAB_KEY = 'settingsActiveTab';
+let settingsActiveTab = null;
 
-// Wrapper con el mismo nombre que usaba la versión fusionada — switchSection()
-// lo sigue llamando por nombre al entrar a Configuración.
+function isSettingsTabAllowed(def) {
+    return def.modules.some(key => isSettingsModuleAllowedForRole(key));
+}
+
+function readStoredSettingsTab() {
+    try { return localStorage.getItem(SETTINGS_ACTIVE_TAB_KEY); } catch (error) { return null; }
+}
+
+// Mueve las tarjetas a su panel (una sola vez), oculta las pestañas que el
+// rol actual no puede usar y deja activa una pestaña válida.
+function renderSettingsTabs() {
+    const tablist = document.getElementById('settings-tabs');
+    if (!tablist) return;
+    SETTINGS_TAB_DEFS.forEach(def => {
+        const panel = document.getElementById(`st-panel-${def.id}`);
+        if (!panel) return;
+        def.modules.forEach(key => {
+            const card = document.querySelector(`[data-settings-module="${key}"]`);
+            if (card && card.parentElement !== panel) panel.appendChild(card);
+        });
+        const tab = document.getElementById(`st-tab-${def.id}`);
+        if (tab) tab.hidden = !isSettingsTabAllowed(def);
+    });
+    const allowed = SETTINGS_TAB_DEFS.filter(isSettingsTabAllowed).map(def => def.id);
+    let target = settingsActiveTab || readStoredSettingsTab();
+    if (!allowed.includes(target)) target = allowed[0] || 'general';
+    activateSettingsTab(target, { persist: false });
+}
+
+function activateSettingsTab(id, { focus = false, persist = true } = {}) {
+    const def = SETTINGS_TAB_DEFS.find(d => d.id === id);
+    if (!def || !isSettingsTabAllowed(def)) return false;
+    // Solo una elección real del usuario pisa la preferencia guardada: el
+    // render inicial (antes de conocer el rol) cae a 'general' sin recordarlo.
+    if (persist) settingsActiveTab = id;
+    SETTINGS_TAB_DEFS.forEach(d => {
+        const tab = document.getElementById(`st-tab-${d.id}`);
+        const panel = document.getElementById(`st-panel-${d.id}`);
+        const on = d.id === id;
+        if (tab) {
+            tab.setAttribute('aria-selected', on ? 'true' : 'false');
+            tab.tabIndex = on ? 0 : -1;
+            tab.classList.toggle('active', on);
+        }
+        if (panel) panel.hidden = !on;
+    });
+    if (persist) {
+        try { localStorage.setItem(SETTINGS_ACTIVE_TAB_KEY, id); } catch (error) { /* modo privado */ }
+    }
+    if (focus) document.getElementById(`st-tab-${id}`)?.focus();
+    return true;
+}
+
+// Activa la pestaña que contiene este elemento (o id) y lo muestra. Lo usan
+// los botones de otras secciones que mandan a una tarjeta concreta.
+function revealInSettings(target, scrollOptions = { behavior: 'smooth', block: 'center' }) {
+    const el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    const key = el.closest('[data-settings-module]')?.dataset.settingsModule;
+    const def = SETTINGS_TAB_DEFS.find(d => d.modules.includes(key));
+    if (def) activateSettingsTab(def.id);
+    el.scrollIntoView(scrollOptions);
+}
+
+(function initSettingsTabs() {
+    const tablist = document.getElementById('settings-tabs');
+    if (!tablist) return;
+    tablist.addEventListener('click', event => {
+        const tab = event.target.closest('[data-st-tab]');
+        if (tab && !tab.hidden) activateSettingsTab(tab.dataset.stTab);
+    });
+    tablist.addEventListener('keydown', event => {
+        const tabs = Array.from(tablist.querySelectorAll('[data-st-tab]')).filter(tab => !tab.hidden);
+        const index = tabs.indexOf(document.activeElement);
+        if (index < 0) return;
+        let next = null;
+        if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length];
+        else if (event.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length];
+        else if (event.key === 'Home') next = tabs[0];
+        else if (event.key === 'End') next = tabs[tabs.length - 1];
+        if (!next) return;
+        event.preventDefault();
+        activateSettingsTab(next.dataset.stTab, { focus: true });
+    });
+    document.getElementById('st-session-logout-btn')?.addEventListener('click', () => {
+        document.getElementById('topbar-logout-btn')?.click();
+    });
+    const hostEl = document.getElementById('st-server-host');
+    if (hostEl && location.host) {
+        hostEl.textContent = location.host;
+        hostEl.hidden = false;
+    }
+    renderSettingsTabs();
+})();
+
+// Tarjeta "Esta sesión": solo datos que el frontend ya tiene.
+function updateSettingsSessionCard(user = currentAuthUser) {
+    if (!user) return;
+    const nameEl = document.getElementById('st-session-name');
+    const avatarEl = document.getElementById('st-session-avatar');
+    const roleEl = document.getElementById('st-session-role');
+    if (nameEl) nameEl.textContent = user.username || '—';
+    if (avatarEl) avatarEl.textContent = (user.username || '?').slice(0, 1).toUpperCase();
+    if (roleEl) {
+        roleEl.textContent = user.role === 'admin' ? t('roleAdmin') : t('roleOperator');
+        roleEl.hidden = false;
+    }
+}
+
+// Tarjeta "Servidor": versión y rama salen del mismo diagnóstico que "Acerca de".
+function updateSettingsServerCard(diag) {
+    const el = document.getElementById('st-server-version');
+    if (!el) return;
+    if (!diag || !diag.app_version) {
+        el.hidden = true;
+        return;
+    }
+    el.textContent = t('settingsServerVersionLine')
+        .replace('{version}', diag.app_version)
+        .replace('{branch}', diag.branch || t('aboutUnavailable'));
+    el.hidden = false;
+}
+
+// Nombre histórico: switchSection() lo llama al entrar a Configuración.
 function applySettingsModulesLayout() {
-    settingsModulesPageScope.apply();
+    renderSettingsTabs();
 }
 
 // ── Centro de ayuda ── Sidebar de categorías + buscador + panel de tarjetas
@@ -9528,12 +9734,39 @@ function renderUploadingRow(tableContainerId, filename) {
             <svg class="green-bg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h3l2-2h4l2 2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M8 11h8"/><path d="M8 15h8"/></svg>
             <div class="uploading-info">
                 <strong>${filename}</strong>
-                <div class="upload-progress-track"><div class="upload-progress-fill" style="width:0%"></div></div>
+                <div class="upload-progress-track" title="Subida"><div class="upload-progress-fill" style="width:0%"></div></div>
+                <div class="upload-progress-track upload-render-track" title="Renderizado" hidden><div class="upload-progress-fill upload-render-fill" style="width:0%"></div></div>
+                <small class="upload-phase-label"></small>
             </div>
         </td>
     `;
     tbody.insertBefore(row, tbody.firstChild);
     return row;
+}
+
+// Sondea el avance del render de un G-code recién subido y lo pinta en la
+// segunda barra de la fila. Termina cuando el servidor lo da por hecho, si el
+// render falla (estado "none") o a los 20 minutos, para no dejar la fila colgada.
+async function followGcodeRender(relPath, track, fill, label) {
+    track.hidden = false;
+    if (label) label.textContent = 'Renderizando…';
+    const deadline = Date.now() + 20 * 60000;
+    while (Date.now() < deadline) {
+        let state = null;
+        try {
+            const response = await fetch(`/api/gcode/render-progress?path=${encodeURIComponent(relPath)}`);
+            if (response.ok) state = await response.json();
+        } catch (_) { /* red intermitente: se reintenta */ }
+        if (state) {
+            fill.style.width = `${state.percent}%`;
+            if (state.status === 'done') {
+                if (label) label.textContent = 'Listo';
+                return;
+            }
+            if (state.status === 'none') return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 400));
+    }
 }
 
 function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDone) {
@@ -9547,6 +9780,10 @@ function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDon
         return new Promise(resolve => {
             const row = renderUploadingRow(tableContainerId, file.name);
             const progressFill = row ? row.querySelector('.upload-progress-fill') : null;
+            const renderTrack = row ? row.querySelector('.upload-render-track') : null;
+            const renderFill = row ? row.querySelector('.upload-render-fill') : null;
+            const phaseLabel = row ? row.querySelector('.upload-phase-label') : null;
+            if (phaseLabel) phaseLabel.textContent = 'Subiendo…';
 
             const formData = new FormData();
             formData.append('file', file);
@@ -9562,10 +9799,20 @@ function wireUploadButton(btnId, inputId, type, getPath, tableContainerId, onDon
                 }
             });
 
-            xhr.addEventListener('load', () => {
+            xhr.addEventListener('load', async () => {
                 if (!(xhr.status >= 200 && xhr.status < 300)) {
                     if (row) row.remove();
                     appAlert(`No se pudo subir "${file.name}".`, '', 'danger');
+                    resolve();
+                    return;
+                }
+                // Un G-code se renderiza en el servidor justo después de subir:
+                // la fila sigue visible con su segunda barra hasta que termina,
+                // para que se vea dónde va.
+                if (type === 'gcode' && row && renderTrack && renderFill) {
+                    let uploaded = {};
+                    try { uploaded = JSON.parse(xhr.responseText); } catch (_) { /* sin ruta: no hay qué seguir */ }
+                    if (uploaded.path) await followGcodeRender(uploaded.path, renderTrack, renderFill, phaseLabel);
                 }
                 resolve();
             });
@@ -10343,73 +10590,405 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
-function renderConsolePrinterPicker(preferredPort) {
-    const container = document.getElementById('console-printer-picker');
-    if (!container) return preferredPort;
+// ── Consola: máquinas, log y utilidades compartidas (rediseño "cx") ──
+const CX_ICONS = {
+    flame: '<path d="M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-8.5z"/>',
+    home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+    spool: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6"/><path d="M12 15v6"/>',
+    layers: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+    nozzle: '<path d="M5 3h14v4l-4 5v3l-3 6-3-6v-3L5 7z"/>',
+    power: '<path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>',
+    wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z"/>',
+    thermometer: '<path d="M14 14.8V3.5a2.5 2.5 0 0 0-5 0v11.3a4.5 4.5 0 1 0 5 0z"/>',
+    bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+    folder: '<path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    play: '<path d="M7 4l13 8-13 8z"/>',
+};
+const CX_ICON_LABEL_KEYS = {
+    flame: 'cxIconFlame', home: 'cxIconHome', spool: 'cxIconSpool', layers: 'cxIconLayers', nozzle: 'cxIconNozzle',
+    power: 'cxIconPower', wrench: 'cxIconWrench', thermometer: 'cxIconThermometer', bolt: 'cxIconBolt',
+    folder: 'cxIconFolder', play: 'cxIconPlay',
+};
 
-    if (!allPrinters.length) {
-        container.innerHTML = `<div class="empty-state-small">${t('noPrintersFound')}</div>`;
-        return null;
+function cxIcon(slug, extraClass = '') {
+    const body = CX_ICONS[slug] || CX_ICONS.bolt;
+    return `<svg class="cx-ico ${extraClass}" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+}
+
+function cxFormat(text, vars) {
+    return String(text).replace(/\{(\w+)\}/g, (_, key) => (vars && vars[key] != null ? vars[key] : ''));
+}
+
+function cxIsAdmin() {
+    return currentAuthUser?.role === 'admin';
+}
+
+function cxDetail(data, fallback) {
+    const detail = data && data.detail;
+    if (typeof detail === 'string' && detail) return detail;
+    if (Array.isArray(detail) && detail.length) {
+        return detail.map(item => (item && item.msg) || '').filter(Boolean).join('. ') || fallback;
     }
+    return fallback;
+}
 
-    const validPorts = allPrinters.map(p => p.port);
-    const nextPort = (preferredPort && validPorts.includes(preferredPort)) ? preferredPort : validPorts[0];
+// fetch JSON con manejo uniforme de errores: lanza Error con el `detail` del backend.
+async function cxRequest(url, options = {}, fallbackMessage = '') {
+    const response = await fetch(url, options);
+    let data = null;
+    try { data = await response.json(); } catch (error) { data = null; }
+    if (!response.ok) {
+        const error = new Error(cxDetail(data, fallbackMessage || t('cxLoadFailed')));
+        error.status = response.status;
+        throw error;
+    }
+    return data || {};
+}
 
-    container.innerHTML = allPrinters.map(printer => {
-        const name = getPrinterDisplayName(printer);
-        const active = printer.port === nextPort ? ' active' : '';
-        return `
-            <button type="button" class="printer-picker-card${active}" data-port="${printer.port}">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                <span>${escapeHtml(name)}</span>
-            </button>
-        `;
-    }).join('');
+function cxJsonOptions(method, body) {
+    return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+}
 
-    container.querySelectorAll('.printer-picker-card').forEach(btn => {
+const cxState = {
+    history: [],
+    histIdx: -1,
+    draft: '',
+    clearedAt: {},
+    autoscroll: true,
+    lastLogSignature: '',
+    lastLogText: '',
+    machineSignature: '',
+    marlinPrinters: [],
+    lasers: [],
+    marlinLoadedAt: 0,
+    systemEntries: [],
+    systemCursor: null,
+    klipperMacros: [],
+    customMacros: [],
+    templates: [],
+    openTemplate: null,
+    editingMacroId: null,
+    tab: 'macros',
+};
+
+let consolePollInterval = null;
+// Selección de la consola: un número (puerto de una Klipper), `m:<device>`
+// (una Marlin) o 'system' (consola principal de NOPAL, solo lectura). Se
+// mantiene el nombre por compatibilidad; es una llave, no siempre un puerto.
+let consoleSelectedPort = null;
+const CX_SYSTEM = 'system';
+const CX_SYSTEM_LOG_LIMIT = 200;
+const CX_MARLIN_REFRESH_MS = 5000;
+
+function cxKind(sel = consoleSelectedPort) {
+    if (sel === CX_SYSTEM) return 'system';
+    if (typeof sel === 'string' && sel.startsWith('m:')) return 'marlin';
+    if (typeof sel === 'string' && sel.startsWith('l:')) return 'laser';
+    return 'klipper';
+}
+function cxDevice(sel = consoleSelectedPort) {
+    return cxKind(sel) === 'marlin' ? sel.slice(2) : null;
+}
+function cxHost(sel = consoleSelectedPort) {
+    return cxKind(sel) === 'laser' ? sel.slice(2) : null;
+}
+function cxSelFromAttr(value) {
+    const text = String(value);
+    return (text === CX_SYSTEM || text.startsWith('m:') || text.startsWith('l:')) ? text : parseInt(text, 10);
+}
+// Cómo se le dice a /api/console/* a qué máquina va la petición.
+function cxTargetParams() {
+    if (cxKind() === 'marlin') return `device=${encodeURIComponent(cxDevice())}`;
+    if (cxKind() === 'laser') return `host=${encodeURIComponent(cxHost())}`;
+    return `port=${consoleSelectedPort}`;
+}
+function cxTargetForm(formData) {
+    if (cxKind() === 'marlin') formData.append('device', cxDevice());
+    else if (cxKind() === 'laser') formData.append('host', cxHost());
+    else formData.append('port', consoleSelectedPort);
+}
+function cxTargetBody(extra = {}) {
+    if (cxKind() === 'marlin') return { device: cxDevice(), ...extra };
+    if (cxKind() === 'laser') return { host: cxHost(), ...extra };
+    return { port: consoleSelectedPort, ...extra };
+}
+// ¿Láser o CNC? Ambos son GRBL; solo cambia la etiqueta y el icono.
+function cxLaserEntry(sel = consoleSelectedPort) {
+    const host = cxHost(sel);
+    return (cxState.lasers || []).find(entry => entry.host === host) || null;
+}
+// Tipo de máquina para las macros y plantillas propias: así una macro de
+// Klipper no aparece en un láser ni al revés. Klipper y Marlin comparten
+// 'printer'. La consola del sistema no tiene macros.
+function cxScope(sel = consoleSelectedPort) {
+    const kind = cxKind(sel);
+    if (kind === 'system') return null;
+    if (kind === 'laser') return cxLaserEntry(sel)?.kind === 'cnc' ? 'cnc' : 'laser';
+    return 'printer';
+}
+// Identidad de color de la consola: 3D azul, láser morado, CNC naranja
+// (tokens --type-* del tema); el sistema conserva el verde de acento.
+function cxModeOf(sel = consoleSelectedPort) {
+    return cxScope(sel) || 'system';
+}
+function cxScopeQuery() {
+    const scope = cxScope();
+    return scope ? `?scope=${scope}` : '';
+}
+
+// ── Máquinas ──
+function cxMachineInfo(printer) {
+    const stateValue = getPrinterEffectiveStateValue(printer);
+    const online = printer.status === 'online' || ['ready', 'printing', 'paused', 'busy', 'standby'].includes(stateValue);
+    let key = 'cxStateReady';
+    let tone = 'ok';
+    if (!online) { key = 'cxStateOffline'; tone = 'off'; }
+    else if (stateValue === 'printing') { key = 'cxStatePrinting'; tone = 'info'; }
+    else if (stateValue === 'paused') { key = 'cxStatePaused'; tone = 'warn'; }
+    else if (stateValue === 'error' || stateValue === 'shutdown') { key = 'cxStateError'; tone = 'danger'; }
+    const temps = printer.temps || {};
+    const data = printer.data || printer.status?.status || {};
+    const pick = (a, b) => (typeof a === 'number' ? a : (typeof b === 'number' ? b : null));
+    const nozzle = pick(temps.extruder?.current, data.extruder?.temperature);
+    const bed = pick(temps.heater_bed?.current, data.heater_bed?.temperature);
+    return { online, key, tone, nozzle: online ? nozzle : null, bed: online ? bed : null };
+}
+
+function cxFormatTemp(value) {
+    return typeof value === 'number' ? `${(Math.round(value * 10) / 10).toFixed(1)}°C` : '—';
+}
+
+function cxMarlinMachineInfo(printer) {
+    const cached = marlinDashboardStatusCache.get(String(printer.device)) || {};
+    const online = Boolean(printer.online);
+    const visual = getMarlinPrinterVisualState({ ...cached, connected: online });
+    let key = 'cxStateReady';
+    let tone = 'ok';
+    if (visual === 'offline') { key = 'cxStateOffline'; tone = 'off'; }
+    else if (visual === 'printing') { key = 'cxStatePrinting'; tone = 'info'; }
+    else if (visual === 'paused') { key = 'cxStatePaused'; tone = 'warn'; }
+    const pick = value => (typeof value === 'number' ? value : null);
+    return {
+        online, key, tone,
+        nozzle: online ? pick(cached.extruder?.current ?? cached.extruder0?.current) : null,
+        bed: online ? pick(cached.heater_bed?.current) : null,
+    };
+}
+
+function cxMachinesSignature() {
+    return JSON.stringify([
+        (allPrinters || []).map(p => {
+            const info = cxMachineInfo(p);
+            return [p.port, getPrinterDisplayName(p), info.key, info.nozzle, info.bed];
+        }),
+        (cxState.marlinPrinters || []).map(p => {
+            const info = cxMarlinMachineInfo(p);
+            return [p.device, p.name, info.key, info.nozzle, info.bed];
+        }),
+        (cxState.lasers || []).map(l => [l.host, l.name, l.kind, Boolean(l.online)]),
+    ]);
+}
+
+// Las Marlin y los láser/CNC no salen de /api/printers/status (eso es
+// Klipper): se piden a sus registros, a lo sumo cada CX_MARLIN_REFRESH_MS.
+async function cxLoadExtraMachines(force = false) {
+    if (!force && Date.now() - cxState.marlinLoadedAt < CX_MARLIN_REFRESH_MS) return;
+    cxState.marlinLoadedAt = Date.now();
+    const [marlin, lasers] = await Promise.allSettled([
+        cxRequest('/api/marlin-printers/registry/status'),
+        cxRequest('/api/laser/registry/status'),
+    ]);
+    // Un fallo puntual no borra las que ya se mostraban.
+    if (marlin.status === 'fulfilled') cxState.marlinPrinters = Array.isArray(marlin.value.printers) ? marlin.value.printers : [];
+    else console.error(marlin.reason);
+    if (lasers.status === 'fulfilled') cxState.lasers = Array.isArray(lasers.value.lasers) ? lasers.value.lasers : [];
+    else console.error(lasers.reason);
+}
+
+const CX_ICON_SYSTEM = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+const CX_ICON_PRINTER = '<path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5"/><path d="M12 22V12"/>';
+
+function cxMachineCardHtml({ sel, name, icon, key, tone, online, line2 }) {
+    const active = sel === consoleSelectedPort;
+    const tip = active ? t('cxMachineActiveTip') : t('cxMachineSelectTip');
+    return `
+        <button type="button" class="cx-machine${active ? ' active' : ''}${online ? '' : ' offline'}" data-sel="${escapeHtml(sel)}" data-type="${cxModeOf(sel)}" aria-pressed="${active}" title="${escapeHtml(tip)}">
+            <span class="cx-machine-top">
+                <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>
+                <span class="cx-machine-name">${escapeHtml(name)}</span>
+                <span class="cx-chip cx-chip-${tone}">${escapeHtml(t(key))}</span>
+            </span>
+            ${line2}
+        </button>
+    `;
+}
+
+function cxTempsLine(info) {
+    return `
+        <span class="cx-machine-temps">
+            <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.thermometer}</svg><span class="cx-sr">${escapeHtml(t('cxNozzle'))} </span><b>${cxFormatTemp(info.nozzle)}</b></span>
+            <span><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${CX_ICONS.layers}</svg><span class="cx-sr">${escapeHtml(t('cxBed'))} </span><b>${cxFormatTemp(info.bed)}</b></span>
+        </span>`;
+}
+
+// Orden fijo: primero la consola principal del sistema, luego las Klipper y
+// al final las Marlin.
+function renderConsolePrinterPicker(preferredSel) {
+    const container = document.getElementById('console-printer-picker');
+    if (!container) return preferredSel;
+
+    const klipper = allPrinters || [];
+    const marlin = cxState.marlinPrinters || [];
+    const lasers = cxState.lasers || [];
+    const valid = [CX_SYSTEM, ...klipper.map(p => p.port), ...marlin.map(p => `m:${p.device}`), ...lasers.map(l => `l:${l.host}`)];
+    const next = valid.includes(preferredSel) ? preferredSel : CX_SYSTEM;
+    consoleSelectedPort = next;
+    cxState.machineSignature = cxMachinesSignature();
+
+    const cards = [cxMachineCardHtml({
+        sel: CX_SYSTEM, name: t('cxSystemName'), icon: CX_ICON_SYSTEM, key: 'cxStateLive', tone: 'ok', online: true,
+        line2: `<span class="cx-machine-temps"><span>${escapeHtml(t('cxSystemSubtitle'))}</span></span>`,
+    })];
+    klipper.forEach(printer => {
+        const info = cxMachineInfo(printer);
+        cards.push(cxMachineCardHtml({
+            sel: printer.port, name: getPrinterDisplayName(printer), icon: CX_ICON_PRINTER,
+            key: info.key, tone: info.tone, online: info.online, line2: cxTempsLine(info),
+        }));
+    });
+    marlin.forEach(printer => {
+        const info = cxMarlinMachineInfo(printer);
+        cards.push(cxMachineCardHtml({
+            sel: `m:${printer.device}`, name: printer.name || printer.device, icon: CX_ICON_PRINTER,
+            key: info.key, tone: info.tone, online: info.online, line2: cxTempsLine(info),
+        }));
+    });
+    lasers.forEach(entry => {
+        const isCnc = entry.kind === 'cnc';
+        const online = Boolean(entry.online);
+        cards.push(cxMachineCardHtml({
+            sel: `l:${entry.host}`, name: entry.name || entry.host,
+            icon: isCnc ? CX_ICONS.wrench : CX_ICONS.bolt,
+            key: online ? 'cxStateReady' : 'cxStateOffline', tone: online ? 'ok' : 'off', online,
+            line2: `<span class="cx-machine-temps"><span>${escapeHtml(isCnc ? 'CNC' : t('cxKindLaser'))} · GRBL</span></span>`,
+        }));
+    });
+    container.innerHTML = cards.join('');
+
+    container.querySelectorAll('.cx-machine').forEach(btn => {
         btn.addEventListener('click', () => {
-            const port = parseInt(btn.dataset.port, 10);
-            if (port === consoleSelectedPort) return;
-            consoleSelectedPort = port;
-            container.querySelectorAll('.printer-picker-card').forEach(el => {
-                el.classList.toggle('active', parseInt(el.dataset.port, 10) === port);
-            });
+            const sel = cxSelFromAttr(btn.dataset.sel);
+            if (sel === consoleSelectedPort) return;
+            consoleSelectedPort = sel;
+            renderConsolePrinterPicker(sel);
+            cxApplyMode();
+            cxState.lastLogSignature = '';
             startConsolePolling();
             loadMacrosForSelectedPrinter();
+            cxLoadTemplates();
+            cxLoadHistory();
         });
     });
 
-    return nextPort;
+    return next;
 }
 
-let consolePollInterval = null;
-let consoleSelectedPort = null;
+// La consola del sistema es solo lectura: sin envío, macros ni archivos.
+function cxApplyMode() {
+    const system = cxKind() === 'system';
+    const section = document.getElementById('console-section');
+    section?.classList.toggle('cx-system-mode', system);
+    ['system', 'printer', 'laser', 'cnc'].forEach(mode => section?.classList.toggle(`cx-mode-${mode}`, cxModeOf() === mode));
+    const input = document.getElementById('console-input');
+    if (input) {
+        input.placeholder = t(system ? 'cxSystemReadOnly' : 'cxInputPlaceholder');
+        if (system) input.value = '';
+    }
+    cxApplyRole();
+}
+
+// ── Log ──
+function cxClassifyLine(msg) {
+    if (msg.kind) return msg.kind;
+    if (msg.type === 'command') return 'command';
+    const text = String(msg.message || '').trim();
+    if (/^(!!|error\b|\/\/\s*error|\w*\s*error:)/i.test(text)) return 'error';
+    if (/^ok\b/i.test(text)) return 'ok';
+    return 'response';
+}
+
+function cxClock(epoch) {
+    if (!epoch) return '';
+    return new Date(epoch * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
 
 function renderConsoleLog(messages) {
     const logEl = document.getElementById('console-log');
     if (!logEl) return;
-    if (!messages || !messages.length) {
-        logEl.innerHTML = `<div class="empty-state-small">${t('noSystemStats')}</div>`;
+    const clearedAt = cxState.clearedAt[consoleSelectedPort] || 0;
+    const visible = (messages || []).filter(msg => !clearedAt || (msg.time || 0) > clearedAt);
+    const emptyKey = cxKind() === 'system' ? 'cxSystemLogEmpty' : 'cxLogEmpty';
+    const signature = JSON.stringify(visible);
+    if (signature === cxState.lastLogSignature) return;
+    cxState.lastLogSignature = signature;
+    cxState.lastLogText = visible.map(msg => `${cxClock(msg.time)} ${msg.message || ''}`.trim()).join('\n');
+    if (!visible.length) {
+        logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t(emptyKey))}</div>`;
         return;
     }
-    const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
-    logEl.innerHTML = messages.map(msg => {
-        const time = msg.time ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-        const typeClass = msg.type === 'command' ? 'console-line-command' : 'console-line-response';
-        return `<div class="console-line ${typeClass}"><span class="console-line-time">${time}</span><span class="console-line-message">${escapeHtml(msg.message || '')}</span></div>`;
+    const previousTop = logEl.scrollTop;
+    logEl.innerHTML = visible.map(msg => {
+        const kind = cxClassifyLine(msg);
+        return `<div class="console-line cx-line cx-line-${kind}"><time class="cx-line-time">${cxClock(msg.time)}</time><span class="cx-line-message">${escapeHtml(msg.message || '')}</span></div>`;
     }).join('');
-    if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight;
+    logEl.scrollTop = cxState.autoscroll ? logEl.scrollHeight : previousTop;
+}
+
+// Entrada de logs/nopal.log -> línea de consola.
+function cxSystemEntryToMessage(entry) {
+    const stamp = Date.parse(String(entry.time || '').replace(' ', 'T'));
+    const level = String(entry.level || '');
+    const text = `${level.padEnd(7)} ${entry.component ? `[${entry.component}] ` : ''}${entry.message || ''}`;
+    return {
+        message: text,
+        time: Number.isNaN(stamp) ? 0 : stamp / 1000,
+        kind: level === 'ERROR' || level === 'CRITICAL' ? 'error' : 'response',
+    };
+}
+
+// Primera carga: los últimos eventos. Después, solo lo nuevo desde el cursor.
+async function cxFetchSystemLog() {
+    const cursor = cxState.systemCursor;
+    const params = new URLSearchParams({ limit: String(CX_SYSTEM_LOG_LIMIT) });
+    if (cursor) { params.set('after', String(cursor.offset)); params.set('file_id', cursor.file_id); }
+    const response = await fetch(`/api/logs?${params.toString()}`);
+    if (!response.ok) throw new Error('No se pudo cargar el registro del sistema');
+    const data = await response.json();
+    const incoming = (data.entries || []).map(cxSystemEntryToMessage);
+    // Sin cursor, o si el archivo rotó/hubo hueco: lo recibido reemplaza todo.
+    const replace = !cursor || data.reset || data.gap;
+    cxState.systemEntries = (replace ? incoming : cxState.systemEntries.concat(incoming)).slice(-600);
+    cxState.systemCursor = data.cursor || null;
+    renderConsoleLog(cxState.systemEntries);
 }
 
 async function refreshConsoleLog() {
     if (!consoleSelectedPort) return;
     try {
-        const response = await fetch(`/api/console/messages?port=${consoleSelectedPort}&count=100`);
-        if (!response.ok) throw new Error('No se pudo cargar la consola');
-        const data = await response.json();
-        renderConsoleLog(data.messages || []);
+        if (cxKind() === 'system') {
+            await cxFetchSystemLog();
+        } else {
+            const response = await fetch(`/api/console/messages?${cxTargetParams()}&count=100`);
+            if (!response.ok) throw new Error('No se pudo cargar la consola');
+            const data = await response.json();
+            renderConsoleLog(data.messages || []);
+        }
     } catch (error) {
         console.error(error);
+    }
+    await cxLoadExtraMachines();
+    if (cxMachinesSignature() !== cxState.machineSignature && !document.activeElement?.closest?.('.cx-machine-list')) {
+        renderConsolePrinterPicker(consoleSelectedPort);
     }
 }
 
@@ -10426,19 +11005,286 @@ function startConsolePolling() {
     consolePollInterval = setInterval(refreshConsoleLog, 2500);
 }
 
-function loadConsoleSection() {
+async function loadConsoleSection() {
+    cxState.systemCursor = null;
+    cxState.systemEntries = [];
+    await cxLoadExtraMachines(true);
     consoleSelectedPort = renderConsolePrinterPicker(consoleSelectedPort);
+    cxApplyMode();
+    cxState.lastLogSignature = '';
     startConsolePolling();
     loadMacrosForSelectedPrinter();
+    cxLoadHistory();
+    cxLoadTemplates();
 }
 
-const consoleClearBtn = document.getElementById('console-clear-btn');
-if (consoleClearBtn) {
-    consoleClearBtn.addEventListener('click', () => {
-        const logEl = document.getElementById('console-log');
-        if (logEl) logEl.innerHTML = '';
+function cxApplyRole() {
+    const admin = cxIsAdmin();
+    // En la consola del sistema nadie envía nada: es solo lectura.
+    const canSend = admin && cxKind() !== 'system';
+    const input = document.getElementById('console-input');
+    if (input) input.disabled = !canSend;
+    ['cx-send-btn', 'cx-load-btn', 'cx-macro-new-btn', 'cx-history-clear-btn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = !canSend;
+    });
+    const loadItem = document.querySelector('#cx-menu [data-cx-action="load"]');
+    if (loadItem) loadItem.disabled = !canSend;
+    const note = document.getElementById('cx-admin-note');
+    if (note) note.hidden = admin || cxKind() === 'system';
+}
+
+// ── Popovers (menú ⋮, ajustes, historial) ──
+function cxClosePopovers(except) {
+    document.querySelectorAll('.cx-popover').forEach(pop => {
+        if (pop === except) return;
+        if (!pop.hidden) {
+            pop.hidden = true;
+            const trigger = document.querySelector(`[aria-controls="${pop.id}"]`);
+            if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        }
     });
 }
+
+function cxBindPopover(buttonId, popId, onOpen) {
+    const btn = document.getElementById(buttonId);
+    const pop = document.getElementById(popId);
+    if (!btn || !pop) return;
+    btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const willOpen = pop.hidden;
+        cxClosePopovers(willOpen ? pop : null);
+        pop.hidden = !willOpen;
+        btn.setAttribute('aria-expanded', String(willOpen));
+        if (willOpen && onOpen) onOpen(pop);
+    });
+    pop.addEventListener('click', (event) => event.stopPropagation());
+}
+
+document.addEventListener('click', () => cxClosePopovers(null));
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const open = document.querySelector('.cx-popover:not([hidden])');
+    if (!open) return;
+    const trigger = document.querySelector(`[aria-controls="${open.id}"]`);
+    cxClosePopovers(null);
+    if (trigger) trigger.focus();
+});
+
+cxBindPopover('cx-menu-btn', 'cx-menu');
+cxBindPopover('cx-settings-btn', 'cx-settings-pop');
+cxBindPopover('cx-history-btn', 'cx-history-pop', () => { cxRenderHistory(); cxLoadHistory(); });
+
+// ── Acciones de la consola ──
+function cxClearLogView() {
+    cxState.clearedAt[consoleSelectedPort] = Date.now() / 1000;
+    cxState.lastLogSignature = '';
+    cxState.lastLogText = '';
+    const logEl = document.getElementById('console-log');
+    if (logEl) logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
+}
+
+async function cxCopyLog() {
+    const text = cxState.lastLogText;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            document.execCommand('copy');
+            area.remove();
+        }
+        showToast(t('cxCopied'));
+    } catch (error) {
+        showToast(t('cxCopyFailed'), 'error');
+    }
+}
+
+async function cxSaveLog() {
+    if (!consoleSelectedPort) return;
+    try {
+        if (cxKind() === 'system') {
+            // El registro del sistema ya está en pantalla: se guarda lo que se ve.
+            const blob = new Blob([cxState.lastLogText || ''], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `consola-sistema-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.log`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            return;
+        }
+        const response = await fetch(`/api/console/log/export?${cxTargetParams()}&count=500`);
+        if (!response.ok) {
+            let data = null;
+            try { data = await response.json(); } catch (error) { data = null; }
+            throw new Error(cxDetail(data, t('cxSaveFailed')));
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+        const filename = match ? decodeURIComponent(match[1]) : `consola-${cxKind() === 'marlin' ? 'marlin' : consoleSelectedPort}.log`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+        showToast(error.message || t('cxSaveFailed'), 'error');
+    }
+}
+
+async function cxRunFile(file) {
+    if (!file || !consoleSelectedPort || cxKind() === 'system') return;
+    const formData = new FormData();
+    cxTargetForm(formData);
+    formData.append('file', file);
+    try {
+        const data = await cxRequest('/api/console/run-file', { method: 'POST', body: formData }, t('cxFileFailed'));
+        showToast(cxFormat(t('cxFileSent'), { sent: data.sent ?? 0, skipped: data.skipped ?? 0 }));
+        refreshConsoleLog();
+    } catch (error) {
+        appAlert(error.message || t('cxFileFailed'), '', 'danger');
+    }
+}
+
+// ── Historial de comandos ──
+async function cxLoadHistory() {
+    if (!consoleSelectedPort || cxKind() === 'system') { cxState.history = []; cxRenderHistory(); return; }
+    try {
+        const data = await cxRequest(`/api/console/history?${cxTargetParams()}&limit=50`);
+        cxState.history = Array.isArray(data.history) ? data.history : [];
+    } catch (error) {
+        cxState.history = [];
+    }
+    cxState.histIdx = -1;
+    cxRenderHistory();
+}
+
+function cxRenderHistory() {
+    const list = document.getElementById('cx-history-list');
+    if (!list) return;
+    if (!cxState.history.length) {
+        list.innerHTML = `<li class="cx-history-empty">${escapeHtml(t('cxHistoryEmpty'))}</li>`;
+        return;
+    }
+    list.innerHTML = cxState.history.map(cmd => `<li><button type="button" class="cx-history-item" data-cmd="${escapeHtml(cmd)}">${escapeHtml(cmd)}</button></li>`).join('');
+    list.querySelectorAll('.cx-history-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const input = document.getElementById('console-input');
+            if (input) { input.value = btn.dataset.cmd; input.focus(); }
+            cxClosePopovers(null);
+        });
+    });
+}
+
+async function cxClearHistory() {
+    if (!consoleSelectedPort || cxKind() === 'system') return;
+    try {
+        await cxRequest(`/api/console/history?${cxTargetParams()}`, { method: 'DELETE' });
+        cxState.history = [];
+        cxState.histIdx = -1;
+        cxRenderHistory();
+        showToast(t('cxHistoryCleared'));
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function cxSendCommand(command) {
+    if (!command || !consoleSelectedPort || cxKind() === 'system') return false;
+    try {
+        const formData = new FormData();
+        cxTargetForm(formData);
+        formData.append('command', command);
+        await cxRequest('/api/console/command', { method: 'POST', body: formData }, t('cxCommandFailed'));
+        refreshConsoleLog();
+        cxLoadHistory();
+        return true;
+    } catch (error) {
+        showToast(error.message || t('cxCommandFailed'), 'error');
+        return false;
+    }
+}
+
+(function cxBindConsoleControls() {
+    document.getElementById('console-clear-btn')?.addEventListener('click', cxClearLogView);
+    document.getElementById('cx-copy-btn')?.addEventListener('click', cxCopyLog);
+    document.getElementById('cx-save-btn')?.addEventListener('click', cxSaveLog);
+    document.getElementById('cx-history-clear-btn')?.addEventListener('click', cxClearHistory);
+
+    const fileInput = document.getElementById('cx-file-input');
+    document.getElementById('cx-load-btn')?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = '';
+        cxRunFile(file);
+    });
+
+    const input = document.getElementById('console-input');
+    document.getElementById('cx-input-clear-btn')?.addEventListener('click', () => {
+        if (input) { input.value = ''; input.focus(); }
+        cxState.histIdx = -1;
+    });
+
+    document.querySelectorAll('#cx-menu [data-cx-action]').forEach(item => {
+        item.addEventListener('click', () => {
+            const action = item.dataset.cxAction;
+            cxClosePopovers(null);
+            if (action === 'save') cxSaveLog();
+            else if (action === 'copy') cxCopyLog();
+            else if (action === 'clear') cxClearLogView();
+            else if (action === 'load') fileInput?.click();
+        });
+    });
+
+    const autoscroll = document.getElementById('cx-autoscroll');
+    try {
+        if (localStorage.getItem('cxAutoscroll') === '0') cxState.autoscroll = false;
+    } catch (error) { /* sin storage */ }
+    if (autoscroll) {
+        autoscroll.setAttribute('aria-checked', String(cxState.autoscroll));
+        autoscroll.addEventListener('click', () => {
+            cxState.autoscroll = !cxState.autoscroll;
+            autoscroll.setAttribute('aria-checked', String(cxState.autoscroll));
+            try { localStorage.setItem('cxAutoscroll', cxState.autoscroll ? '1' : '0'); } catch (error) { /* sin storage */ }
+            if (cxState.autoscroll) {
+                const logEl = document.getElementById('console-log');
+                if (logEl) logEl.scrollTop = logEl.scrollHeight;
+            }
+        });
+    }
+
+    // Navegación del historial con ↑/↓ en el input.
+    input?.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+        const history = cxState.history;
+        if (!history.length) return;
+        event.preventDefault();
+        if (event.key === 'ArrowUp') {
+            if (cxState.histIdx === -1) cxState.draft = input.value;
+            if (cxState.histIdx < history.length - 1) cxState.histIdx += 1;
+            input.value = history[cxState.histIdx];
+        } else {
+            if (cxState.histIdx === -1) return;
+            cxState.histIdx -= 1;
+            input.value = cxState.histIdx === -1 ? cxState.draft : history[cxState.histIdx];
+        }
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+    });
+})();
 
 // ── Selector de tamaño de texto para las consolas (solo afecta el log) ──
 function applyConsoleFontSize(targetId, size) {
@@ -10468,23 +11314,44 @@ const consoleInputForm = document.getElementById('console-input-form');
 if (consoleInputForm) {
     consoleInputForm.addEventListener('submit', async (event) => {
         event.preventDefault();
+        if (!cxIsAdmin()) return;
         const input = document.getElementById('console-input');
         const command = input?.value.trim();
-        if (!command || !consoleSelectedPort) return;
+        if (!command || !consoleSelectedPort || cxKind() === 'system') return;
         input.value = '';
-        try {
-            const formData = new FormData();
-            formData.append('port', consoleSelectedPort);
-            formData.append('command', command);
-            const response = await fetch('/api/console/command', { method: 'POST', body: formData });
-            if (!response.ok) throw new Error('No se pudo enviar el comando');
-            refreshConsoleLog();
-        } catch (error) {
-            console.error(error);
-        }
+        cxState.histIdx = -1;
+        cxState.draft = '';
+        const ok = await cxSendCommand(command);
+        if (!ok && input && !input.value) input.value = command;
     });
 }
 
+// ── Macros, plantillas y ayuda ──
+function cxSetTab(tab, focus = false) {
+    cxState.tab = tab;
+    document.querySelectorAll('.cx-tab').forEach(btn => {
+        const active = btn.dataset.cxTab === tab;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', String(active));
+        btn.tabIndex = active ? 0 : -1;
+        if (active && focus) btn.focus();
+    });
+    document.querySelectorAll('.cx-side .cx-panel').forEach(panel => {
+        panel.hidden = panel.id !== `cx-panel-${tab}`;
+    });
+}
+
+document.querySelectorAll('.cx-tab').forEach((btn, index, all) => {
+    btn.addEventListener('click', () => cxSetTab(btn.dataset.cxTab));
+    btn.addEventListener('keydown', (event) => {
+        let next = null;
+        if (event.key === 'ArrowRight') next = all[(index + 1) % all.length];
+        else if (event.key === 'ArrowLeft') next = all[(index - 1 + all.length) % all.length];
+        else if (event.key === 'Home') next = all[0];
+        else if (event.key === 'End') next = all[all.length - 1];
+        if (next) { event.preventDefault(); cxSetTab(next.dataset.cxTab, true); }
+    });
+});
 function macroLabel(name) {
     return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -10521,61 +11388,424 @@ function macroAutoDescription(name) {
     return t('macroNoDescription');
 }
 
-function renderMacrosGrid(macros) {
+function cxMacroEntries() {
+    const klipper = (cxState.klipperMacros || []).map(macro => ({
+        kind: 'klipper',
+        key: `k:${macro.name}`,
+        name: macroLabel(macro.name),
+        rawName: macro.name,
+        description: macro.description || macroAutoDescription(macro.name),
+        icon: 'bolt',
+    }));
+    const custom = (cxState.customMacros || []).map(macro => ({
+        kind: 'custom',
+        key: `c:${macro.id}`,
+        id: macro.id,
+        name: macro.name,
+        description: macro.description || '',
+        icon: macro.icon || 'bolt',
+        raw: macro,
+    }));
+    return [...custom, ...klipper];
+}
+
+function renderMacrosGrid() {
     const gridEl = document.getElementById('macros-grid');
     if (!gridEl) return;
-    if (!macros || !macros.length) {
-        gridEl.innerHTML = `<div class="empty-state">${t('noMacros')}</div>`;
+    const query = (document.getElementById('cx-macro-search')?.value || '').trim().toLowerCase();
+    const all = cxMacroEntries();
+    const entries = query ? all.filter(e => `${e.name} ${e.description}`.toLowerCase().includes(query)) : all;
+    if (!all.length) {
+        gridEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noMacros'))}</div>`;
         return;
     }
-    gridEl.innerHTML = macros.map(macro => `
-        <button type="button" class="macro-btn" data-macro="${escapeHtml(macro.name)}">
-            <span class="macro-btn-face">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                <span>${macroLabel(macro.name)}</span>
-            </span>
-            <span class="macro-btn-description">${escapeHtml(macro.description || macroAutoDescription(macro.name))}</span>
-        </button>
+    if (!entries.length) {
+        gridEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxMacroNoResults'))}</div>`;
+        return;
+    }
+    const admin = cxIsAdmin();
+    gridEl.innerHTML = entries.map(entry => `
+        <div class="cx-macro" data-key="${escapeHtml(entry.key)}">
+            <button type="button" class="cx-macro-run macro-btn-reset" data-key="${escapeHtml(entry.key)}"${admin ? '' : ' disabled'}>
+                <span class="cx-macro-icon">${cxIcon(entry.icon)}</span>
+                <span class="cx-macro-text">
+                    <strong>${escapeHtml(entry.name)}${entry.kind === 'custom' ? `<em class="cx-badge">${escapeHtml(t('cxMacroCustom'))}</em>` : ''}</strong>
+                    <small>${escapeHtml(entry.description)}</small>
+                </span>
+            </button>
+            ${entry.kind === 'custom' && admin ? `
+                <button type="button" class="cx-icon-btn cx-macro-edit" data-id="${escapeHtml(entry.id)}" aria-label="${escapeHtml(t('cxMacroEdit'))}" title="${escapeHtml(t('cxMacroEdit'))}">
+                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                </button>
+                <button type="button" class="cx-icon-btn cx-macro-delete" data-id="${escapeHtml(entry.id)}" aria-label="${escapeHtml(t('cxMacroDelete'))}" title="${escapeHtml(t('cxMacroDelete'))}">
+                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+                </button>` : ''}
+        </div>
     `).join('');
 
-    gridEl.querySelectorAll('.macro-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (!consoleSelectedPort) return;
-            btn.disabled = true;
-            btn.classList.add('running');
-            try {
-                const formData = new FormData();
-                formData.append('port', consoleSelectedPort);
-                formData.append('macro', btn.dataset.macro);
-                const response = await fetch('/api/macros/run', { method: 'POST', body: formData });
-                if (!response.ok) throw new Error('No se pudo ejecutar el macro');
-            } catch (error) {
-                console.error(error);
-                appAlert(error.message || 'No se pudo ejecutar el macro.', '', 'danger');
-            } finally {
-                btn.disabled = false;
-                btn.classList.remove('running');
-            }
-        });
+    const byKey = new Map(entries.map(e => [e.key, e]));
+    gridEl.querySelectorAll('.cx-macro-run').forEach(btn => {
+        btn.addEventListener('click', () => cxRunMacro(byKey.get(btn.dataset.key), btn));
     });
+    gridEl.querySelectorAll('.cx-macro-edit').forEach(btn => {
+        btn.addEventListener('click', () => cxOpenMacroDialog(cxState.customMacros.find(m => m.id === btn.dataset.id)));
+    });
+    gridEl.querySelectorAll('.cx-macro-delete').forEach(btn => {
+        btn.addEventListener('click', () => cxDeleteMacro(cxState.customMacros.find(m => m.id === btn.dataset.id)));
+    });
+}
+
+async function cxRunMacro(entry, btn) {
+    if (!entry || !consoleSelectedPort || cxKind() === 'system') return;
+    btn.disabled = true;
+    btn.classList.add('running');
+    try {
+        if (entry.kind === 'custom') {
+            await cxRequest(`/api/console/macros/${encodeURIComponent(entry.id)}/run`, cxJsonOptions('POST', cxTargetBody()), t('cxMacroRunFailed'));
+        } else {
+            const formData = new FormData();
+            cxTargetForm(formData);
+            formData.append('macro', entry.rawName);
+            await cxRequest('/api/macros/run', { method: 'POST', body: formData }, t('cxMacroRunFailed'));
+        }
+        refreshConsoleLog();
+    } catch (error) {
+        console.error(error);
+        appAlert(error.message || t('cxMacroRunFailed'), '', 'danger');
+    } finally {
+        btn.disabled = !cxIsAdmin();
+        btn.classList.remove('running');
+    }
 }
 
 async function loadMacrosForSelectedPrinter() {
     const gridEl = document.getElementById('macros-grid');
     if (!consoleSelectedPort) {
-        if (gridEl) gridEl.innerHTML = `<div class="empty-state">${t('noPrintersFound')}</div>`;
+        if (gridEl) gridEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('noPrintersFound'))}</div>`;
         return;
     }
+    // Los macros de la máquina (Moonraker) solo existen en Klipper; las propias
+    // y las plantillas sirven para cualquier máquina que reciba G-code.
+    const [klipper, custom] = await Promise.all([
+        cxKind() === 'klipper'
+            ? cxRequest(`/api/macros?port=${consoleSelectedPort}`).catch(error => { console.error(error); return { macros: [] }; })
+            : Promise.resolve({ macros: [] }),
+        cxScope() ? cxRequest(`/api/console/macros${cxScopeQuery()}`).catch(() => ({ macros: [] })) : Promise.resolve({ macros: [] }),
+    ]);
+    cxState.klipperMacros = klipper.macros || [];
+    cxState.customMacros = custom.macros || [];
+    renderMacrosGrid();
+}
+
+document.getElementById('cx-macro-search')?.addEventListener('input', renderMacrosGrid);
+
+// ── Editor de macros personalizadas ──
+// ── Comandos frecuentes (pastillas del editor de macros) ──
+// Cada pastilla agrega el comando al editor y dice para qué sirve. Los textos
+// van en español e inglés aquí mismo; los demás idiomas usan el inglés.
+const CX_GROUP_LABELS = {
+    move: { es: 'Movimiento', en: 'Movement' },
+    temp: { es: 'Temperatura', en: 'Temperature' },
+    extrude: { es: 'Extrusor y ventilador', en: 'Extruder and fan' },
+    info: { es: 'Información', en: 'Information' },
+    level: { es: 'Nivelación', en: 'Bed leveling' },
+    firmware: { es: 'Firmware', en: 'Firmware' },
+    tool: { es: 'Láser / husillo', en: 'Laser / spindle' },
+    state: { es: 'Estado y ajustes', en: 'Status and settings' },
+};
+
+const CX_COMMANDS = {
+    printer: [
+        { g: 'move', cmd: 'G28', es: 'Ir a origen (home) en todos los ejes', en: 'Home all axes' },
+        { g: 'move', cmd: 'G28 X Y', es: 'Ir a origen solo en X e Y', en: 'Home X and Y only' },
+        { g: 'move', cmd: 'G28 Z', es: 'Ir a origen solo en Z', en: 'Home Z only' },
+        { g: 'move', cmd: 'G90', es: 'Coordenadas absolutas: X10 es la posición 10', en: 'Absolute coordinates: X10 means position 10' },
+        { g: 'move', cmd: 'G91', es: 'Coordenadas relativas: X10 se mueve 10 desde donde está', en: 'Relative coordinates: X10 moves 10 from here' },
+        { g: 'move', cmd: 'G1 X10 Y10 F3000', es: 'Mover a X10 Y10 (F es la velocidad en mm/min)', en: 'Move to X10 Y10 (F is speed in mm/min)' },
+        { g: 'move', cmd: 'G1 Z10 F600', es: 'Mover el eje Z a 10 mm', en: 'Move the Z axis to 10 mm' },
+        { g: 'move', cmd: 'G4 P1000', es: 'Esperar 1 segundo (P en milisegundos)', en: 'Wait 1 second (P in milliseconds)' },
+        { g: 'move', cmd: 'M84', es: 'Apagar los motores (se pueden mover a mano)', en: 'Disable motors (can be moved by hand)' },
+        { g: 'temp', cmd: 'M104 S200', es: 'Hotend a 200 °C, sin esperar', en: 'Hotend to 200 °C, without waiting' },
+        { g: 'temp', cmd: 'M109 S200', es: 'Hotend a 200 °C y esperar a que llegue', en: 'Hotend to 200 °C and wait' },
+        { g: 'temp', cmd: 'M140 S60', es: 'Cama a 60 °C, sin esperar', en: 'Bed to 60 °C, without waiting' },
+        { g: 'temp', cmd: 'M190 S60', es: 'Cama a 60 °C y esperar a que llegue', en: 'Bed to 60 °C and wait' },
+        { g: 'temp', cmd: 'M104 S0', es: 'Apagar el hotend', en: 'Turn the hotend off' },
+        { g: 'temp', cmd: 'M140 S0', es: 'Apagar la cama', en: 'Turn the bed off' },
+        { g: 'extrude', cmd: 'G1 E10 F300', es: 'Extruir 10 mm de filamento', en: 'Extrude 10 mm of filament' },
+        { g: 'extrude', cmd: 'G1 E-10 F300', es: 'Retraer 10 mm de filamento', en: 'Retract 10 mm of filament' },
+        { g: 'extrude', cmd: 'G92 E0', es: 'Poner el contador del extrusor en cero', en: 'Reset the extruder position to zero' },
+        { g: 'extrude', cmd: 'M83', es: 'Extrusor en modo relativo', en: 'Extruder in relative mode' },
+        { g: 'extrude', cmd: 'M106 S255', es: 'Ventilador de pieza al 100 %', en: 'Part fan at 100%' },
+        { g: 'extrude', cmd: 'M107', es: 'Apagar el ventilador de pieza', en: 'Turn the part fan off' },
+        { g: 'extrude', cmd: 'M220 S100', es: 'Velocidad de impresión al 100 %', en: 'Print speed at 100%' },
+        { g: 'extrude', cmd: 'M221 S100', es: 'Flujo de material al 100 %', en: 'Flow rate at 100%' },
+        { g: 'info', cmd: 'M114', es: 'Ver la posición actual', en: 'Show the current position' },
+        { g: 'info', cmd: 'M105', es: 'Ver las temperaturas', en: 'Show temperatures' },
+        { g: 'info', cmd: 'M115', es: 'Ver información y capacidades del firmware', en: 'Show firmware info and capabilities' },
+        { g: 'info', cmd: 'M117 Hola', es: 'Mostrar un mensaje en la pantalla de la impresora', en: 'Show a message on the printer screen' },
+        { g: 'info', cmd: 'M300 S440 P200', es: 'Hacer sonar un pitido', en: 'Play a beep' },
+    ],
+    klipper: [
+        { g: 'level', cmd: 'BED_MESH_CALIBRATE', es: 'Medir la cama y guardar la malla de nivelación', en: 'Probe the bed and build the mesh' },
+        { g: 'firmware', cmd: 'FIRMWARE_RESTART', es: 'Reiniciar el firmware (tras un error)', en: 'Restart the firmware (after an error)' },
+        { g: 'firmware', cmd: 'RESTART', es: 'Reiniciar el servicio de Klipper', en: 'Restart the Klipper service' },
+        { g: 'firmware', cmd: 'SAVE_CONFIG', es: 'Guardar la calibración y reiniciar', en: 'Save calibration and restart' },
+        { g: 'temp', cmd: 'SET_HEATER_TEMPERATURE HEATER=extruder TARGET=200', es: 'Hotend a 200 °C (comando de Klipper)', en: 'Hotend to 200 °C (Klipper command)' },
+    ],
+    marlin: [
+        { g: 'level', cmd: 'G29', es: 'Nivelar la cama (malla automática)', en: 'Auto bed leveling (mesh)' },
+        { g: 'firmware', cmd: 'M503', es: 'Ver los ajustes guardados en la placa', en: 'Show the settings stored on the board' },
+        { g: 'firmware', cmd: 'M500', es: 'Guardar los ajustes actuales en la placa', en: 'Save the current settings to the board' },
+    ],
+    grbl: [
+        { g: 'move', cmd: '$H', es: 'Ir a origen (home), si la máquina tiene finales de carrera', en: 'Home, if the machine has limit switches' },
+        { g: 'move', cmd: 'G0 X0 Y0', es: 'Mover rápido a X0 Y0, sin cortar', en: 'Rapid move to X0 Y0, no cutting' },
+        { g: 'move', cmd: 'G1 X10 F1000', es: 'Mover en línea recta a X10 (F es la velocidad en mm/min)', en: 'Straight move to X10 (F is speed in mm/min)' },
+        { g: 'move', cmd: '$J=G91 X10 F1000', es: 'Mover 10 mm en X desde donde está (jog)', en: 'Jog 10 mm in X from here' },
+        { g: 'move', cmd: 'G90', es: 'Coordenadas absolutas: X10 es la posición 10', en: 'Absolute coordinates: X10 means position 10' },
+        { g: 'move', cmd: 'G91', es: 'Coordenadas relativas: X10 se mueve 10 desde donde está', en: 'Relative coordinates: X10 moves 10 from here' },
+        { g: 'move', cmd: 'G92 X0 Y0', es: 'Declarar la posición actual como el cero de trabajo', en: 'Set the current position as work zero' },
+        { g: 'move', cmd: 'G21', es: 'Unidades en milímetros', en: 'Units in millimeters' },
+        { g: 'move', cmd: 'G20', es: 'Unidades en pulgadas', en: 'Units in inches' },
+        { g: 'move', cmd: 'G4 P1', es: 'Esperar 1 segundo', en: 'Wait 1 second' },
+        { g: 'tool', cmd: 'M3 S1000', es: 'Encender láser/husillo con potencia S1000 (¡con cuidado!)', en: 'Turn laser/spindle on at power S1000 (careful!)' },
+        { g: 'tool', cmd: 'M4 S1000', es: 'Láser en modo dinámico: la potencia sigue la velocidad (¡con cuidado!)', en: 'Laser dynamic mode: power follows speed (careful!)' },
+        { g: 'tool', cmd: 'M5', es: 'Apagar el láser/husillo', en: 'Turn the laser/spindle off' },
+        { g: 'tool', cmd: 'M8', es: 'Encender el aire / refrigeración', en: 'Turn air assist / coolant on' },
+        { g: 'tool', cmd: 'M9', es: 'Apagar el aire / refrigeración', en: 'Turn air assist / coolant off' },
+        { g: 'state', cmd: '?', es: 'Ver el estado actual de la máquina', en: 'Show the current machine status' },
+        { g: 'state', cmd: '$X', es: 'Desbloquear una alarma', en: 'Unlock after an alarm' },
+        { g: 'state', cmd: '$$', es: 'Ver los ajustes de la placa', en: 'Show the board settings' },
+        { g: 'state', cmd: '$#', es: 'Ver los orígenes guardados', en: 'Show the stored work offsets' },
+        { g: 'state', cmd: '$G', es: 'Ver el modo activo del intérprete', en: 'Show the active parser state' },
+        { g: 'state', cmd: '$I', es: 'Ver la versión del firmware', en: 'Show the firmware version' },
+        { g: 'state', cmd: '$32=1', es: 'Activar el modo láser (cambia un ajuste de la placa)', en: 'Enable laser mode (changes a board setting)' },
+        { g: 'state', cmd: '$32=0', es: 'Volver al modo CNC (cambia un ajuste de la placa)', en: 'Back to CNC mode (changes a board setting)' },
+    ],
+};
+
+function cxCommandSetFor(kind) {
+    if (kind === 'laser' || kind === 'cnc') return CX_COMMANDS.grbl;
+    return CX_COMMANDS.printer.concat(kind === 'marlin' ? CX_COMMANDS.marlin : CX_COMMANDS.klipper);
+}
+
+function cxRenderCommandChips() {
+    const holder = document.getElementById('cx-macro-chips');
+    if (!holder) return;
+    const lang = (typeof currentLanguage !== 'undefined' && currentLanguage === 'es') ? 'es' : 'en';
+    const groups = {};
+    cxCommandSetFor(cxKind()).forEach(item => { (groups[item.g] = groups[item.g] || []).push(item); });
+    holder.innerHTML = Object.keys(groups).map(group => `
+        <div class="cx-chip-group">
+            <span class="cx-chip-group-title">${escapeHtml(CX_GROUP_LABELS[group][lang])}</span>
+            <div class="cx-chip-row">${groups[group].map(item => `
+                <button type="button" class="cx-cmd-chip" data-cmd="${escapeHtml(item.cmd)}" title="${escapeHtml(item[lang])}">
+                    <code>${escapeHtml(item.cmd)}</code><span>${escapeHtml(item[lang])}</span>
+                </button>`).join('')}
+            </div>
+        </div>`).join('');
+}
+
+document.getElementById('cx-macro-chips')?.addEventListener('click', event => {
+    const chip = event.target.closest('.cx-cmd-chip');
+    if (!chip) return;
+    const area = document.getElementById('cx-macro-commands');
+    if (!area) return;
+    const prefix = area.value && !area.value.endsWith('\n') ? '\n' : '';
+    area.value += `${prefix}${chip.dataset.cmd}\n`;
+    area.focus();
+    area.scrollTop = area.scrollHeight;
+});
+
+function cxOpenMacroDialog(macro) {
+    const dialog = document.getElementById('cx-macro-dialog');
+    if (!dialog || typeof dialog.showModal !== 'function') return;
+    cxState.editingMacroId = macro ? macro.id : null;
+    document.getElementById('cx-macro-dialog-title').textContent = t(macro ? 'cxEditorEditTitle' : 'cxEditorNewTitle');
+    document.getElementById('cx-macro-name').value = macro?.name || '';
+    document.getElementById('cx-macro-desc').value = macro?.description || '';
+    document.getElementById('cx-macro-commands').value = (macro?.commands || []).join('\n');
+    const selected = macro?.icon && CX_ICONS[macro.icon] ? macro.icon : 'bolt';
+    document.getElementById('cx-macro-icons').innerHTML = Object.keys(CX_ICONS).map(slug => `
+        <label class="cx-icon-option" title="${escapeHtml(t(CX_ICON_LABEL_KEYS[slug]))}">
+            <input type="radio" name="cx-macro-icon" value="${slug}"${slug === selected ? ' checked' : ''}>
+            <span aria-hidden="true">${cxIcon(slug)}</span>
+            <span class="cx-sr">${escapeHtml(t(CX_ICON_LABEL_KEYS[slug]))}</span>
+        </label>`).join('');
+    const error = document.getElementById('cx-macro-error');
+    error.hidden = true;
+    error.textContent = '';
+    const scopes = macro?.scopes?.length ? macro.scopes : [cxScope() || 'printer'];
+    document.querySelectorAll('input[name="cx-macro-scope"]').forEach(box => { box.checked = scopes.includes(box.value); });
+    cxRenderCommandChips();
+    dialog.showModal();
+    document.getElementById('cx-macro-name').focus();
+}
+
+document.getElementById('cx-macro-new-btn')?.addEventListener('click', () => cxOpenMacroDialog(null));
+document.getElementById('cx-macro-cancel')?.addEventListener('click', () => document.getElementById('cx-macro-dialog')?.close());
+document.getElementById('cx-macro-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const errorEl = document.getElementById('cx-macro-error');
+    const body = {
+        name: document.getElementById('cx-macro-name').value.trim(),
+        description: document.getElementById('cx-macro-desc').value.trim(),
+        icon: document.querySelector('input[name="cx-macro-icon"]:checked')?.value || 'bolt',
+        commands: document.getElementById('cx-macro-commands').value.split('\n').map(line => line.trim()).filter(Boolean),
+        scopes: Array.from(document.querySelectorAll('input[name="cx-macro-scope"]:checked')).map(box => box.value),
+    };
+    const saveBtn = document.getElementById('cx-macro-save');
+    saveBtn.disabled = true;
     try {
-        const response = await fetch(`/api/macros?port=${consoleSelectedPort}`);
-        if (!response.ok) throw new Error('No se pudo cargar los macros');
-        const data = await response.json();
-        renderMacrosGrid(data.macros || []);
+        const id = cxState.editingMacroId;
+        await cxRequest(id ? `/api/console/macros/${encodeURIComponent(id)}` : '/api/console/macros', cxJsonOptions(id ? 'PUT' : 'POST', body), t('cxSaveError'));
+        document.getElementById('cx-macro-dialog').close();
+        showToast(t('cxSaved'));
+        loadMacrosForSelectedPrinter();
     } catch (error) {
-        console.error(error);
-        if (gridEl) gridEl.innerHTML = `<div class="empty-state">${t('noMacros')}</div>`;
+        errorEl.textContent = error.message || t('cxSaveError');
+        errorEl.hidden = false;
+    } finally {
+        saveBtn.disabled = false;
+    }
+});
+
+async function cxDeleteMacro(macro) {
+    if (!macro) return;
+    const confirmed = await appConfirm(cxFormat(t('cxMacroDeleteConfirm'), { name: macro.name }), t('cxMacroDelete'), 'danger');
+    if (!confirmed) return;
+    try {
+        await cxRequest(`/api/console/macros/${encodeURIComponent(macro.id)}`, { method: 'DELETE' }, t('cxSaveError'));
+        showToast(t('cxMacroDeleted'));
+        loadMacrosForSelectedPrinter();
+    } catch (error) {
+        appAlert(error.message, '', 'danger');
     }
 }
+
+// ── Plantillas ──
+async function cxLoadTemplates() {
+    const list = document.getElementById('cx-template-list');
+    if (!list) return;
+    try {
+        const data = cxScope() ? await cxRequest(`/api/console/templates${cxScopeQuery()}`) : { templates: [] };
+        cxState.templates = data.templates || [];
+    } catch (error) {
+        cxState.templates = [];
+    }
+    cxRenderTemplates();
+}
+
+function cxRenderTemplates() {
+    const list = document.getElementById('cx-template-list');
+    if (!list) return;
+    if (!cxState.templates.length) {
+        list.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxTemplatesEmpty'))}</div>`;
+        return;
+    }
+    const admin = cxIsAdmin();
+    list.innerHTML = cxState.templates.map(tpl => {
+        const open = cxState.openTemplate === tpl.id;
+        const idAttr = escapeHtml(tpl.id);
+        const fields = (tpl.params || []).map(param => {
+            const isNumber = param.type === 'number';
+            const fieldId = `cx-tpl-${idAttr}-${escapeHtml(param.key)}`;
+            return `
+                <label class="cx-field" for="${fieldId}">
+                    <span>${escapeHtml(param.label || param.key)}${param.unit ? ` <small>(${escapeHtml(param.unit)})</small>` : ''}</span>
+                    <input id="${fieldId}" data-key="${escapeHtml(param.key)}" data-type="${isNumber ? 'number' : 'text'}"
+                        type="${isNumber ? 'number' : 'text'}" ${isNumber ? 'step="any" inputmode="decimal"' : ''}
+                        ${param.min != null ? `min="${escapeHtml(param.min)}"` : ''} ${param.max != null ? `max="${escapeHtml(param.max)}"` : ''}
+                        value="${param.default != null ? escapeHtml(param.default) : ''}" required>
+                </label>`;
+        }).join('');
+        return `
+            <div class="cx-template${open ? ' open' : ''}" data-id="${idAttr}">
+                <div class="cx-template-head">
+                    <button type="button" class="cx-template-toggle" aria-expanded="${open}" aria-controls="cx-tpl-body-${idAttr}">
+                        <span class="cx-macro-icon">${cxIcon(tpl.icon)}</span>
+                        <span class="cx-macro-text"><strong>${escapeHtml(tpl.name)}</strong><small>${escapeHtml(tpl.subtitle || '')}</small></span>
+                        <svg class="cx-ico cx-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    ${!tpl.builtin && admin ? `<button type="button" class="cx-icon-btn cx-template-delete" aria-label="${escapeHtml(t('cxTemplateDelete'))}" title="${escapeHtml(t('cxTemplateDelete'))}"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>` : ''}
+                </div>
+                <form class="cx-template-body" id="cx-tpl-body-${idAttr}"${open ? '' : ' hidden'}>
+                    <div class="cx-template-fields">${fields}</div>
+                    <p class="cx-form-error" role="alert" hidden></p>
+                    <button type="submit" class="cx-primary-btn"${admin ? '' : ' disabled'}>
+                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                        <span>${escapeHtml(t('cxTemplateSend'))}</span>
+                    </button>
+                </form>
+            </div>`;
+    }).join('');
+
+    list.querySelectorAll('.cx-template').forEach(card => {
+        const id = card.dataset.id;
+        const toggle = card.querySelector('.cx-template-toggle');
+        const body = card.querySelector('.cx-template-body');
+        toggle.addEventListener('click', () => {
+            const willOpen = body.hidden;
+            list.querySelectorAll('.cx-template').forEach(other => {
+                const isThis = other === card;
+                other.classList.toggle('open', isThis && willOpen);
+                other.querySelector('.cx-template-body').hidden = !(isThis && willOpen);
+                other.querySelector('.cx-template-toggle').setAttribute('aria-expanded', String(isThis && willOpen));
+            });
+            cxState.openTemplate = willOpen ? id : null;
+        });
+        card.querySelector('.cx-template-delete')?.addEventListener('click', () => cxDeleteTemplate(id));
+        body.addEventListener('submit', (event) => {
+            event.preventDefault();
+            cxRunTemplate(id, body);
+        });
+    });
+}
+
+async function cxRunTemplate(id, form) {
+    if (!consoleSelectedPort || cxKind() === 'system') return;
+    const errorEl = form.querySelector('.cx-form-error');
+    const submit = form.querySelector('button[type="submit"]');
+    const params = {};
+    form.querySelectorAll('input[data-key]').forEach(input => {
+        params[input.dataset.key] = input.dataset.type === 'number' ? Number(input.value) : input.value;
+    });
+    errorEl.hidden = true;
+    submit.disabled = true;
+    try {
+        const data = await cxRequest(`/api/console/templates/${encodeURIComponent(id)}/run`, cxJsonOptions('POST', cxTargetBody({ params })), t('cxTemplateFailed'));
+        showToast(cxFormat(t('cxTemplateSent'), { sent: data.sent ?? 0 }));
+        refreshConsoleLog();
+    } catch (error) {
+        errorEl.textContent = error.message || t('cxTemplateFailed');
+        errorEl.hidden = false;
+    } finally {
+        submit.disabled = !cxIsAdmin();
+    }
+}
+
+async function cxDeleteTemplate(id) {
+    const tpl = cxState.templates.find(item => item.id === id);
+    if (!tpl) return;
+    const confirmed = await appConfirm(cxFormat(t('cxTemplateDeleteConfirm'), { name: tpl.name }), t('cxTemplateDelete'), 'danger');
+    if (!confirmed) return;
+    try {
+        await cxRequest(`/api/console/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }, t('cxSaveError'));
+        if (cxState.openTemplate === id) cxState.openTemplate = null;
+        cxLoadTemplates();
+    } catch (error) {
+        appAlert(error.message, '', 'danger');
+    }
+}
+
+window.addEventListener('nopal:language-changed', () => {
+    if (document.getElementById('console-section')?.style.display === 'none') return;
+    cxState.machineSignature = '';
+    renderConsolePrinterPicker(consoleSelectedPort);
+    renderMacrosGrid();
+    cxRenderTemplates();
+    cxRenderHistory();
+});
 
 // ── Generic in-app confirm modal (reemplaza confirm() nativo) ──
 const APP_DIALOG_ICONS = {
@@ -12136,7 +13366,7 @@ function renderLaserStatus(data) {
     if (jobSpeedEl) jobSpeedEl.textContent = hasFeedSpeed ? `${data.feed} mm/min` : '—';
     const jobPowerEl = document.getElementById('laser-job-power');
     if (jobPowerEl) jobPowerEl.textContent = hasFeedSpeed ? `${powerPercent}%` : '—';
-    updateLaserBedMapPosition(data.x, data.y, (data.state || '').toLowerCase() === 'run');
+    updateLaserBedMapPosition(data.x, data.y);
 }
 
 async function refreshLaserStatus() {
@@ -12415,10 +13645,16 @@ function renderLaserQueue(queue) {
     if (!container) return;
     if (!queue || !queue.length) {
         container.innerHTML = `<div class="empty-state-small">${t('laserQueueEmpty')}</div>`;
+        laserSelectedQueuePath = null;
+        syncLaserBedMapRender();
         return;
     }
+    // El archivo elegido sigue siendo el mismo entre refrescos; si ya no está
+    // en la cola, se toma el primero.
+    if (!queue.some(item => item.path === laserSelectedQueuePath)) laserSelectedQueuePath = queue[0].path;
+    syncLaserBedMapRender();
     container.innerHTML = queue.map(item => `
-        <div class="laser-queue-item" data-id="${item.id}" data-path="${escapeHtml(item.path)}">
+        <div class="laser-queue-item${item.path === laserSelectedQueuePath ? ' is-selected' : ''}" data-id="${item.id}" data-path="${escapeHtml(item.path)}">
             <div class="laser-queue-item-thumb" id="laser-queue-thumb-${item.id}"></div>
             <span class="laser-queue-item-name">${escapeHtml(item.filename)}</span>
             <div class="laser-queue-item-actions">
@@ -12440,6 +13676,12 @@ function renderLaserQueue(queue) {
             const fileUrl = `/uploads/gcode/${itemPath.split('/').map(encodeURIComponent).join('/')}`;
             loadRealGcodeThumbnail(thumbEl, itemPath, 'gcode', fileUrl);
         }
+        row.addEventListener('click', event => {
+            if (event.target.closest('button')) return;
+            laserSelectedQueuePath = itemPath;
+            container.querySelectorAll('.laser-queue-item').forEach(el => el.classList.toggle('is-selected', el === row));
+            syncLaserBedMapRender();
+        });
         row.querySelectorAll('button[data-action]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 if (btn.dataset.action === 'play') {
@@ -12797,14 +14039,61 @@ function renderLaserBedMap(host) {
     }
 
     if (emptyEl) emptyEl.hidden = true;
-    if (dotEl) dotEl.hidden = false;
+    // Sin punto ni rastro de lo grabado: el área muestra el render del archivo
+    // antes de enviarlo (ver showLaserBedMapRender); el avance va en la barra.
+    if (dotEl) dotEl.hidden = true;
     applyLaserMarkerToDot();
+    laserBedMapRenderedPath = null;
+    syncLaserBedMapRender();
     if (dimsEl) dimsEl.textContent = `${laserBedMapWorkArea.width} × ${laserBedMapWorkArea.height} mm`;
     mapEl.style.aspectRatio = `${laserBedMapWorkArea.width} / ${laserBedMapWorkArea.height}`;
     renderLaserBedMapAxisTicks();
 }
 
 let laserBedMapTracePoints = [];
+
+// Archivo de la cola cuyo render se ve en el área de trabajo (ruta relativa a
+// la biblioteca G-code). El PNG lo genera y cachea el servidor al importar el
+// archivo; aquí solo se coloca en mm usando los límites reales del trazo.
+let laserSelectedQueuePath = null;
+let laserBedMapRenderedPath = null;
+
+async function showLaserBedMapRender(path) {
+    const img = document.getElementById('laser-bed-map-render');
+    if (!img) return;
+    if (!path || !laserBedMapWorkArea) {
+        img.hidden = true;
+        img.removeAttribute('src');
+        laserBedMapRenderedPath = null;
+        return;
+    }
+    if (path === laserBedMapRenderedPath) return;
+    laserBedMapRenderedPath = path;
+    try {
+        const response = await fetch(`/api/gcode/render-meta?path=${encodeURIComponent(path)}`);
+        if (!response.ok) throw new Error('sin render');
+        const meta = await response.json();
+        // Si mientras llegaba la respuesta se eligió otro archivo, se descarta.
+        if (laserBedMapRenderedPath !== path || !meta.bounds || !laserBedMapWorkArea) {
+            if (laserBedMapRenderedPath === path) img.hidden = true;
+            return;
+        }
+        const area = laserBedMapWorkArea;
+        img.style.left = `${(meta.bounds.minX / area.width) * 100}%`;
+        img.style.bottom = `${(meta.bounds.minY / area.height) * 100}%`;
+        img.style.width = `${(meta.width_mm / area.width) * 100}%`;
+        img.style.height = `${(meta.height_mm / area.height) * 100}%`;
+        img.src = `/api/gcode/thumbnail?path=${encodeURIComponent(path)}`;
+        img.hidden = false;
+    } catch (error) {
+        img.hidden = true;
+        laserBedMapRenderedPath = null;
+    }
+}
+
+function syncLaserBedMapRender() {
+    showLaserBedMapRender(laserSelectedQueuePath);
+}
 
 function clearLaserBedMapTrace() {
     laserBedMapTracePoints = [];
@@ -12845,14 +14134,13 @@ async function sendLaserBedMapSnapshotToHistory(host) {
     }
 }
 
-function updateLaserBedMapPosition(x, y, tracing) {
+function updateLaserBedMapPosition(x, y) {
     const dotEl = document.getElementById('laser-bed-map-dot');
     if (!dotEl || !laserBedMapWorkArea || dotEl.hidden) return;
     const percentX = Math.min(100, Math.max(0, (x / laserBedMapWorkArea.width) * 100));
     const percentY = Math.min(100, Math.max(0, (y / laserBedMapWorkArea.height) * 100));
     dotEl.style.left = `${percentX}%`;
     dotEl.style.bottom = `${percentY}%`;
-    if (tracing) addLaserBedMapTracePoint(percentX, percentY);
 }
 
 // ── Mover el láser haciendo click sobre el mapa de cama ──
@@ -17605,13 +18893,49 @@ if (laserUnlockBtn) {
 let laserFireActive = false;
 let laserFireLastOffAt = 0;
 
-async function laserFireOff() {
-    const label = document.getElementById('laser-fire-label');
-    await sendLaserRawCommand('M5');
+// "Encender láser" es un disparo de prueba: en el modo láser de GRBL ($32=1) un
+// M3 suelto no emite, así que el servidor manda un G1 diminuto y lento (ver
+// fire_test en laser_service.py). Dura unos segundos por sí solo; apagar a
+// mano lo corta antes.
+let laserFireTimer = null;
+
+function laserFireMarkOff() {
+    clearTimeout(laserFireTimer);
+    laserFireTimer = null;
     laserFireActive = false;
-    laserFireLastOffAt = Date.now();
     document.getElementById('laser-fire-btn')?.classList.remove('active');
+    const label = document.getElementById('laser-fire-label');
     if (label) label.textContent = t('laserFireOn');
+}
+
+async function laserFirePost(url, fields) {
+    const host = getActiveSectionLaserHost();
+    if (!host) {
+        appAlert(t('laserNoMachineSelected'), '', 'warning');
+        return null;
+    }
+    try {
+        const formData = new FormData();
+        formData.append('host', host);
+        Object.entries(fields || {}).forEach(([key, value]) => formData.append(key, String(value)));
+        const response = await fetch(url, { method: 'POST', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            appAlert(data.detail || 'No se pudo completar la acción del láser', '', 'warning');
+            return null;
+        }
+        return data;
+    } catch (error) {
+        console.error(error);
+        return null;
+    }
+}
+
+async function laserFireOff() {
+    // Se marca apagado aunque la respuesta falle: el estado real lo manda el láser.
+    const result = await laserFirePost('/api/laser/fire/stop');
+    laserFireLastOffAt = Date.now();
+    if (result) laserFireMarkOff();
 }
 
 async function laserFireOn() {
@@ -17619,11 +18943,15 @@ async function laserFireOn() {
     const label = document.getElementById('laser-fire-label');
     const powerInput = document.getElementById('laser-fire-power-input');
     const powerPercent = Math.max(0, Math.min(100, parseInt(powerInput?.value, 10) || 0));
-    const powerS = Math.round((powerPercent / 100) * LASER_POWER_S_MAX);
-    await sendLaserRawCommand(`M3 S${powerS}`);
+    const powerS = Math.max(1, Math.round((powerPercent / 100) * LASER_POWER_S_MAX));
+    const result = await laserFirePost('/api/laser/fire', { power_s: powerS });
+    if (!result) return;   // no se pinta "encendido" si la placa no lo aceptó
     laserFireActive = true;
     document.getElementById('laser-fire-btn')?.classList.add('active');
     if (label) label.textContent = t('laserFireOff');
+    // El disparo termina solo cuando acaba su movimiento; el botón lo refleja.
+    clearTimeout(laserFireTimer);
+    if (result.duration_s > 0) laserFireTimer = setTimeout(laserFireMarkOff, result.duration_s * 1000);
 }
 
 function toggleLaserFire() {
@@ -18110,7 +19438,7 @@ document.getElementById('marlin-printers-add-btn')?.addEventListener('click', ()
     switchSection('settings');
     showToast(t('marlinPrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('usb-ports-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('usb-ports-list');
     }, 200);
 });
 
@@ -18298,7 +19626,7 @@ document.getElementById('elegoo-printers-add-btn')?.addEventListener('click', ()
     switchSection('settings');
     showToast(t('elegooPrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('elegoo-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('elegoo-discover-list');
     }, 200);
 });
 
@@ -18645,7 +19973,7 @@ document.getElementById('flashforge-printers-add-btn')?.addEventListener('click'
     switchSection('settings');
     showToast(t('flashforgePrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('flashforge-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('flashforge-discover-list');
     }, 200);
 });
 
@@ -19003,7 +20331,7 @@ document.getElementById('bambu-printers-add-btn')?.addEventListener('click', () 
     switchSection('settings');
     showToast(t('bambuPrinterAddGoSettingsHint'));
     setTimeout(() => {
-        document.getElementById('bambu-discover-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealInSettings('bambu-discover-list');
     }, 200);
 });
 
@@ -19353,25 +20681,7 @@ async function openMarlinPrinterModal(device) {
 
     const consoleContainer = document.getElementById('marlin-printer-modal-console');
     if (consoleContainer) {
-        consoleContainer.innerHTML = `
-            <div class="temp-card">
-                <div class="temp-card-header">
-                    <div class="temp-card-header-left" role="heading" aria-level="3">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>
-                        <span>${t('console')}</span>
-                    </div>
-                </div>
-                <div class="temp-card-body">
-                    <div class="console-log" id="marlin-printer-console-log"></div>
-                    <form class="console-input-row" id="marlin-printer-console-form">
-                        <input type="text" id="marlin-printer-console-input" autocomplete="off" placeholder="${escapeHtml(t('consoleInputPlaceholder'))}">
-                        <button type="submit" class="btn-icon-dark" title="${escapeHtml(t('consoleInputPlaceholder'))}">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                        </button>
-                    </form>
-                </div>
-            </div>
-        `;
+        consoleContainer.innerHTML = marlinModalConsoleHtml();
         wireMarlinConsoleForm(device);
     }
 
@@ -19644,26 +20954,72 @@ async function applyMarlinTempTarget(device, heater, container) {
     }
 }
 
+// Consola del modal de Marlin: misma apariencia y funciones que la sección
+// Consolas (comandos marcados, colores por tipo, historial, copiar, guardar,
+// cargar archivo), con su propio estado porque aquí hay una sola máquina.
+const marlinModalConsole = { history: [], histIdx: -1, draft: '', clearedAt: 0, autoscroll: true, lastSignature: '', lastText: '' };
+
+function marlinModalConsoleHtml() {
+    const admin = cxIsAdmin();
+    const icon = path => `<svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+    const dis = admin ? '' : ' disabled';
+    return `
+        <div class="temp-card cx-modal-console cx-mode-printer">
+            <div class="temp-card-header">
+                <div class="temp-card-header-left" role="heading" aria-level="3">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="16" x2="6" y2="16.01"/></svg>
+                    <span>${escapeHtml(t('console'))}</span>
+                </div>
+            </div>
+            <div class="temp-card-body">
+                <div class="console-log cx-log" id="marlin-printer-console-log" role="log" aria-live="off" tabindex="0"></div>
+                <form class="cx-input-row" id="marlin-printer-console-form" autocomplete="off">
+                    <input type="text" id="marlin-printer-console-input" class="cx-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${escapeHtml(t('cxInputPlaceholder'))}" aria-label="${escapeHtml(t('cxInputPlaceholder'))}"${dis}>
+                    <button type="submit" class="cx-icon-btn cx-send-btn" aria-label="${escapeHtml(t('cxSend'))}"${dis}>${icon('<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>')}</button>
+                </form>
+                <p class="cx-admin-note" data-i18n="cxAdminOnly"${admin ? ' hidden' : ''}>${escapeHtml(t('cxAdminOnly'))}</p>
+                <div class="cx-bottombar">
+                    <button type="button" class="cx-text-btn" data-mc="clear">${icon('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>')}<span>${escapeHtml(t('cxClearLog'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="copy">${icon('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>')}<span>${escapeHtml(t('cxCopyLog'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="save">${icon('<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/>')}<span>${escapeHtml(t('cxSaveLog'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="load"${dis}>${icon('<path d="M12 16V4"/><path d="M7 8l5-5 5 5"/><path d="M4 20h16"/>')}<span>${escapeHtml(t('cxLoadFile'))}</span></button>
+                    <button type="button" class="cx-text-btn" data-mc="macros">${icon(CX_ICONS.bolt)}<span>${escapeHtml(t('cxOpenMacros'))}</span></button>
+                    <input type="file" id="marlin-console-file" accept=".gcode,.gco,.txt,.nc" hidden>
+                    <button type="button" class="cx-switch" data-mc="autoscroll" role="switch" aria-checked="${marlinModalConsole.autoscroll}">
+                        <span class="cx-switch-track" aria-hidden="true"><span class="cx-switch-thumb"></span></span>
+                        <span>${escapeHtml(t('cxAutoscroll'))}</span>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+}
+
 function renderMarlinConsoleLog(messages) {
     const logEl = document.getElementById('marlin-printer-console-log');
     if (!logEl) return;
-    if (!messages || !messages.length) {
-        logEl.innerHTML = '';
+    const state = marlinModalConsole;
+    const visible = (messages || []).filter(msg => !state.clearedAt || (msg.time || 0) > state.clearedAt);
+    const signature = JSON.stringify(visible);
+    if (signature === state.lastSignature) return;
+    state.lastSignature = signature;
+    state.lastText = visible.map(msg => `${cxClock(msg.time)} ${msg.message || ''}`.trim()).join('\n');
+    if (!visible.length) {
+        logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
         return;
     }
-    const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
-    logEl.innerHTML = messages.map(msg => {
-        const time = msg.time ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-        return `<div class="console-line"><span class="console-line-time">${time}</span><span class="console-line-message">${escapeHtml(msg.message || '')}</span></div>`;
+    const previousTop = logEl.scrollTop;
+    logEl.innerHTML = visible.map(msg => {
+        const kind = cxClassifyLine(msg);
+        return `<div class="console-line cx-line cx-line-${kind}"><time class="cx-line-time">${cxClock(msg.time)}</time><span class="cx-line-message">${escapeHtml(msg.message || '')}</span></div>`;
     }).join('');
-    if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight;
+    logEl.scrollTop = state.autoscroll ? logEl.scrollHeight : previousTop;
 }
 
 async function refreshMarlinConsole() {
     const device = marlinModalDevice;
     if (!device) return;
     try {
-        const response = await fetch(`/api/marlin-printers/console?device=${encodeURIComponent(device)}&count=150`);
+        const response = await fetch(`/api/console/messages?device=${encodeURIComponent(device)}&count=150`);
         const data = await response.json();
         renderMarlinConsoleLog(data.messages || []);
     } catch (error) {
@@ -19671,24 +21027,126 @@ async function refreshMarlinConsole() {
     }
 }
 
+async function marlinConsoleLoadHistory(device) {
+    try {
+        const data = await cxRequest(`/api/console/history?device=${encodeURIComponent(device)}&limit=50`);
+        marlinModalConsole.history = Array.isArray(data.history) ? data.history : [];
+    } catch (error) {
+        marlinModalConsole.history = [];
+    }
+    marlinModalConsole.histIdx = -1;
+}
+
 function wireMarlinConsoleForm(device) {
     const form = document.getElementById('marlin-printer-console-form');
     if (!form) return;
+    const state = marlinModalConsole;
+    Object.assign(state, { history: [], histIdx: -1, draft: '', clearedAt: 0, lastSignature: '', lastText: '' });
+    const input = document.getElementById('marlin-printer-console-input');
+    marlinConsoleLoadHistory(device);
+
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const input = document.getElementById('marlin-printer-console-input');
+        if (!cxIsAdmin()) return;
         const command = input?.value.trim();
         if (!command) return;
         input.value = '';
+        state.histIdx = -1;
+        state.draft = '';
         try {
             const formData = new FormData();
             formData.append('device', device);
             formData.append('command', command);
-            await fetch('/api/marlin-printers/console', { method: 'POST', body: formData });
+            await cxRequest('/api/console/command', { method: 'POST', body: formData }, t('cxCommandFailed'));
+            marlinConsoleLoadHistory(device);
         } catch (error) {
-            console.error(error);
+            showToast(error.message || t('cxCommandFailed'), 'error');
+            if (input && !input.value) input.value = command;
         }
         [150, 400, 900, 1800].forEach(delay => setTimeout(refreshMarlinConsole, delay));
+    });
+
+    // Historial con ↑/↓, igual que en Consolas.
+    input?.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+        if (!state.history.length) return;
+        event.preventDefault();
+        if (event.key === 'ArrowUp') {
+            if (state.histIdx === -1) state.draft = input.value;
+            if (state.histIdx < state.history.length - 1) state.histIdx += 1;
+            input.value = state.history[state.histIdx];
+        } else {
+            if (state.histIdx === -1) return;
+            state.histIdx -= 1;
+            input.value = state.histIdx === -1 ? state.draft : state.history[state.histIdx];
+        }
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+    });
+
+    const fileInput = document.getElementById('marlin-console-file');
+    fileInput?.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = '';
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('device', device);
+        formData.append('file', file);
+        try {
+            const data = await cxRequest('/api/console/run-file', { method: 'POST', body: formData }, t('cxFileFailed'));
+            showToast(cxFormat(t('cxFileSent'), { sent: data.sent ?? 0, skipped: data.skipped ?? 0 }));
+            refreshMarlinConsole();
+        } catch (error) {
+            appAlert(error.message || t('cxFileFailed'), '', 'danger');
+        }
+    });
+
+    document.querySelectorAll('#marlin-printer-modal-console [data-mc]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.mc;
+            if (action === 'clear') {
+                state.clearedAt = Date.now() / 1000;
+                state.lastSignature = '';
+                state.lastText = '';
+                const logEl = document.getElementById('marlin-printer-console-log');
+                if (logEl) logEl.innerHTML = `<div class="empty-state-small">${escapeHtml(t('cxLogEmpty'))}</div>`;
+            } else if (action === 'copy') {
+                try {
+                    await navigator.clipboard.writeText(state.lastText);
+                    showToast(t('cxCopied'));
+                } catch (error) {
+                    showToast(t('cxCopyFailed'), 'error');
+                }
+            } else if (action === 'save') {
+                try {
+                    const response = await fetch(`/api/console/log/export?device=${encodeURIComponent(device)}&count=500`);
+                    if (!response.ok) throw new Error(t('cxSaveFailed'));
+                    const blob = await response.blob();
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = match ? decodeURIComponent(match[1]) : 'consola-marlin.log';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                } catch (error) {
+                    showToast(error.message || t('cxSaveFailed'), 'error');
+                }
+            } else if (action === 'load') {
+                fileInput?.click();
+            } else if (action === 'autoscroll') {
+                state.autoscroll = !state.autoscroll;
+                btn.setAttribute('aria-checked', String(state.autoscroll));
+            } else if (action === 'macros') {
+                // Las macros y plantillas viven en Consolas: se abre con esta máquina elegida.
+                closeMarlinPrinterModal();
+                consoleSelectedPort = `m:${device}`;
+                switchSection('console');
+            }
+        });
     });
 }
 
@@ -20366,6 +21824,7 @@ function loadPluginAsset(plugin) {
 }
 
 async function loadInstalledPluginModules(catalog = null) {
+    let failedPlugins = 0;
     try {
         let list = catalog;
         if (!Array.isArray(list)) {
@@ -20373,9 +21832,13 @@ async function loadInstalledPluginModules(catalog = null) {
             if (!response.ok) return;
             list = (await response.json()).plugins || [];
         }
-        await Promise.all(list.filter(plugin => plugin.installed && plugin.enabled && plugin.frontend).map(loadPluginAsset));
+        const settled = await Promise.allSettled(list.filter(plugin => plugin.installed && plugin.enabled && plugin.frontend).map(loadPluginAsset));
+        failedPlugins = settled.filter(item => item.status === 'rejected').length;
     } catch (error) {
         console.error('Error al cargar plugins:', error);
+    } finally {
+        // La pantalla de carga espera esto para dar los plugins por cargados.
+        window.dispatchEvent(new CustomEvent('nopal:plugins-ready', { detail: { failed: failedPlugins } }));
     }
 }
 
@@ -21309,6 +22772,7 @@ const settingsShowOfflineMachines = document.getElementById('settings-show-offli
 const settingsSoundAlerts = document.getElementById('settings-sound-alerts');
 const settingsLaserHomeConfirm = document.getElementById('settings-laser-home-confirm');
 const settingsOnboardingHints = document.getElementById('settings-onboarding-hints');
+const settingsBootScreen = document.getElementById('settings-boot-screen');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
 
 function createOptionSwitch(containerId, onSelect) {
@@ -21929,6 +23393,7 @@ function loadSettingsPanel() {
     if (settingsSoundAlerts) settingsSoundAlerts.checked = isSoundAlertsEnabled();
     if (settingsLaserHomeConfirm) settingsLaserHomeConfirm.checked = isLaserHomeConfirmEnabled();
     if (settingsOnboardingHints) settingsOnboardingHints.checked = isOnboardingHintsEnabled();
+    if (settingsBootScreen) settingsBootScreen.checked = window.NopalBoot ? window.NopalBoot.enabled() : true;
     settingsUiScaleSwitch.setValue(savedUiScale);
     settingsCncModeSwitch.setValue(localStorage.getItem('cncDashboardMode') || 'simple');
 
@@ -21968,6 +23433,7 @@ async function loadAboutInfo() {
 
         if (diag) {
             versionEl.textContent = diag.app_version || '—';
+            updateSettingsServerCard(diag);
             // "unavailable" en vez de "—": NOPAL puede correr sin .git (un
             // .zip descargado), y ese caso se distingue de "no se pudo leer
             // por ahora" en vez de verse igual.
@@ -22270,6 +23736,9 @@ function saveSettings() {
     if (settingsOnboardingHints) {
         localStorage.setItem('onboardingHintsEnabled', settingsOnboardingHints.checked ? 'true' : 'false');
     }
+    if (settingsBootScreen) {
+        localStorage.setItem('nopalBootScreen', settingsBootScreen.checked ? 'on' : 'off');
+    }
     const uiScaleValue = settingsUiScaleSwitch.getValue();
     if (uiScaleValue) {
         localStorage.setItem('uiScale', uiScaleValue);
@@ -22325,6 +23794,9 @@ if (settingsLaserHomeConfirm) {
 }
 if (settingsOnboardingHints) {
     settingsOnboardingHints.addEventListener('change', saveSettings);
+}
+if (settingsBootScreen) {
+    settingsBootScreen.addEventListener('change', saveSettings);
 }
 if (settingsSaveBtn) {
     settingsSaveBtn.addEventListener('click', saveSettings);
@@ -22866,7 +24338,8 @@ loadAccessoryArduinoDiscoverList();
 loadDashboardMatrixPreview();
 refreshDeviceNavVisibility();
 refreshFlashforgeNavVisibility();
-maybeStartTour('dashboard');
+// El recorrido espera a que se cierre la pantalla de carga para no arrancar debajo de ella.
+(window.NopalBoot ? window.NopalBoot.ready : Promise.resolve()).then(() => maybeStartTour('dashboard'));
 
 // loadPrinters ya queda programado por setupPrinterRefresh(), que además
 // respeta la preferencia del usuario. No crear un segundo intervalo aquí.
@@ -24249,7 +25722,7 @@ function aiEditProvider(provider) {
     if (title) title.textContent = `${t('aiEditing')}: ${provider.name || provider.base_url}`;
     const cancel = document.getElementById('ai-cancel-btn');
     if (cancel) cancel.hidden = false;
-    document.getElementById('ai-settings-fields')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    revealInSettings('ai-settings-fields', { behavior: 'smooth', block: 'nearest' });
 }
 
 function aiResetProviderForm() {

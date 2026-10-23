@@ -108,6 +108,18 @@ Los macros y el historial de consola de Klipper se consultan con:
 - `GET /api/tunascreen/machine/{id}/macros`
 - `GET /api/tunascreen/machine/{id}/console?count=50`
 
+## Perfiles de precalentamiento
+
+`GET /api/tunascreen/temperature-presets` (token de dispositivo) devuelve los
+perfiles por material que se configuran en la web de NOPAL:
+
+```json
+{"active": "pla", "materials": [{"id": "pla", "name": "PLA", "extruder": 210.0, "heater_bed": 70.0}]}
+```
+
+La interfaz aplica un perfil con la acción `set_temperature` (`hotend` y `bed`);
+"enfriar" es `set_temperature` con objetivo 0 en ambos.
+
 ## Responsabilidad de la interfaz
 
 La resolución física decide la densidad visual, no cambia el contrato:

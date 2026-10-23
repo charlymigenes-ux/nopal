@@ -1373,6 +1373,24 @@ async def send_console_command(host: str, command: str) -> bool:
     return await loop.run_in_executor(None, send_raw_command, host, command)
 
 
+def log_console_command(host: str, command: str) -> None:
+    """Deja el comando enviado en el log de la consola, marcado como comando,
+    para que se vea qué se mandó y cuándo."""
+    buffer = _console_buffers.setdefault(host, deque(maxlen=300))
+    buffer.append({"message": command, "time": time.time(), "type": "command"})
+
+
+async def send_line_and_wait(host: str, command: str, timeout: float = 60.0) -> bool:
+    """Manda una línea y espera su 'ok' (macros y archivos de la consola). Los
+    bytes realtime ('?', '!', '~') GRBL no los contesta con 'ok': esos se
+    mandan sin esperar."""
+    if command in REALTIME_SERIAL_COMMANDS:
+        return await send_console_command(host, command)
+    await ensure_listener_ready(host)
+    result = await marlin_driver.send_and_await_ok(_marlin_transport_for(host), command, timeout=timeout)
+    return bool(result["success"])
+
+
 async def get_status(host: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
     if _firmware_for_host(host) == "marlin":
         return await _get_marlin_status(host, timeout)
@@ -1551,6 +1569,51 @@ async def jog(host: str, axis: str, distance: float, feed: float) -> bool:
         return True
     command = f"$J=G91 G21 {axis.upper()}{distance:.3f} F{feed}"
     return await asyncio.get_event_loop().run_in_executor(None, send_raw_command, host, command)
+
+
+# ── Disparo de prueba ("Encender láser") ──
+# Con el modo láser de GRBL ($32=1) un "M3 S…" suelto NO emite: la placa solo
+# enciende el láser mientras hay un movimiento G1 (así protege la madera cuando
+# la cabeza está quieta). Para que el botón dispare de verdad se manda un G1
+# diminuto y MUY lento (0.3 mm a 1 mm/min = 18 s de láser encendido), en
+# relativo y volviendo a G90. Apagar = pausa (`!`, que en modo láser apaga el
+# láser) y reinicio suave (0x18), que descarta lo que faltaba del movimiento.
+FIRE_TEST_DISTANCE_MM = 0.3
+FIRE_TEST_FEED_MM_MIN = 1.0
+FIRE_TEST_SECONDS = FIRE_TEST_DISTANCE_MM / FIRE_TEST_FEED_MM_MIN * 60
+FIRE_TEST_STOP_GAP_S = 0.25
+
+
+async def fire_test(host: str, power_s: int) -> Optional[float]:
+    """Enciende el láser con la potencia S dada. Devuelve los segundos que
+    dura (0 = hasta apagarlo a mano, como en Marlin) o None si la placa no
+    aceptó el comando."""
+    loop = asyncio.get_event_loop()
+    if _firmware_for_host(host) == "marlin":
+        ok = await loop.run_in_executor(None, send_raw_command, host, f"M3 S{power_s}")
+        return 0.0 if ok else None
+    lines = [
+        "G91",
+        f"G1 X{FIRE_TEST_DISTANCE_MM:.3f} F{FIRE_TEST_FEED_MM_MIN:g} S{power_s} M3",
+        "G90",
+    ]
+    for line in lines:
+        if not await loop.run_in_executor(None, send_raw_command, host, line):
+            # Si algo falló a medias no se deja la placa en relativo.
+            await loop.run_in_executor(None, send_raw_command, host, "G90")
+            return None
+    return FIRE_TEST_SECONDS
+
+
+async def fire_test_stop(host: str) -> bool:
+    """Apaga el disparo de prueba y deja la placa lista (láser apagado, G90)."""
+    loop = asyncio.get_event_loop()
+    if _firmware_for_host(host) == "marlin":
+        return await loop.run_in_executor(None, send_raw_command, host, "M5")
+    held = await loop.run_in_executor(None, send_raw_command, host, "!")
+    await asyncio.sleep(FIRE_TEST_STOP_GAP_S)
+    reset = await loop.run_in_executor(None, send_raw_command, host, "\x18")
+    return bool(held or reset)
 
 
 async def home(host: str, axes: Optional[str] = None) -> bool:

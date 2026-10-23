@@ -63,11 +63,12 @@ def test_update_topbar_user_applies_role_visibility():
     assert ".hidden" in apply_body
 
 
-def test_layout_customizer_filters_by_role():
-    assert re.search(r"isModuleAllowed:\s*key\s*=>\s*isSettingsModuleAllowedForRole\(key\)", APP_JS)
-    scope = _function_body("createModulePageScope")
-    # Las filas del editor y la visibilidad de los grupos consultan el filtro.
-    assert scope.count("isModuleAllowed(") >= 3
+def test_settings_tabs_filter_by_role():
+    # Las pestañas reemplazaron al personalizador de layout: una pestaña solo
+    # se muestra si el rol puede ver al menos una de sus tarjetas.
+    tab_allowed = _function_body("isSettingsTabAllowed")
+    assert "isSettingsModuleAllowedForRole(" in tab_allowed
+    assert "isSettingsTabAllowed(" in _function_body("renderSettingsTabs")
     allowed = _function_body("isSettingsModuleAllowedForRole")
     assert "ADMIN_ONLY_SETTINGS_MODULES" in allowed
 

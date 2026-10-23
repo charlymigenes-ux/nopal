@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from backend.auth_deps import require_auth
+from backend.services.gcode_render_service import schedule_render
 from backend.utils import MODELS_ROOT, GCODE_ROOT, get_section_root, safe_section_path
 
 router = APIRouter()
@@ -59,6 +60,12 @@ async def upload_model(
 
     with open(target, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    rel_path = str(target.relative_to(Path(get_section_root(section)).resolve()))
+    if section == "gcode":
+        # El render se hace ahora, en segundo plano, para que galería y Láser
+        # ya lo encuentren listo en vez de generarlo al abrir la pantalla.
+        schedule_render(rel_path)
 
     return {
         "success": True,

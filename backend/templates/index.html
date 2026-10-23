@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=357">
+    <script>try { if (localStorage.getItem('nopalBootScreen') === 'off') document.documentElement.classList.add('boot-off'); } catch (e) { /* sin localStorage: se muestra */ }</script>
+    <link rel="stylesheet" href="/static/css/style.css?v=361">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -186,9 +187,9 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14" y1="4" x2="10" y2="20"/></svg>
                             <span data-i18n="navGcodeEditor">Editor G-Code</span>
                         </button>
-                        <button class="nav-item" data-section="console" data-i18n-title="navSystemConsole" title="Consola del sistema">
+                        <button class="nav-item" data-section="console" data-i18n-title="navSystemConsole" title="Consolas">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                            <span data-i18n="navSystemConsole">Consola del sistema</span>
+                            <span data-i18n="navSystemConsole">Consolas</span>
                         </button>
                     </div>
                 </div>
@@ -712,9 +713,11 @@
                                     <div class="preview-file-actions">
                                         <button type="button" class="btn-file-action btn-file-action-accent" id="gcode-send-laser-btn"><span data-i18n="sendToLaser">Enviar a láser</span></button>
                                         <button type="button" class="btn-file-action" id="gcode-download-btn"><span data-i18n="downloadFile">Descargar</span></button>
-                                        <button type="button" class="btn-file-action" id="gcode-rename-btn"><span data-i18n="rename">Renombrar</span></button>
                                         <button type="button" class="btn-file-action" id="gcode-move-btn"><span data-i18n="moveFile">Mover</span></button>
                                         <button type="button" class="btn-file-action btn-file-action-danger" id="gcode-delete-btn"><span data-i18n="delete">Eliminar</span></button>
+                                        <!-- Renombrar vive en el menú ••• de cada archivo; el botón queda oculto
+                                             porque wireFileActionButtons y la selección múltiple lo usan por id. -->
+                                        <button type="button" class="btn-file-action" id="gcode-rename-btn" hidden><span data-i18n="rename">Renombrar</span></button>
                                     </div>
                                 </div>
                                 <div class="gcode-preview-coordinate-frame">
@@ -733,45 +736,180 @@
             </section>
 
             <section id="console-section" class="view-section" style="display: none;">
-                <main class="main-content console-macros-main">
-                    <div class="console-macros-topbar">
-                        <section class="page-header console-macros-header">
-                            <h1 data-i18n="console">Consola</h1>
-                            <p data-i18n="consoleDescription">Selecciona una impresora y envía comandos G-code directamente, observando la respuesta en tiempo real.</p>
-                        </section>
-                        <section class="page-header console-macros-header">
-                            <h1 data-i18n="macros">Macros</h1>
-                            <p data-i18n="macrosDescription">Ejecuta macros configurados en Klipper con un clic. Se cargan los de la impresora seleccionada del lado izquierdo.</p>
-                        </section>
-                    </div>
-                    <div class="console-macros-split">
-                        <div class="console-macros-half">
-                            <div class="console-printer-picker" id="console-printer-picker"></div>
-                            <div class="console-card">
-                                <div class="console-toolbar">
-                                    <div class="console-font-size-toggle" data-target="console-log">
-                                        <button type="button" class="console-font-size-btn" data-size="sm">A-</button>
-                                        <button type="button" class="console-font-size-btn active" data-size="md">A</button>
-                                        <button type="button" class="console-font-size-btn" data-size="lg">A+</button>
-                                    </div>
-                                    <button type="button" class="btn-icon-dark" id="console-clear-btn" title="Limpiar">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                                    </button>
+                <main class="main-content cx-main">
+                    <section class="page-header cx-header">
+                        <h1 data-i18n="cxPageTitle">Consolas</h1>
+                        <p class="cx-scope-note" data-i18n="cxScopeNote">Consola principal de NOPAL y consolas de las impresoras 3D (Klipper y Marlin). El láser y la CNC (GRBL) tienen su propia consola dentro de su sección.</p>
+                    </section>
+
+                    <section class="cx-card cx-machines" aria-labelledby="cx-machines-title">
+                        <header class="cx-card-head">
+                            <div>
+                                <h2 id="cx-machines-title" data-i18n="cxMachinesTitle">Máquinas</h2>
+                                <p data-i18n="cxMachinesSubtitle">Selecciona una consola: el sistema o una impresora para enviar comandos y macros</p>
+                            </div>
+                        </header>
+                        <div class="cx-machine-list" id="console-printer-picker"></div>
+                    </section>
+
+                    <div class="cx-split">
+                        <section class="cx-card cx-console" aria-labelledby="cx-console-title">
+                            <header class="cx-card-head">
+                                <div>
+                                    <h2 id="cx-console-title" data-i18n="cxConsoleTitle">Consola</h2>
+                                    <p data-i18n="cxConsoleSubtitle">Comandos directos y salida en tiempo real</p>
                                 </div>
-                                <div class="console-log" id="console-log"></div>
-                                <form class="console-input-row" id="console-input-form">
-                                    <input type="text" id="console-input" autocomplete="off" data-i18n-placeholder="consoleInputPlaceholder" placeholder="Enviar comando...">
-                                    <button type="submit" class="btn-icon-dark" title="Enviar">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                <div class="cx-menu-wrap">
+                                    <button type="button" class="cx-icon-btn" id="cx-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="cx-menu" data-i18n-aria-label="cxMenu" aria-label="Más opciones">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg>
+                                    </button>
+                                    <div class="cx-popover cx-menu" id="cx-menu" role="menu" hidden>
+                                        <button type="button" role="menuitem" data-cx-action="save"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg><span data-i18n="cxSaveLog">Guardar log</span></button>
+                                        <button type="button" role="menuitem" data-cx-action="load"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 8l5-5 5 5"/><path d="M4 20h16"/></svg><span data-i18n="cxLoadFile">Cargar archivo</span></button>
+                                        <button type="button" role="menuitem" data-cx-action="copy"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg><span data-i18n="cxCopyLog">Copiar log</span></button>
+                                        <button type="button" role="menuitem" data-cx-action="clear"><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg><span data-i18n="cxClearLog">Limpiar</span></button>
+                                    </div>
+                                </div>
+                            </header>
+
+                            <div class="console-log cx-log" id="console-log" role="log" aria-live="off" tabindex="0"></div>
+
+                            <div class="cx-input-zone">
+                                <form class="cx-input-row" id="console-input-form" autocomplete="off">
+                                    <input type="text" id="console-input" class="cx-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="cxInputPlaceholder" placeholder="Escribe un comando…" data-i18n-aria-label="cxInputPlaceholder" aria-label="Escribe un comando…">
+                                    <button type="button" class="cx-icon-btn" id="cx-input-clear-btn" data-i18n-aria-label="cxClearInput" aria-label="Borrar texto">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6"/><path d="M9 9l6 6"/></svg>
+                                    </button>
+                                    <button type="button" class="cx-icon-btn" id="cx-copy-btn" data-i18n-aria-label="cxCopyLog" aria-label="Copiar log">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+                                    </button>
+                                    <div class="cx-menu-wrap">
+                                        <button type="button" class="cx-icon-btn" id="cx-settings-btn" aria-haspopup="true" aria-expanded="false" aria-controls="cx-settings-pop" data-i18n-aria-label="cxSettings" aria-label="Ajustes de la consola">
+                                            <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                                        </button>
+                                        <div class="cx-popover cx-settings-pop" id="cx-settings-pop" hidden>
+                                            <span class="cx-pop-label" data-i18n="cxFontSize">Tamaño de letra</span>
+                                            <div class="console-font-size-toggle cx-font-toggle" data-target="console-log">
+                                                <button type="button" class="console-font-size-btn" data-size="sm" aria-label="A-">A-</button>
+                                                <button type="button" class="console-font-size-btn active" data-size="md" aria-label="A">A</button>
+                                                <button type="button" class="console-font-size-btn" data-size="lg" aria-label="A+">A+</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="cx-icon-btn cx-send-btn" id="cx-send-btn" data-i18n-aria-label="cxSend" aria-label="Enviar comando">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                                     </button>
                                 </form>
+                                <p class="cx-admin-note" id="cx-admin-note" data-i18n="cxAdminOnly" hidden>Solo un administrador puede enviar comandos.</p>
+
+                                <div class="cx-bottombar">
+                                    <div class="cx-menu-wrap">
+                                        <button type="button" class="cx-text-btn" id="cx-history-btn" aria-haspopup="true" aria-expanded="false" aria-controls="cx-history-pop">
+                                            <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                            <span data-i18n="cxHistory">Historial</span>
+                                        </button>
+                                        <div class="cx-popover cx-history-pop" id="cx-history-pop" hidden>
+                                            <ul class="cx-history-list" id="cx-history-list"></ul>
+                                            <button type="button" class="cx-text-btn cx-history-clear" id="cx-history-clear-btn">
+                                                <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+                                                <span data-i18n="cxHistoryClear">Borrar historial</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="cx-text-btn" id="console-clear-btn">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+                                        <span data-i18n="cxClearLog">Limpiar</span>
+                                    </button>
+                                    <button type="button" class="cx-text-btn" id="cx-save-btn">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+                                        <span data-i18n="cxSaveLog">Guardar log</span>
+                                    </button>
+                                    <button type="button" class="cx-text-btn" id="cx-load-btn">
+                                        <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 8l5-5 5 5"/><path d="M4 20h16"/></svg>
+                                        <span data-i18n="cxLoadFile">Cargar archivo</span>
+                                    </button>
+                                    <input type="file" id="cx-file-input" accept=".gcode,.gco,.txt,.nc" hidden>
+                                    <button type="button" class="cx-switch" id="cx-autoscroll" role="switch" aria-checked="true">
+                                        <span class="cx-switch-track" aria-hidden="true"><span class="cx-switch-thumb"></span></span>
+                                        <span data-i18n="cxAutoscroll">Autoscroll</span>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div class="console-macros-half">
-                            <div class="macros-grid" id="macros-grid"></div>
-                        </div>
+                        </section>
+
+                        <section class="cx-card cx-side" aria-label="Macros">
+                            <div class="cx-tabs" role="tablist" data-i18n-aria-label="cxTabsLabel" aria-label="Secciones de macros">
+                                <button type="button" role="tab" class="cx-tab active" id="cx-tab-macros" data-cx-tab="macros" aria-selected="true" aria-controls="cx-panel-macros" data-i18n="cxTabMacros">Macros</button>
+                                <button type="button" role="tab" class="cx-tab" id="cx-tab-templates" data-cx-tab="templates" aria-selected="false" aria-controls="cx-panel-templates" tabindex="-1" data-i18n="cxTabTemplates">Plantillas</button>
+                                <button type="button" role="tab" class="cx-tab" id="cx-tab-help" data-cx-tab="help" aria-selected="false" aria-controls="cx-panel-help" tabindex="-1" data-i18n="cxTabHelp">Ayuda</button>
+                            </div>
+
+                            <div class="cx-panel" id="cx-panel-macros" role="tabpanel" aria-labelledby="cx-tab-macros">
+                                <label class="cx-search">
+                                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                                    <input type="search" id="cx-macro-search" autocomplete="off" data-i18n-placeholder="cxMacroSearch" placeholder="Buscar macro…" data-i18n-aria-label="cxMacroSearch" aria-label="Buscar macro…">
+                                </label>
+                                <div class="cx-macro-list" id="macros-grid"></div>
+                                <button type="button" class="cx-primary-btn" id="cx-macro-new-btn">
+                                    <svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                                    <span data-i18n="cxMacroNew">Nueva macro</span>
+                                </button>
+                            </div>
+
+                            <div class="cx-panel" id="cx-panel-templates" role="tabpanel" aria-labelledby="cx-tab-templates" hidden>
+                                <div class="cx-panel-intro">
+                                    <h3 data-i18n="cxTemplatesTitle">Plantillas de macros</h3>
+                                    <p data-i18n="cxTemplatesHint">Elige una plantilla, ajusta sus parámetros y envíala.</p>
+                                </div>
+                                <div class="cx-template-list" id="cx-template-list"></div>
+                            </div>
+
+                            <div class="cx-panel" id="cx-panel-help" role="tabpanel" aria-labelledby="cx-tab-help" hidden>
+                                <div class="cx-help-card">
+                                    <svg class="cx-ico cx-ico-lg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><path d="M12 17h.01"/></svg>
+                                    <div>
+                                        <h3 data-i18n="cxHelpTitle">¿Cómo usar las macros?</h3>
+                                        <p data-i18n="cxHelpIntro">Las macros son secuencias de comandos que se ejecutan con un solo clic.</p>
+                                    </div>
+                                </div>
+                                <ul class="cx-tips">
+                                    <li><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg><div><strong data-i18n="cxHelpTip1Title">Elige la máquina</strong><span data-i18n="cxHelpTip1Body">Selecciona arriba la máquina activa; los comandos y macros se envían a ella.</span></div></li>
+                                    <li><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><div><strong data-i18n="cxHelpTip2Title">Crea tus macros</strong><span data-i18n="cxHelpTip2Body">Con "Nueva macro" escribe un comando por línea y elige un icono.</span></div></li>
+                                    <li><svg class="cx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14.8V3.5a2.5 2.5 0 0 0-5 0v11.3a4.5 4.5 0 1 0 5 0z"/></svg><div><strong data-i18n="cxHelpTip3Title">Usa plantillas</strong><span data-i18n="cxHelpTip3Body">Las plantillas piden valores, como la temperatura, antes de enviarse.</span></div></li>
+                                </ul>
+                            </div>
+                        </section>
                     </div>
                 </main>
+
+                <dialog class="cx-dialog" id="cx-macro-dialog" aria-labelledby="cx-macro-dialog-title">
+                    <form method="dialog" id="cx-macro-form" class="cx-dialog-form">
+                        <h2 id="cx-macro-dialog-title" data-i18n="cxEditorNewTitle">Nueva macro</h2>
+                        <label class="cx-field"><span data-i18n="cxFieldName">Nombre</span>
+                            <input type="text" id="cx-macro-name" maxlength="60" required></label>
+                        <label class="cx-field"><span data-i18n="cxFieldDescription">Descripción</span>
+                            <input type="text" id="cx-macro-desc" maxlength="140"></label>
+                        <fieldset class="cx-field cx-icon-field"><legend data-i18n="cxFieldIcon">Icono</legend>
+                            <div class="cx-icon-grid" id="cx-macro-icons"></div></fieldset>
+                        <fieldset class="cx-field cx-scope-field"><legend data-i18n="cxFieldScopes">Disponible para</legend>
+                            <div class="cx-scope-options">
+                                <label class="cx-scope-option"><input type="checkbox" name="cx-macro-scope" value="printer"><span data-i18n="cxScopePrinter">Impresoras 3D</span></label>
+                                <label class="cx-scope-option"><input type="checkbox" name="cx-macro-scope" value="laser"><span data-i18n="cxScopeLaser">Láser</span></label>
+                                <label class="cx-scope-option"><input type="checkbox" name="cx-macro-scope" value="cnc"><span data-i18n="cxScopeCnc">CNC</span></label>
+                            </div></fieldset>
+                        <label class="cx-field"><span data-i18n="cxFieldCommands">Comandos (uno por línea)</span>
+                            <textarea id="cx-macro-commands" rows="6" spellcheck="false" required></textarea></label>
+                        <div class="cx-field cx-chips-field">
+                            <span class="cx-chips-label" data-i18n="cxChipsLabel">Comandos frecuentes: haz clic para agregarlos</span>
+                            <div class="cx-cmd-chips" id="cx-macro-chips"></div>
+                        </div>
+                        <p class="cx-form-error" id="cx-macro-error" role="alert" hidden></p>
+                        <div class="cx-dialog-actions">
+                            <button type="button" class="cx-text-btn" id="cx-macro-cancel" data-i18n="cxCancel">Cancelar</button>
+                            <button type="submit" class="cx-primary-btn" id="cx-macro-save" data-i18n="cxSave">Guardar</button>
+                        </div>
+                    </form>
+                </dialog>
             </section>
 
             <section id="plugins-section" class="view-section" style="display: none;">
@@ -1360,6 +1498,7 @@
                                     <div class="laser-bed-map-axis laser-bed-map-axis-y" id="laser-bed-map-axis-y"></div>
                                     <div class="laser-bed-map-axis laser-bed-map-axis-x" id="laser-bed-map-axis-x"></div>
                                     <div class="laser-bed-map" id="laser-bed-map">
+                                        <img class="laser-bed-map-render" id="laser-bed-map-render" alt="" hidden draggable="false">
                                         <svg class="laser-bed-map-trace" id="laser-bed-map-trace" viewBox="0 0 100 100" preserveAspectRatio="none">
                                             <polyline id="laser-bed-map-trace-line" points="" fill="none" vector-effect="non-scaling-stroke"/>
                                         </svg>
@@ -2298,134 +2437,201 @@
             </section>
 
             <section id="settings-section" class="view-section" style="display: none;">
-                <header class="topbar settings-topbar">
-                    <div class="settings-topbar-title">
-                        <h1 data-i18n="settings">Settings</h1>
-                        <p class="settings-topbar-subtitle" data-i18n="settingsDescription">Manage app preferences, theme, language, and preview quality.</p>
+                <div class="st-head">
+                    <div class="st-head-title">
+                        <span class="st-head-icon" aria-hidden="true">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        </span>
+                        <div>
+                            <h1 data-i18n="settings">Configuración</h1>
+                            <p class="st-head-subtitle" data-i18n="settingsTabsSubtitle">Preferencias de la aplicación, apariencia, usuarios y dispositivos</p>
+                        </div>
                     </div>
-                    <div class="settings-topbar-actions">
-                        <span id="settings-status" class="settings-status"></span>
-                        <button type="button" class="btn-file-action" id="settings-customize-btn" data-i18n-title="settingsModuleCustomizerButtonHint" title="Personaliza el orden y los grupos de esta página">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-                            <span data-i18n="settingsModuleCustomizerButton">Personalizar</span>
+                    <div class="st-head-actions">
+                        <span id="settings-status" class="settings-status st-status" role="status" aria-live="polite"></span>
+                        <button id="settings-save-btn" class="btn btn-primary btn-settings-save st-save-btn" data-i18n="saveSettings">Guardar ajustes</button>
+                    </div>
+                </div>
+                <div class="st-tabs-wrap">
+                    <div class="st-tabs" id="settings-tabs" role="tablist" data-i18n-aria-label="settingsTabsAria" aria-label="Secciones de Configuración">
+                        <button type="button" class="st-tab" role="tab" id="st-tab-general" data-st-tab="general" aria-controls="st-panel-general" aria-selected="true" tabindex="0">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                            <span data-i18n="settingsTabGeneral">General</span>
                         </button>
-                        <button id="settings-save-btn" class="btn btn-primary btn-settings-save" data-i18n="saveSettings">Save Settings</button>
+                        <button type="button" class="st-tab" role="tab" id="st-tab-appearance" data-st-tab="appearance" aria-controls="st-panel-appearance" aria-selected="false" tabindex="-1">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 6 6 0 0 0 0-12 4 4 0 0 1 0-8z"/></svg>
+                            <span data-i18n="settingsTabAppearance">Apariencia</span>
+                        </button>
+                        <button type="button" class="st-tab" role="tab" id="st-tab-ai" data-st-tab="ai" aria-controls="st-panel-ai" aria-selected="false" tabindex="-1">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.7 1.8L21.5 17.5l-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+                            <span data-i18n="settingsTabAi">Inteligencia artificial</span>
+                            <svg class="st-tab-lock" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" role="img" aria-label="Solo administrador" data-i18n-aria-label="settingsAdminOnly"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                        </button>
+                        <button type="button" class="st-tab" role="tab" id="st-tab-users" data-st-tab="users" aria-controls="st-panel-users" aria-selected="false" tabindex="-1">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            <span data-i18n="settingsTabUsers">Usuarios y accesos</span>
+                            <svg class="st-tab-lock" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" role="img" aria-label="Solo administrador" data-i18n-aria-label="settingsAdminOnly"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                        </button>
+                        <button type="button" class="st-tab" role="tab" id="st-tab-devices" data-st-tab="devices" aria-controls="st-panel-devices" aria-selected="false" tabindex="-1">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+                            <span data-i18n="settingsTabDevices">Dispositivos</span>
+                            <svg class="st-tab-lock" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" role="img" aria-label="Solo administrador" data-i18n-aria-label="settingsAdminOnly"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                        </button>
+                        <button type="button" class="st-tab" role="tab" id="st-tab-system" data-st-tab="system" aria-controls="st-panel-system" aria-selected="false" tabindex="-1">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><line x1="6" y1="7" x2="6.01" y2="7"/><line x1="6" y1="17" x2="6.01" y2="17"/></svg>
+                            <span data-i18n="settingsTabSystem">Sistema</span>
+                        </button>
                     </div>
-                </header>
-                <main class="main-content">
-                    <!-- Los grupos reales (creados por el usuario) se arman en JS a
-                         partir del layout guardado en localStorage, moviendo las
-                         tarjetas de #settings-modules-pool a su grupo correspondiente.
-                         Ver createModulePageScope()/settingsModulesPageScope en
-                         app.js — motor exclusivo de Configuración (#help-section
-                         tiene su propio layout fijo de Centro de ayuda, sin
-                         personalización por arrastre, ver renderHelpCenter()). -->
-                    <div class="settings-modules-groups" id="settings-modules-groups"></div>
+                </div>
+                <main class="main-content st-main">
+                    <div class="st-panel" id="st-panel-general" role="tabpanel" aria-labelledby="st-tab-general" tabindex="0"></div>
+                    <div class="st-panel st-panel-cards" id="st-panel-appearance" role="tabpanel" aria-labelledby="st-tab-appearance" tabindex="0" hidden></div>
+                    <div class="st-panel st-panel-cards" id="st-panel-ai" role="tabpanel" aria-labelledby="st-tab-ai" tabindex="0" hidden></div>
+                    <div class="st-panel st-panel-cards" id="st-panel-users" role="tabpanel" aria-labelledby="st-tab-users" tabindex="0" hidden></div>
+                    <div class="st-panel st-panel-cards" id="st-panel-devices" role="tabpanel" aria-labelledby="st-tab-devices" tabindex="0" hidden></div>
+                    <div class="st-panel st-panel-cards" id="st-panel-system" role="tabpanel" aria-labelledby="st-tab-system" tabindex="0" hidden></div>
+                    <!-- Almacén de tarjetas: aquí viven en el HTML; renderSettingsTabs()
+                         en app.js mueve cada tarjeta (data-settings-module) al panel de
+                         su pestaña. El personalizador por grupos/arrastre quedó
+                         reemplazado por las pestañas (motor inerte). -->
                     <div class="settings-modules-pool" id="settings-modules-pool" hidden>
-                        <div class="settings-card card-collapsible settings-general-card" data-settings-module="general">
-                            <div class="card-header-std">
-                                <span class="card-header-std-icon">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-                                </span>
-                                <h2 class="card-header-std-title" data-i18n="generalSettings">Configuración General</h2>
-                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
-                            <p data-i18n="generalSettingsDescription">Idioma, calidad de vista previa y avisos de seguridad.</p>
-                            <div class="settings-field">
-                                <label class="settings-field-label" data-i18n="language">Language</label>
-                                <div class="option-switch" id="settings-language-switch">
-                                    <button type="button" class="option-switch-btn" data-value="es">Español</button>
-                                    <button type="button" class="option-switch-btn" data-value="en">English</button>
-                                    <button type="button" class="option-switch-btn" data-value="pt-BR">Português</button>
-                                    <button type="button" class="option-switch-btn" data-value="fr">Français</button>
-                                    <button type="button" class="option-switch-btn" data-value="de">Deutsch</button>
+                        <div class="st-general-grid" data-settings-module="general">
+                          <div class="st-col">
+                            <section class="settings-card st-card" aria-labelledby="st-view-title">
+                                <div class="st-card-head">
+                                    <span class="st-card-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+                                    <h2 id="st-view-title" data-i18n="settingsCardView">Vista</h2>
                                 </div>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="previewQuality">Preview Quality</span>
-                                    <p class="settings-field-hint" data-i18n="previewQualityDescription">Adjust renderer detail for thumbnails and previews.</p>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="previewQuality">Preview Quality</span>
+                                        <p class="settings-field-hint" data-i18n="previewQualityDescription">Adjust renderer detail for thumbnails and previews.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-preview-quality">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
                                 </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-preview-quality">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field">
-                                <label class="settings-field-label" data-i18n="uiScale">Tamaño de interfaz</label>
-                                <div class="option-switch" id="settings-ui-scale-switch">
-                                    <button type="button" class="option-switch-btn" data-value="100">100%</button>
-                                    <button type="button" class="option-switch-btn" data-value="95">95%</button>
-                                    <button type="button" class="option-switch-btn" data-value="90">90%</button>
-                                    <button type="button" class="option-switch-btn" data-value="85">85%</button>
+                                <div class="settings-field">
+                                    <label class="settings-field-label" data-i18n="uiScale">Tamaño de interfaz</label>
+                                    <div class="option-switch" id="settings-ui-scale-switch">
+                                        <button type="button" class="option-switch-btn" data-value="100">100%</button>
+                                        <button type="button" class="option-switch-btn" data-value="95">95%</button>
+                                        <button type="button" class="option-switch-btn" data-value="90">90%</button>
+                                        <button type="button" class="option-switch-btn" data-value="85">85%</button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="settings-field">
-                                <label class="settings-field-label" data-i18n="cncModeLabel">Modo del panel CNC</label>
-                                <p class="settings-field-hint" data-i18n="cncModeHint">Simple muestra solo lo esencial; Avanzado agrega overrides, coordenadas de trabajo, pines y perfiles.</p>
-                                <div class="option-switch" id="settings-cnc-mode-switch">
-                                    <button type="button" class="option-switch-btn" data-value="simple" data-i18n="cncModeSimple">Simple</button>
-                                    <button type="button" class="option-switch-btn" data-value="advanced" data-i18n="cncModeAdvanced">Avanzado</button>
+                                <div class="settings-field">
+                                    <label class="settings-field-label" data-i18n="cncModeLabel">Modo del panel CNC</label>
+                                    <p class="settings-field-hint" data-i18n="cncModeHint">Simple muestra solo lo esencial; Avanzado agrega overrides, coordenadas de trabajo, pines y perfiles.</p>
+                                    <div class="option-switch" id="settings-cnc-mode-switch">
+                                        <button type="button" class="option-switch-btn" data-value="simple" data-i18n="cncModeSimple">Simple</button>
+                                        <button type="button" class="option-switch-btn" data-value="advanced" data-i18n="cncModeAdvanced">Avanzado</button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="laserHomeConfirmToggle">Confirmar antes de hacer Home</span>
-                                    <p class="settings-field-hint" data-i18n="laserHomeConfirmToggleDescription">Muestra un aviso de seguridad antes de mover el cabezal a los interruptores límite.</p>
+                            </section>
+                            <section class="settings-card st-card" aria-labelledby="st-session-title">
+                                <div class="st-card-head">
+                                    <span class="st-card-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+                                    <h2 id="st-session-title" data-i18n="settingsCardSession">Esta sesión</h2>
                                 </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-laser-home-confirm">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="autoRefresh">Auto Refresh</span>
-                                    <p class="settings-field-hint" data-i18n="autoRefreshDescription">Enable automatic printer status updates every few seconds.</p>
+                                <div class="st-session">
+                                    <span class="st-session-avatar" id="st-session-avatar" aria-hidden="true">?</span>
+                                    <div class="st-session-info">
+                                        <span class="st-session-name" id="st-session-name">—</span>
+                                        <span class="st-chip st-chip-role" id="st-session-role" hidden></span>
+                                    </div>
+                                    <button type="button" class="btn-file-action st-session-logout" id="st-session-logout-btn">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                                        <span data-i18n="logoutAction">Cerrar sesión</span>
+                                    </button>
                                 </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-autorefresh">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="showOfflineMachines">Ver máquinas sin conexión</span>
-                                    <p class="settings-field-hint" data-i18n="showOfflineMachinesDescription">Si lo apagas, el dashboard solo muestra las impresoras y láseres conectados.</p>
+                            </section>
+                          </div>
+                          <div class="st-col">
+                            <section class="settings-card st-card" aria-labelledby="st-behavior-title">
+                                <div class="st-card-head">
+                                    <span class="st-card-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+                                    <h2 id="st-behavior-title" data-i18n="settingsCardBehavior">Comportamiento</h2>
                                 </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-show-offline-machines">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="soundAlerts">Alertas sonoras</span>
-                                    <p class="settings-field-hint" data-i18n="soundAlertsDescription">Reproduce un sonido y muestra una notificación cuando un trabajo de impresión o láser termina o falla.</p>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="laserHomeConfirmToggle">Confirmar antes de hacer Home</span>
+                                        <p class="settings-field-hint" data-i18n="laserHomeConfirmToggleDescription">Muestra un aviso de seguridad antes de mover el cabezal a los interruptores límite.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-laser-home-confirm">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
                                 </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-sound-alerts">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
-                            <div class="settings-field settings-field-switch">
-                                <div>
-                                    <span class="settings-field-label" data-i18n="onboardingHintsLabel">Recorrido guiado</span>
-                                    <p class="settings-field-hint" data-i18n="onboardingHintsDescription">Muestra un recorrido paso a paso la primera vez que entras a cada sección del panel.</p>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="autoRefresh">Auto Refresh</span>
+                                        <p class="settings-field-hint" data-i18n="autoRefreshDescription">Enable automatic printer status updates every few seconds.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-autorefresh">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
                                 </div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="settings-onboarding-hints">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-label" data-i18n="enabled">Enabled</span>
-                                </label>
-                            </div>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="showOfflineMachines">Ver máquinas sin conexión</span>
+                                        <p class="settings-field-hint" data-i18n="showOfflineMachinesDescription">Si lo apagas, el dashboard solo muestra las impresoras y láseres conectados.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-show-offline-machines">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
+                                </div>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="soundAlerts">Alertas sonoras</span>
+                                        <p class="settings-field-hint" data-i18n="soundAlertsDescription">Reproduce un sonido y muestra una notificación cuando un trabajo de impresión o láser termina o falla.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-sound-alerts">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
+                                </div>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="onboardingHintsLabel">Recorrido guiado</span>
+                                        <p class="settings-field-hint" data-i18n="onboardingHintsDescription">Muestra un recorrido paso a paso la primera vez que entras a cada sección del panel.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-onboarding-hints">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
+                                </div>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="bootScreenLabel">Pantalla de carga</span>
+                                        <p class="settings-field-hint" data-i18n="bootScreenDescription">Muestra el estado de cada módulo de NOPAL mientras arranca el panel.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="settings-boot-screen">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
+                                </div>
+                            </section>
+                            <section class="settings-card st-card" aria-labelledby="st-server-title">
+                                <div class="st-card-head">
+                                    <span class="st-card-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><line x1="6" y1="7" x2="6.01" y2="7"/><line x1="6" y1="17" x2="6.01" y2="17"/></svg></span>
+                                    <h2 id="st-server-title" data-i18n="settingsCardServer">Servidor</h2>
+                                    <span class="st-chip st-chip-ok" id="st-server-status"><span class="st-chip-dot" aria-hidden="true"></span><span data-i18n="online">En línea</span></span>
+                                </div>
+                                <p class="st-server-line" id="st-server-version" hidden></p>
+                                <code class="st-server-host" id="st-server-host" hidden></code>
+                            </section>
+                          </div>
                         </div>
                         <div class="settings-card theme-config-card card-collapsible" data-settings-module="appearance">
                             <div class="card-header-std">
@@ -3333,6 +3539,9 @@
     </div>
 
     <!-- Login overlay -->
+    <!-- Pantalla de carga: la dibuja y la maneja static/js/boot-screen.js. -->
+    <div id="boot-overlay" class="boot-overlay" role="dialog" aria-modal="true" aria-label="NOPAL"></div>
+
     <div id="login-overlay" class="login-overlay" hidden>
         <div class="login-card">
             <div class="login-lang-switch" id="login-lang-switch">
@@ -5647,11 +5856,12 @@
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=51"></script>
+    <script src="/static/js/translations.js?v=53"></script>
     <script src="/static/js/translations-pt-BR.js?v=8"></script>
     <script src="/static/js/translations-fr.js?v=8"></script>
     <script src="/static/js/translations-de.js?v=8"></script>
-    <script src="/static/js/app.js?v=290"></script>
+    <script src="/static/js/boot-screen.js?v=4"></script>
+    <script src="/static/js/app.js?v=293"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
