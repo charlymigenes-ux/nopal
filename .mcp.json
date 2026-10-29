@@ -7,7 +7,10 @@
         "serve",
         "--mcp"
       ],
-      "alwaysLoad": true
+      "alwaysLoad": true,
+      "env": {
+        "CODEGRAPH_MAX_FILE_SIZE_BYTES": "10485760"
+      }
     }
   }
 }
