@@ -111,7 +111,7 @@ function updateTopbarUser(user) {
 // 'logs' (el visor "Logs del sistema") NO va aquí — leer logs sí es de
 // operador (READ_LOGS); solo la configuración de niveles ('logsConfig') es
 // de admin.
-const ADMIN_ONLY_SETTINGS_MODULES = ['ai', 'users', 'tunascreen', 'logsConfig', 'updates', 'devices', 'accessories', 'backup'];
+const ADMIN_ONLY_SETTINGS_MODULES = ['ai', 'aiBehavior', 'aiAdvanced', 'users', 'tunascreen', 'logsConfig', 'updates', 'devices', 'accessories', 'backup'];
 
 // ¿El usuario actual puede ver esta ficha de Configuración? Mientras no se
 // conozca el usuario se asume que no (nunca hay un parpadeo de fichas
@@ -676,25 +676,41 @@ function renderSidebarOrderList() {
     if (!container || !navList) return;
 
     const order = getSidebarOrder();
-    container.innerHTML = order.map(sectionId => {
+    // Mosaico por grupos: cada categoría del menú (Dispositivos, Biblioteca…)
+    // es un bloque con su título y sus accesos; los bloques se reparten en
+    // columnas para que la lista no se alargue.
+    const groups = [];
+    order.forEach(sectionId => {
         const btn = navList.querySelector(`.nav-item[data-section="${sectionId}"]`);
-        if (!btn) return '';
+        if (!btn) return;
         const groupContainer = btn.closest('.nav-category-items');
-        const groupSections = groupContainer
-            ? Array.from(groupContainer.querySelectorAll(':scope > .nav-item[data-section]')).map(item => item.dataset.section)
-            : [sectionId];
-        const index = groupSections.indexOf(sectionId);
-        const iconEl = btn.querySelector('svg');
-        const icon = iconEl ? iconEl.outerHTML : '';
-        const labelEl = btn.querySelector('span[data-i18n]');
-        const label = labelEl ? labelEl.textContent : sectionId;
-        const options = groupSections.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
-        return `
+        const last = groups[groups.length - 1];
+        if (groupContainer && last && last.container === groupContainer) { last.ids.push(sectionId); return; }
+        if (!groupContainer && last && !last.container) { last.ids.push(sectionId); return; }
+        const headerEl = groupContainer ? btn.closest('.nav-category')?.querySelector('.nav-category-header span') : null;
+        groups.push({ container: groupContainer, title: headerEl ? headerEl.textContent.trim() : '', ids: [sectionId] });
+    });
+    container.innerHTML = groups.map(group => {
+        const rows = group.ids.map(sectionId => {
+            const btn = navList.querySelector(`.nav-item[data-section="${sectionId}"]`);
+            const groupSections = group.container
+                ? Array.from(group.container.querySelectorAll(':scope > .nav-item[data-section]')).map(item => item.dataset.section)
+                : [sectionId];
+            const index = groupSections.indexOf(sectionId);
+            const iconEl = btn.querySelector('svg');
+            const icon = iconEl ? iconEl.outerHTML : '';
+            const labelEl = btn.querySelector('span[data-i18n]');
+            const label = labelEl ? labelEl.textContent : sectionId;
+            const options = groupSections.map((_, i) => `<option value="${i + 1}" ${i === index ? 'selected' : ''}>${i + 1}</option>`).join('');
+            // Un acceso suelto no tiene con quién reordenarse: sin selector.
+            const picker = groupSections.length > 1 ? `<select class="sidebar-order-select" data-section="${sectionId}">${options}</select>` : '';
+            return `
             <div class="sidebar-order-row">
                 <span class="sidebar-order-row-label">${icon}<span>${escapeHtml(label)}</span></span>
-                <select class="sidebar-order-select" data-section="${sectionId}">${options}</select>
-            </div>
-        `;
+                ${picker}
+            </div>`;
+        }).join('');
+        return `<section class="sidebar-order-group">${group.title ? `<h4 class="sidebar-order-group-title">${escapeHtml(group.title)}</h4>` : ''}${rows}</section>`;
     }).join('');
 
     container.querySelectorAll('.sidebar-order-select').forEach(select => {
@@ -1547,9 +1563,118 @@ async function renderStandardModelPreview(container, fileUrl) {
     }
 }
 
+// ── Biblioteca de Impresión 3D: miniaturas estáticas y visor interactivo ──
+// Las tarjetas del mosaico muestran una instantánea fija de la forma real del
+// archivo (G-code, STL, 3MF u OBJ); el panel derecho abre el mismo archivo en
+// un visor que se gira con el mouse. Ambos usan NopalJobViewer.
+const MODEL_THUMB_MAX_BYTES = 80 * 1024 * 1024;   // más grande que esto tarda demasiado en leerse
+let libraryPreviewViewer = null;
+
+function libraryModelExt(model) {
+    return String(model?.extension || (model?.name || '').split('.').pop() || '').replace('.', '').toLowerCase();
+}
+
+function loadModelCardThumbs(container, files) {
+    if (!window.NopalJobViewer || !container) return;
+    // Los livianos primero: un archivo grande no retrasa a los demás.
+    [...files].sort((a, b) => (a.size || 0) - (b.size || 0)).forEach(model => {
+        const slot = [...container.querySelectorAll('.model-thumb')].find(el => el.dataset.thumbFor === model.id);
+        if (!slot) return;
+        slot.dataset.ext = libraryModelExt(model).toUpperCase();
+        if (!model.file_url || (model.size || 0) > MODEL_THUMB_MAX_BYTES) { slot.classList.add('is-empty'); return; }
+        window.NopalJobViewer.snapshot(model.file_url, libraryModelExt(model), 320)
+            .then(dataUrl => { if (slot.isConnected) { slot.querySelector('img')?.remove(); slot.insertAdjacentHTML('afterbegin', `<img alt="" src="${dataUrl}">`); slot.classList.add('has-image'); } })
+            .catch(() => { if (slot.isConnected) slot.classList.add('is-empty'); });
+    });
+}
+
+// Distintivo de origen en cada archivo: todos viven en la biblioteca de NOPAL
+// (icono verde) y, si además están en la carpeta de una impresora Klipper
+// (Moonraker/Mainsail), se suma el icono azul con el nombre de la máquina.
+const ORIGIN_ICON_NOPAL = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 9v6M9 12h6"/></svg>';
+const ORIGIN_ICON_MOONRAKER = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>';
+let printersFileIndexCache = { at: 0, files: null };
+
+async function getPrintersFileIndex() {
+    if (printersFileIndexCache.files && Date.now() - printersFileIndexCache.at < 20000) return printersFileIndexCache.files;
+    try {
+        const response = await fetch('/api/printers/files-index');
+        if (!response.ok) throw new Error('sin índice');
+        const data = await response.json();
+        printersFileIndexCache = { at: Date.now(), files: data.files || {} };
+    } catch (_) {
+        // Servidor sin esa ruta o sin impresoras: solo se marca NOPAL.
+        printersFileIndexCache = { at: Date.now(), files: {} };
+    }
+    return printersFileIndexCache.files;
+}
+
+async function applyModelOrigins(container, files) {
+    if (!container) return;
+    const index = await getPrintersFileIndex();
+    files.forEach(model => {
+        const printers = index[model.name] || [];
+        const html = `<span class="model-origin model-origin-nopal" title="${escapeHtml(t('originNopal'))}">${ORIGIN_ICON_NOPAL}</span>`
+            + (printers.length ? `<span class="model-origin model-origin-moonraker" title="${escapeHtml(t('originMoonraker'))}: ${escapeHtml(printers.join(', '))}">${ORIGIN_ICON_MOONRAKER}</span>` : '');
+        container.querySelectorAll('.model-origins').forEach(el => { if (el.dataset.originsFor === model.id) el.innerHTML = html; });
+    });
+}
+
+function destroyLibraryPreviewViewer() {
+    if (libraryPreviewViewer) { libraryPreviewViewer.destroy(); libraryPreviewViewer = null; }
+}
+
+// Devuelve true si montó el visor (el llamador no debe usar el viejo).
+function renderLibraryInteractivePreview(container, model) {
+    destroyLibraryPreviewViewer();
+    if (!window.NopalJobViewer || !model?.file_url) return false;
+    const ext = libraryModelExt(model);
+    const isGcode = GCODE_FILE_EXTENSIONS.some(g => g.replace('.', '') === ext);
+    if (!isGcode && !['stl', '3mf', 'obj'].includes(ext)) return false;
+    container.innerHTML = '';
+    container.style.backgroundImage = 'none';
+    container.classList.remove('gcode-mode');
+    container.classList.add('library-viewer-mode');
+    const host = document.createElement('div');
+    host.className = 'library-viewer-host';
+    container.appendChild(host);
+    const msg = document.createElement('div');
+    msg.className = 'jp-viewer-msg';
+    msg.textContent = t('jpLoading');
+    container.appendChild(msg);
+    const bar = document.createElement('div');
+    bar.className = 'jp-viewer-bar';
+    bar.innerHTML = `<span class="jp-viewer-hint">${escapeHtml(t('jpViewHint'))}</span><button type="button" class="jp-viewer-reset">${escapeHtml(t('jpViewReset'))}</button>`;
+    container.appendChild(bar);
+    let viewer = null;
+    try {
+        viewer = window.NopalJobViewer.create(host, {
+            progress: 100,
+            label: model.name,
+            onProgress: fraction => { if (!msg.hidden) msg.textContent = `${t('jpLoading')} ${Math.round(fraction * 100)}%`; },
+        });
+    } catch (error) { console.error(error); }
+    if (!viewer) { container.classList.remove('library-viewer-mode'); return false; }
+    libraryPreviewViewer = viewer;
+    bar.querySelector('button').addEventListener('click', () => viewer.resetView());
+    (async () => {
+        try {
+            const result = isGcode ? await viewer.load(model.file_url) : await viewer.loadModel(model.file_url, ext);
+            if (result === 'ok') msg.hidden = true;
+            else if (result === 'empty') msg.textContent = t('jpNoPath');
+        } catch (error) {
+            console.error(error);
+            if (libraryPreviewViewer === viewer) msg.textContent = t('jpNoPreview');
+        }
+    })();
+    return true;
+}
+
 function renderSelectedPreview(model) {
     const previewImage = document.getElementById('preview-image');
     if (!previewImage) return;
+    if (renderLibraryInteractivePreview(previewImage, model)) return;
+    previewImage.classList.remove('library-viewer-mode');
     previewImage.innerHTML = '';
 
     const fileUrl = model.file_url;
@@ -2786,7 +2911,7 @@ let currentGcodeData = { folders: [], files: [] };
 const gcodeTreeCache = {};
 const modelsTreeCache = {};
 let gcodeSearchQuery = '';
-let gcodeSortMode = localStorage.getItem('nopalGcodeSort') || 'name-asc';
+let gcodeSortMode = localStorage.getItem('nopalGcodeSort') || 'date-desc';
 let gcodeFilterMode = 'all';
 let gcodeTagFilter = '';
 let gcodeViewMode = localStorage.getItem('nopalGcodeView') || 'list';
@@ -3833,29 +3958,372 @@ function activePrintCardHtml(printer) {
 }
 
 function renderPrintQueue() {
-    if (!printQueue) return;
+    // La ficha ya no flota en el dashboard: los trabajos viven en la lista
+    // lateral (renderJobsRail) y el detalle en un popup. Aquí solo se
+    // refresca ese popup con los datos nuevos de las impresoras.
+    if (printQueue) printQueue.innerHTML = '';
+    refreshJobPopup();
+}
 
-    const activeJobs = (allPrinters || []).filter(printer => {
-        const jobState = printer.job?.state;
-        return jobState === 'printing' || jobState === 'paused';
+// ── Lista lateral de trabajos activos (cualquier tipo de máquina) ──
+let railJobs = [];
+let openJobPopupKey = null;
+
+function railJobKey(job) {
+    return `${job.device_type || job.machine_type}:${job.device_id ?? job.name}`;
+}
+
+function railJobSupportsControls(job) {
+    return ['marlin', 'laser', 'cnc'].includes(job.device_type);
+}
+
+function renderJobsRail(jobs) {
+    railJobs = Array.isArray(jobs) ? jobs : [];
+    const rail = document.getElementById('jobs-rail');
+    const list = document.getElementById('jobs-rail-list');
+    if (!rail || !list) return;
+    rail.hidden = !railJobs.length;
+    document.body.classList.toggle('has-jobs-rail', railJobs.length > 0);
+    const count = document.getElementById('jobs-rail-count');
+    if (count) count.textContent = String(railJobs.length);
+    list.innerHTML = railJobs.map(job => {
+        const progress = Math.max(0, Math.min(100, Math.round(job.progress || 0)));
+        const remaining = formatTimeRemaining(job.time_remaining_s);
+        const paused = job.state === 'paused';
+        return `
+            <button type="button" class="jobs-rail-item${paused ? ' is-paused' : ''}" data-job-key="${escapeHtml(railJobKey(job))}">
+                <span class="panel-job-icon panel-job-icon-${escapeHtml(job.machine_type || 'printer')}">${panelJobMachineIcon(job.machine_type)}</span>
+                <span class="jobs-rail-text">
+                    <strong>${escapeHtml(job.name || '—')}</strong>
+                    <small>${escapeHtml(job.filename || '—')}</small>
+                    <span class="jobs-rail-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></span>
+                </span>
+                <span class="jobs-rail-side">
+                    <strong>${progress}%</strong>
+                    <small>${paused ? escapeHtml(t('jobsRailPaused')) : (remaining ? escapeHtml(remaining) : '')}</small>
+                </span>
+            </button>`;
+    }).join('');
+    refreshJobPopup();
+}
+
+// La lista lateral termina justo encima del dock de abajo (Escenas / Acciones /
+// Matriz LED), esté abierto o contraído, y encima de la cortinilla de IA. Se
+// mide el borde superior real del dock en vez de adivinar una altura fija.
+(function initJobsRailDockSync() {
+    const stack = document.querySelector('.dashboard-fixed-stack');
+    if (!stack) return;
+    const sync = () => {
+        const top = stack.getBoundingClientRect().top;
+        const visible = stack.offsetParent !== null || getComputedStyle(stack).position === 'fixed';
+        const gap = visible && top > 0 ? Math.max(0, window.innerHeight - top) + 16 : 16;
+        document.documentElement.style.setProperty('--jobs-rail-bottom', `${Math.round(gap)}px`);
+    };
+    sync();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(stack);
+    window.addEventListener('resize', sync);
+    // El dock se contrae con una transición: se sigue hasta que termina.
+    stack.addEventListener('transitionrun', () => {
+        const start = performance.now();
+        const follow = () => { sync(); if (performance.now() - start < 600) requestAnimationFrame(follow); };
+        follow();
     });
+    stack.addEventListener('transitionend', sync);
+    document.addEventListener('click', event => { if (event.target.closest('#dashboard-dock-toggle')) setTimeout(sync, 50); });
+})();
 
-    if (!activeJobs.length) {
-        printQueue.innerHTML = `<div class="empty-state-small">${t('noActivePrints')}</div>`;
-        return;
+document.getElementById('jobs-rail-list')?.addEventListener('click', event => {
+    const item = event.target.closest('.jobs-rail-item');
+    if (item) openJobPopup(item.dataset.jobKey);
+});
+
+function jobPopupEl() {
+    let el = document.getElementById('job-popup');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'job-popup';
+    el.hidden = true;
+    el.innerHTML = `
+        <div class="job-popup-backdrop" data-job-popup-close></div>
+        <div class="job-popup-dialog" role="dialog" aria-modal="true" aria-labelledby="job-popup-title">
+            <div id="job-popup-body"></div>
+        </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', event => {
+        if (event.target.closest('[data-job-popup-close]')) { closeJobPopup(); return; }
+        const act = event.target.closest('[data-jp-action]');
+        if (act) runJobPopupAction(act.dataset.jpAction);
+    });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !el.hidden) closeJobPopup(); });
+    return el;
+}
+
+let jobPopupViewer = null;      // visor 3D vivo (se destruye al cerrar o cambiar de trabajo)
+let jobPopupBuiltKey = null;    // trabajo para el que ya está armado el esqueleto
+
+function openJobPopup(key) {
+    openJobPopupKey = key;
+    jobPopupEl().hidden = false;
+    refreshJobPopup();
+}
+
+function closeJobPopup() {
+    openJobPopupKey = null;
+    jobPopupBuiltKey = null;
+    if (jobPopupViewer) { jobPopupViewer.destroy(); jobPopupViewer = null; }
+    const el = document.getElementById('job-popup');
+    if (el) { el.hidden = true; const body = el.querySelector('#job-popup-body'); if (body) body.innerHTML = ''; }
+}
+
+const JP_ICON_CLOSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const JP_RING_RADIUS = 52;
+const JP_RING_LENGTH = 2 * Math.PI * JP_RING_RADIUS;
+
+// Esqueleto del popup. Se arma UNA vez por trabajo: los datos vivos se escriben
+// en los [data-jp] (updateJobPopup), así el visor 3D no se destruye en cada refresco.
+function jobPopupSkeletonHtml(job, isLaserLike) {
+    const progressBlock = `
+        <section class="jp-progress">
+            <h4 class="jp-section-title">${escapeHtml(t(isLaserLike ? 'jpProgressJob' : 'activePrintProgressHeader'))}</h4>
+            <div class="jp-progress-body">
+                <div class="jp-ring" role="img" aria-label="${escapeHtml(t('activePrintProgressHeader'))}">
+                    <svg viewBox="0 0 120 120" aria-hidden="true">
+                        <circle class="jp-ring-track" cx="60" cy="60" r="${JP_RING_RADIUS}" fill="none" stroke-width="10"/>
+                        <circle class="jp-ring-fill" data-jp="ring" cx="60" cy="60" r="${JP_RING_RADIUS}" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="${JP_RING_LENGTH}" stroke-dashoffset="${JP_RING_LENGTH}" transform="rotate(-90 60 60)"/>
+                    </svg>
+                    <span class="jp-ring-pct" data-jp="pct">0%</span>
+                </div>
+                <dl class="jp-stats">
+                    <div data-jp-row="elapsed"><dt>${escapeHtml(t('activePrintElapsed'))}</dt><dd data-jp="elapsed">—</dd></div>
+                    <div><dt>${escapeHtml(t('activePrintRemaining'))}</dt><dd data-jp="remaining">—</dd></div>
+                    <div data-jp-row="layers"><dt>${escapeHtml(t('activePrintLayers'))}</dt><dd data-jp="layers">—</dd></div>
+                    <div data-jp-row="speed"><dt>${escapeHtml(t('activePrintSpeed'))}</dt><dd data-jp="speed">—</dd></div>
+                </dl>
+            </div>
+            <div class="jp-bar" aria-hidden="true"><span data-jp="bar"></span></div>
+        </section>`;
+
+    const viewer = isLaserLike
+        ? `<div class="jp-viewer jp-viewer-2d">
+               <img class="jp-trace" data-jp="trace" alt="${escapeHtml(t('jpTraceAlt'))}" hidden>
+               <div class="jp-viewer-msg" data-jp="viewer-msg">${escapeHtml(t('jpLoading'))}</div>
+           </div>`
+        : `<div class="jp-viewer" data-jp="viewer">
+               <div class="jp-viewer-msg" data-jp="viewer-msg">${escapeHtml(t('jpLoading'))}</div>
+               <div class="jp-viewer-bar">
+                   <span class="jp-viewer-hint">${escapeHtml(t('jpViewHint'))}</span>
+                   <button type="button" class="jp-viewer-reset" data-jp-action="reset-view">${escapeHtml(t('jpViewReset'))}</button>
+               </div>
+           </div>`;
+
+    const temps = isLaserLike ? '' : `
+        <section class="jp-temps" data-jp="temps" hidden>
+            <h4 class="jp-section-title">${escapeHtml(t('jpTemps'))}</h4>
+            <dl class="jp-temp-list">
+                <div><dt>${escapeHtml(t('jpExtruder'))}</dt><dd><strong data-jp="t-ext">—</strong><span class="jp-chip jp-chip-hot" data-jp="t-ext-target"></span></dd></div>
+                <div><dt>${escapeHtml(t('jpBed'))}</dt><dd><strong data-jp="t-bed">—</strong><span class="jp-chip jp-chip-bed" data-jp="t-bed-target"></span></dd></div>
+            </dl>
+        </section>`;
+
+    return `
+        <header class="jp-head">
+            <span class="panel-job-icon panel-job-icon-${escapeHtml(job.machine_type || 'printer')} jp-head-icon">${panelJobMachineIcon(job.machine_type)}</span>
+            <div class="jp-head-text">
+                <h3 class="jp-title" id="job-popup-title">${escapeHtml(job.name || '—')}</h3>
+                <span class="jp-state" data-jp="state"></span>
+            </div>
+            <p class="jp-file" data-jp="file" title="${escapeHtml(job.filename || '')}">${escapeHtml(job.filename || '—')}</p>
+            <button type="button" class="jp-close" data-job-popup-close aria-label="${escapeHtml(t('jobPopupClose'))}">${JP_ICON_CLOSE}</button>
+        </header>
+        <div class="jp-grid">
+            ${viewer}
+            ${progressBlock}
+        </div>
+        <div class="jp-lower">
+            ${temps}
+            <section class="jp-controls" data-jp="controls">
+                <h4 class="jp-section-title">${escapeHtml(t('activePrintQuickControls'))}</h4>
+                <div class="jp-actions" data-jp="actions"></div>
+                <p class="jp-note" data-jp="note" hidden>${escapeHtml(t('jobPopupNoControls'))}</p>
+            </section>
+        </div>
+        <div class="jp-camera" data-jp="camera"></div>
+        <button type="button" class="jp-fullscreen" data-jp-action="fullscreen" data-jp="fullscreen" hidden>${escapeHtml(t('activePrintFullscreen'))}</button>`;
+}
+
+function jobPopupPrinterFor(job) {
+    return job.device_type === 'klipper' ? (allPrinters || []).find(p => p.name === job.device_id) || null : null;
+}
+
+function jobPopupSet(body, key, text) {
+    const node = body.querySelector(`[data-jp="${key}"]`);
+    if (node && node.textContent !== text) node.textContent = text;
+}
+
+// Respaldo para ubicar el archivo de un trabajo: 1) listado general de la
+// biblioteca (existe en cualquier versión del servidor); 2) la propia impresora
+// Klipper, que sí guarda el archivo que está imprimiendo.
+async function jobFileSourceFallback(job) {
+    const name = (job.filename || '').split('/').pop();
+    if (!name) return null;
+    try {
+        const response = await fetch('/api/models');
+        if (response.ok) {
+            const files = await response.json();
+            const hit = (files || []).find(f => f.name === name);
+            if (hit && hit.file_url) {
+                const rel = String(hit.id || '').replace(/^(models|gcode)\//, '');
+                return { section: String(hit.file_url).includes('/gcode/') ? 'gcode' : 'model', path: rel, url: hit.file_url };
+            }
+        }
+    } catch (_) { /* se prueba la impresora */ }
+    const printer = job.device_type === 'klipper' ? (allPrinters || []).find(p => p.name === job.device_id) : null;
+    if (printer && printer.job?.filename) {
+        return { section: null, path: null, url: `/api/printers/${printer.port}/job-file?filename=${encodeURIComponent(printer.job.filename)}`, fromPrinter: true };
+    }
+    return null;
+}
+
+function buildJobPopup(job, body) {
+    const isLaserLike = job.machine_type === 'laser' || job.machine_type === 'cnc';
+    body.innerHTML = jobPopupSkeletonHtml(job, isLaserLike);
+    body.dataset.laserLike = isLaserLike ? '1' : '0';
+    jobPopupBuiltKey = railJobKey(job);
+
+    // Vista previa: busca el archivo en la biblioteca por nombre.
+    const msg = body.querySelector('[data-jp="viewer-msg"]');
+    const showMsg = text => { if (msg) { msg.textContent = text; msg.hidden = !text; } };
+    (async () => {
+        let source = null;
+        try {
+            const response = await fetch(`/api/jobs/file-source?name=${encodeURIComponent(job.filename || '')}`);
+            if (response.ok) source = await response.json();
+        } catch (_) { /* sin red: se prueba el respaldo */ }
+        if (!source) source = await jobFileSourceFallback(job);
+        if (jobPopupBuiltKey !== railJobKey(job)) return;   // se cerró o cambió de trabajo
+        if (!source) { showMsg(t('jpNoPreview')); }
+        if (isLaserLike) {
+            const img = body.querySelector('[data-jp="trace"]');
+            if (source && img) {
+                img.src = `/api/gcode/thumbnail?path=${encodeURIComponent(source.path)}&kind=${job.machine_type === 'cnc' ? 'cnc' : 'laser'}`;
+                img.onload = () => { img.hidden = false; showMsg(''); };
+                img.onerror = () => showMsg(t('jpNoPreview'));
+            }
+            return;
+        }
+        const host = body.querySelector('[data-jp="viewer"]');
+        if (!host || !window.NopalJobViewer) { showMsg(t('jpNoPreview')); return; }
+        try {
+            jobPopupViewer = window.NopalJobViewer.create(host, { progress: job.progress, label: t('jpViewAlt') });
+            if (!jobPopupViewer) { showMsg(t('jpNoPreview')); return; }
+            const result = await jobPopupViewer.load(source ? source.url : null);
+            if (result === 'ok') showMsg('');
+            else if (result === 'empty') showMsg(source ? t('jpNoPath') : t('jpNoPreview'));
+        } catch (error) {
+            console.error(error);
+            showMsg(t('jpNoPreview'));
+        }
+    })();
+
+    const cam = body.querySelector('[data-jp="camera"]');
+    if (cam && job.device_type && job.device_id) {
+        cam.innerHTML = `<div class="panel-job-camera" data-cam-container="${escapeHtml(job.device_type)}:${escapeHtml(job.device_id)}"></div>`;
+        mountCameraCardsIn(cam);
+    }
+}
+
+function updateJobPopup(job, body) {
+    const printer = jobPopupPrinterFor(job);
+    const pj = printer?.job || {};
+    const progress = Math.max(0, Math.min(100, Math.round(job.progress ?? pj.progress ?? 0)));
+    const paused = job.state === 'paused';
+
+    const state = body.querySelector('[data-jp="state"]');
+    if (state) {
+        state.textContent = t(paused ? 'jobsRailPaused' : 'jpStateRunning');
+        state.classList.toggle('is-paused', paused);
+    }
+    jobPopupSet(body, 'pct', `${progress}%`);
+    const ring = body.querySelector('[data-jp="ring"]');
+    if (ring) ring.style.strokeDashoffset = String(JP_RING_LENGTH * (1 - progress / 100));
+    const bar = body.querySelector('[data-jp="bar"]');
+    if (bar) bar.style.width = `${progress}%`;
+
+    const remaining = job.time_remaining_s != null ? formatSecondsShort(job.time_remaining_s) : (pj.estimated_remaining != null ? formatSecondsShort(pj.estimated_remaining) : '—');
+    jobPopupSet(body, 'remaining', remaining);
+    const elapsedRow = body.querySelector('[data-jp-row="elapsed"]');
+    if (elapsedRow) elapsedRow.hidden = pj.print_duration == null;
+    if (pj.print_duration != null) jobPopupSet(body, 'elapsed', formatSecondsShort(pj.print_duration));
+    const layers = job.current_layer != null && job.total_layer ? `${job.current_layer} / ${job.total_layer}` : null;
+    const layersRow = body.querySelector('[data-jp-row="layers"]');
+    if (layersRow) layersRow.hidden = !layers;
+    if (layers) jobPopupSet(body, 'layers', layers);
+    const speedRow = body.querySelector('[data-jp-row="speed"]');
+    if (speedRow) speedRow.hidden = pj.speed == null;
+    if (pj.speed != null) jobPopupSet(body, 'speed', `${Math.round(pj.speed)} mm/s`);
+
+    if (jobPopupViewer) jobPopupViewer.setProgress(progress);
+
+    // Temperaturas: solo Klipper las trae en este momento.
+    const temps = body.querySelector('[data-jp="temps"]');
+    const d = printer?.data;
+    if (temps) {
+        temps.hidden = !d;
+        if (d) {
+            const fmt = v => (v == null ? '—' : `${Number(v).toFixed(1)} °C`);
+            const tgt = v => (v ? `${Math.round(v)} °C` : '—');
+            jobPopupSet(body, 't-ext', fmt(d.extruder?.temperature));
+            jobPopupSet(body, 't-ext-target', tgt(d.extruder?.target));
+            jobPopupSet(body, 't-bed', fmt(d.heater_bed?.temperature));
+            jobPopupSet(body, 't-bed-target', tgt(d.heater_bed?.target));
+        }
     }
 
-    printQueue.innerHTML = activeJobs.map(activePrintCardHtml).join('');
+    // Controles según el tipo de máquina.
+    const actions = body.querySelector('[data-jp="actions"]');
+    const note = body.querySelector('[data-jp="note"]');
+    const klipper = !!printer;
+    const controllable = klipper || railJobSupportsControls(job);
+    if (actions) {
+        const sig = `${controllable}|${paused}|${klipper && mutedActivePrintPorts.has(printer.port)}`;
+        if (actions.dataset.sig !== sig) {
+            actions.dataset.sig = sig;
+            actions.innerHTML = controllable ? `
+                <button type="button" class="jp-btn jp-btn-primary" data-jp-action="${paused ? 'resume' : 'pause'}">${escapeHtml(t(paused ? 'activePrintResume' : 'activePrintPause'))}</button>
+                <button type="button" class="jp-btn jp-btn-danger" data-jp-action="cancel">${escapeHtml(t('activePrintStop'))}</button>
+                ${klipper ? `<button type="button" class="jp-btn" data-jp-action="mute">${escapeHtml(t(mutedActivePrintPorts.has(printer.port) ? 'activePrintUnmute' : 'activePrintMute'))}</button>` : ''}` : '';
+        }
+    }
+    if (note) note.hidden = controllable;
+    const full = body.querySelector('[data-jp="fullscreen"]');
+    if (full) full.hidden = !klipper;
+}
 
-    printQueue.querySelectorAll('.active-print-action-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleActivePrintAction(btn.dataset.action, Number(btn.dataset.port)));
-    });
-    printQueue.querySelectorAll('.active-print-fullscreen-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const printer = allPrinters.find(p => p.port === Number(btn.dataset.port));
-            if (printer) openPrinterModal(printer);
-        });
-    });
+async function runJobPopupAction(action) {
+    const job = railJobs.find(j => railJobKey(j) === openJobPopupKey);
+    if (!job) return;
+    if (action === 'reset-view') { jobPopupViewer?.resetView(); return; }
+    const printer = jobPopupPrinterFor(job);
+    if (action === 'fullscreen') { if (printer) { closeJobPopup(); openPrinterModal(printer); } return; }
+    if (printer) {
+        await handleActivePrintAction(action, printer.port);
+    } else if (job.device_type === 'marlin') {
+        await handleMarlinQuickAction(action, job.device);
+    } else if (job.device_type === 'laser' || job.device_type === 'cnc') {
+        await handleLaserQuickAction(action, job.host);
+    }
+    loadDashboardPanel();
+}
+
+function refreshJobPopup() {
+    if (!openJobPopupKey) return;
+    const el = document.getElementById('job-popup');
+    const body = document.getElementById('job-popup-body');
+    if (!el || !body) return;
+    const job = railJobs.find(j => railJobKey(j) === openJobPopupKey);
+    if (!job) { closeJobPopup(); return; }   // el trabajo terminó
+    if (jobPopupBuiltKey !== openJobPopupKey) buildJobPopup(job, body);
+    updateJobPopup(job, body);
 }
 
 async function handleActivePrintAction(action, port) {
@@ -4904,12 +5372,19 @@ function renderPanelAlerts(data) {
 // configurado algo aparte (un sensor DHT11 como ambiente del taller,
 // potencias en Cotizador, o NOPAL Intelligence activada) y no tiene
 // sentido ocupar espacio con una ficha que nunca va a tener nada.
+let panelAmbientLast = null;
 function renderPanelMiniCards(data) {
     const ambientCard = document.getElementById('panel-ambient-card');
     if (ambientCard) {
-        ambientCard.hidden = data.ambient == null;
-        if (data.ambient != null) {
-            document.getElementById('panel-ambient-value').textContent = `${data.ambient}°C`;
+        // El sensor DHT11 falla de vez en cuando y devuelve vacío por una
+        // consulta; sin esto la ficha parpadeaba y desaparecía. Se conserva
+        // el último dato bueno hasta 3 minutos antes de ocultarla.
+        const now = Date.now();
+        if (data.ambient != null) panelAmbientLast = { value: data.ambient, at: now };
+        const fresh = panelAmbientLast && now - panelAmbientLast.at < 180000;
+        ambientCard.hidden = !fresh;
+        if (fresh) {
+            document.getElementById('panel-ambient-value').textContent = `${panelAmbientLast.value}°C`;
         }
     }
 
@@ -4923,7 +5398,11 @@ function renderPanelMiniCards(data) {
 
     const maintenanceCard = document.getElementById('panel-maintenance-card');
     if (maintenanceCard) {
-        maintenanceCard.hidden = data.maintenance == null;
+        // El mantenimiento solo se muestra con el taller en reposo total: con
+        // cualquier trabajo en curso (3D, láser o CNC) no es momento de apagar
+        // nada, y el hueco lo gana el resto de las fichas.
+        const hayTrabajos = ((data.jobs && data.jobs.active) || []).length > 0;
+        maintenanceCard.hidden = data.maintenance == null || hayTrabajos;
         if (data.maintenance != null) {
             document.getElementById('panel-maintenance-value').textContent = data.maintenance;
         }
@@ -4935,6 +5414,7 @@ function renderDashboardPanel(data) {
     renderPanelHost(data);
     renderPanelDevices(data);
     renderPanelJobs(data);
+    renderJobsRail((data.jobs && data.jobs.active) || []);
     renderPanelAlerts(data);
     renderPanelMiniCards(data);
 }
@@ -6676,8 +7156,8 @@ function createModulePageScope(config) {
 // a su panel; sus ids y handlers no cambian.
 const SETTINGS_TAB_DEFS = [
     { id: 'general', modules: ['general'] },
-    { id: 'appearance', modules: ['appearance'] },
-    { id: 'ai', modules: ['ai'] },
+    { id: 'appearance', modules: ['appearance', 'appearanceOrder', 'appearanceOther'] },
+    { id: 'ai', modules: ['ai', 'aiBehavior', 'aiAdvanced'] },
     { id: 'users', modules: ['users', 'tunascreen'] },
     { id: 'devices', modules: ['devices', 'accessories'] },
     { id: 'system', modules: ['backup', 'logsConfig', 'logs', 'updates', 'about'] },
@@ -8612,8 +9092,11 @@ function klipperDeviceState(printer, isHeating) {
     const estado = (printer.state || '').toLowerCase();
     const enLinea = printer.status === 'online';
     if (!enLinea) return 'offline';
-    if (estado === 'printing') return 'printing';
-    if (estado === 'paused') return 'paused';
+    // El estado del trabajo vive en job.state (print_stats de Klipper); el
+    // `state` de la impresora es el de Klippy y dice "ready" imprimiendo.
+    const trabajo = (printer.job?.state || '').toLowerCase();
+    if (trabajo === 'printing' || estado === 'printing') return 'printing';
+    if (trabajo === 'paused' || estado === 'paused') return 'paused';
     if (['error', 'shutdown', 'disconnected'].includes(estado)) return 'error';
     if (isHeating) return 'heating';
     return 'idle';
@@ -9305,7 +9788,7 @@ function deviceCardHtml(d) {
             <div class="dev-card-id">
                 <span class="dev-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
                 <span class="dev-card-type">${escapeHtml(d.typeLabel)}</span>
-                <span class="dev-badge">${escapeHtml(d.stateLabel)}</span>
+                <span class="dev-badge">${escapeHtml(deviceIsBusy(d.state) && d.state !== 'paused' ? t('devStateWorking') : d.stateLabel)}</span>
             </div>
             <div class="dev-card-head-right">
                 ${conexion}
@@ -9723,8 +10206,23 @@ if (searchModelsInput) {
 
 function renderUploadingRow(tableContainerId, filename) {
     const container = document.getElementById(tableContainerId);
-    const tbody = container ? container.querySelector('tbody') : null;
-    if (!tbody) return null;
+    if (!container) return null;
+    const tbody = container.querySelector('tbody');
+    if (!tbody) {
+        // Vista de mosaico (sin tabla): la barra de progreso va como una
+        // tarjeta al principio de la lista, con las mismas barras.
+        const card = document.createElement('div');
+        card.className = 'uploading-row uploading-row-card';
+        card.innerHTML = `
+            <div class="uploading-info">
+                <strong>${escapeHtml(filename)}</strong>
+                <div class="upload-progress-track" title="Subida"><div class="upload-progress-fill" style="width:0%"></div></div>
+                <div class="upload-progress-track upload-render-track" title="Renderizado" hidden><div class="upload-progress-fill upload-render-fill" style="width:0%"></div></div>
+                <small class="upload-phase-label"></small>
+            </div>`;
+        container.insertBefore(card, container.firstChild);
+        return card;
+    }
 
     const row = document.createElement('tr');
     row.className = 'uploading-row';
@@ -9876,6 +10374,190 @@ function wireLibraryDropzone(zoneEl, uploadFiles) {
         uploadFiles(Array.from(event.dataTransfer.files));
     });
 }
+
+// ── Soltar archivos desde cualquier pantalla ──
+// Al arrastrar un archivo del sistema sobre la ventana aparece una capa con
+// dos destinos (Impresión 3D / Láser-Grabado). Dentro de las tarjetas de
+// biblioteca no aparece: ahí ya sube directo la zona propia de cada una.
+
+function globalDropTarget(destination) {
+    // La biblioteca de Impresión 3D lista modelos y también G-code; la de
+    // Archivos (láser/CNC) solo G-code. El destino manda, no la extensión.
+    if (destination === 'print') {
+        return { type: 'model', path: '', label: t('globalDropLabel3dModels') };
+    }
+    return { type: 'gcode', path: '', label: t('globalDropLabelFiles') };
+}
+
+// Tarjetitas flotantes de progreso para subidas que no ocurren dentro de una
+// tabla (soltar desde cualquier pantalla): nombre, barra y resultado.
+function createUploadToast(name) {
+    let box = document.getElementById('upload-toasts');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'upload-toasts';
+        box.setAttribute('role', 'status');
+        box.setAttribute('aria-live', 'polite');
+        document.body.appendChild(box);
+    }
+    const el = document.createElement('div');
+    el.className = 'upload-toast';
+    el.innerHTML = `<strong></strong><div class="upload-progress-track"><div class="upload-progress-fill" style="width:0%"></div></div><small></small>`;
+    el.querySelector('strong').textContent = name;
+    box.appendChild(el);
+    const fill = el.querySelector('.upload-progress-fill');
+    const label = el.querySelector('small');
+    label.textContent = t('uploadToastUploading');
+    return {
+        progress(pct) { fill.style.width = `${pct}%`; label.textContent = `${t('uploadToastUploading')} ${pct}%`; },
+        done(text) { fill.style.width = '100%'; el.classList.add('is-done'); label.textContent = text; setTimeout(() => el.remove(), 3500); },
+        fail(text) { el.classList.add('is-error'); label.textContent = text; setTimeout(() => el.remove(), 6000); },
+    };
+}
+
+function globalDropUpload(file, destination) {
+    const target = globalDropTarget(destination);
+    const toast = createUploadToast(file.name);
+    return new Promise((resolve, reject) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('path', target.path);
+        formData.append('type', target.type);
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+        xhr.upload.addEventListener('progress', event => {
+            if (event.lengthComputable) toast.progress(Math.round((event.loaded / event.total) * 100));
+        });
+        xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                toast.done(`${t('uploadToastDone')} ${target.label}`);
+                resolve(target);
+                return;
+            }
+            let detail = '';
+            try { detail = JSON.parse(xhr.responseText).detail || ''; } catch (_) { /* respuesta sin JSON */ }
+            toast.fail(detail || t('uploadToastFailed'));
+            reject(new Error(detail || `No se pudo subir "${file.name}".`));
+        });
+        xhr.addEventListener('error', () => { toast.fail(t('uploadToastFailed')); reject(new Error(`No se pudo subir "${file.name}".`)); });
+        xhr.send(formData);
+    });
+}
+
+async function globalDropHandle(files, destination) {
+    let ok = 0;
+    let lastLabel = '';
+    for (const file of files) {
+        try {
+            const target = await globalDropUpload(file, destination);
+            lastLabel = target.label;
+            ok += 1;
+        } catch (error) {
+            console.error(error);
+            showToast(error.message, 'danger');
+        }
+    }
+    if (!ok) return;
+    showToast(t('globalDropDone').replace('{n}', ok).replace('{dest}', lastLabel));
+    try {
+        gcodePage = 1;
+        modelsPage = 1;
+        loadModels();
+        loadModelsFolder(currentModelsPath);
+        loadGcodeFolder(currentGcodePath);
+    } catch (_) { /* la biblioteca aún no se ha abierto: se carga al entrar */ }
+}
+
+function initGlobalDropOverlay() {
+    const icon3d = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>';
+    const iconLaser = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6v5l-2 3h-2L9 8z"/><path d="M12 13v3M8 15l1.5 1.5M16 15l-1.5 1.5M4 20h16"/></svg>';
+    const overlay = document.createElement('div');
+    overlay.id = 'global-drop-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    // Se pinta al aparecer, no al cargar, para respetar el idioma vigente.
+    const render = () => { overlay.innerHTML = `
+        <div class="global-drop-panel">
+            <h2 class="global-drop-title">${escapeHtml(t('globalDropTitle'))}</h2>
+            <p class="global-drop-sub">${escapeHtml(t('globalDropSubtitle'))}</p>
+            <div class="global-drop-zones">
+                <div class="global-drop-zone global-drop-zone-print" data-dest="print">
+                    ${icon3d}
+                    <strong>${escapeHtml(t('globalDrop3dTitle'))}</strong>
+                    <span>${escapeHtml(t('globalDrop3dHint'))}</span>
+                </div>
+                <div class="global-drop-zone global-drop-zone-laser" data-dest="laser">
+                    ${iconLaser}
+                    <strong>${escapeHtml(t('globalDropLaserTitle'))}</strong>
+                    <span>${escapeHtml(t('globalDropLaserHint'))}</span>
+                </div>
+            </div>
+        </div>`; };
+    document.body.appendChild(overlay);
+
+    // Preferencia por navegador: solo 'off' la apaga; sin valor, está activa.
+    const dropEnabled = () => { try { return localStorage.getItem('nopalGlobalDrop') !== 'off'; } catch (_) { return true; } };
+    const dropToggle = document.getElementById('global-drop-enabled');
+    if (dropToggle) {
+        dropToggle.checked = dropEnabled();
+        dropToggle.addEventListener('change', () => {
+            try { localStorage.setItem('nopalGlobalDrop', dropToggle.checked ? 'on' : 'off'); } catch (_) { /* sin almacenamiento: vale esta sesión */ }
+        });
+    }
+
+    let depth = 0;
+    const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files');
+    const inLibrary = event => !dropEnabled() || !!event.target.closest?.('.gcode-library-card, .models-table-panel, .custom-theme-bg-dropzone, [data-no-global-drop]');
+    const hide = () => {
+        depth = 0;
+        overlay.classList.remove('visible');
+        overlay.querySelectorAll('.global-drop-zone').forEach(z => z.classList.remove('hot'));
+    };
+
+    document.addEventListener('dragenter', event => {
+        if (!hasFiles(event) || inLibrary(event)) return;
+        depth += 1;
+        if (!overlay.classList.contains('visible')) render();
+        overlay.classList.add('visible');
+    });
+    document.addEventListener('dragover', event => {
+        if (!hasFiles(event) || inLibrary(event)) return;
+        event.preventDefault();
+        const zone = event.target.closest?.('.global-drop-zone');
+        overlay.querySelectorAll('.global-drop-zone').forEach(z => z.classList.toggle('hot', z === zone));
+        event.dataTransfer.dropEffect = zone ? 'copy' : 'none';
+    });
+    document.addEventListener('dragleave', () => {
+        depth = Math.max(0, depth - 1);
+        if (!depth) hide();
+    });
+    document.addEventListener('dragend', hide);
+    document.addEventListener('drop', event => {
+        if (!overlay.classList.contains('visible')) return;
+        event.preventDefault();
+        const zone = event.target.closest?.('.global-drop-zone');
+        const files = Array.from(event.dataTransfer?.files || []);
+        hide();
+        if (zone && files.length) globalDropHandle(files, zone.dataset.dest);
+    });
+    // Esc cierra la capa si se queda abierta.
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); });
+}
+initGlobalDropOverlay();
+
+// Franja de preguntas rápidas de la IA: solo se oculta, las preguntas siguen
+// guardadas. Preferencia por navegador; sin valor, se muestra.
+(function initAiSuggestionsToggle() {
+    const toggle = document.getElementById('ai-show-suggestions');
+    const read = () => { try { return localStorage.getItem('nopalAiSuggestions') !== 'off'; } catch (_) { return true; } };
+    const apply = on => document.body.classList.toggle('ai-suggestions-hidden', !on);
+    apply(read());
+    if (!toggle) return;
+    toggle.checked = read();
+    toggle.addEventListener('change', () => {
+        try { localStorage.setItem('nopalAiSuggestions', toggle.checked ? 'on' : 'off'); } catch (_) { /* vale esta sesión */ }
+        apply(toggle.checked);
+    });
+})();
 
 function wireCreateFolderButton(btnId, type, getPath, onDone) {
     const btn = document.getElementById(btnId);
@@ -10105,12 +10787,23 @@ function wireFileActionButtons(downloadBtnId, renameBtnId, moveBtnId, deleteBtnI
 }
 
 wireLibraryDropzone(
-    document.querySelector('#models-section .gcode-library-card'),
-    wireUploadButton('upload-btn-models', 'upload-input-models', 'model', () => currentModelsPath, 'models-full', () => loadModelsFolder(currentModelsPath))
+    document.querySelector('#models-section .models-table-panel'),
+    wireUploadButton('upload-btn-models', 'upload-input-models', 'model', () => currentModelsPath, 'models-full', () => {
+        // Un filtro como "Recientes" o una búsqueda esconderían el archivo recién subido.
+        modelsFilterMode = 'all'; modelsTagFilter = ''; modelsSearchQuery = ''; modelsPage = 1;
+        const filterSelect = document.getElementById('models-filter-select'); if (filterSelect) filterSelect.value = 'all';
+        const searchInput = document.getElementById('search-models'); if (searchInput) searchInput.value = '';
+        loadModelsFolder(currentModelsPath);
+    })
 );
 wireLibraryDropzone(
     document.querySelector('#gcode-section .gcode-library-card'),
-    wireUploadButton('upload-btn-gcode', 'upload-input-gcode', 'gcode', () => currentGcodePath, 'gcode-table', () => loadGcodeFolder(currentGcodePath))
+    wireUploadButton('upload-btn-gcode', 'upload-input-gcode', 'gcode', () => currentGcodePath, 'gcode-table', () => {
+        gcodeFilterMode = 'all'; gcodeTagFilter = ''; gcodeSearchQuery = ''; gcodePage = 1;
+        const filterSelect = document.getElementById('gcode-filter-select'); if (filterSelect) filterSelect.value = 'all';
+        const searchInput = document.getElementById('search-gcode'); if (searchInput) searchInput.value = '';
+        loadGcodeFolder(currentGcodePath);
+    })
 );
 wireCreateFolderButton('create-folder-btn-models', 'model', () => currentModelsPath, () => loadModelsFolder(currentModelsPath));
 wireCreateFolderButton('create-folder-btn-gcode', 'gcode', () => currentGcodePath, () => loadGcodeFolder(currentGcodePath));
@@ -13450,7 +14143,9 @@ function renderLaserJob(job, jobHost) {
     const isManagedJob = job?.source === 'stream' || job?.source === 'sd';
     const state = isManagedJob ? (job?.state || 'idle') : 'idle';
     const isActive = state === 'running' || state === 'paused';
-    const isTerminal = state === 'completed' || state === 'error' || state === 'cancelled';
+    // 'incomplete': se perdió la comunicación a medias y el resultado no se
+    // puede confirmar. No es activo (ya no se puede seguir) ni completado.
+    const isTerminal = state === 'completed' || state === 'error' || state === 'cancelled' || state === 'incomplete';
     laserJobIsActive = isActive;
 
     // El estado del trabajo es por láser (host), pero el backend nunca
@@ -13464,6 +14159,10 @@ function renderLaserJob(job, jobHost) {
     if (state === 'error' && previousStateForHost && previousStateForHost !== 'error') {
         appAlert(job?.error || t('laserJobErrorGeneric'), t('laserJobErrorTitle'), 'danger');
         notifyUser(t('laserJobErrorTitle'), job?.error || t('laserJobErrorGeneric'), 'error');
+    }
+    if (state === 'incomplete' && previousStateForHost && previousStateForHost !== 'incomplete') {
+        appAlert(job?.error || t('laserJobUnknownGeneric'), t('laserJobUnknownTitle'), 'warning');
+        notifyUser(t('laserJobUnknownTitle'), job?.error || t('laserJobUnknownGeneric'), 'error');
     }
     if (state === 'completed' && previousStateForHost && previousStateForHost !== 'completed') {
         sendLaserBedMapSnapshotToHistory(host);
@@ -13610,8 +14309,28 @@ async function refreshLaserJob() {
 }
 
 let laserStatusPollInterval = null;
+let laserSelectorPollInterval = null;
+let laserSelectorRefreshing = false;
+
+// Vuelve a pedir el registro con su estado de conexión para que el selector
+// refleje caídas y regresos sin recargar. Sin solaparse si una vuelta tarda.
+async function refreshLaserSelectorPeriodic(alsoCnc) {
+    if (laserSelectorRefreshing) return;
+    laserSelectorRefreshing = true;
+    try {
+        const before = laserHostOptionsSignature();
+        await loadLaserHostSelector(true);
+        if (alsoCnc && laserHostOptionsSignature() !== before) renderCncHostOptions(document.getElementById('cnc-host-select')?.value || '');
+    } finally {
+        laserSelectorRefreshing = false;
+    }
+}
 
 function stopLaserPolling() {
+    if (laserSelectorPollInterval) {
+        clearInterval(laserSelectorPollInterval);
+        laserSelectorPollInterval = null;
+    }
     if (laserPollInterval) {
         clearInterval(laserPollInterval);
         laserPollInterval = null;
@@ -13633,6 +14352,7 @@ function startLaserPolling() {
     // consola, job) para que el trazo del corte en el grill se vea fluido
     // en vez de ir a saltos — antes todo compartía el mismo intervalo de 2.5s.
     laserStatusPollInterval = setInterval(refreshLaserStatus, 600);
+    laserSelectorPollInterval = setInterval(() => refreshLaserSelectorPeriodic(false), 10000);
     laserPollInterval = setInterval(() => {
         refreshLaserJob();
         refreshLaserConsole();
@@ -13846,7 +14566,9 @@ function getSectionMachine(section) {
     migrateLegacySectionMachine(section);
     const devices = laserHostOptions.filter(device => laserDeviceInSection(device, section));
     const savedId = readLaserMachinePref(LASER_SECTION_MACHINE_KEYS[section].idKey);
-    return (savedId && devices.find(device => device.id === savedId)) || devices[0] || null;
+    return (savedId && devices.find(device => device.id === savedId))
+        || devices.find(device => device.online !== false)
+        || devices[0] || null;
 }
 
 // Host ACTUAL de la máquina seleccionada en la sección ('' si no hay). El
@@ -13908,6 +14630,13 @@ function applyLaserMachineKindUI(host) {
     }
 }
 
+// Nombre del desplegable de máquinas; `online === false` (probe HTTP del
+// registro) la marca como sin conexión en vez de ocultarla.
+function laserHostOptionLabel(device) {
+    const base = device.hostname ? `${device.hostname} (${device.host})` : device.host;
+    return device.online === false ? `${base} — ${t('bootOffline')}` : base;
+}
+
 function renderLaserHostOptions(activeHost) {
     const selectEl = document.getElementById('laser-host-select');
     if (!selectEl) return;
@@ -13916,7 +14645,7 @@ function renderLaserHostOptions(activeHost) {
         laserDevices = [{ host: activeHost, hostname: '' }, ...laserDevices];
     }
     selectEl.innerHTML = laserDevices.map(device => {
-        const label = device.hostname ? `${device.hostname} (${device.host})` : device.host;
+        const label = laserHostOptionLabel(device);
         const color = getDeviceKindColor(device.kind || 'laser');
         return `<option value="${escapeHtml(device.host)}" style="color:${color}">${escapeHtml(label)}</option>`;
     }).join('');
@@ -14674,8 +15403,15 @@ document.getElementById('laser-gamepad-reset-btn')?.addEventListener('click', as
     renderLaserGamepadMapList();
 });
 
-async function loadLaserHostSelector() {
+function laserHostOptionsSignature() {
+    return JSON.stringify(laserHostOptions.map(d => [d.host, d.id, d.hostname, d.kind, d.online]));
+}
+
+// `quiet`: refresco periódico; si nada cambió no se vuelve a pintar el
+// selector (evita parpadeos y remontar la cámara cada vuelta).
+async function loadLaserHostSelector(quiet = false) {
     try {
+        const signatureBefore = quiet ? laserHostOptionsSignature() : '';
         const registryResponse = await fetch('/api/laser/registry/status');
         const registryData = await registryResponse.json();
         const registryEntries = registryData.lasers || [];
@@ -14713,12 +15449,11 @@ async function loadLaserHostSelector() {
             }
         });
 
-        // El selector de conexión solo debe ofrecer placas realmente
-        // conectadas ahora mismo — "Todos los dispositivos" en Configuración
-        // ya cubre ver/quitar las que están sin conexión.
-        laserHostOptions = laserHostOptions.filter(device => device.online !== false);
-
-        renderLaserHostOptions(getSectionMachine('laser')?.host || '');
+        // Las máquinas sin conexión se quedan en el selector (marcadas) en
+        // vez de desaparecer: así se ve cuándo regresan sin recargar la página.
+        // Se respeta lo que el usuario tenga elegido ahora mismo en esta pestaña.
+        if (quiet && laserHostOptionsSignature() === signatureBefore) return;
+        renderLaserHostOptions(document.getElementById('laser-host-select')?.value || getSectionMachine('laser')?.host || '');
     } catch (error) {
         console.error(error);
     }
@@ -15532,25 +16267,40 @@ if (laserSdNewFolderBtn) {
 // (NOPAL->placa) hasta que termina. onUpdate(percent) en cada sondeo,
 // onDone(error) una sola vez al final (error=null si salió bien). ──
 function pollSdUploadProgress(uploadId, onUpdate, onDone) {
-    const interval = setInterval(async () => {
+    // Cadena de setTimeout en vez de setInterval: con setInterval, si el
+    // backend tardaba más de 400 ms en responder (la subida lo mantiene
+    // ocupado) se acumulaban sondeos en vuelo, todos veían "done" y cada uno
+    // llamaba a onDone -- decenas de avisos "Archivo subido", y los que
+    // llegaban después del /clear recibían 404 y mostraban el error.
+    let failures = 0;
+    const tick = async () => {
+        let progress;
         try {
             const response = await fetch(`/api/laser/sd/upload-progress/${encodeURIComponent(uploadId)}`);
             if (!response.ok) {
-                clearInterval(interval);
                 onDone(new Error(t('laserSdError')));
                 return;
             }
-            const progress = await response.json();
-            onUpdate(progress.total ? Math.round((progress.sent / progress.total) * 100) : 0);
-            if (progress.status === 'uploading') return;
-            clearInterval(interval);
-            fetch(`/api/laser/sd/upload-progress/${encodeURIComponent(uploadId)}/clear`, { method: 'POST' }).catch(() => {});
-            onDone(progress.status === 'done' ? null : new Error(progress.error || t('laserSdError')));
+            progress = await response.json();
+            failures = 0;
         } catch (error) {
-            clearInterval(interval);
-            onDone(error);
+            // Corte momentáneo de red: reintenta unas veces antes de rendirse.
+            if (++failures >= 5) {
+                onDone(error);
+                return;
+            }
+            setTimeout(tick, 1000);
+            return;
         }
-    }, 400);
+        onUpdate(progress.total ? Math.round((progress.sent / progress.total) * 100) : 0);
+        if (progress.status === 'uploading') {
+            setTimeout(tick, 400);
+            return;
+        }
+        fetch(`/api/laser/sd/upload-progress/${encodeURIComponent(uploadId)}/clear`, { method: 'POST' }).catch(() => {});
+        onDone(progress.status === 'done' ? null : new Error(progress.error || t('laserSdError')));
+    };
+    setTimeout(tick, 400);
 }
 
 // Resalta brevemente la fila recién subida en la lista (ver "la
@@ -16199,6 +16949,7 @@ document.querySelectorAll('#cnc-feed-mode-group .laser-step-btn').forEach(btn =>
 
 let cncStatusPollInterval = null;
 let cncSlowPollInterval = null;
+let cncSelectorPollInterval = null;
 let cncRapidPercent = 100;
 
 // Cada sección (Láser/CNC) recuerda su propia máquina en este navegador (ver
@@ -16217,7 +16968,7 @@ function renderCncHostOptions(activeHost) {
         || document.getElementById('cnc-host-select')?.value
         || cncDevices[0]?.host;
     selectEl.innerHTML = cncDevices.map(device => {
-        const label = device.hostname ? `${device.hostname} (${device.host})` : device.host;
+        const label = laserHostOptionLabel(device);
         return `<option value="${escapeHtml(device.host)}">${escapeHtml(label)}</option>`;
     }).join('');
     if (resolvedHost) selectEl.value = resolvedHost;
@@ -17294,6 +18045,7 @@ async function loadCncSection() {
     refreshCncSdSwitch(true);
     stopCncPolling();
     cncStatusPollInterval = setInterval(refreshCncStatus, 600);
+    cncSelectorPollInterval = setInterval(() => refreshLaserSelectorPeriodic(true), 10000);
     cncSlowPollInterval = setInterval(() => {
         refreshCncParserState();
         refreshCncJobFooter();
@@ -17304,6 +18056,7 @@ async function loadCncSection() {
 function stopCncPolling() {
     if (cncStatusPollInterval) { clearInterval(cncStatusPollInterval); cncStatusPollInterval = null; }
     if (cncSlowPollInterval) { clearInterval(cncSlowPollInterval); cncSlowPollInterval = null; }
+    if (cncSelectorPollInterval) { clearInterval(cncSelectorPollInterval); cncSelectorPollInterval = null; }
 }
 
 const cncHostSelect = document.getElementById('cnc-host-select');
@@ -22326,7 +23079,7 @@ if (sidebarHelpBtn) {
 let currentModelsPath = '';
 let currentModelsData = { folders: [], files: [] };
 let modelsSearchQuery = '';
-let modelsSortMode = localStorage.getItem('nopalModelsSort') || 'name-asc';
+let modelsSortMode = localStorage.getItem('nopalModelsSort') || 'date-desc';
 let modelsFilterMode = 'all';
 let modelsTagFilter = '';
 let modelsViewMode = localStorage.getItem('nopalModelsView') || 'list';
@@ -22658,10 +23411,12 @@ function renderModelsFullPage(filterQuery = modelsSearchQuery) {
     const rows = pageFiles.map(model => {
         const extension = String(model.extension || '').replace('.', '').toUpperCase() || '—';
         const checked = getBulkSelection('model').has(model.id) ? 'checked' : '';
-        return `<tr class="${model.id === selectedModelId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}"><td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td><td class="model-name"><span class="model-format-icon">${escapeHtml(extension)}</span><strong>${escapeHtml(model.name)}</strong>${getFavoriteModelIds().has(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td><td>${isGcodeFile(model) ? 'G-code' : t('model3D')}</td><td><span class="tag-pill">${escapeHtml(extension)}</span></td><td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td><td>${escapeHtml(model.dimensions || '—')}</td><td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td><td><button type="button" class="gcode-row-menu" data-model-row-menu title="${t('libraryActions')}">•••</button></td></tr>`;
+        return `<tr class="${model.id === selectedModelId ? 'selected' : ''}" data-model-id="${escapeHtml(model.id)}"><td class="select-col"><input type="checkbox" class="row-select-checkbox" data-model-id="${escapeHtml(model.id)}" ${checked}></td><td class="model-name"><span class="model-thumb" data-thumb-for="${escapeHtml(model.id)}" aria-hidden="true"><span class="model-origins" data-origins-for="${escapeHtml(model.id)}"></span></span><span class="model-format-icon">${escapeHtml(extension)}</span><strong>${escapeHtml(model.name)}</strong><span class="model-origins model-origins-inline" data-origins-for="${escapeHtml(model.id)}"></span>${getFavoriteModelIds().has(model.id) ? '<span class="gcode-file-favorite">★</span>' : ''}</td><td>${isGcodeFile(model) ? 'G-code' : t('model3D')}</td><td><span class="tag-pill">${escapeHtml(extension)}</span></td><td>${formatSize(model.size)}</td><td>${formatDate(model.modified)}</td><td>${escapeHtml(model.dimensions || '—')}</td><td><span class="gcode-status-ok" title="${t('libraryAvailable')}">✓</span></td><td><button type="button" class="gcode-row-menu" data-model-row-menu title="${t('libraryActions')}">•••</button></td></tr>`;
     }).join('');
     container.innerHTML = `<table class="models-table"><thead><tr><th class="select-col"><input type="checkbox" class="select-all-checkbox" id="models-select-all"></th><th>${t('columnName')}</th><th>${t('columnType')}</th><th>${t('libraryFormat')}</th><th>${t('columnSize')}</th><th>${t('previewMetaModified')}</th><th>${t('columnDimensions')}</th><th>${t('libraryStatus')}</th><th aria-label="${t('libraryActions')}">•••</th></tr></thead><tbody>${rows}</tbody></table>`;
     wireBulkSelection('model', container, pageFiles);
+    loadModelCardThumbs(container, pageFiles);
+    applyModelOrigins(container, pageFiles);
     container.querySelectorAll('tbody tr[data-model-id]').forEach(row => {
         row.addEventListener('click', event => { if (event.target.closest('.row-select-checkbox')) return; const model = currentModelsData.files.find(item => item.id === row.dataset.modelId); if (model) selectPreviewModel(model); });
         row.querySelector('[data-model-row-menu]')?.addEventListener('click', event => { event.stopPropagation(); const model = currentModelsData.files.find(item => item.id === row.dataset.modelId); if (model) selectPreviewModel(model); });
@@ -23860,10 +24615,44 @@ const THEME_WALLPAPER_CONFIG = {
     ai: { storageKey: AI_WALLPAPER_KEY, cssVar: '--ai-wallpaper', options: AI_WALLPAPER_OPTIONS },
 };
 
+// Carrusel: con él encendido, el fondo sale de la hora del reloj (no de un
+// contador en memoria), así sigue su curso al recargar y coincide entre
+// pestañas. Rota SOLO entre las miniaturas marcadas con la paloma (de
+// cualquier fila: un fondo de Desert puede rotar en Red). Sin marcar nada
+// aún, arranca con las tres del tema activo.
+const WALLPAPER_CAROUSEL_KEY = 'nopalWallpaperCarousel';
+const WALLPAPER_CAROUSEL_MINUTES = [1, 5, 15, 30, 60];
+
+function getWallpaperCarousel() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(WALLPAPER_CAROUSEL_KEY) || 'null');
+        const minutes = WALLPAPER_CAROUSEL_MINUTES.includes(saved?.minutes) ? saved.minutes : 15;
+        const included = Array.isArray(saved?.included) ? saved.included.filter(u => typeof u === 'string') : null;
+        return { enabled: !!saved?.enabled, minutes, included };
+    } catch (_) {
+        return { enabled: false, minutes: 15, included: null };
+    }
+}
+
+function saveWallpaperCarousel(state) {
+    try {
+        localStorage.setItem(WALLPAPER_CAROUSEL_KEY, JSON.stringify(state));
+    } catch (_) { /* sin almacenamiento: vale esta sesión */ }
+}
+
+function wallpaperCarouselPool(theme, carousel) {
+    const config = THEME_WALLPAPER_CONFIG[theme];
+    if (!config) return [];
+    return carousel.included && carousel.included.length ? carousel.included : config.options;
+}
+
 function getThemeWallpaperUrl(theme) {
     const config = THEME_WALLPAPER_CONFIG[theme];
     if (!config) return null;
-    return localStorage.getItem(config.storageKey) || config.options[0];
+    const carousel = getWallpaperCarousel();
+    if (!carousel.enabled) return localStorage.getItem(config.storageKey) || config.options[0];
+    const pool = wallpaperCarouselPool(theme, carousel);
+    return pool[Math.floor(Date.now() / (carousel.minutes * 60000)) % pool.length];
 }
 
 function applyThemeWallpaper(theme) {
@@ -23879,9 +24668,16 @@ function applyThemeWallpaper(theme) {
 function refreshWallpaperThumbActiveStates() {
     const activeTheme = settingsTheme?.value || localStorage.getItem('theme') || 'dark';
     const activeUrl = getThemeWallpaperUrl(activeTheme);
+    const carousel = getWallpaperCarousel();
+    const pool = carousel.enabled ? wallpaperCarouselPool(activeTheme, carousel) : [];
+    document.body.classList.toggle('wallpaper-carousel-on', carousel.enabled && THEME_WALLPAPER_CONFIG[activeTheme] !== undefined);
     document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
         const src = btn.querySelector('img')?.getAttribute('src');
-        btn.classList.toggle('active', Boolean(activeUrl) && src === activeUrl);
+        // Con el carrusel encendido, la paloma marca lo que rota y el anillo
+        // "activo" se apaga (el fondo cambia solo).
+        btn.classList.toggle('is-included', carousel.enabled && pool.includes(src));
+        btn.classList.toggle('active', !carousel.enabled && Boolean(activeUrl) && src === activeUrl);
+        btn.setAttribute('aria-pressed', carousel.enabled ? String(pool.includes(src)) : String(src === activeUrl));
     });
 }
 
@@ -23898,6 +24694,77 @@ function applyAllThemeWallpapers() {
     Object.keys(THEME_WALLPAPER_CONFIG).forEach(applyThemeWallpaper);
     refreshWallpaperThumbActiveStates();
 }
+
+// Revisa cada 20 s si ya toca el siguiente fondo; precarga la imagen antes de
+// cambiarla para que no parpadee. Con el carrusel apagado no hace nada.
+let wallpaperCarouselShown = null;
+function tickWallpaperCarousel() {
+    const carousel = getWallpaperCarousel();
+    if (!carousel.enabled) { wallpaperCarouselShown = null; return; }
+    const activeTheme = settingsTheme?.value || localStorage.getItem('theme') || 'dark';
+    const url = getThemeWallpaperUrl(activeTheme);
+    if (!url || url === wallpaperCarouselShown) return;
+    const image = new Image();
+    image.onload = image.onerror = () => {
+        wallpaperCarouselShown = url;
+        applyAllThemeWallpapers();
+    };
+    image.src = url;
+}
+setInterval(tickWallpaperCarousel, 20000);
+
+function toggleWallpaperInCarousel(url, carousel) {
+    const activeTheme = settingsTheme?.value || localStorage.getItem('theme') || 'dark';
+    const pool = [...wallpaperCarouselPool(activeTheme, carousel)];
+    const at = pool.indexOf(url);
+    if (at >= 0) {
+        // Siempre debe quedar al menos un fondo en la rotación.
+        if (pool.length === 1) { showToast(t('wallpaperCarouselMinOne'), 'warning'); return; }
+        pool.splice(at, 1);
+    } else {
+        pool.push(url);
+    }
+    saveWallpaperCarousel({ enabled: true, minutes: carousel.minutes, included: pool });
+    wallpaperCarouselShown = null;
+    applyAllThemeWallpapers();
+}
+
+(function initWallpaperCarouselControls() {
+    const toggle = document.getElementById('wallpaper-carousel-enabled');
+    const group = document.getElementById('wallpaper-carousel-interval');
+    if (!toggle || !group) return;
+    const pills = [...group.querySelectorAll('.wallpaper-pill')];
+    const state = getWallpaperCarousel();
+    let minutes = state.minutes;
+    toggle.checked = state.enabled;
+    // Píldoras: la marcada es el intervalo; sin el carrusel encendido quedan apagadas.
+    const syncPills = () => {
+        pills.forEach(pill => {
+            const on = Number(pill.dataset.minutes) === minutes;
+            pill.classList.toggle('active', on);
+            pill.setAttribute('aria-checked', String(on));
+            pill.disabled = !toggle.checked;
+        });
+        group.classList.toggle('is-disabled', !toggle.checked);
+    };
+    const save = () => {
+        const current = getWallpaperCarousel();
+        const activeTheme = settingsTheme?.value || localStorage.getItem('theme') || 'dark';
+        // Al encender por primera vez, la rotación arranca con las del tema activo.
+        const included = current.included || (THEME_WALLPAPER_CONFIG[activeTheme] ? [...THEME_WALLPAPER_CONFIG[activeTheme].options] : null);
+        saveWallpaperCarousel({ enabled: toggle.checked, minutes, included });
+        syncPills();
+        wallpaperCarouselShown = null;
+        applyAllThemeWallpapers();
+    };
+    toggle.addEventListener('change', save);
+    pills.forEach(pill => pill.addEventListener('click', () => {
+        minutes = Number(pill.dataset.minutes);
+        save();
+    }));
+    syncPills();
+    refreshWallpaperThumbActiveStates();
+})();
 
 const nopalThemeSelectBtn = document.getElementById('nopal-theme-select-btn');
 if (nopalThemeSelectBtn) {
@@ -23943,7 +24810,10 @@ document.querySelectorAll('.theme-option-wallpaper-thumb').forEach(btn => {
     btn.addEventListener('click', event => {
         event.stopPropagation();
         const url = btn.querySelector('img')?.getAttribute('src');
-        if (url) setActiveThemeWallpaper(url);
+        if (!url) return;
+        const carousel = getWallpaperCarousel();
+        if (carousel.enabled) { toggleWallpaperInCarousel(url, carousel); return; }
+        setActiveThemeWallpaper(url);
     });
     // Miniatura sin archivo subido todavía -- se reemplaza por un
     // placeholder en vez de dejar el ícono de imagen rota del navegador.
@@ -26472,6 +27342,8 @@ document.getElementById('ai-history-clear-btn')?.addEventListener('click', async
 document.getElementById('ai-refresh-btn')?.addEventListener('click', loadAiSection);
 document.getElementById('ai-goto-settings-btn')?.addEventListener('click', () => switchSection('settings'));
 document.getElementById('ai-save-btn')?.addEventListener('click', saveAiSettings);
+// Las opciones avanzadas viven en su propia ficha pero se guardan junto con la conexión.
+document.getElementById('ai-save-advanced-btn')?.addEventListener('click', saveAiSettings);
 document.getElementById('ai-provider-add-btn')?.addEventListener('click', aiResetProviderForm);
 document.getElementById('ai-suggestions-save-btn')?.addEventListener('click', async () => {
     const aviso = document.getElementById('ai-suggestions-result');

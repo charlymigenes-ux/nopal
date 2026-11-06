@@ -655,7 +655,7 @@ body.green .sidebar {
 .global-topbar {
     grid-area: topbar;
     position: relative;
-    z-index: 2;
+    z-index: 60; /* sus menús (idioma, notificaciones, usuario) deben quedar sobre la lista lateral de trabajos (z 35) y el dock (z 40) */
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2285,8 +2285,9 @@ body.green .global-topbar {
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 6px 8px;
+    gap: 6px;
+    min-width: 0;
+    padding: 6px 4px;
     border-left: 1px solid rgba(148, 163, 184, 0.18);
 }
 
@@ -2327,7 +2328,13 @@ body.green .global-topbar {
     font-size: 0.6rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    white-space: nowrap;
+    /* En francés/alemán "INFORMATIONS", "AVERTISSEMENTS" no caben en una
+       columna de 1/3: se parten en vez de salirse de la tarjeta. */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+    line-height: 1.15;
+    max-width: 100%;
 }
 
 .panel-alert-tile-error svg,
@@ -23926,3 +23933,507 @@ body.boot-active { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
     .boot-ai { transition: opacity .2s ease; translate: none; }
 }
+
+/* ── Soltar archivos desde cualquier pantalla ── */
+#global-drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: color-mix(in srgb, var(--surface-base) 82%, transparent);
+    backdrop-filter: blur(3px);
+}
+#global-drop-overlay.visible { display: flex; animation: global-drop-in .18s ease-out; }
+.global-drop-panel {
+    width: min(960px, 100%);
+    padding: 28px;
+    border: 3px dashed var(--accent-fill);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+    text-align: center;
+    color: var(--text-strong);
+}
+.global-drop-title { margin: 0 0 4px; font-size: 1.6rem; }
+.global-drop-sub { margin: 0 0 20px; color: var(--text-soft); }
+.global-drop-zones { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.global-drop-zone {
+    --zone: var(--accent-fill);
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    padding: 28px 16px;
+    min-height: 200px;
+    align-content: center;
+    border: 2px solid var(--zone);
+    border-radius: var(--radius-md);
+    color: var(--zone);
+    background: color-mix(in srgb, var(--zone) 8%, transparent);
+    transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.global-drop-zone-print { --zone: var(--status-info); }
+.global-drop-zone svg { width: 64px; height: 64px; pointer-events: none; }
+.global-drop-zone strong { font-size: 1.35rem; color: var(--text-strong); pointer-events: none; }
+.global-drop-zone span { color: var(--text-soft); max-width: 28ch; pointer-events: none; }
+.global-drop-zone.hot {
+    background: color-mix(in srgb, var(--zone) 24%, transparent);
+    transform: scale(1.02);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--zone) 35%, transparent);
+}
+@keyframes global-drop-in { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 700px) {
+    .global-drop-zones { grid-template-columns: 1fr; }
+    .global-drop-zone { min-height: 130px; padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #global-drop-overlay.visible { animation: none; }
+    .global-drop-zone { transition: none; }
+}
+
+/* Franja de preguntas rápidas de la IA oculta desde Configuración > IA */
+body.ai-suggestions-hidden #ai-suggestions,
+body.ai-suggestions-hidden #panel-ai-suggestions,
+body.ai-suggestions-hidden .ai-quick-card .ai-suggestions,
+body.ai-suggestions-hidden .ai-capability-dock { display: none !important; }
+/* Sin la cortinilla de abajo ya no hay que reservarle sitio. */
+body.ai-suggestions-hidden[data-ai-active="true"] .dashboard-fixed-stack { bottom: 0; }
+body.ai-suggestions-hidden[data-ai-active="true"] .content { padding-bottom: 0; }
+
+/* ── Lista lateral de trabajos activos + popup de detalle ── */
+.jobs-rail {
+    position: fixed;
+    top: calc(var(--topbar-height) + 16px);
+    right: 16px;
+    /* Termina encima del dock de abajo, abierto o contraído (lo mide JS). */
+    bottom: var(--jobs-rail-bottom, 150px);
+    transition: bottom .25s ease;
+    width: 300px;
+    z-index: 35;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+}
+.jobs-rail[hidden] { display: none; }
+body.has-jobs-rail #dashboard-section > main { padding-right: 332px; }
+.jobs-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.jobs-rail-head h2 { margin: 0; font-size: .95rem; color: var(--text-strong); }
+.jobs-rail-count {
+    min-width: 24px; padding: 2px 8px; border-radius: 99px; text-align: center;
+    font-size: .8rem; font-weight: 700; color: var(--accent-on); background: var(--accent-fill);
+}
+.jobs-rail-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; }
+.jobs-rail-item {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+    width: 100%; padding: 10px; text-align: left; font: inherit; cursor: pointer;
+    color: var(--text-strong); background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    transition: border-color .15s ease, background .15s ease;
+}
+.jobs-rail-item:hover, .jobs-rail-item:focus-visible { border-color: var(--accent-fill); outline: none; }
+.jobs-rail-item.is-paused { border-color: var(--status-warn); }
+.jobs-rail-text { display: grid; gap: 3px; min-width: 0; }
+.jobs-rail-text strong, .jobs-rail-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-rail-text small, .jobs-rail-side small { color: var(--text-soft); font-size: .72rem; }
+.jobs-rail-side { display: grid; justify-items: end; gap: 2px; font-variant-numeric: tabular-nums; }
+.jobs-rail-bar { display: block; height: 5px; border-radius: 99px; background: var(--border-subtle); overflow: hidden; }
+.jobs-rail-bar > span { display: block; height: 100%; background: var(--accent-fill); }
+.jobs-rail-item.is-paused .jobs-rail-bar > span { background: var(--status-warn); }
+
+#job-popup { position: fixed; inset: 0; z-index: 3100; display: flex; align-items: center; justify-content: center; padding: 24px; }
+#job-popup[hidden] { display: none; }
+.job-popup-backdrop { position: absolute; inset: 0; background: color-mix(in srgb, var(--surface-base) 70%, transparent); backdrop-filter: blur(3px); }
+.job-popup-dialog {
+    position: relative; width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto;
+    padding: 20px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--surface-raised); color: var(--text-strong); box-shadow: 0 24px 60px rgba(0, 0, 0, .4);
+}
+.job-popup-close {
+    position: absolute; top: 8px; right: 12px; width: 32px; height: 32px; font-size: 1.5rem; line-height: 1;
+    background: none; border: 0; color: var(--text-soft); cursor: pointer; border-radius: 8px;
+}
+.job-popup-close:hover { color: var(--text-strong); background: var(--surface-sunken); }
+.job-popup-title { margin: 0 0 4px; }
+.job-popup-file { margin: 0 0 12px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-popup-progress { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin-bottom: 10px; }
+.job-popup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.job-popup-note { color: var(--text-soft); font-size: .85rem; }
+#job-popup .active-print-card { margin: 0; box-shadow: none; max-width: none; width: 100%; }
+
+@media (max-width: 1100px) {
+    .jobs-rail { position: static; width: auto; margin: 0 16px 16px; }
+    body.has-jobs-rail #dashboard-section > main { padding-right: 0; }
+}
+
+.wallpaper-carousel-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.wallpaper-carousel-controls .settings-select:disabled { opacity: .5; }
+
+/* ── Popup de trabajo: ficha 3D o láser/CNC ── */
+.job-popup-dialog { width: min(980px, 100%); display: block; }
+.jp-head { display: flex; align-items: center; gap: 14px; padding-right: 44px; margin-bottom: 16px; position: relative; }
+.jp-head-icon { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; }
+.jp-head-text { display: grid; gap: 2px; min-width: 0; }
+.jp-title { margin: 0; font-size: 1.3rem; line-height: 1.2; }
+.jp-state { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; font-weight: 600; color: var(--status-ok); }
+.jp-state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.jp-state.is-paused { color: var(--status-warn); }
+.jp-file { margin: 0 0 0 auto; max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-soft); font-size: .85rem; }
+.jp-close {
+    position: absolute; top: 0; right: 0; width: 40px; height: 40px; display: grid; place-items: center; cursor: pointer;
+    color: var(--text-strong); background: transparent; border: 1px solid var(--border-control); border-radius: 50%;
+}
+.jp-close:hover, .jp-close:focus-visible { background: var(--surface-sunken); border-color: var(--accent-fill); outline: none; }
+
+.jp-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; }
+.jp-viewer {
+    position: relative; min-height: 300px; aspect-ratio: 4 / 3; overflow: hidden;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    background: radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--accent-fill) 12%, var(--surface-sunken)), var(--surface-sunken) 70%);
+}
+.job-viewer-canvas { display: block; width: 100%; height: 100%; }
+.jp-viewer-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--text-soft); font-size: .9rem; pointer-events: none; }
+.jp-viewer-msg[hidden] { display: none; }
+.jp-viewer-bar {
+    position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; font-size: .72rem; color: var(--text-soft);
+    background: linear-gradient(to top, color-mix(in srgb, var(--surface-base) 85%, transparent), transparent);
+}
+.jp-viewer-reset { font: inherit; cursor: pointer; padding: 4px 10px; color: var(--text-strong); background: var(--surface-raised); border: 1px solid var(--border-control); border-radius: 99px; }
+.jp-viewer-reset:hover, .jp-viewer-reset:focus-visible { border-color: var(--accent-fill); outline: none; }
+.jp-viewer-2d { display: grid; place-items: center; }
+.jp-trace { max-width: 100%; max-height: 100%; object-fit: contain; }
+.jp-trace[hidden] { display: none; }
+
+.jp-section-title { margin: 0 0 10px; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-soft); }
+.jp-progress { display: flex; flex-direction: column; gap: 12px; }
+.jp-progress-body { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.jp-ring { position: relative; width: 132px; height: 132px; flex: 0 0 auto; }
+.jp-ring svg { width: 100%; height: 100%; }
+.jp-ring-track { stroke: var(--border-subtle); }
+.jp-ring-fill { stroke: var(--accent-fill); transition: stroke-dashoffset .4s ease; }
+.jp-ring-pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.jp-stats { margin: 0; display: grid; gap: 8px; flex: 1 1 160px; min-width: 0; }
+.jp-stats > div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.jp-stats > div[hidden] { display: none; }
+.jp-stats dt { color: var(--text-soft); font-size: .85rem; }
+.jp-stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.jp-bar { height: 8px; border-radius: 99px; background: var(--border-subtle); overflow: hidden; }
+.jp-bar > span { display: block; height: 100%; background: var(--accent-fill); transition: width .4s ease; }
+
+.jp-lower { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+.jp-temps[hidden] { display: none; }
+.jp-temp-list { margin: 0; display: grid; gap: 10px; }
+.jp-temp-list > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.jp-temp-list dt { color: var(--text-soft); }
+.jp-temp-list dd { margin: 0; display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+.jp-chip { min-width: 64px; text-align: center; padding: 2px 10px; border-radius: 99px; font-size: .8rem; font-weight: 600; border: 1px solid currentColor; }
+.jp-chip-hot { color: var(--status-warn); }
+.jp-chip-bed { color: var(--status-info); }
+.jp-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.jp-btn {
+    font: inherit; font-weight: 600; min-height: 44px; padding: 8px 14px; cursor: pointer; color: var(--text-strong);
+    background: var(--surface-sunken); border: 1px solid var(--border-control); border-radius: var(--radius-md);
+    transition: border-color .15s ease, background .15s ease;
+}
+.jp-btn:hover, .jp-btn:focus-visible { border-color: var(--accent-fill); outline: none; }
+.jp-btn-primary { color: var(--status-ok); border-color: var(--status-ok); }
+.jp-btn-danger { color: var(--status-danger); border-color: var(--status-danger); }
+.jp-note { margin: 0; color: var(--text-soft); font-size: .85rem; }
+.jp-note[hidden] { display: none; }
+.jp-camera:empty { display: none; }
+.jp-camera { margin-top: 16px; }
+.jp-fullscreen {
+    display: block; width: 100%; margin-top: 16px; min-height: 44px; font: inherit; font-weight: 600; cursor: pointer;
+    color: var(--accent-ink); background: transparent; border: 1px solid var(--accent-fill); border-radius: var(--radius-md);
+}
+.jp-fullscreen:hover, .jp-fullscreen:focus-visible { background: color-mix(in srgb, var(--accent-fill) 14%, transparent); outline: none; }
+.jp-fullscreen[hidden] { display: none; }
+
+@media (max-width: 760px) {
+    .jp-grid { grid-template-columns: 1fr; }
+    .jp-file { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .jp-ring-fill, .jp-bar > span { transition: none; }
+}
+
+/* Máquina trabajando: destello en el contorno con el color de su categoría
+   (3D azul, láser morado, CNC naranja; ver --dev-category). La insignia
+   toma ese mismo color en vez del verde de "lista". En pausa conserva el
+   ámbar de siempre. */
+.dev-card[data-state="printing"],
+.dev-card[data-state="working"],
+.dev-card[data-state="engraving"],
+.dev-card[data-state="cutting"],
+.dev-card[data-state="milling"] {
+    --dev-tone: var(--dev-category, var(--status-info));
+    animation: devCardWorkingGlow 2s ease-in-out infinite;
+}
+@keyframes devCardWorkingGlow {
+    0%, 100% {
+        border-color: color-mix(in srgb, var(--dev-category, var(--status-info)) 55%, var(--border-subtle));
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--dev-category, var(--status-info)) 0%, transparent),
+                    0 0 10px 0 color-mix(in srgb, var(--dev-category, var(--status-info)) 30%, transparent);
+    }
+    50% {
+        border-color: var(--dev-category, var(--status-info));
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dev-category, var(--status-info)) 45%, transparent),
+                    0 0 26px 2px color-mix(in srgb, var(--dev-category, var(--status-info)) 60%, transparent);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .dev-card[data-state="printing"], .dev-card[data-state="working"], .dev-card[data-state="engraving"],
+    .dev-card[data-state="cutting"], .dev-card[data-state="milling"] {
+        animation: none;
+        border-color: var(--dev-category, var(--status-info));
+        box-shadow: 0 0 14px 0 color-mix(in srgb, var(--dev-category, var(--status-info)) 45%, transparent);
+    }
+}
+
+/* Carrusel de fondos encendido: la paloma marca las miniaturas que rotan. */
+.theme-option-wallpaper-thumb { position: relative; }
+.wallpaper-carousel-on .theme-option-wallpaper-thumb:not(.is-included) img { opacity: .55; }
+.theme-option-wallpaper-thumb.is-included { border-color: #22c55e; }
+.theme-option-wallpaper-thumb.is-included::after {
+    content: '';
+    position: absolute; inset: 0;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 12.5 9.5 18 20 6'/%3E%3C/svg%3E") center / 70% no-repeat,
+        rgba(0, 0, 0, .38);
+}
+
+.active-print-queue-list:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .jobs-rail { transition: none; } }
+
+/* Franja del título "Dispositivos": degradado desde ambos bordes que se
+   desvanece hacia el centro, para identificar la cabecera (título a la
+   izquierda, botones de vista a la derecha) sobre cualquier fondo. Toma el
+   color de acento del tema. */
+.printers-section > .section-title {
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    --section-title-edge: color-mix(in srgb, var(--accent-fill) 24%, color-mix(in srgb, var(--surface-base) 85%, transparent));
+    background: linear-gradient(90deg, var(--section-title-edge) 0%, transparent 36%, transparent 64%, var(--section-title-edge) 100%);
+}
+
+/* ── Tema claro (Desert): legibilidad sobre fondos con foto ──
+   El vidrio translúcido dejaba pasar la foto (cactus, rocas) detrás del
+   texto: rótulos del menú, título de la barra superior y panel de vista
+   previa se perdían. Se sube la opacidad de esas superficies y se oscurece
+   el texto tenue; solo afecta al tema claro. */
+body.light .sidebar {
+    background: color-mix(in srgb, var(--sidebar-bg) 90%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+body.light .nav-category-header { color: var(--text-strong); }
+body.light .nav-item:not(.active):not([data-section="cnc"]):not([data-section="laser"]) {
+    background: color-mix(in srgb, var(--surface-sunken) 78%, transparent);
+}
+body.light .nav-item.active {
+    color: var(--accent-green-strong);
+    background: color-mix(in srgb, var(--accent-green-soft) 92%, transparent);
+    border-color: var(--accent-green-strong);
+}
+body.light .global-topbar {
+    background: color-mix(in srgb, var(--surface-nav) 88%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+body.light .global-topbar-panel-title p { color: var(--text-soft); }
+body.light #gcode-section,
+body.light #models-section {
+    --library-surface: color-mix(in srgb, var(--card-bg) 96%, transparent);
+    --library-surface-strong: color-mix(in srgb, var(--card-bg) 98%, transparent);
+}
+body.light .gcode-preview-card { background-color: color-mix(in srgb, var(--card-bg) 96%, transparent); }
+
+/* ── Configuración > Inteligencia artificial: tarjeta a todo el ancho ──
+   El resto de las tarjetas de Configuración fluye en 2 columnas; esta sola
+   en su pestaña dejaba la mitad derecha vacía. Ocupa las dos columnas y por
+   dentro reparte: IAs guardadas en rejilla, y el formulario en dos paneles
+   (Conexión | Comportamiento) con los botones de acción abajo. */
+.settings-module-group-body > .settings-card[data-settings-module="ai"] { column-span: all; }
+
+.settings-option-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.settings-option-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.settings-option-label > span { font-size: .9rem; font-weight: 600; color: var(--text-strong); }
+.settings-option-label > small { font-size: .75rem; line-height: 1.4; color: var(--text-soft); }
+
+.settings-card[data-settings-module="ai"] > .settings-option-row {
+    margin: 4px 0 16px; padding: 12px 16px;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
+}
+.ai-settings-body { display: flex; flex-direction: column; gap: 18px; }
+.ai-providers-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.ai-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.ai-col {
+    display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 18px;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-sunken) 55%, transparent);
+}
+.ai-col-title {
+    margin: 0; padding-bottom: 8px; font-size: .75rem; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--text-soft); border-bottom: 1px solid var(--border-subtle);
+}
+.ai-settings-fields > .ai-settings-actions {
+    padding-top: 16px; border-top: 1px solid var(--border-subtle);
+}
+@media (max-width: 1000px) {
+    .ai-form-grid { grid-template-columns: 1fr; }
+    .ai-providers-list { grid-template-columns: 1fr; }
+}
+
+/* La pestaña de IA reparte sus tarjetas en rejilla que se adapta: con una
+   sola tarjeta ésta ocupa todo el ancho; si aparecen más, se acomodan al
+   lado en vez de apilarse en columnas de la mitad. Dentro, los paneles
+   (Servidor | Modelo | Comportamiento) también se reparten solos según el
+   ancho disponible, para que quepa sin scroll. */
+#st-panel-ai .st-panel-cards {
+    column-count: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+    gap: 20px;
+    align-items: start;
+}
+#st-panel-ai .st-panel-cards > .settings-card { margin-bottom: 0; min-width: 0; }
+.ai-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.ai-providers-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.settings-card[data-settings-module="ai"] > p { margin: 0 0 10px; }
+.settings-card[data-settings-module="ai"] > .settings-option-row { margin: 0 0 12px; padding: 10px 16px; }
+.ai-settings-body { gap: 14px; }
+.ai-col { padding: 14px 16px; gap: 12px; }
+.ai-public-warning ul { column-count: 2; column-gap: 28px; }
+.ai-public-warning li { break-inside: avoid; }
+@media (max-width: 800px) { .ai-public-warning ul { column-count: 1; } }
+.ai-public-warning ul { column-count: 1; }
+.ai-form-title { margin: 0; }
+
+/* Progreso de subida: tarjeta dentro de la lista en mosaico y avisos
+   flotantes al soltar desde cualquier pantalla. */
+.uploading-row-card {
+    display: block; margin: 0 0 12px; padding: 12px 16px;
+    border: 1px dashed var(--accent-fill); border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+}
+#upload-toasts {
+    position: fixed; right: 24px; bottom: 96px; z-index: 3200;
+    display: flex; flex-direction: column; gap: 8px; width: min(320px, calc(100vw - 32px));
+}
+.upload-toast {
+    display: grid; gap: 6px; padding: 12px 14px;
+    background: var(--surface-raised); color: var(--text-strong);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+}
+.upload-toast strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+.upload-toast small { color: var(--text-soft); font-size: .75rem; }
+.upload-toast.is-done { border-color: var(--status-ok); }
+.upload-toast.is-error { border-color: var(--status-danger); }
+.upload-toast.is-error small { color: var(--status-danger); }
+
+/* Biblioteca de Impresión 3D: miniatura estática en cada tarjeta y visor
+   interactivo (se gira con el mouse) en el panel de vista previa. */
+.model-thumb { display: none; }
+.gcode-modern-table.is-grid .model-thumb {
+    display: block; position: relative; width: 100%; aspect-ratio: 1 / 1; overflow: hidden;
+    border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.14);
+    background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--accent-fill) 12%, var(--surface-sunken)), var(--surface-sunken) 75%);
+}
+.gcode-modern-table.is-grid .model-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.gcode-modern-table.is-grid .model-thumb:not(.has-image):not(.is-empty)::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--text-strong) 8%, transparent) 50%, transparent 70%);
+    background-size: 200% 100%; animation: model-thumb-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes model-thumb-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+.gcode-modern-table.is-grid .model-thumb.has-image ~ .model-format-icon,
+.gcode-modern-table.is-grid .model-thumb:not(.is-empty) ~ .model-format-icon {
+    position: absolute; top: 14px; left: 14px; z-index: 1;
+}
+#preview-image.library-viewer-mode { overflow: hidden; }
+.library-viewer-host { position: absolute; inset: 0; }
+@media (prefers-reduced-motion: reduce) {
+    .gcode-modern-table.is-grid .model-thumb:not(.has-image):not(.is-empty)::after { animation: none; }
+}
+
+/* Pestaña de IA: tres fichas (Conexión, Comportamiento, Opciones avanzadas). */
+#st-panel-ai .st-panel-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); }
+@media (min-width: 1500px) { #st-panel-ai .st-panel-cards > [data-settings-module="ai"] { grid-column: span 2; } }
+.ai-extra-card-body { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+.ai-extra-card-body .ai-settings-actions { padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+
+/* La regla global `header { border-bottom }` dibujaba una línea clara bajo el
+   encabezado de las bibliotecas (y se colaba en los encabezados nuevos). */
+.gcode-library-header { border-bottom: 0; }
+.jp-head { padding: 0 44px 0 0; background: none; border-bottom: 0; }
+/* Miniatura omitida (archivo muy pesado): el formato en grande, no un hueco. */
+.gcode-modern-table.is-grid .model-thumb.is-empty::after {
+    content: attr(data-ext); position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 1.15rem; font-weight: 700; letter-spacing: .1em; color: var(--accent-fill); opacity: .6;
+}
+
+/* Distintivos de origen: verde = biblioteca de NOPAL, azul = también en
+   Moonraker/Mainsail. En mosaico van sobre la miniatura (abajo a la izquierda);
+   en lista, junto al nombre. */
+.model-origins { display: inline-flex; gap: 4px; align-items: center; vertical-align: middle; }
+.model-origin {
+    display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px;
+    border: 1px solid currentColor; background: color-mix(in srgb, var(--surface-base) 82%, transparent);
+}
+.model-origin-nopal { color: var(--accent-fill); }
+.model-origin-moonraker { color: var(--status-info); }
+.model-origins-inline { margin-left: 8px; }
+.gcode-modern-table.is-grid .model-origins-inline { display: none; }
+.gcode-modern-table:not(.is-grid) .model-thumb .model-origins { display: none; }
+.gcode-modern-table.is-grid .model-thumb .model-origins { position: absolute; left: 6px; bottom: 6px; z-index: 2; }
+
+/* Distintivos: caja centrada con el icono dentro (reglas de la tabla los
+   dejaban como texto en línea y el icono caía bajo la caja). */
+.model-origins .model-origin {
+    display: inline-flex !important; align-items: center; justify-content: center;
+    box-sizing: border-box; width: 22px; height: 22px; padding: 0; line-height: 0;
+    overflow: hidden; white-space: normal; text-overflow: clip;
+}
+.model-origins .model-origin svg { display: block; flex: none; width: 13px; height: 13px; margin: 0; position: static; }
+
+/* Orden del menú lateral en mosaico por grupos. */
+.sidebar-order-list {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+    gap: 12px; align-items: start;
+}
+.sidebar-order-group {
+    display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-sunken) 55%, transparent);
+}
+.sidebar-order-group-title {
+    margin: 0 0 2px; padding: 0 2px 6px; font-size: .7rem; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--text-soft); border-bottom: 1px solid var(--border-subtle);
+}
+.sidebar-order-group .sidebar-order-row { min-width: 0; }
+/* Columnas en vez de rejilla: los bloques de distinta altura se acomodan sin huecos. */
+.sidebar-order-list { display: block; column-count: 2; column-gap: 12px; }
+.sidebar-order-group { break-inside: avoid; margin-bottom: 12px; }
+@media (max-width: 700px) { .sidebar-order-list { column-count: 1; } }
+
+/* Carrusel de fondos: intervalo en píldoras bajo el texto. */
+.wallpaper-carousel-text { min-width: 0; flex: 1; }
+.wallpaper-interval-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wallpaper-pill {
+    min-height: 34px; padding: 0 14px; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+    color: var(--text-soft); background: transparent;
+    border: 1px solid var(--border-control); border-radius: 999px;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.wallpaper-pill:hover:not(:disabled), .wallpaper-pill:focus-visible { border-color: var(--accent-fill); color: var(--text-strong); outline: none; }
+.wallpaper-pill.active { background: color-mix(in srgb, var(--accent-fill) 22%, transparent); border-color: var(--accent-fill); color: var(--text-strong); }
+.wallpaper-pill:disabled { opacity: .45; cursor: not-allowed; }

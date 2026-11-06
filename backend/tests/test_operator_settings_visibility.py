@@ -13,7 +13,7 @@ APP_JS = (ROOT / "backend/static/js/app.js").read_text(encoding="utf-8")
 INDEX_HTML = (ROOT / "backend/templates/index.html").read_text(encoding="utf-8")
 
 EXPECTED_ADMIN_ONLY = {
-    "ai", "users", "tunascreen", "logsConfig",
+    "ai", "aiBehavior", "aiAdvanced", "users", "tunascreen", "logsConfig",
     "updates", "devices", "accessories", "backup",
 }
 
