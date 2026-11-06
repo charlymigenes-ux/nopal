@@ -223,6 +223,7 @@ def _active_jobs(
             "device_type": "marlin",
             "device_id": marlin_uids.get(job.get("device")),
             "name": marlin_names.get(job.get("device")) or job.get("device"),
+            "device": job.get("device"),  # ruta serie: la usan los controles rápidos de Marlin
             "filename": job.get("filename"),
             "state": job.get("state"),
             "progress": round((current / total) * 100) if total else 0,
@@ -242,6 +243,7 @@ def _active_jobs(
             "device_type": kind,
             "device_id": entry.get("id"),
             "name": entry.get("name") or job.get("host"),
+            "host": job.get("host"),  # los controles rápidos de láser/CNC se identifican por host
             "filename": job.get("filename"),
             "state": job.get("state"),
             "progress": round((current / total) * 100) if total else 0,

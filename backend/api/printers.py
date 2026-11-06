@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from fastapi.concurrency import run_in_threadpool
 
 from backend.api.console import klipper_resource
@@ -12,6 +13,7 @@ from backend.services.klipper_service import (
     find_moonraker_instances,
     firmware_restart_printer,
     get_all_printers_status,
+    get_moonraker_file_index,
     get_printer_config_file_content,
     get_printer_config_files,
     get_printer_job_queue,
@@ -20,6 +22,7 @@ from backend.services.klipper_service import (
     get_scheduled_prints,
     get_total_queued_print_jobs,
     is_safe_config_path,
+    open_moonraker_job_file,
     pause_printer_print,
     remove_printer_queue_job,
     remove_scheduled_print,
@@ -226,6 +229,25 @@ async def remove_scheduled_print_endpoint(schedule_id: str, user: dict = Depends
     if not remove_scheduled_print(schedule_id):
         raise HTTPException(status_code=404, detail="Programación no encontrada")
     return {"success": True}
+
+
+@router.get("/api/printers/files-index")
+async def printers_files_index(user: dict = Depends(require_auth)):
+    """Qué archivos G-code hay ya en las impresoras (Moonraker/Mainsail), por nombre."""
+    return {"files": await run_in_threadpool(get_moonraker_file_index)}
+
+
+@router.get("/api/printers/{port}/job-file")
+async def printer_job_file(port: int, filename: str, user: dict = Depends(require_auth)):
+    """G-code de un trabajo en curso leído de la propia impresora, para dibujar su
+    vista previa cuando el archivo no está en la biblioteca de NOPAL."""
+    response = await run_in_threadpool(open_moonraker_job_file, port, filename)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Archivo no disponible en la impresora")
+    headers = {}
+    if response.headers.get("content-length"):
+        headers["Content-Length"] = response.headers["content-length"]
+    return StreamingResponse(response.iter_content(65536), media_type="text/plain; charset=utf-8", headers=headers)
 
 
 @router.get("/api/printers/{printer_name}/status")

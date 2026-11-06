@@ -10,6 +10,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
@@ -42,6 +43,18 @@ def library_index() -> Dict[str, Dict[str, str]]:
                 index.setdefault(name, {"section": section, "path": os.path.relpath(os.path.join(folder, name), root)})
     _library_cache.update(at=time.time(), index=index)
     return index
+
+
+@router.get("/api/jobs/file-source")
+async def job_file_source(name: str, user: dict = Depends(require_auth)):
+    """Dónde está en la Biblioteca el archivo de un trabajo en curso (por nombre), para
+    dibujar su vista previa en el popup. 404 si el trabajo vino de fuera de NOPAL."""
+    entry = library_index().get(os.path.basename(name or ""))
+    if not entry:
+        raise HTTPException(status_code=404, detail="Ese archivo no está en la biblioteca")
+    folder = "gcode" if entry["section"] == "gcode" else "models"
+    rel = entry["path"].replace(os.sep, "/")
+    return {"section": entry["section"], "path": rel, "url": "/uploads/" + folder + "/" + quote(rel)}
 
 
 def _printers(host: str) -> List[Dict[str, Any]]:
