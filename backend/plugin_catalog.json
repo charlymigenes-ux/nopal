@@ -189,7 +189,7 @@
   {
     "id": "control-por-voz",
     "name": "Control por voz",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "publisher": "Comunidad NOPAL",
     "category": "Producción",
     "description": "Di «Nopal» y controla luces, máquinas y la pantalla con la voz.",
