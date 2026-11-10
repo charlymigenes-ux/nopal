@@ -185,5 +185,23 @@
     "pricing": { "type": "free" },
     "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-cotizador.git",
     "banner_image": "/static/img/banner_Cotizador.png"
+  },
+  {
+    "id": "control-por-voz",
+    "name": "Control por voz",
+    "version": "0.1.0",
+    "publisher": "Comunidad NOPAL",
+    "category": "Producción",
+    "description": "Di «Nopal» y controla luces, máquinas y la pantalla con la voz.",
+    "long_description": "Asistente de voz para el taller: enciende luces y aire, informa el estado de las máquinas, hace home, pausa y reanuda, precalienta, mueve Z y encuadra con confirmación, consulta filamento y sensores, crea cotizaciones, navega la pantalla de NOPAL y usa la IA de NOPAL como respaldo. Corre en el navegador con tu sesión; requiere Edge o Chrome y HTTPS o localhost.",
+    "icon": "mic",
+    "accent": "#22d3ee",
+    "compatibility": ["Impresión 3D", "Láser", "CNC"],
+    "permissions": ["Usar el micrófono del navegador", "Ejecutar escenas y comandos de máquinas con tu sesión de NOPAL"],
+    "size": "Por definir",
+    "featured": false,
+    "availability": "available",
+    "pricing": { "type": "free" },
+    "repo_url": "https://github.com/charlymigenes-ux/nopal-plugin-control-por-voz.git"
   }
 ]
