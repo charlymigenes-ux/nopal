@@ -1099,3 +1099,49 @@ def get_printer_status(port: int) -> Dict[str, Any]:
         "printer_info": printer_info,
         "status": client.get_printer_status()
     }
+
+
+# ── Índice de archivos que ya están en cada Moonraker/Mainsail ──
+# Sirve para distinguir en la biblioteca de NOPAL qué archivos también viven en
+# una impresora. Se recuerda 20 s: es una consulta por impresora.
+_moonraker_files_cache: Dict[str, Any] = {"at": 0.0, "data": {}}
+
+
+def get_moonraker_file_index() -> Dict[str, List[str]]:
+    """Nombre de archivo -> impresoras (nombre) cuya carpeta `gcodes` lo tiene."""
+    now = time.monotonic()
+    if _moonraker_files_cache["data"] and now - _moonraker_files_cache["at"] < 20:
+        return _moonraker_files_cache["data"]
+    index: Dict[str, List[str]] = {}
+    for printer in find_moonraker_instances():
+        client = MoonrakerClient(printer["port"])
+        listing = client._get("/server/files/list?root=gcodes", log_errors=False)
+        if not isinstance(listing, list):
+            continue
+        for item in listing:
+            path = (item or {}).get("path") or (item or {}).get("filename") or ""
+            base = path.rsplit("/", 1)[-1]
+            if base:
+                index.setdefault(base, []).append(printer.get("name") or f"printer_{printer['port']}")
+    _moonraker_files_cache.update(at=now, data=index)
+    return index
+
+
+def open_moonraker_job_file(port: int, filename: str):
+    """Abre (en flujo) un G-code de la carpeta `gcodes` de una impresora conocida.
+    Devuelve la respuesta de `requests` o None si el puerto no es una instancia
+    detectada o la ruta intenta salirse de la carpeta."""
+    parts = [p for p in (filename or "").split("/")]
+    if not filename or filename.startswith("/") or ".." in parts or "\\" in filename:
+        return None
+    if port not in {p["port"] for p in find_moonraker_instances()}:
+        return None
+    response = requests.get(
+        f"http://localhost:{port}/server/files/gcodes/{quote(filename)}",
+        stream=True,
+        timeout=10,
+    )
+    if response.status_code != 200:
+        response.close()
+        return None
+    return response

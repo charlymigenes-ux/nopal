@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>try { if (localStorage.getItem('nopalBootScreen') === 'off') document.documentElement.classList.add('boot-off'); } catch (e) { /* sin localStorage: se muestra */ }</script>
-    <link rel="stylesheet" href="/static/css/style.css?v=361">
+    <link rel="stylesheet" href="/static/css/style.css?v=386">
     <link rel="stylesheet" href="/static/css/guided-printer-setup.css?v=1">
 </head>
 <body>
@@ -404,6 +404,17 @@
                     </div>
                     <div id="machines-mixed-grid" class="printers-grid" hidden></div>
                 </section>
+
+                <!-- Lista lateral de trabajos activos (cualquier máquina). Al pulsar
+                     uno se abre su detalle en un popup. Deja libre el fondo para la
+                     cortinilla del asistente de IA. -->
+                <aside class="jobs-rail" id="jobs-rail" aria-label="Trabajos activos" hidden>
+                    <header class="jobs-rail-head">
+                        <h2 data-i18n="jobsRailTitle">Trabajos en curso</h2>
+                        <span class="jobs-rail-count" id="jobs-rail-count">0</span>
+                    </header>
+                    <div class="jobs-rail-list" id="jobs-rail-list"></div>
+                </aside>
 
                 <div class="dashboard-fixed-stack">
                     <div id="print-queue" class="active-print-queue-list"></div>
@@ -2513,6 +2524,17 @@
                                         <span class="switch-label" data-i18n="enabled">Enabled</span>
                                     </label>
                                 </div>
+                                <div class="settings-field settings-field-switch">
+                                    <div>
+                                        <span class="settings-field-label" data-i18n="globalDropSetting">Mostrar zona para soltar archivos</span>
+                                        <p class="settings-field-hint" data-i18n="globalDropSettingHint">Al arrastrar un archivo sobre cualquier pantalla, muestra los destinos Impresión 3D y Láser / Grabado.</p>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="global-drop-enabled" checked>
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
+                                </div>
                                 <div class="settings-field">
                                     <label class="settings-field-label" data-i18n="uiScale">Tamaño de interfaz</label>
                                     <div class="option-switch" id="settings-ui-scale-switch">
@@ -2638,7 +2660,7 @@
                                 <span class="card-header-std-icon">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 6 6 0 0 0 0-12 4 4 0 0 1 0-8z"/></svg>
                                 </span>
-                                <h2 class="card-header-std-title" data-i18n="appearanceSettingsTitle">Apariencia y UI/UX</h2>
+                                <h2 class="card-header-std-title" data-i18n="appThemeCardTitle">Tema</h2>
                                 <button type="button" class="card-collapse-toggle" title="Contraer/expandir">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                                 </button>
@@ -2651,6 +2673,26 @@
                                 <option value="ai" data-i18n="aiThemeName">Modo IA</option>
                                 <option value="custom" id="settings-theme-custom-option" data-i18n="customMode" hidden>Custom</option>
                             </select>
+                            <div class="settings-field settings-field-switch">
+                                <div class="wallpaper-carousel-text">
+                                    <span class="settings-field-label" data-i18n="wallpaperCarouselLabel">Carrusel de fondos</span>
+                                    <p class="settings-field-hint" data-i18n="wallpaperCarouselHint">Cambia solo el fondo del tema activo, rotando entre sus imágenes con el tiempo.</p>
+                                    <div class="wallpaper-interval-pills" id="wallpaper-carousel-interval" role="radiogroup" aria-label="Cada cuánto cambia el fondo">
+                                        <button type="button" class="wallpaper-pill" role="radio" data-minutes="1" data-i18n="wallpaperEvery1">1 min</button>
+                                        <button type="button" class="wallpaper-pill" role="radio" data-minutes="5" data-i18n="wallpaperEvery5">5 min</button>
+                                        <button type="button" class="wallpaper-pill" role="radio" data-minutes="15" data-i18n="wallpaperEvery15">15 min</button>
+                                        <button type="button" class="wallpaper-pill" role="radio" data-minutes="30" data-i18n="wallpaperEvery30">30 min</button>
+                                        <button type="button" class="wallpaper-pill" role="radio" data-minutes="60" data-i18n="wallpaperEvery60">1 hora</button>
+                                    </div>
+                                </div>
+                                <div class="wallpaper-carousel-controls">
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="wallpaper-carousel-enabled">
+                                        <span class="switch-slider"></span>
+                                        <span class="switch-label" data-i18n="enabled">Enabled</span>
+                                    </label>
+                                </div>
+                            </div>
                             <div class="theme-presets" id="settings-theme-presets">
                                 <div class="theme-option-card theme-option-card-nopal" id="light-theme-card" data-theme="light">
                                     <button type="button" class="theme-option-select" id="light-theme-select-btn">
@@ -2773,10 +2815,26 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                        <div class="settings-card card-collapsible" data-settings-module="appearanceOrder">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></span>
+                                <h2 class="card-header-std-title" data-i18n="appOrderCardTitle">Organización</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+                            </div>
                             <div class="settings-field settings-uiux-field">
                                 <label class="settings-field-label" data-i18n="uiUxSection">UI/UX</label>
                                 <p class="settings-field-hint" data-i18n="sidebarOrderDescription">Organiza el orden de los accesos del menú lateral.</p>
                                 <div class="sidebar-order-list" id="sidebar-order-list"></div>
+                            </div>
+                        </div>
+                        <div class="settings-card card-collapsible" data-settings-module="appearanceOther">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+                                <h2 class="card-header-std-title" data-i18n="appOtherCardTitle">Otros</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+                            </div>
+                            <div class="settings-field settings-uiux-field">
                                 <div class="settings-uiux-subfield">
                                     <span class="settings-field-label" data-i18n="laserMarkerLabel">Marcador de posición del láser</span>
                                     <p class="settings-field-hint" data-i18n="laserMarkerDescription">Elige la forma y el color del marcador en el mapa de cama.</p>
@@ -2808,6 +2866,7 @@
                                     </select>
                                 </div>
                             </div>
+                        
                         </div>
                         <!-- Respaldo de configuración. Admin-only: puede llevar usuarios
                              y claves de API, e importar sobrescribe la instalación. -->
@@ -2892,6 +2951,9 @@
 
                             <div class="ai-settings-fields" id="ai-settings-fields">
                                 <p class="ai-form-title" id="ai-form-title" data-i18n="aiNewProvider">Nueva IA</p>
+                                <div class="ai-form-grid">
+                                <div class="ai-col" id="ai-col-server">
+                                    <h3 class="ai-col-title" data-i18n="aiColServer">Servidor</h3>
                                 <label class="ai-field">
                                     <span data-i18n="aiProviderName">Nombre</span>
                                     <input type="text" id="ai-name" class="ai-text-input" placeholder="El i7 del taller" autocomplete="off">
@@ -2908,7 +2970,14 @@
                                     <input type="text" id="ai-base-url" class="ai-text-input" placeholder="http://192.168.0.30:8081/v1" autocomplete="off">
                                     <small class="ai-field-hint" data-i18n="aiBaseUrlHint">La dirección completa, terminada en /v1</small>
                                 </label>
-
+                                <label class="ai-field" id="ai-api-key-field">
+                                    <span data-i18n="aiApiKey">Clave de API</span>
+                                    <input type="password" id="ai-api-key" class="ai-text-input" autocomplete="off">
+                                    <small class="ai-field-hint" data-i18n="aiApiKeyHint">Déjala vacía si tu servidor local no la pide.</small>
+                                </label>
+                                </div>
+                                <div class="ai-col" id="ai-col-model">
+                                    <h3 class="ai-col-title" data-i18n="aiColModel">Modelo</h3>
                                 <label class="ai-field">
                                     <span data-i18n="aiModel">Modelo</span>
                                     <input type="text" id="ai-model" class="ai-text-input" list="ai-model-options" placeholder="qwen2.5-7b-instruct" autocomplete="off">
@@ -2963,19 +3032,48 @@
                                         <small class="ai-field-hint" data-i18n="aiTierAgentHint">"Revisa todo, analiza los problemas y priorízalos": varias herramientas encadenadas.</small>
                                     </label>
                                 </details>
-
-                                <label class="ai-field" id="ai-api-key-field">
-                                    <span data-i18n="aiApiKey">Clave de API</span>
-                                    <input type="password" id="ai-api-key" class="ai-text-input" autocomplete="off">
-                                    <small class="ai-field-hint" data-i18n="aiApiKeyHint">Déjala vacía si tu servidor local no la pide.</small>
-                                </label>
-
                                 <div class="ai-public-warning" id="ai-public-warning" hidden>
                                     <p data-i18n="aiPublicWarning">Este proveedor está fuera de tu red. Al usarlo, estos datos de tu taller salen hacia un tercero:</p>
                                     <ul id="ai-data-sent"></ul>
                                     <label class="ai-consent">
                                         <input type="checkbox" id="ai-allow-public">
                                         <span data-i18n="aiAllowPublic">Entiendo y autorizo usar un servidor externo</span>
+                                    </label>
+                                </div>
+                                </div>
+                                </div><!-- /ai-form-grid -->
+
+                                <div class="ai-settings-actions">
+                                    <button type="button" class="btn-file-action" id="ai-test-btn">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                                        <span data-i18n="aiTestConnection">Probar conexión</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action btn-file-action-accent" id="ai-save-btn">
+                                        <span data-i18n="save">Guardar</span>
+                                    </button>
+                                    <button type="button" class="btn-file-action" id="ai-cancel-btn" hidden>
+                                        <span data-i18n="cancelAction">Cancelar</span>
+                                    </button>
+                                    <span class="ai-test-result" id="ai-test-result"></span>
+                                </div>
+                            </div>
+                            </div><!-- /ai-settings-body -->
+                        </div>
+                        <div class="settings-card card-collapsible" hidden data-settings-module="aiBehavior">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/></svg></span>
+                                <h2 class="card-header-std-title" data-i18n="aiColBehavior">Comportamiento</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+                            </div>
+                            <div class="ai-extra-card-body">
+                                <div class="settings-option-row">
+                                    <div class="settings-option-label">
+                                        <span data-i18n="aiShowQuickQuestions">Mostrar preguntas rápidas</span>
+                                        <small data-i18n="aiShowQuickQuestionsHint">Muestra u oculta la franja de preguntas preestablecidas bajo la conversación. Las preguntas de abajo se conservan.</small>
+                                    </div>
+                                    <label class="settings-switch">
+                                        <input type="checkbox" id="ai-show-suggestions" checked>
+                                        <span class="switch-slider"></span>
                                     </label>
                                 </div>
 
@@ -2996,9 +3094,15 @@
                                         <span class="ai-test-result" id="ai-suggestions-result"></span>
                                     </div>
                                 </div>
-
-                                <details class="ai-advanced">
-                                    <summary data-i18n="aiAdvanced">Opciones avanzadas</summary>
+                            </div>
+                        </div>
+                        <div class="settings-card card-collapsible" hidden data-settings-module="aiAdvanced">
+                            <div class="card-header-std">
+                                <span class="card-header-std-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 3 3v1a3 3 0 0 0 6 0v-1a3 3 0 0 0 3-3v-1a3 3 0 0 0 0-6V9a3 3 0 0 0-3-3V5a3 3 0 0 0-3-3z"/></svg></span>
+                                <h2 class="card-header-std-title" data-i18n="aiAdvanced">Opciones avanzadas</h2>
+                                <button type="button" class="card-collapse-toggle" title="Contraer/expandir"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+                            </div>
+                            <div class="ai-extra-card-body">
                                     <label class="ai-field">
                                         <span data-i18n="aiToolMode">Uso de herramientas</span>
                                         <select id="ai-tool-mode" class="settings-select">
@@ -3029,23 +3133,13 @@
                                         <span data-i18n="aiTimeout">Tiempo de espera (segundos)</span>
                                         <input type="number" id="ai-timeout" class="ai-text-input" min="1" max="3600">
                                     </label>
-                                </details>
-
+                                
                                 <div class="ai-settings-actions">
-                                    <button type="button" class="btn-file-action" id="ai-test-btn">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
-                                        <span data-i18n="aiTestConnection">Probar conexión</span>
-                                    </button>
-                                    <button type="button" class="btn-file-action btn-file-action-accent" id="ai-save-btn">
+                                    <button type="button" class="btn-file-action btn-file-action-accent" id="ai-save-advanced-btn">
                                         <span data-i18n="save">Guardar</span>
                                     </button>
-                                    <button type="button" class="btn-file-action" id="ai-cancel-btn" hidden>
-                                        <span data-i18n="cancelAction">Cancelar</span>
-                                    </button>
-                                    <span class="ai-test-result" id="ai-test-result"></span>
                                 </div>
                             </div>
-                            </div><!-- /ai-settings-body -->
                         </div>
                         <div class="settings-card card-collapsible" data-settings-module="about">
                             <div class="card-header-std">
@@ -5855,13 +5949,14 @@
 
     <script src="/static/js/three.min.js?v=2"></script>
     <script src="/static/js/STLLoader.js?v=3"></script>
+    <script src="/static/js/job-viewer.js?v=5"></script>
     <script src="/static/js/3MFLoader.js?v=2"></script>
-    <script src="/static/js/translations.js?v=53"></script>
+    <script src="/static/js/translations.js?v=68"></script>
     <script src="/static/js/translations-pt-BR.js?v=8"></script>
     <script src="/static/js/translations-fr.js?v=8"></script>
     <script src="/static/js/translations-de.js?v=8"></script>
     <script src="/static/js/boot-screen.js?v=4"></script>
-    <script src="/static/js/app.js?v=294"></script>
+    <script src="/static/js/app.js?v=317"></script>
     <script src="/static/js/guided-printer-setup.js?v=2"></script>
 </body>
 </html>
