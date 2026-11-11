@@ -44,7 +44,7 @@ def _usb_device(host: str) -> str:
 # ── Registro de placas conocidas (persistido) ──
 
 # Campos calculados en cada lectura de estado; nunca se persisten.
-_TRANSIENT_FIELDS = ("online", "identity", "anchor_unverified")
+_TRANSIENT_FIELDS = ("online", "identity", "anchor_unverified", "ws_connected")
 
 
 def _load_registry() -> List[Dict[str, Any]]:
@@ -210,6 +210,10 @@ def get_registered_lasers_with_status(timeout: float = 1.0) -> List[Dict[str, An
         {
             **entry,
             "online": _registry_entry_online(entry, probe_results),
+            # Disponibilidad (online: HTTP + identidad) y canal de datos
+            # (ws_connected) son cosas distintas; el estado operativo de la
+            # máquina sigue saliendo de /api/laser/status.
+            "ws_connected": None if _is_usb_host(entry.get("host", "")) else _ws_connected(entry.get("host", "")),
             "identity": laser_identity_state(entry, entries),
         }
         for entry in entries
@@ -270,6 +274,7 @@ def _history_entry(job: "LaserJob", final: bool) -> Dict[str, Any]:
         "current": job.current,
         "total": job.total,
         "error": job.error_message,
+        "comm_lost": job.comm_lost,
         "user": job.user,
         "started_at": job.started_at,
         "completed_at": time.time() if final else None,
@@ -1065,12 +1070,15 @@ def sd_upload_file_tracked(host: str, path: str, filename: str, file_bytes: byte
     total = len(file_bytes)
     with _sd_upload_progress_lock:
         _sd_upload_progress[upload_id] = {"sent": 0, "total": total, "status": "uploading", "error": None}
+        _sd_upload_activity.setdefault(host, {})[upload_id] = time.monotonic()
 
     def _on_progress(monitor: MultipartEncoderMonitor) -> None:
         with _sd_upload_progress_lock:
             entry = _sd_upload_progress.get(upload_id)
             if entry is not None:
                 entry["sent"] = monitor.bytes_read
+            if upload_id in _sd_upload_activity.get(host, {}):
+                _sd_upload_activity[host][upload_id] = time.monotonic()
 
     try:
         encoder = MultipartEncoder(fields={
@@ -1100,6 +1108,13 @@ def sd_upload_file_tracked(host: str, path: str, filename: str, file_bytes: byte
             if entry is not None:
                 entry["status"] = "error"
                 entry["error"] = str(e)
+    finally:
+        with _sd_upload_progress_lock:
+            activity = _sd_upload_activity.get(host)
+            if activity is not None:
+                activity.pop(upload_id, None)
+                if not activity:
+                    _sd_upload_activity.pop(host, None)
 
 
 def get_sd_upload_progress(upload_id: str) -> Optional[Dict[str, Any]]:
@@ -1150,6 +1165,71 @@ def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
 
 _ws_was_connected: Dict[str, bool] = {}
 
+# ── Vigilancia del WebSocket de red ──
+# Una placa que pierde corriente o WiFi no manda FIN/RST: el socket sigue
+# ESTAB para el servidor y el `recv()` se queda esperando para siempre (se
+# comprobó en vivo: ESTAB hacia una IP con ARP FAILED durante horas, sin un
+# solo "WS desconectado" en el log). Como FluidNC es mudo mientras nadie le
+# pregunta, el silencio por sí solo NO prueba nada: ante 20 s sin frames se
+# le manda un '?' (byte realtime de solo lectura, no mueve ni cambia nada) y
+# cualquier frame que llegue prueba que la placa sigue ahí. Solo tras varias
+# preguntas seguidas sin respuesta se da el socket por muerto y se reconecta.
+WS_IDLE_PROBE_S = 20.0           # silencio tolerado antes de preguntar con '?'
+WS_REPLY_WAIT_S = 8.0            # espera de respuesta a cada pregunta
+WS_MAX_MISSES = 3                # preguntas sin respuesta antes de dar el socket por muerto (~44 s)
+WS_MAX_MISSES_DURING_JOB = 6     # con un trabajo en curso se espera el doble (~68 s)
+WS_RECONNECT_DELAY_S = 3.0       # pausa entre reintentos de conexión
+WS_CLOSE_TIMEOUT_S = 2.0         # cierre de un socket muerto: el peer no va a contestar el handshake de cierre
+WS_UPLOAD_PROGRESS_GRACE_S = 30.0  # una subida a la SD que avanzó hace menos de esto cuenta como placa viva
+
+# Conexión confirmada por un frame real de la placa en el socket actual (abrir
+# el socket solo prueba que hubo handshake, no que la placa esté contestando).
+_ws_verified: Dict[str, bool] = {}
+# Momento (monotónico) en que se registró "WS desconectado"; al reconectar se
+# usa para decir cuánto duró la caída. El filtro de repetidos del log agrupa
+# mensajes idénticos, y un "WS conectado" igual al de hace minutos quedaba
+# oculto: con la duración en el texto cada reconexión es un mensaje distinto.
+_ws_down_since: Dict[str, float] = {}
+_ws_reconnect_count: Dict[str, int] = {}   # desambigua caídas de igual duración
+
+# Subidas a la SD en curso por host -> {upload_id: último avance (monotonic)}.
+# Mientras la placa recibe bytes está viva aunque no atienda el '?' (su servidor
+# HTTP está ocupado escribiendo en la SD), así que no se sondea ni se cierra.
+_sd_upload_activity: Dict[str, Dict[str, float]] = {}
+
+
+def _ws_connected(host: str) -> Optional[bool]:
+    """True si el WebSocket de `host` está abierto Y ya entregó un frame real
+    de la placa (recuperación efectiva); False si hay listener pero está caído
+    o aún sin verificar; None si nunca se abrió uno (USB, o aún no se ha
+    consultado esa placa)."""
+    event = _listener_ready_events.get(host)
+    return None if event is None else bool(event.is_set() and _ws_verified.get(host))
+
+
+def _mark_job_comm_lost(host: str) -> None:
+    """Deja constancia en el trabajo en curso de que se cayó la conexión. Es un
+    pestillo: abrir de nuevo el socket NO lo borra, porque lo que pasó en el
+    hueco (¿la placa se reinició?, ¿terminó?, ¿siguió?) ya no se puede saber.
+    Un trabajo que aún está subiendo su archivo no corría nada en la placa,
+    así que no cuenta como interrumpido."""
+    job = _jobs.get(host)
+    if job is not None and job.state in ("running", "paused") and job.phase != "uploading":
+        job.comm_lost = True
+
+
+def _ws_watchdog_applies(host: str) -> bool:
+    """El sondeo '?' es un byte realtime solo de FluidNC/GRBL. A un Marlin por
+    red llegaría como una línea de G-code más (y su 'ok'/error desfasaría el
+    conteo del trabajo), así que ahí no se sondea."""
+    return _firmware_for_host(host) == "fluidnc"
+
+
+def _sd_upload_in_progress(host: str) -> bool:
+    cutoff = time.monotonic() - WS_UPLOAD_PROGRESS_GRACE_S
+    with _sd_upload_progress_lock:
+        return any(last >= cutoff for last in _sd_upload_activity.get(host, {}).values())
+
 
 def _is_status_noise(host: str, text: str) -> bool:
     """Filtra del buffer de consola visible las líneas que son solo
@@ -1160,6 +1240,68 @@ def _is_status_noise(host: str, text: str) -> bool:
     if _firmware_for_host(host) == "marlin":
         return bool(marlin_driver.POSITION_RE.search(text) or marlin_driver.TEMP_RE.search(text))
     return bool(STATUS_RE.search(text))
+
+
+async def _read_ws_frames(host: str, ws, buffer: deque) -> bool:
+    """Reparte los frames del WebSocket a la consola y a los suscriptores.
+    Devuelve True si la placa dejó de contestar (socket muerto sin cierre) y
+    False si el otro lado cerró con normalidad.
+
+    Los comandos en tránsito NO se reenvían al reconectar: no hay forma de
+    saber si la placa llegó a ejecutarlos antes de caerse, y repetir un
+    movimiento o un disparo es peor que perderlo. Un trabajo por streaming
+    ya falla solo a los 20 s sin 'ok' (_run_job); uno de SD se marca con
+    `comm_lost` hasta que la comunicación vuelva."""
+    loop = asyncio.get_running_loop()
+    misses = 0
+    awaiting_reply = False
+    if _ws_watchdog_applies(host):
+        # Verificación activa del socket recién abierto: con la placa en
+        # silencio el handshake solo no prueba que esté contestando.
+        await loop.run_in_executor(None, send_raw_command, host, "?")
+        awaiting_reply = True
+    while True:
+        timeout = WS_REPLY_WAIT_S if awaiting_reply else WS_IDLE_PROBE_S
+        try:
+            # recv() es seguro de cancelar: si vence el timeout no se pierde ningún frame.
+            message = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        except asyncio.TimeoutError:
+            if not _ws_watchdog_applies(host):
+                continue
+            if _sd_upload_in_progress(host):
+                # La subida que sigue avanzando es la prueba de vida; no se
+                # sondea mientras la placa está ocupada escribiendo en la SD.
+                misses = 0
+                awaiting_reply = False
+                continue
+            if awaiting_reply:
+                misses += 1
+                limit = WS_MAX_MISSES_DURING_JOB if job_active(host) else WS_MAX_MISSES
+                if misses >= limit:
+                    return True
+            await loop.run_in_executor(None, send_raw_command, host, "?")
+            awaiting_reply = True
+            continue
+        except websockets.exceptions.ConnectionClosedOK:
+            return False
+        misses = 0
+        awaiting_reply = False
+        _ws_verified[host] = True
+        if isinstance(message, bytes):
+            message = message.decode("utf-8", errors="ignore")
+        # Un solo frame puede traer varias líneas separadas por \r\n
+        # (por ejemplo, el volcado completo de "$$").
+        for line in message.splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            # Mismo criterio que en el lector serie: los reportes de status
+            # alimentan widgets, no la consola visible (ver comentario en
+            # _serial_reader_loop).
+            if not _is_status_noise(host, text):
+                buffer.append({"message": text, "time": time.time()})
+            for queue in list(_subscribers.get(host, [])):
+                queue.put_nowait(text)
 
 
 async def _ws_listener_loop(host: str):
@@ -1180,6 +1322,7 @@ async def _ws_listener_loop(host: str):
             # dashboard, esta vez aplicado al log en vez de a la red).
             logger.warning(f"[{host}] WS desconectado, reintentando...")
             _ws_was_connected[host] = False
+            _ws_down_since[host] = time.monotonic()
         for uri in candidate_uris:
             try:
                 async with websockets.connect(
@@ -1192,33 +1335,45 @@ async def _ws_listener_loop(host: str):
                     # Varias implementaciones embebidas tampoco negocian
                     # correctamente permessage-deflate.
                     compression=None,
+                    close_timeout=WS_CLOSE_TIMEOUT_S,
                 ) as ws:
                     ready_event.set()
-                    logger.info(f"[{host}] WS conectado ({uri})")
+                    down_since = _ws_down_since.pop(host, None)
+                    if down_since is None:
+                        logger.info(f"[{host}] WS conectado ({uri})")
+                    else:
+                        _ws_reconnect_count[host] = _ws_reconnect_count.get(host, 0) + 1
+                        logger.info(
+                            f"[{host}] WS reconectado ({uri}) tras "
+                            f"{time.monotonic() - down_since:.0f} s sin conexión "
+                            f"(reconexión #{_ws_reconnect_count[host]})"
+                        )
                     _ws_was_connected[host] = True
-                    async for message in ws:
-                        if isinstance(message, bytes):
-                            message = message.decode("utf-8", errors="ignore")
-                        # Un solo frame puede traer varias líneas separadas por \r\n
-                        # (por ejemplo, el volcado completo de "$$").
-                        for line in message.splitlines():
-                            text = line.strip()
-                            if not text:
-                                continue
-                            # Mismo criterio que en el lector serie: los
-                            # reportes de status alimentan widgets, no la
-                            # consola visible (ver comentario en
-                            # _serial_reader_loop).
-                            if not _is_status_noise(host, text):
-                                buffer.append({"message": text, "time": time.time()})
-                            for queue in list(_subscribers.get(host, [])):
-                                queue.put_nowait(text)
+                    _ws_verified[host] = False
+                    stale = False
+                    try:
+                        stale = await _read_ws_frames(host, ws, buffer)
+                    finally:
+                        # Toda salida de una conexión que estuvo abierta (placa
+                        # muda, cierre limpio, cierre anormal o cancelación)
+                        # invalida el estado ANTES de cerrar o de probar otro
+                        # candidato: nadie debe creer que el socket sirve. Y
+                        # deja constancia en el trabajo en curso; reabrir el
+                        # socket no la borra.
+                        ready_event.clear()
+                        _ws_verified[host] = False
+                        _mark_job_comm_lost(host)
+                    if stale:
+                        logger.warning(
+                            f"[{host}] La placa dejó de contestar con el WS aún abierto; "
+                            "se cierra y se reconecta"
+                        )
                 break  # el candidato conectó (aunque se haya caído después); no probar el siguiente
             except Exception as e:
                 logger.debug(f"[{host}] WS candidato {uri} falló: {e}")
                 continue
         ready_event.clear()
-        await asyncio.sleep(3)
+        await asyncio.sleep(WS_RECONNECT_DELAY_S)
 
 
 def _ensure_ws_listener(host: str):
@@ -1678,6 +1833,11 @@ class LaserJob:
         self.z_offset = 0.0
         self.z_ref = _lowest_z(lines)
         self.phase = "running"        # "uploading" mientras un trabajo desde SD sube su archivo
+        # Se cayó la conexión con la placa con el trabajo en curso. Pestillo:
+        # solo lo pone el listener y nada lo borra (ni reabrir el socket), porque
+        # el resultado de lo que pasó en el hueco ya no se puede confirmar.
+        # Un trabajo de SD con este pestillo termina como "incomplete".
+        self.comm_lost = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -1690,6 +1850,7 @@ class LaserJob:
             "z_offset": round(self.z_offset, 3),
             "has_z": self.z_ref is not None,
             "phase": self.phase,
+            "comm_lost": self.comm_lost,
             "job_id": self.job_id,
             "user": self.user,
         }
@@ -1805,6 +1966,23 @@ async def _run_job(job: LaserJob):
         record_laser_job_history(job)
 
 
+COMM_LOST_RESULT_UNKNOWN = (
+    "Se perdió la comunicación con la placa durante el trabajo; no se puede confirmar "
+    "cómo terminó (pudo haber terminado, seguir corriendo o haberse interrumpido). "
+    "Revisa la máquina."
+)
+
+
+def _resolve_unknown_result(job: LaserJob) -> None:
+    """Un trabajo de SD cuya conexión se cayó a medias no se puede dar por
+    terminado: la placa pudo reiniciarse (y volver en Idle) o seguir grabando.
+    Se cierra el seguimiento como "incomplete" (resultado desconocido) SIN
+    tocar `current`: ni éxito ni avance inventado. Si la placa sigue corriendo
+    el archivo, get_job_status lo muestra como trabajo externo."""
+    job.state = "incomplete"
+    job.error_message = COMM_LOST_RESULT_UNKNOWN
+
+
 async def _run_sd_job(job: LaserJob):
     """Corre un archivo ya subido a la SD directo en la placa
     ($SD/Run=archivo), sin transmitir línea por línea. El progreso se
@@ -1848,14 +2026,27 @@ async def _run_sd_job(job: LaserJob):
                 job.state = "cancelled"
                 return
 
+            if job.comm_lost:
+                _resolve_unknown_result(job)
+                return
+
             while job.pause_requested:
                 await asyncio.sleep(0.5)
                 if job.cancel_requested:
                     await asyncio.get_event_loop().run_in_executor(None, send_raw_command, job.host, "\x18")
                     job.state = "cancelled"
                     return
+                if job.comm_lost:
+                    _resolve_unknown_result(job)
+                    return
 
             status = await get_status(job.host, timeout=3)
+            # Sin await entre esta revisión y la decisión de completar: una
+            # lectura Idle posterior a una caída de la conexión (la placa
+            # reinició y arranca en Idle) nunca puede cerrar el trabajo.
+            if job.comm_lost:
+                _resolve_unknown_result(job)
+                return
             if status:
                 state_value = (status.get("state") or "").lower()
                 if state_value == "alarm":
@@ -1899,6 +2090,8 @@ async def _run_sd_job(job: LaserJob):
             logger.info(f"[{job.host}] Trabajo completado (SD): {job.filename}")
         elif job.state == "error":
             logger.warning(f"[{job.host}] Trabajo (SD) terminó con error: {job.error_message}")
+        elif job.state == "incomplete":
+            logger.warning(f"[{job.host}] Trabajo (SD) con resultado desconocido: se perdió la comunicación")
         record_laser_job_history(job)
 
 
