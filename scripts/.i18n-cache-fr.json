@@ -475,6 +475,22 @@
     "en": "How's the workshop doing?",
     "text": "Comment se passe l'atelier ?"
   },
+  "aiColBehavior": {
+    "en": "Behavior",
+    "text": "Comportement"
+  },
+  "aiColConnection": {
+    "en": "Connection",
+    "text": "Connexion"
+  },
+  "aiColModel": {
+    "en": "Model",
+    "text": "Modèle"
+  },
+  "aiColServer": {
+    "en": "Server",
+    "text": "Serveur"
+  },
   "aiConfirmInSection": {
     "en": "That action needs confirmation. Open NOPAL Intelligence to review and confirm it.",
     "text": "Cette action doit être confirmée. Ouvrez NOPAL Intelligence pour l'examiner et le confirmer."
@@ -731,6 +747,14 @@
     "en": "Artificial intelligence",
     "text": "Intelligence artificielle"
   },
+  "aiShowQuickQuestions": {
+    "en": "Show quick questions",
+    "text": "Afficher les questions rapides"
+  },
+  "aiShowQuickQuestionsHint": {
+    "en": "Shows or hides the preset questions everywhere: the bottom strip on any screen, the chat and the AI panel. The questions below are kept.",
+    "text": "Affiche ou masque les questions prédéfinies partout : la bande inférieure de n'importe quel écran, le chat et le panneau AI. Les questions ci-dessous sont conservées."
+  },
   "aiStateAlert": {
     "en": "Alert",
     "text": "Alerte"
@@ -891,6 +915,18 @@
     "en": "Workshop context",
     "text": "Contexte de l'atelier"
   },
+  "appOrderCardTitle": {
+    "en": "Layout",
+    "text": "Disposition"
+  },
+  "appOtherCardTitle": {
+    "en": "Other",
+    "text": "Autre"
+  },
+  "appThemeCardTitle": {
+    "en": "Theme",
+    "text": "Thème"
+  },
   "appearanceSettingsTitle": {
     "en": "Appearance & UI/UX",
     "text": "Apparence & UI/UX"
@@ -1026,6 +1062,142 @@
   "bedTemp": {
     "en": "Bed",
     "text": "Lit"
+  },
+  "bootAccessories": {
+    "en": "Accessories",
+    "text": "Accessoires"
+  },
+  "bootActiveJobs": {
+    "en": "Active",
+    "text": "Actif"
+  },
+  "bootAdminOnly": {
+    "en": "Administrators only",
+    "text": "Administrateurs uniquement"
+  },
+  "bootAvailable": {
+    "en": "Available",
+    "text": "Disponible"
+  },
+  "bootConnected": {
+    "en": "Connected",
+    "text": "Connecté"
+  },
+  "bootConnecting": {
+    "en": "Connecting…",
+    "text": "Connexion…"
+  },
+  "bootConnectingComponents": {
+    "en": "Connecting components…",
+    "text": "Composants de connexion…"
+  },
+  "bootConsole": {
+    "en": "Console",
+    "text": "Console"
+  },
+  "bootDevices": {
+    "en": "Devices",
+    "text": "Appareils"
+  },
+  "bootDisk": {
+    "en": "Disk",
+    "text": "Disque"
+  },
+  "bootFailed": {
+    "en": "Failed",
+    "text": "Échec"
+  },
+  "bootFree": {
+    "en": "free",
+    "text": "gratuit"
+  },
+  "bootHost": {
+    "en": "Host",
+    "text": "Hôte"
+  },
+  "bootInstalled": {
+    "en": "Installed",
+    "text": "Installé"
+  },
+  "bootInstances": {
+    "en": "Instances",
+    "text": "Instances"
+  },
+  "bootJobs": {
+    "en": "Jobs",
+    "text": "Emplois"
+  },
+  "bootLaser": {
+    "en": "Laser",
+    "text": "Laser"
+  },
+  "bootLibrary": {
+    "en": "Model library",
+    "text": "Bibliothèque de modèles"
+  },
+  "bootMachines": {
+    "en": "Machines",
+    "text": "Machines"
+  },
+  "bootModels3d": {
+    "en": "3D models",
+    "text": "Modèles 3D"
+  },
+  "bootNoAnswer": {
+    "en": "No response",
+    "text": "Aucune réponse"
+  },
+  "bootNone": {
+    "en": "None registered",
+    "text": "Aucun inscrit"
+  },
+  "bootNoneDetected": {
+    "en": "Not detected",
+    "text": "Non détecté"
+  },
+  "bootOffline": {
+    "en": "Offline",
+    "text": "Hors ligne"
+  },
+  "bootPrinters": {
+    "en": "Printers",
+    "text": "Imprimantes"
+  },
+  "bootScreenDescription": {
+    "en": "Shows the status of each NOPAL module while the panel starts up.",
+    "text": "Affiche l'état de chaque module NOPAL pendant le démarrage du panneau."
+  },
+  "bootScreenLabel": {
+    "en": "Loading screen",
+    "text": "Écran de chargement"
+  },
+  "bootServices": {
+    "en": "Internal services",
+    "text": "Services internes"
+  },
+  "bootSkip": {
+    "en": "Skip",
+    "text": "Sauter"
+  },
+  "bootStillConnecting": {
+    "en": "Still connecting…",
+    "text": "Toujours connecté…"
+  },
+  "bootTagline": {
+    "en": "Your workshop, in one place",
+    "text": "Votre atelier, en un seul endroit"
+  },
+  "bootTools": {
+    "en": "Tools",
+    "text": "Outils"
+  },
+  "bootUnreachable": {
+    "en": "Could not be queried",
+    "text": "Impossible d'interroger"
+  },
+  "bootWaiting": {
+    "en": "Waiting for a response…",
+    "text": "En attente d'une réponse…"
   },
   "brandGoHome": {
     "en": "Go to the main panel",
@@ -1983,6 +2155,410 @@
     "en": "Custom theme",
     "text": "Thème personnalisé"
   },
+  "cxAdminOnly": {
+    "en": "Only an administrator can send commands.",
+    "text": "Seul un administrateur peut envoyer des commandes."
+  },
+  "cxAutoscroll": {
+    "en": "Autoscroll",
+    "text": "Défilement automatique"
+  },
+  "cxBed": {
+    "en": "Bed",
+    "text": "Lit"
+  },
+  "cxCancel": {
+    "en": "Cancel",
+    "text": "Annuler"
+  },
+  "cxChipsLabel": {
+    "en": "Common commands: click to add them",
+    "text": "Commandes courantes : cliquez pour les ajouter"
+  },
+  "cxClearInput": {
+    "en": "Clear text",
+    "text": "Texte clair"
+  },
+  "cxClearLog": {
+    "en": "Clear",
+    "text": "Effacer"
+  },
+  "cxCommandFailed": {
+    "en": "Could not send the command.",
+    "text": "Impossible d'envoyer la commande."
+  },
+  "cxConsoleSubtitle": {
+    "en": "Direct commands and real-time output",
+    "text": "Commandes directes et sortie en temps réel"
+  },
+  "cxConsoleTitle": {
+    "en": "Console",
+    "text": "Console"
+  },
+  "cxCopied": {
+    "en": "Log copied.",
+    "text": "Journal copié."
+  },
+  "cxCopyFailed": {
+    "en": "Could not copy the log.",
+    "text": "Impossible de copier le journal."
+  },
+  "cxCopyLog": {
+    "en": "Copy log",
+    "text": "Copier le journal"
+  },
+  "cxEditorEditTitle": {
+    "en": "Edit macro",
+    "text": "Modifier une macro"
+  },
+  "cxEditorNewTitle": {
+    "en": "New macro",
+    "text": "Nouvelle macro"
+  },
+  "cxFieldCommands": {
+    "en": "Commands (one per line)",
+    "text": "Commandes (une par ligne)"
+  },
+  "cxFieldDescription": {
+    "en": "Description",
+    "text": "Descriptif"
+  },
+  "cxFieldIcon": {
+    "en": "Icon",
+    "text": "Icône"
+  },
+  "cxFieldName": {
+    "en": "Name",
+    "text": "Nom"
+  },
+  "cxFieldScopes": {
+    "en": "Available for",
+    "text": "Disponible pour"
+  },
+  "cxFileFailed": {
+    "en": "Could not send the file.",
+    "text": "Impossible d'envoyer le fichier."
+  },
+  "cxFileSent": {
+    "en": "File sent: {sent} lines ({skipped} skipped).",
+    "text": "Fichier envoyé : lignes {sent} ({skipped} ignoré)."
+  },
+  "cxFontSize": {
+    "en": "Font size",
+    "text": "Taille de la police"
+  },
+  "cxHelpIntro": {
+    "en": "Macros are command sequences that run with a single click.",
+    "text": "Les macros sont des séquences de commandes qui s'exécutent en un seul clic."
+  },
+  "cxHelpTip1Body": {
+    "en": "Select the active machine above; commands and macros are sent to it.",
+    "text": "Sélectionnez la machine active ci-dessus ; des commandes et des macros lui sont envoyées."
+  },
+  "cxHelpTip1Title": {
+    "en": "Choose the machine",
+    "text": "Choisissez la machine"
+  },
+  "cxHelpTip2Body": {
+    "en": "Use \"New macro\" to write one command per line and pick an icon.",
+    "text": "Utilisez \"Nouvelle macro\" pour écrire une commande par ligne et choisissez une icône."
+  },
+  "cxHelpTip2Title": {
+    "en": "Create your macros",
+    "text": "Créez vos macros"
+  },
+  "cxHelpTip3Body": {
+    "en": "Templates ask for values, such as the temperature, before they are sent.",
+    "text": "Les modèles demandent des valeurs, telles que la température, avant d'être envoyés."
+  },
+  "cxHelpTip3Title": {
+    "en": "Use templates",
+    "text": "Utiliser des modèles"
+  },
+  "cxHelpTitle": {
+    "en": "How to use macros?",
+    "text": "Comment utiliser les macros ?"
+  },
+  "cxHistory": {
+    "en": "History",
+    "text": "Histoire"
+  },
+  "cxHistoryClear": {
+    "en": "Clear history",
+    "text": "Effacer l'historique"
+  },
+  "cxHistoryCleared": {
+    "en": "History cleared.",
+    "text": "L'histoire effacée."
+  },
+  "cxHistoryEmpty": {
+    "en": "There are no commands in the history yet.",
+    "text": "Il n'y a pas encore de commandes dans l'historique."
+  },
+  "cxIconBolt": {
+    "en": "Bolt",
+    "text": "Boulon"
+  },
+  "cxIconFlame": {
+    "en": "Flame",
+    "text": "Flamme"
+  },
+  "cxIconFolder": {
+    "en": "Folder",
+    "text": "Dossier"
+  },
+  "cxIconHome": {
+    "en": "Home",
+    "text": "Accueil"
+  },
+  "cxIconLayers": {
+    "en": "Layers",
+    "text": "Calques"
+  },
+  "cxIconNozzle": {
+    "en": "Nozzle",
+    "text": "Buse"
+  },
+  "cxIconPlay": {
+    "en": "Play",
+    "text": "Jouer"
+  },
+  "cxIconPower": {
+    "en": "Power",
+    "text": "Puissance"
+  },
+  "cxIconSpool": {
+    "en": "Spool",
+    "text": "Bobine"
+  },
+  "cxIconThermometer": {
+    "en": "Thermometer",
+    "text": "Thermomètre"
+  },
+  "cxIconWrench": {
+    "en": "Wrench",
+    "text": "Clé"
+  },
+  "cxInputPlaceholder": {
+    "en": "Type a command…",
+    "text": "Tapez une commande…"
+  },
+  "cxKindLaser": {
+    "en": "Laser",
+    "text": "Laser"
+  },
+  "cxLoadFailed": {
+    "en": "Could not load the information.",
+    "text": "Impossible de charger les informations."
+  },
+  "cxLoadFile": {
+    "en": "Load file",
+    "text": "Charger le fichier"
+  },
+  "cxLogEmpty": {
+    "en": "No messages yet.",
+    "text": "Aucun message pour l'instant."
+  },
+  "cxMachineActiveTip": {
+    "en": "This machine is the active one: commands and macros are sent to it.",
+    "text": "Cette machine est la machine active : des commandes et des macros lui sont envoyées."
+  },
+  "cxMachineSelectTip": {
+    "en": "Click to use this machine.",
+    "text": "Cliquez pour utiliser cette machine."
+  },
+  "cxMachinesSubtitle": {
+    "en": "Select a console: the system or a printer to send commands and macros",
+    "text": "Sélectionnez une console : le système ou une imprimante pour envoyer des commandes et des macros"
+  },
+  "cxMachinesTitle": {
+    "en": "Machines",
+    "text": "Machines"
+  },
+  "cxMacroCustom": {
+    "en": "Custom",
+    "text": "Personnalisé"
+  },
+  "cxMacroDelete": {
+    "en": "Delete macro",
+    "text": "Supprimer la macro"
+  },
+  "cxMacroDeleteConfirm": {
+    "en": "The macro \"{name}\" will be deleted. Continue?",
+    "text": "La macro \"{name}\" sera supprimée. Continuer?"
+  },
+  "cxMacroDeleted": {
+    "en": "Macro deleted.",
+    "text": "Macro supprimée."
+  },
+  "cxMacroEdit": {
+    "en": "Edit macro",
+    "text": "Modifier une macro"
+  },
+  "cxMacroNew": {
+    "en": "New macro",
+    "text": "Nouvelle macro"
+  },
+  "cxMacroNoResults": {
+    "en": "No macros match your search.",
+    "text": "Aucune macro ne correspond à votre recherche."
+  },
+  "cxMacroRunFailed": {
+    "en": "Could not run the macro.",
+    "text": "Impossible d'exécuter la macro."
+  },
+  "cxMacroSearch": {
+    "en": "Search macros…",
+    "text": "Rechercher des macros…"
+  },
+  "cxMenu": {
+    "en": "More options",
+    "text": "Plus d'options"
+  },
+  "cxNozzle": {
+    "en": "Nozzle",
+    "text": "Buse"
+  },
+  "cxOpenMacros": {
+    "en": "Macros and templates",
+    "text": "Macros et modèles"
+  },
+  "cxPageTitle": {
+    "en": "Consoles",
+    "text": "Consoles"
+  },
+  "cxSave": {
+    "en": "Save",
+    "text": "Enregistrer"
+  },
+  "cxSaveError": {
+    "en": "Could not save.",
+    "text": "Impossible d'enregistrer."
+  },
+  "cxSaveFailed": {
+    "en": "Could not save the log.",
+    "text": "Impossible d'enregistrer le journal."
+  },
+  "cxSaveLog": {
+    "en": "Save log",
+    "text": "Enregistrer le journal"
+  },
+  "cxSaved": {
+    "en": "Macro saved.",
+    "text": "Macro enregistrée."
+  },
+  "cxScopeCnc": {
+    "en": "CNC",
+    "text": "CNC"
+  },
+  "cxScopeLaser": {
+    "en": "Laser",
+    "text": "Laser"
+  },
+  "cxScopeNote": {
+    "en": "NOPAL main console and the 3D printer consoles (Klipper and Marlin). The laser and CNC (GRBL) have their own console inside their section.",
+    "text": "Console principale NOPAL et consoles d'imprimante 3D (Klipper et Marlin). Le laser et le CNC (GRBL) ont leur propre console à l'intérieur de leur section."
+  },
+  "cxScopePrinter": {
+    "en": "3D printers",
+    "text": "Imprimantes 3D"
+  },
+  "cxSend": {
+    "en": "Send command",
+    "text": "Envoyer la commande"
+  },
+  "cxSettings": {
+    "en": "Console settings",
+    "text": "Paramètres de la console"
+  },
+  "cxStateError": {
+    "en": "Error",
+    "text": "Erreur"
+  },
+  "cxStateLive": {
+    "en": "Live",
+    "text": "En direct"
+  },
+  "cxStateOffline": {
+    "en": "Disconnected",
+    "text": "Déconnecté"
+  },
+  "cxStatePaused": {
+    "en": "Paused",
+    "text": "En pause"
+  },
+  "cxStatePrinting": {
+    "en": "Printing",
+    "text": "Impression"
+  },
+  "cxStateReady": {
+    "en": "Ready",
+    "text": "Prêt"
+  },
+  "cxSystemLogEmpty": {
+    "en": "There are no events in the log yet.",
+    "text": "Il n'y a pas encore d'événements dans le journal."
+  },
+  "cxSystemName": {
+    "en": "NOPAL system",
+    "text": "Système NOPAL"
+  },
+  "cxSystemReadOnly": {
+    "en": "Read only: NOPAL event log",
+    "text": "Lecture seule : journal des événements NOPAL"
+  },
+  "cxSystemSubtitle": {
+    "en": "NOPAL events and log",
+    "text": "Événements et journal NOPAL"
+  },
+  "cxTabHelp": {
+    "en": "Help",
+    "text": "Aide"
+  },
+  "cxTabMacros": {
+    "en": "Macros",
+    "text": "Macro"
+  },
+  "cxTabTemplates": {
+    "en": "Templates",
+    "text": "Modèles"
+  },
+  "cxTabsLabel": {
+    "en": "Macro sections",
+    "text": "Sections de macros"
+  },
+  "cxTemplateDelete": {
+    "en": "Delete template",
+    "text": "Supprimer le modèle"
+  },
+  "cxTemplateDeleteConfirm": {
+    "en": "The template \"{name}\" will be deleted. Continue?",
+    "text": "Le modèle \"{name}\" sera supprimé. Continuer?"
+  },
+  "cxTemplateFailed": {
+    "en": "Could not send the template.",
+    "text": "Impossible d'envoyer le modèle."
+  },
+  "cxTemplateSend": {
+    "en": "Send",
+    "text": "Envoyer"
+  },
+  "cxTemplateSent": {
+    "en": "Template sent ({sent} commands).",
+    "text": "Modèle envoyé (commandes {sent})."
+  },
+  "cxTemplatesEmpty": {
+    "en": "No templates available.",
+    "text": "Aucun modèle disponible."
+  },
+  "cxTemplatesHint": {
+    "en": "Pick a template, adjust its parameters and send it.",
+    "text": "Choisissez un modèle, ajustez ses paramètres et envoyez-le."
+  },
+  "cxTemplatesTitle": {
+    "en": "Macro templates",
+    "text": "Modèles de macros"
+  },
   "darkMode": {
     "en": "Black",
     "text": "Noir"
@@ -2174,6 +2750,10 @@
   "devStateReady": {
     "en": "Ready",
     "text": "Prêt"
+  },
+  "devStateWorking": {
+    "en": "Working",
+    "text": "Travailler"
   },
   "devStop": {
     "en": "Stop",
@@ -2886,6 +3466,50 @@
   "generateGcode": {
     "en": "Generate G-code",
     "text": "Générer G-code"
+  },
+  "globalDrop3dHint": {
+    "en": "Models (STL, 3MF) or printer G-code",
+    "text": "Modèles (STL, 3MF) ou imprimante G-code"
+  },
+  "globalDrop3dTitle": {
+    "en": "3D printing",
+    "text": "impression 3D"
+  },
+  "globalDropDone": {
+    "en": "{n} file(s) uploaded to {dest}.",
+    "text": "Fichier(s) {n} téléchargé(s) sur {dest}."
+  },
+  "globalDropLabel3dModels": {
+    "en": "3D printing",
+    "text": "impression 3D"
+  },
+  "globalDropLabelFiles": {
+    "en": "Files",
+    "text": "Fichiers"
+  },
+  "globalDropLaserHint": {
+    "en": "G-code, image or vector for the laser or CNC",
+    "text": "G-code, image ou vecteur pour le laser ou CNC"
+  },
+  "globalDropLaserTitle": {
+    "en": "Laser / Engraving",
+    "text": "Laser / Gravure"
+  },
+  "globalDropSetting": {
+    "en": "Show file drop zone",
+    "text": "Afficher la zone de dépôt des fichiers"
+  },
+  "globalDropSettingHint": {
+    "en": "When you drag a file over any screen, shows the 3D printing and Laser / Engraving destinations.",
+    "text": "Lorsque vous faites glisser un fichier sur n'importe quel écran, affiche les destinations d'impression 3D et Laser/Gravure."
+  },
+  "globalDropSubtitle": {
+    "en": "Choose where you want to add it",
+    "text": "Choisissez où vous souhaitez l'ajouter"
+  },
+  "globalDropTitle": {
+    "en": "Drag and drop your file here",
+    "text": "Glissez et déposez votre fichier ici"
   },
   "goToPrinter": {
     "en": "Go to printer",
@@ -4083,6 +4707,74 @@
     "en": "View file",
     "text": "Afficher le fichier"
   },
+  "jobPopupClose": {
+    "en": "Close",
+    "text": "Fermer"
+  },
+  "jobPopupNoControls": {
+    "en": "This job is controlled from its machine screen.",
+    "text": "Ce travail est contrôlé depuis son écran machine."
+  },
+  "jobPopupState": {
+    "en": "State",
+    "text": "État"
+  },
+  "jobsRailPaused": {
+    "en": "Paused",
+    "text": "En pause"
+  },
+  "jobsRailTitle": {
+    "en": "Jobs in progress",
+    "text": "Travaux en cours"
+  },
+  "jpBed": {
+    "en": "Bed",
+    "text": "Lit"
+  },
+  "jpExtruder": {
+    "en": "Extruder",
+    "text": "Extrudeuse"
+  },
+  "jpLoading": {
+    "en": "Loading preview…",
+    "text": "Chargement de l'aperçu…"
+  },
+  "jpNoPath": {
+    "en": "The file has no moves to draw.",
+    "text": "Le fichier n'a aucun mouvement à dessiner."
+  },
+  "jpNoPreview": {
+    "en": "No preview: this file is not in the NOPAL library.",
+    "text": "Pas d'aperçu : ce fichier n'est pas dans la bibliothèque NOPAL."
+  },
+  "jpProgressJob": {
+    "en": "Job progress",
+    "text": "Avancement du travail"
+  },
+  "jpStateRunning": {
+    "en": "Running",
+    "text": "Courir"
+  },
+  "jpTemps": {
+    "en": "Temperatures",
+    "text": "Températures"
+  },
+  "jpTraceAlt": {
+    "en": "Job toolpath",
+    "text": "Parcours d'outil de tâche"
+  },
+  "jpViewAlt": {
+    "en": "3D view of the part being printed",
+    "text": "Vue 3D de la pièce en cours d'impression"
+  },
+  "jpViewHint": {
+    "en": "Drag to rotate · wheel to zoom · double-click to reset",
+    "text": "Faites glisser pour faire pivoter · molette pour zoomer · double-cliquez pour réinitialiser"
+  },
+  "jpViewReset": {
+    "en": "Reset view",
+    "text": "Réinitialiser la vue"
+  },
   "language": {
     "en": "Language",
     "text": "Langue"
@@ -4426,6 +5118,14 @@
   "laserJobRemaining": {
     "en": "Remaining time",
     "text": "Temps restant"
+  },
+  "laserJobUnknownGeneric": {
+    "en": "Communication with the board was lost and the job outcome cannot be confirmed.",
+    "text": "La communication avec le conseil a été perdue et le résultat du travail ne peut être confirmé."
+  },
+  "laserJobUnknownTitle": {
+    "en": "Job result unknown",
+    "text": "Résultat du travail inconnu"
   },
   "laserJogTitle": {
     "en": "Head movement",
@@ -5616,8 +6316,8 @@
     "text": "Impression 3D"
   },
   "navSystemConsole": {
-    "en": "System Console",
-    "text": "Console système"
+    "en": "Consoles",
+    "text": "Consoles"
   },
   "needAccessoryForScene": {
     "en": "Add at least one accessory before creating a scene.",
@@ -5702,6 +6402,14 @@
   "open": {
     "en": "Open",
     "text": "Ouvrir"
+  },
+  "originMoonraker": {
+    "en": "Also on Moonraker / Mainsail",
+    "text": "Également sur Moonraker / Grand-voile"
+  },
+  "originNopal": {
+    "en": "In the NOPAL library",
+    "text": "Dans la bibliothèque NOPAL"
   },
   "panelAlertDismiss": {
     "en": "Dismiss (stop showing while unchanged)",
@@ -6683,6 +7391,10 @@
     "en": "Search files...",
     "text": "Rechercher des fichiers..."
   },
+  "selectFile": {
+    "en": "Select file",
+    "text": "Sélectionner un fichier"
+  },
   "selectPrinter": {
     "en": "Select a printer",
     "text": "Sélectionner une imprimante"
@@ -6706,6 +7418,26 @@
   "settings": {
     "en": "Settings",
     "text": "Paramètres"
+  },
+  "settingsAdminOnly": {
+    "en": "Administrator only",
+    "text": "Administrateur uniquement"
+  },
+  "settingsCardBehavior": {
+    "en": "Behavior",
+    "text": "Comportement"
+  },
+  "settingsCardServer": {
+    "en": "Server",
+    "text": "Serveur"
+  },
+  "settingsCardSession": {
+    "en": "This session",
+    "text": "Cette séance"
+  },
+  "settingsCardView": {
+    "en": "View",
+    "text": "Voir"
   },
   "settingsDescription": {
     "en": "Manage app preferences including theme, language, and preview quality.",
@@ -6774,6 +7506,42 @@
   "settingsSaved": {
     "en": "Settings saved.",
     "text": "Paramètres enregistrés."
+  },
+  "settingsServerVersionLine": {
+    "en": "NOPAL v{version} · branch {branch}",
+    "text": "NOPAL v{version} · succursale {branch}"
+  },
+  "settingsTabAi": {
+    "en": "Artificial intelligence",
+    "text": "Intelligence artificielle"
+  },
+  "settingsTabAppearance": {
+    "en": "Appearance",
+    "text": "Apparence"
+  },
+  "settingsTabDevices": {
+    "en": "Devices",
+    "text": "Appareils"
+  },
+  "settingsTabGeneral": {
+    "en": "General",
+    "text": "Général"
+  },
+  "settingsTabSystem": {
+    "en": "System",
+    "text": "Système"
+  },
+  "settingsTabUsers": {
+    "en": "Users & access",
+    "text": "Utilisateurs et accès"
+  },
+  "settingsTabsAria": {
+    "en": "Settings sections",
+    "text": "Sections de paramètres"
+  },
+  "settingsTabsSubtitle": {
+    "en": "App preferences, appearance, users and devices",
+    "text": "Préférences, apparence, utilisateurs et appareils des applications"
   },
   "setupError": {
     "en": "Could not create the account",
@@ -7663,6 +8431,18 @@
     "en": "Upload file",
     "text": "Télécharger le fichier"
   },
+  "uploadToastDone": {
+    "en": "Done in",
+    "text": "Fait en"
+  },
+  "uploadToastFailed": {
+    "en": "The file could not be uploaded.",
+    "text": "Le fichier n'a pas pu être téléchargé."
+  },
+  "uploadToastUploading": {
+    "en": "Uploading…",
+    "text": "Téléchargement…"
+  },
   "usbClassifyCnc": {
     "en": "CNC (GRBL)",
     "text": "CNC (GRBL)"
@@ -7863,6 +8643,14 @@
     "en": "Remove this user? They will no longer be able to sign in.",
     "text": "Supprimer cet utilisateur ? Ils ne pourront plus se connecter."
   },
+  "usersRename": {
+    "en": "Rename",
+    "text": "Renommer"
+  },
+  "usersRenamePrompt": {
+    "en": "New username:",
+    "text": "Nouveau nom d'utilisateur :"
+  },
   "usersResetPassword": {
     "en": "Reset password",
     "text": "Réinitialiser le mot de passe"
@@ -7883,6 +8671,10 @@
     "en": "Operator",
     "text": "Opérateur"
   },
+  "usersSelfRoleLocked": {
+    "en": "Only another administrator can change your own role",
+    "text": "Seul un autre administrateur peut modifier votre propre rôle"
+  },
   "usersTitle": {
     "en": "Users",
     "text": "Utilisateurs"
@@ -7894,6 +8686,42 @@
   "usersUpdated": {
     "en": "User updated",
     "text": "Utilisateur mis à jour"
+  },
+  "usersYou": {
+    "en": "you",
+    "text": "vous"
+  },
+  "wallpaperCarouselHint": {
+    "en": "With the carousel on, tick the thumbnails you want in the rotation: the background changes on its own between the ticked ones, even from other themes. Off, the thumbnail you tap becomes your fixed background.",
+    "text": "Avec le carrousel activé, cochez les vignettes souhaitées dans la rotation : le fond change tout seul entre celles cochées, même à partir d'autres thèmes. Désactivée, la vignette sur laquelle vous appuyez devient votre arrière-plan fixe."
+  },
+  "wallpaperCarouselLabel": {
+    "en": "Background carousel",
+    "text": "Carrousel d’arrière-plan"
+  },
+  "wallpaperCarouselMinOne": {
+    "en": "Keep at least one background ticked in the carousel.",
+    "text": "Gardez au moins un arrière-plan coché dans le carrousel."
+  },
+  "wallpaperEvery1": {
+    "en": "1 min",
+    "text": "1 minute"
+  },
+  "wallpaperEvery15": {
+    "en": "15 min",
+    "text": "15 minutes"
+  },
+  "wallpaperEvery30": {
+    "en": "30 min",
+    "text": "30 minutes"
+  },
+  "wallpaperEvery5": {
+    "en": "5 min",
+    "text": "5 minutes"
+  },
+  "wallpaperEvery60": {
+    "en": "1 hour",
+    "text": "1 heure"
   },
   "workshopMacroEyebrow": {
     "en": "WORKSHOP MACRO",
