@@ -18727,6 +18727,16 @@ body.light .laser-fire-btn-wide {
     flex-shrink: 0;
 }
 
+.user-item-role-fixed {
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border);
+    color: var(--text-muted, var(--text));
+    font-size: 0.76rem;
+    flex-shrink: 0;
+    cursor: default;
+}
+
 .device-status-pill.role-admin {
     background: rgba(139, 92, 246, 0.16);
     color: #8b5cf6;

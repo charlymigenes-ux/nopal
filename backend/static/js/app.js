@@ -25266,24 +25266,57 @@ function renderUsersList(users) {
         return;
     }
 
-    container.innerHTML = users.map(user => `
-        <div class="usb-port-item" data-id="${escapeHtml(user.id)}">
-            <div class="usb-port-item-info">
-                <strong>${escapeHtml(user.username)}</strong>
-                <span>${user.created_at ? new Date(user.created_at * 1000).toLocaleDateString() : ''}</span>
-            </div>
-            <select class="user-item-role-select" data-id="${escapeHtml(user.id)}">
+    const myId = currentAuthUser && currentAuthUser.user_id;
+    container.innerHTML = users.map(user => {
+        const isSelf = !!myId && user.id === myId;
+        const roleLabel = user.role === 'admin' ? t('usersRoleAdmin') : t('usersRoleOperator');
+        const roleControl = isSelf
+            ? `<span class="user-item-role-fixed" title="${escapeHtml(t('usersSelfRoleLocked'))}">${escapeHtml(roleLabel)}</span>`
+            : `<select class="user-item-role-select" data-id="${escapeHtml(user.id)}">
                 <option value="operador"${user.role === 'operador' ? ' selected' : ''}>${escapeHtml(t('usersRoleOperator'))}</option>
                 <option value="admin"${user.role === 'admin' ? ' selected' : ''}>${escapeHtml(t('usersRoleAdmin'))}</option>
-            </select>
-            <button type="button" class="theme-option-icon-btn user-reset-password-btn" data-id="${escapeHtml(user.id)}" title="${escapeHtml(t('usersResetPassword'))}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            </button>
+            </select>`;
+        const removeBtn = isSelf ? '' : `
             <button type="button" class="theme-option-icon-btn theme-option-icon-btn-danger user-remove-btn" data-id="${escapeHtml(user.id)}" title="${escapeHtml(t('usersRemove'))}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>`;
+        return `
+        <div class="usb-port-item" data-id="${escapeHtml(user.id)}">
+            <div class="usb-port-item-info">
+                <strong>${escapeHtml(user.username)}${isSelf ? ` <small>(${escapeHtml(t('usersYou'))})</small>` : ''}</strong>
+                <span>${user.created_at ? new Date(user.created_at * 1000).toLocaleDateString() : ''}</span>
+            </div>
+            ${roleControl}
+            <button type="button" class="theme-option-icon-btn user-rename-btn" data-id="${escapeHtml(user.id)}" data-name="${escapeHtml(user.username)}" title="${escapeHtml(t('usersRename'))}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
             </button>
-        </div>
-    `).join('');
+            <button type="button" class="theme-option-icon-btn user-reset-password-btn" data-id="${escapeHtml(user.id)}" title="${escapeHtml(t('usersResetPassword'))}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>${removeBtn}
+        </div>`;
+    }).join('');
+
+    container.querySelectorAll('.user-rename-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const newName = prompt(t('usersRenamePrompt'), btn.dataset.name || '');
+            if (newName === null || !newName.trim() || newName.trim() === btn.dataset.name) return;
+            try {
+                const formData = new FormData();
+                formData.append('user_id', btn.dataset.id);
+                formData.append('username', newName.trim());
+                const response = await fetch('/api/auth/users/update', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.detail || t('usersUpdateError'));
+                }
+                showToast(t('usersUpdated'));
+                loadUsersSettings();
+            } catch (error) {
+                console.error(error);
+                appAlert(error.message || t('usersUpdateError'), '', 'danger');
+            }
+        });
+    });
 
     container.querySelectorAll('.user-item-role-select').forEach(select => {
         select.addEventListener('change', async () => {
@@ -25292,11 +25325,14 @@ function renderUsersList(users) {
                 formData.append('user_id', select.dataset.id);
                 formData.append('role', select.value);
                 const response = await fetch('/api/auth/users/update', { method: 'POST', body: formData });
-                if (!response.ok) throw new Error();
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.detail || t('usersUpdateError'));
+                }
                 showToast(t('usersUpdated'));
             } catch (error) {
                 console.error(error);
-                appAlert(t('usersUpdateError'), '', 'danger');
+                appAlert(error.message || t('usersUpdateError'), '', 'danger');
                 loadUsersSettings();
             }
         });
