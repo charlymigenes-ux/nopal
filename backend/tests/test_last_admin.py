@@ -150,16 +150,38 @@ class TestApi:
         assert _roles(users_file) == ["admin", "operador"]
         assert auth_service.get_user_by_id(admin["id"])["role"] == "admin"
 
-    def test_admin_can_self_demote_when_another_admin_exists(self, client, users_file, act_as):
+    def test_admin_cannot_change_own_role_even_with_another_admin(self, client, users_file, act_as):
         a1 = auth_service.create_user("admin1", "password-1", "admin")
         auth_service.create_user("admin2", "password-2", "admin")
         act_as(a1)
 
         response = client.post("/api/auth/users/update", data={"user_id": a1["id"], "role": "operador"})
 
-        assert response.status_code == 200
-        assert response.json()["role"] == "operador"
-        assert _roles(users_file) == ["admin", "operador"]
+        assert response.status_code == 400
+        assert "propio rol" in response.json()["detail"]
+        assert _roles(users_file) == ["admin", "admin"]
+
+    def test_admin_cannot_delete_own_account(self, client, users_file, act_as):
+        a1 = auth_service.create_user("admin1", "password-1", "admin")
+        auth_service.create_user("admin2", "password-2", "admin")
+        act_as(a1)
+
+        response = client.post("/api/auth/users/remove", data={"user_id": a1["id"]})
+
+        assert response.status_code == 400
+        assert _roles(users_file) == ["admin", "admin"]
+
+    def test_rename_user_and_reject_duplicates(self, client, as_admin, users_file):
+        auth_service.create_user("uno", "password-1", "admin")
+        otro = auth_service.create_user("otro", "password-2", "operador")
+
+        ok = client.post("/api/auth/users/update", data={"user_id": otro["id"], "username": "renombrado"})
+        assert ok.status_code == 200 and ok.json()["username"] == "renombrado"
+
+        dup = client.post("/api/auth/users/update", data={"user_id": otro["id"], "username": "UNO"})
+        assert dup.status_code == 400
+        blank = client.post("/api/auth/users/update", data={"user_id": otro["id"], "username": "  "})
+        assert blank.status_code == 400
 
     def test_delete_admin_allowed_when_another_exists(self, client, as_admin, users_file):
         a1 = auth_service.create_user("admin1", "password-1", "admin")

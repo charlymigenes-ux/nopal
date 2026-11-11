@@ -123,7 +123,8 @@ def verify_password(username: str, password: str) -> Optional[Dict[str, Any]]:
     return _public(user)
 
 
-def update_user(user_id: str, role: Optional[str] = None, new_password: Optional[str] = None) -> Dict[str, Any]:
+def update_user(user_id: str, role: Optional[str] = None, new_password: Optional[str] = None,
+                username: Optional[str] = None) -> Dict[str, Any]:
     if role is not None and role not in ROLES:
         raise ValueError(f"Rol desconocido: {role}")
 
@@ -132,6 +133,14 @@ def update_user(user_id: str, role: Optional[str] = None, new_password: Optional
         user = next((u for u in users if u["id"] == user_id), None)
         if user is None:
             raise ValueError("Usuario no encontrado")
+
+        if username is not None:
+            username = username.strip()
+            if not username:
+                raise ValueError("El nombre de usuario es obligatorio")
+            clash = next((u for u in users if u["id"] != user_id and u["username"].lower() == username.lower()), None)
+            if clash is not None:
+                raise ValueError(f"El usuario '{username}' ya existe")
 
         if role is not None and role != "admin" and user["role"] == "admin":
             # Incluye la auto-degradación: el chequeo es sobre el estado real
@@ -142,6 +151,8 @@ def update_user(user_id: str, role: Optional[str] = None, new_password: Optional
 
         if role is not None:
             user["role"] = role
+        if username is not None:
+            user["username"] = username
         if new_password is not None and len(new_password) < 8:
             raise ValueError("La contraseña debe tener al menos 8 caracteres")
         if new_password:

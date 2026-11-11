@@ -9,6 +9,7 @@ from backend.services.auth_service import (
     bootstrap_create_admin,
     create_user,
     delete_user,
+    get_user_by_id,
     list_users,
     needs_bootstrap,
     update_user,
@@ -76,7 +77,7 @@ async def logout_endpoint(request: Request):
 
 @router.get("/api/auth/me")
 async def me_endpoint(user: dict = Depends(require_auth)):
-    return {"username": user["username"], "role": user["role"]}
+    return {"username": user["username"], "role": user["role"], "user_id": user.get("user_id")}
 
 
 @router.get("/api/auth/users")
@@ -103,12 +104,18 @@ async def update_user_endpoint(
     user_id: str = Form(...),
     role: Optional[str] = Form(None),
     new_password: Optional[str] = Form(None),
+    username: Optional[str] = Form(None),
     user: dict = Depends(require_role("admin")),
 ):
-    """Cambia el rol y/o resetea la contraseña de un usuario existente —
-    usado desde Configuración > Usuarios."""
+    """Edita el nombre, el rol y/o la contraseña de un usuario existente —
+    usado desde Configuración > Usuarios. Nadie cambia su propio rol: otra
+    cuenta administradora tiene que hacerlo."""
+    if role is not None and user_id == user.get("user_id"):
+        current = get_user_by_id(user_id)
+        if current is not None and current["role"] != role:
+            raise HTTPException(status_code=400, detail="No puedes cambiar tu propio rol; pídeselo a otro administrador")
     try:
-        entry = update_user(user_id, role=role, new_password=new_password or None)
+        entry = update_user(user_id, role=role, new_password=new_password or None, username=username)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return entry
@@ -116,6 +123,8 @@ async def update_user_endpoint(
 
 @router.post("/api/auth/users/remove")
 async def remove_user_endpoint(user_id: str = Form(...), user: dict = Depends(require_role("admin"))):
+    if user_id == user.get("user_id"):
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta")
     try:
         if not delete_user(user_id):
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
