@@ -267,9 +267,13 @@ async def test_single_listener_task_and_no_duplicate_subscribers(boards):
     while not queue.empty():
         queue.get_nowait()
     board.push("hola")
-    assert await asyncio.wait_for(queue.get(), 1) == "hola"
-    await asyncio.sleep(0.02)
-    assert queue.empty()      # entregado una sola vez
+    await asyncio.sleep(0.1)
+    # Entregado una sola vez. Se cuenta solo "hola": el vigilante también
+    # sondea con '?' y su respuesta de estado puede colarse en la cola.
+    received = []
+    while not queue.empty():
+        received.append(queue.get_nowait())
+    assert received.count("hola") == 1
     laser_service._unsubscribe(HOST_A, queue)
 
 
